@@ -104,12 +104,30 @@ jobs:
             SCHEME_PATH="project"
           fi
 
-          SCHEME=$(xcodebuild "$CONTAINER_FLAG" "$CONTAINER" -list -json \
-            | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);console.log((j['$SCHEME_PATH'].schemes||[])[0])})")
+          # The application scheme is named after the Xcode project, which
+          # expo prebuild names after the variant's app name. Deriving it is
+          # deterministic; picking the first scheme of the list is not. A
+          # CocoaPods workspace exposes one scheme per pod, sorted
+          # alphabetically, so "first" lands on something like EXConstants,
+          # which builds all of React Native and produces no .app at all.
+          PROJECT=$(ls -d ios/*.xcodeproj | head -1)
+          SCHEME=$(basename "$PROJECT" .xcodeproj)
+
+          xcodebuild "$CONTAINER_FLAG" "$CONTAINER" -list -json > "$RUNNER_TEMP/schemes.json"
+
+          node -e "
+            const j = require('$RUNNER_TEMP/schemes.json');
+            const schemes = (j['$SCHEME_PATH'].schemes) || [];
+            if (!schemes.includes('$SCHEME')) {
+              console.error('Scheme \"$SCHEME\" not found. Available: ' + schemes.join(', '));
+              process.exit(1);
+            }
+          "
 
           echo "container     $CONTAINER_FLAG $CONTAINER"
           echo "scheme        $SCHEME"
           echo "configuration ${{ inputs.configuration }}"
+          echo "scheme=$SCHEME" >> "$GITHUB_OUTPUT"
 
           xcodebuild \
             "$CONTAINER_FLAG" "$CONTAINER" \
@@ -130,10 +148,18 @@ jobs:
           set -euo pipefail
 
           PRODUCTS="build/Build/Products/${{ inputs.configuration }}-iphoneos"
-          APP_PATH=$(find "$PRODUCTS" -maxdepth 1 -name '*.app' | head -1)
+          SCHEME="${{ steps.build.outputs.scheme }}"
 
-          if [ -z "$APP_PATH" ]; then
-            echo "No .app produced in $PRODUCTS" >&2
+          # Name the expected bundle rather than taking whatever .app turns up:
+          # the pods build into the same directory, and a silent mismatch here
+          # would ship the wrong bundle to the phone.
+          APP_PATH="$PRODUCTS/$SCHEME.app"
+
+          if [ ! -d "$APP_PATH" ]; then
+            echo "Expected $APP_PATH, which does not exist." >&2
+            echo "--- .app bundles actually produced ---" >&2
+            find build/Build/Products -maxdepth 2 -name '*.app' >&2 || true
+            echo "--- contents of $PRODUCTS ---" >&2
             ls -la "$PRODUCTS" >&2 || true
             exit 1
           fi
