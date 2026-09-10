@@ -1,0 +1,823 @@
+# Architecture technique — Application personnelle de suivi nutrition / entraînements / mesures
+
+**Version du document :** 1.0
+**Date :** 10/09/2026
+**Specs de référence :** `specs_v2_2.md`
+**Statut :** normatif — fait autorité pour toute la durée du développement
+
+---
+
+## 0. Mode d'emploi
+
+Ce document est la référence d'architecture du projet. Il est destiné à être joint aux futures conversations de développement, avec les specs fonctionnelles v2.2.
+
+**Ce qu'il contient :** les seize décisions d'architecture avec leur justification et les alternatives écartées, le schéma de données normatif, l'arborescence du projet, les conventions de code, les dépendances justifiées, les points ouverts assumés, et l'ordre de développement recommandé.
+
+**Ce qu'il ne contient pas :** de code applicatif. Les extraits SQL sont là pour fixer une structure, pas pour être copiés tels quels.
+
+**Le fil conducteur.** Trois contraintes commandent presque toutes les décisions ci-dessous, et il est utile de les avoir en tête pour comprendre pourquoi certaines options évidentes ont été écartées :
+
+1. **Aucune compilation locale.** Toute dépendance native est un point de panne diagnosticable uniquement à travers un cycle CI de quinze minutes. Le projet minimise donc systématiquement la surface native, même au prix d'un peu plus de code écrit à la main.
+2. **Aucune sauvegarde automatique.** Toute donnée perdue est perdue. Les décisions irréversibles ont été traitées en premier, et chaque opération destructive est protégée.
+3. **Un seul utilisateur, sur un seul appareil, sans réseau structurant.** Beaucoup d'outils standards de l'écosystème mobile résolvent des problèmes de synchronisation et de latence réseau qui n'existent pas ici. Les adopter par réflexe aurait coûté de la complexité sans contrepartie.
+
+---
+
+## 1. Décisions d'architecture
+
+### D1 — Boucle de développement : build de développement, Expo Go écarté
+
+**Décision.** Développement sur un **build de développement** (`expo-dev-client`) compilé en CI et sideloadé, avec rechargement JavaScript par Metro. Expo Go n'est pas utilisé.
+
+**Deux identifiants d'application distincts, donc deux installations :**
+
+| Installation | Identifiant | Usage |
+| --- | --- | --- |
+| Développement | `…app.dev` | Base jetable, migrations régénérables librement |
+| Quotidienne | `…app` | Vraies données, migrations en ajout seul |
+
+**Le projet natif iOS n'est pas versionné** : il est régénéré par la CI à chaque build. La configuration Expo est l'**unique source de vérité** pour `Info.plist` et les entitlements. Aucun fichier natif n'est jamais modifié à la main.
+
+**Pourquoi.** Expo Go impose une liste blanche de modules natifs : c'est l'outil de développement qui aurait arbitré le choix du moteur de stockage — une décision irréversible. Surtout, les données de test y vivent dans le bac à sable d'Expo Go : on validerait la persistance dans le mauvais conteneur, précisément le sujet où l'erreur n'est pas rattrapable. Enfin, les vraies inconnues du projet — survie du conteneur au rafraîchissement hebdomadaire, feuille de partage, trousseau — ne sont observables que dans une installation réelle.
+
+**Alternatives écartées.** *Expo Go pour la V1* : contraint les dépendances, teste le mauvais environnement, et repousse la découverte du pipeline au moment où il devient critique. *Les deux en parallèle* : deux environnements qui divergent silencieusement.
+
+**Coût assumé.** Toute dépendance native ajoutée coûte un cycle CI. Les ajouts natifs doivent être groupés.
+
+---
+
+### D2 — Persistance : SQLite via `expo-sqlite`, accès par Drizzle
+
+**Décision.** SQLite, module `expo-sqlite`, accès et migrations par Drizzle ORM.
+
+**Réglages normatifs :**
+
+| Réglage | Valeur | Raison |
+| --- | --- | --- |
+| `journal_mode` | `WAL` | Les lectures ne bloquent pas les écritures ; une transaction validée survit à l'arrêt du processus |
+| `synchronous` | `NORMAL` | En WAL, ne perd des transactions validées qu'en cas de crash **système**, pas d'arrêt forcé de l'app. La menace ici est l'arrêt forcé |
+| `foreign_keys` | `ON` | Les règles de figeage reposent sur des liens vrais ou explicitement rompus |
+| Connexion | Une seule en écriture | Évite toute concurrence d'écriture |
+
+Toute opération touchant plusieurs lignes s'exécute **dans une transaction explicite**.
+
+**Le dossier de données est exposé dans l'app Fichiers.** Un bouton « préparer une copie » consolide la base (checkpoint WAL) avant toute copie manuelle, sans quoi la copie serait incomplète.
+
+**Pourquoi.** Le modèle est relationnel et les écrans sont des agrégations par plage de dates : c'est exactement la question à laquelle SQL répond. La persistance continue de la séance en direct (§10.3) est une insertion de ligne, pas une réécriture de document. Et `expo-sqlite` est maintenu par Expo, ce qui compte quand on ne peut pas déboguer une compilation native.
+
+Drizzle apporte trois choses décisives : des migrations SQL générées, versionnées et relisibles ; une intégration directe avec `expo-sqlite` ; et **aucune surface native** — il ne peut donc pas casser une compilation.
+
+**Alternatives écartées.** *Clé-valeur + documents JSON* : aucune transaction, aucune requête par plage, chargement complet en mémoire pour agréger, et une écriture interrompue laisse un document tronqué. *WatermelonDB* : conçu pour la synchronisation et les très gros volumes, ni l'un ni l'autre ici. *Realm* : abandonné par son éditeur. *`op-sqlite`* : plus rapide, mais dépendance tierce pour un gain invisible à ces volumes.
+
+---
+
+### D3 — Dates : la date civile est la clé métier
+
+**Décision.** Une journée est une **date civile locale**, stockée en `TEXT` au format `AAAA-MM-JJ`. Les instants UTC (millisecondes epoch) sont réservés aux traces techniques — création, modification — et aux durées réelles.
+
+> **Règle absolue.** Un instant UTC ne sert **jamais**, dans aucun cas, à recalculer l'appartenance d'une donnée à une journée.
+
+**Corollaires normatifs :**
+
+- Aucune date civile ne transite par le constructeur `Date` natif. `new Date("2026-09-10")` est interprété comme minuit **UTC** et donne le 9 septembre dans tout fuseau à l'ouest de Greenwich. Un module de dates civiles dédié, en fonctions pures, est le seul point d'entrée autorisé.
+- La semaine commence le **lundi**.
+- Une séance à cheval sur minuit appartient à sa **date de début** ; sa durée se calcule sur des instants, jamais sur des heures civiles.
+- Naviguer entre les jours ne matérialise jamais une journée.
+- En V4, une activité prend la **date locale fournie par la source**.
+- L'heure de bascule de la journée est réglable (0h–6h, défaut minuit) et ne détermine que la **date proposée par défaut**. Une **fonction unique** de journée courante sert toute l'application, y compris les conditions de notification.
+
+**Pourquoi `TEXT` plutôt qu'un entier.** Le format se trie alphabétiquement dans l'ordre chronologique, s'indexe, se compare par plage en SQL — et reste **lisible à l'œil nu dans un export JSON**. Le jour où le filet de sécurité doit être inspecté à la main, on ne veut pas y lire `20342`.
+
+**Alternative écartée.** *Stocker un instant et dériver la date locale* : l'appartenance d'un repas à une journée deviendrait fonction du fuseau courant. Un voyage réécrirait rétroactivement l'historique — exactement ce que le principe de figeage interdit. Rien ne planterait ; rien ne se verrait.
+
+---
+
+### D4 — Identifiants, nombres, normalisation
+
+**Identifiants : textuels, triables par date de création** (ULID ou UUID v7), générés par l'application, jamais par la base.
+*Pourquoi :* les identifiants voyagent dans l'export. Avec des entiers attribués par la base, toute fusion ultérieure produit des collisions silencieuses, et l'option est fermée d'avance. C'est de l'optionalité gratuite sur une décision irréversible. Générateurs en JavaScript pur, aucune dépendance native.
+
+**Nombres : flottants double précision partout**, arrondis uniquement à l'affichage.
+*Pourquoi :* un domaine qui tolère 10 % d'écart sur les kcal (§5.1) n'a aucun besoin d'arithmétique exacte au centième. Des entiers mis à l'échelle coûteraient une conversion à chaque lecture et chaque écriture — donc une classe de bugs permanente — pour corriger une erreur d'accumulation à la treizième décimale.
+
+**Macros : forme canonique pour 100 unités de base.**
+La quantité de référence saisie par l'utilisateur est conservée comme **préférence d'affichage**, sans valeur normative.
+*Pourquoi :* tout calcul devient une multiplication unique ; les données Open Food Facts se rangent sans conversion ; le dédoublonnage par code-barres compare deux fiches directement.
+*Coût assumé :* la valeur réaffichée est un aller-retour, pas la saisie littérale. Invisible avec un affichage à une décimale.
+
+---
+
+### D5 — Figeage : quatre règles normatives
+
+**R1 — Une entrée de journal fige la référence, pas le total.**
+Elle porte : nom, marque, unité de base, **macros pour 100 unités**, quantité, unité, et la portion utilisée le cas échéant. Le total consommé n'est jamais stocké : il se déduit.
+*Pourquoi :* c'est ce qui rend l'édition sans limite de temps (§5.3) réellement tenable. Une entrée devient une capsule close qui ne consulte plus jamais la base d'aliments — donc « les entrées passées demeurent intactes » vaut aussi en écriture, pas seulement en lecture.
+
+**R2 — Seules les feuilles portent des macros.**
+Une entrée de type recette est un parent **vide** — nom, quantité consommée, état replié — et des lignes d'ingrédient qui portent tout. Toute somme est une somme de feuilles.
+*Pourquoi :* si parent et enfants portaient des macros, une agrégation qui oublie une clause de filtrage compterait le repas en double. Le double comptage devient **structurellement impossible** plutôt que conditionnellement évité.
+*Astuce d'uniformisation :* une saisie libre est modélisée comme 100 unités d'un aliment virtuel dont les macros pour 100 sont les valeurs saisies. Aucun cas particulier dans les agrégations.
+
+**R3 — Le figeage à la suppression est atomique.**
+Chaque ligne d'ingrédient porte en permanence des colonnes de gel vides et un lien vers l'aliment. La suppression d'un aliment remplit ces colonnes et rompt le lien **dans une transaction unique**. Un arrêt forcé au milieu laisse la base dans l'état d'avant.
+*Distinction voulue :* **modifier** un aliment met à jour les recettes (objet vivant, §8.6) ; seule la **suppression** gèle.
+
+**R4 — Journée et séance sont des snapshots ; l'exercice fait exception.**
+Une journée copie les repas du modèle avec leurs objectifs ; les objectifs du jour sont la **somme**, jamais stockée. Une séance copie les blocs et lignes de la routine.
+**Mais une séance conserve un lien vivant vers l'exercice** — sans quoi les graphiques, records et règles de progression (§10.1, §10.4) ne pourraient plus recoudre des séances étalées sur des années. C'est la seule exception au figeage, et elle impose l'avertissement de suppression du §5.3.
+
+---
+
+### D6 — Migrations : quatre garde-fous
+
+**Décision.** Migrations SQL générées par `drizzle-kit`, versionnées dans le dépôt, appliquées au démarrage.
+
+**Le mécanisme doit être opérationnel dans le tout premier build installé**, l'application portant de vraies données dès la deuxième semaine.
+
+**G1 — Sauvegarde automatique avant toute migration.** Si des migrations sont en attente, l'application consolide la base et copie le fichier dans le dossier `Documents` — celui qui est visible dans l'app Fichiers. Rotation sur les deux ou trois dernières copies. C'est la mesure la plus rentable de toute l'architecture.
+
+**G2 — Une migration livrée ne se modifie plus jamais.** Sur l'installation de développement, écraser et régénérer librement. **Le jour où la première donnée réelle est saisie sur l'installation quotidienne, la migration initiale est gelée.** Ensuite : ajout seul.
+
+**G3 — Refus de démarrer sur une base plus récente que le binaire.** Un retour à un build antérieur — ce qui arrivera — ferait écrire un binaire de V1 dans des tables de V2. L'application détecte et refuse, avec un message qui **nomme le fichier de sauvegarde et indique où le récupérer**.
+
+**G4 — Les migrations se testent en CI, sans iPhone.** Un travail qui rejoue toutes les migrations sur une base peuplée puis applique la nouvelle attrape l'essentiel des erreurs en trente secondes au lieu de quinze minutes plus un cycle de sideloading.
+
+**Précisions.** Chaque migration embarque son remplissage de données dans la même transaction. Les contraintes de clés étrangères sont désactivées pendant les reconstructions de table, procédure que SQLite impose pour toute modification de colonne.
+
+**Alternatives écartées.** *Runner écrit à la main* : contrôle total, mais on écrit soi-même les reconstructions de table en douze étapes. *Recréer la base et réimporter un export* : fait dépendre la survie d'un fichier produit avant la mise à jour, donc d'un geste manuel.
+
+---
+
+### D7 — Export / import
+
+**Format : plat, un tableau par entité**, calqué sur les tables. En-tête portant version de format, version de schéma, version applicative et horodatage. **Non compressé et indenté.** Nom de fichier daté et triable.
+*Pourquoi plat :* la restauration devient mécanique. Au moment où l'on importe, on est déjà en situation de perte : on ne veut pas d'un algorithme de reconstruction, on veut une boucle bête qui ne peut pas se tromper.
+*Pourquoi non compressé :* un filet de sécurité qu'on ne peut pas ouvrir dans un éditeur de texte pour le réparer à la main n'en est pas tout à fait un.
+
+**Mécanique d'import : construire à côté, valider, basculer à la fin.**
+Jamais d'effacement préalable. Une base neuve est construite dans un fichier temporaire, validée intégralement, et seule la bascule finale remplace la base courante. Un arrêt forcé ne laisse qu'un fichier temporaire à nettoyer au démarrage suivant.
+
+**Trois barrières de validation, toutes avant la bascule :** version de format incompatible refusée ; validation structurelle complète de la charge utile ; vérification d'intégrité référentielle.
+
+**Remplacement total uniquement.** Aucune fusion. Les identifiants globalement uniques (D4) laissent l'option ouverte sans changer les données.
+
+**Versions découplées.** La version de format d'export est distincte de la version interne de schéma : renommer une colonne ne doit pas invalider les archives. Une table de correspondance explicite relie les deux.
+
+**Exclusions.** Le cache Open Food Facts (reconstructible). Les médias d'exercices (fichiers, non données) — couverts uniquement par la copie manuelle du dossier de données. **Un média absent affiche un substitut ; l'application ne plante jamais pour cette raison.**
+
+---
+
+### D8 — État et couche d'accès
+
+**Décision.** **TanStack Query** comme couche de requête unique — locale et réseau — avec **invalidation pilotée par la base**, jamais écrite à la main.
+
+Un abonnement unique aux changements de tables, écrit une fois, traduit « table modifiée » en « clés de requête invalidées », avec un léger regroupement temporel. Aucune liste d'invalidation n'est maintenue manuellement.
+
+**Pourquoi ce compromis plutôt que des requêtes vives pures.** Une requête vive se rejoue **inconditionnellement** dès que sa table change : pendant une séance de musculation, où une ligne est écrite à chaque série, un tableau de bord ouvert ailleurs se recalculerait des dizaines de fois. TanStack apporte les leviers qui manquent — durée de fraîcheur, conservation de la valeur précédente pendant un recalcul, contrôle du moment où une agrégation lourde se réévalue. C'est ce qui rend la stratégie de D9 tenable.
+
+**Pourquoi pas un cache à invalidation manuelle.** Une quarantaine d'écritures, chacune devant énumérer les requêtes à rafraîchir. Un oubli ne casse rien : un écran affiche simplement une valeur d'hier. Dans une application de suivi, douter des chiffres, c'est arrêter de s'en servir.
+
+**Pourquoi pas de magasin global miroir.** Deux vérités à tenir d'accord, et un magasin volatilisé au premier arrêt forcé — c'est-à-dire toutes les semaines. Conséquence heureuse : le bandeau persistant de séance (§10.3) est une simple requête, donc **juste après un arrêt forcé**.
+
+**Couche d'accès : fine, découpée par domaine, à deux faces.**
+Les **lectures** sont des hooks. Les **écritures** sont des fonctions transactionnelles portant les règles métier.
+
+*Ce à quoi elle ne sert pas :* à pouvoir changer de base de données. Personne ne change de base de données.
+*Ce à quoi elle sert :* à rendre les invariants incontournables. Matérialisation d'une journée, figeage, transaction de suppression — si un écran peut écrire directement dans les tables, un jour il le fera et oubliera une règle. Bénéfice secondaire réel : ces fonctions se testent dans Node, sans iPhone et sans CI.
+
+---
+
+### D9 — Stocké contre recalculé
+
+> **Règle : rien de dérivable n'est stocké.**
+
+**Figé n'est pas dérivé.** Une donnée figée est une **entrée capturée** à un instant ; elle est stockée, et c'est légitime. Une donnée dérivée est une fonction de l'état courant ; elle ne l'est jamais.
+
+**Systématiquement recalculés :** objectifs du jour, restants, totaux de journée, kcal théorique et son écart de 10 %, poids lissé, rythme réel, taux d'adhérence, volume, 1RM d'Epley, records personnels, suggestion de double progression, allure d'une activité, durée d'une séance.
+
+**Où vivent les calculs — trois niveaux, et rien entre les deux :**
+
+| Niveau | Contenu |
+| --- | --- |
+| **SQL** | Sommes, comptages, regroupements par plage de dates |
+| **Fonctions pures TypeScript** | Epley, moyenne mobile, régression, adhérence, double progression, arrondis. Ne connaissent ni la base ni React |
+| **Composants** | **Rien.** Aucun calcul métier dans le rendu |
+
+**Performance des longs historiques : recalculer et mettre en cache le résultat, pas le stocker.**
+Si une vue dépasse deux ou trois dixièmes de seconde, la parade est une table de résumé quotidien maintenue par la couche d'accès. **Elle n'est pas écrite maintenant** : c'est de la donnée dérivée, donc reconstructible à tout moment. Contrairement à tout le reste, ce report ne coûte rien.
+
+**Règles d'agrégation normatives :**
+- Toute valeur quotidienne s'agrège **par moyenne**. La somme n'est licite que pour les compteurs.
+- Regroupement par **semaine au-delà de 90 jours**, par **mois au-delà d'un an**.
+
+---
+
+### D10 — Structure du projet et navigation
+
+**Routage : expo-router.** Voie par défaut d'Expo, maintenue et documentée. Barre à quatre onglets fixes et modale plein écran y sont des cas de première classe.
+
+**Organisation : par domaine.** Nutrition, poids, musculation, activités, sauvegarde, réglages — chacun refermant ses écrans, ses composants, ses règles et ses accès aux données.
+*Pourquoi :* par type, la V3 fait ajouter des fichiers dans huit dossiers et mélange les règles de musculation à celles de nutrition. Par domaine, la V3 est un dossier neuf.
+
+> **Règle qui rend les deux compatibles :** le dossier de routes ne contient **que du câblage**. Un fichier de route déclare son titre, ses options d'écran, et affiche un composant importé du domaine. Jamais de logique, jamais de requête.
+
+> **Règle du noyau partagé :** un composant ne migre vers le noyau qu'à son **deuxième utilisateur réel**, jamais par anticipation.
+
+**Sous-sections de l'Entraînement : sélecteur segmenté** dans un écran unique, pas de navigateur imbriqué. Évite un état de navigation à deux niveaux.
+
+**Interface : aucune bibliothèque de composants.**
+Les écrans les plus importants sont tous sur mesure — anneau de progression, rangée de RIR, balayage pour supprimer, bandeau de séance. Une bibliothèque n'en offre aucun mais impose son apparence, son système de thème et sa cadence de mises à jour.
+**NativeWind est également écarté**, plus douloureusement : il ajoute une étape dans Metro et Babel, donc un point de panne dans une chaîne de compilation qu'on ne peut pas déboguer localement.
+À la place : styles natifs et une petite couche de **jetons** — couleurs, espacements, typographies — dérivée du thème clair/sombre/système.
+
+**Aucune bibliothèque d'internationalisation.** L'interface est en français uniquement. Les chaînes restent dans le domaine qui les utilise.
+
+---
+
+### D11 — Client Open Food Facts
+
+**Contrainte externe constatée au 10/09/2026 :** 15 requêtes/minute et par adresse IP pour les consultations de produit, 10/minute pour les recherches, en-tête d'identification personnalisé obligatoire, et proscription explicite de la recherche au fil de la frappe.
+
+**Recherche à déclenchement explicite.** Les résultats personnels s'affichent instantanément à chaque frappe ; la requête distante ne part qu'à la validation, et ses résultats s'ajoutent en dessous — ce qui respecte l'ordre imposé par le §8.4.
+*L'asymétrie est la clé :* la base locale peut répondre à chaque frappe, la source distante non. Les deux ne sont pas interrogées au même rythme, alors même que leurs résultats partagent une liste.
+
+**Le scan n'est pas concerné :** consultation de produit, plafonnée à quinze par minute, jamais deux d'affilée. La cible des cinq secondes tient.
+
+**Cache.** Table dédiée dans la même base — même transaction, même sauvegarde, même migration — mais **exclue de l'export**. Seules les consultations par code-barres sont mises en cache durablement, 30 jours, rafraîchissement opportuniste. Les recherches textuelles ne sont cachées qu'en mémoire. **Chaque requête restreint explicitement les champs demandés.**
+
+**Échecs.** Délai d'attente court, une seule nouvelle tentative, repli silencieux sur le local avec bandeau discret. **Exception : un dépassement de quota n'est pas une panne réseau.** Il suspend les appels distants plusieurs minutes avec un message explicite, sous peine de bannissement par adresse IP.
+
+**Qualité des données.** Champs manquants signalés ; écart kcal supérieur à 10 % signalé ; valeurs physiquement impossibles marquées. **L'absence d'un seul des quatre macros** fait basculer sur la création d'un aliment personnel **pré-rempli** de tout ce qui a été fourni.
+
+---
+
+### D12 — Séance en direct
+
+**Granularité d'écriture — deux rythmes.**
+Écriture **immédiate et synchrone** à la validation d'une série (saisie du RIR). Écriture **différée d'une fraction de seconde** pour les champs en cours de frappe.
+
+> **Point non négociable :** toute écriture différée est **vidée au passage en arrière-plan**. C'est le moment précis où iOS peut tuer l'application sans préavis.
+
+**Minuteurs : aucun compteur n'est stocké.** On stocke l'instant de départ, la durée se déduit. Seule forme qui survive à un arrêt forcé, à une mise en arrière-plan et à un changement d'heure.
+Le minuteur de repos ne pouvant pas sonner sans exécution en arrière-plan, il est réalisé par une **notification locale unique**, annulée à la validation de la série suivante.
+
+**Séance unique : invariant porté par la base**, via un index unique partiel — pas par une vérification applicative, qu'un écran distrait ou une condition de course peut contourner.
+
+**Durée : temps actif par segments.** Un segment se ferme après 30 minutes sans écriture. **Les segments sont stockés, la durée s'en déduit** — conforme à D9, et le seuil reste ajustable sans réécrire l'historique. Aucune question supplémentaire n'est posée à la reprise, celle-ci étant déjà proposée par le §10.3.
+
+---
+
+### D13 — Rendu graphique
+
+**Décision.** Composants maison sur `react-native-svg`, échelles et tracés calculés avec `d3-scale` et `d3-shape`.
+
+**Le vrai enjeu est en amont.** L'écran fait 390 points de large : afficher trois ans de poids, c'est dessiner mille valeurs sur quatre cents pixels. **Le nombre de points arrivant au graphique se règle en SQL**, par agrégation (D9), pas dans la bibliothèque de rendu. Aucun graphique ne dépasse alors deux cents points, et le choix de la bibliothèque cesse d'être une question de performance.
+
+**Pourquoi maison.** Trois écrans clés superposent des séries de natures différentes sur des axes différents (§9.2, §9.4, §10.6) — exactement là où les bibliothèques génériques se battent contre vous. **Zéro surface native**, cohérent avec le fil conducteur du projet. Et le même outil sert la **carte corporelle**, qui est un SVG dont on colore les tracés : un seul outil graphique dans tout le projet.
+
+*Coût assumé :* axes, graduations et légendes écrits à la main. Une journée pour le premier graphique, une heure pour chaque suivant. **Décision réversible**, contrairement à presque tout le reste.
+
+**Alternatives écartées.** *victory-native sur Skia* : soigné et rapide, mais grosse dépendance native. *Bibliothèque JavaScript clés en main* : les graphiques les plus importants sont hors de sa zone de confort.
+
+**Interactions.** Pas de zoom ni de déplacement au doigt — doublon avec les sélecteurs de plage. Une seule interaction : **toucher un point affiche sa valeur et sa date**.
+
+---
+
+### D14 — Notifications locales
+
+**Contrainte structurante.** iOS déclenche les notifications **sans exécuter le code de l'application**. Les conditions du §9.3 ne peuvent donc pas être évaluées au déclenchement.
+
+**Décision : replanification permanente.** L'application programme les prochaines occurrences uniquement si la condition est encore non satisfaite, et **annule** dès qu'elle le devient.
+
+*Pourquoi c'est fiable ici :* quand l'utilisateur saisit son poids, **l'application tourne**. Elle peut donc annuler. Il n'existe aucune source extérieure susceptible de satisfaire une condition dans le dos de l'application.
+
+**Mécanique :**
+- Planification anticipée sur **7 jours**, reprogrammée à chaque passage au premier plan.
+- Les rappels **s'épuisent d'eux-mêmes** si l'application n'est pas ouverte sept jours — durée qui coïncide avec celle du certificat SideStore.
+- Le **bilan de fin de journée est reprogrammé à chaque écriture concernant la date du jour**, de façon groupée, faute de quoi ses chiffres seraient ceux du matin. Une écriture sur une date passée ne le reprogramme pas.
+- **Plafond iOS de 64 notifications en attente** : déclencheurs répétitifs préférés partout où c'est possible.
+- Autorisation demandée **à l'activation dans les Réglages**, jamais au premier lancement — un refus au démarrage est définitif.
+
+**Alternatives écartées.** *Tâches d'arrière-plan* : iOS décide seul quand, parfois jamais ; et après l'échec du test B, miser sur une capacité que la signature pourrait raboter serait imprudent. *Notifications inconditionnelles* : c'est renoncer à ce que les specs demandent.
+
+---
+
+### D15 — Stratégie de test
+
+> **Critère de tri : un bug qui se voit à l'écran ne mérite pas de test.** L'application est ouverte plusieurs fois par jour. Ce qui mérite des tests, c'est ce qui produit un résultat **plausible mais faux**.
+
+**Par valeur décroissante :**
+
+1. **L'aller-retour export puis import.** Peupler, exporter, importer dans une base vide, vérifier l'égalité. Protège à lui seul l'unique filet de sécurité. **Si un seul test est écrit dans tout le projet, c'est celui-là.**
+2. **Les migrations** (G4 de D6).
+3. **Le module de dates civiles, sous plusieurs fuseaux** — dont un à l'ouest de Greenwich et un au-delà de +12. Seul moyen de faire apparaître une classe de bugs invisible depuis Paris en hiver.
+4. **Les fonctions pures de calcul.** Rapides à écrire, et leurs sorties ne se vérifient pas à l'œil.
+5. **Les invariants de la couche d'accès**, contre un vrai fichier SQLite dans Node.
+
+**Explicitement hors périmètre :** les composants d'interface (coûteux, fragiles, redondants avec l'usage quotidien) et les tests de bout en bout — **Detox réclame un simulateur, donc un Mac. Ce n'est pas un arbitrage, c'est une impossibilité.**
+
+**Ce qui remplace des tests à moindre coût :** TypeScript strict avec **types marqués** pour la date civile et les identifiants, de sorte qu'une date civile ne puisse jamais être passée là où on attend un instant. Et **validation stricte aux deux frontières d'entrée** : import JSON et réponses Open Food Facts.
+
+**Outil à écrire en tranche 1 : un générateur de jeu de données de démonstration.** Il sert quatre fois — tester les migrations, vérifier les performances sur historiques longs, peupler l'installation de développement, reproduire un bug sans exposer les vraies données.
+
+**Dépôt public.** Le code ne contient aucun secret : la clé intervals.icu vit dans le trousseau, jamais dans le dépôt. Cela supprime la contrainte de minutes de CI, autrement la plus pénible du projet. Deux règles : **aucun export réel ne rejoint jamais le dépôt**, et le jeu de données de développement est **généré**, jamais copié.
+
+---
+
+### D16 — Performance
+
+**Décomposition de la cible des 15 secondes :**
+
+| Étape | Budget |
+| --- | --- |
+| Démarrage à froid jusqu'au restant lisible | 1,5 s |
+| Ouverture de la modale d'ajout | 0,3 s |
+| Sélection d'un aliment → écran de quantité | 0,2 s |
+| Validation → retour au Journal à jour | 0,3 s |
+| **Total technique** | **≈ 2,5 s** |
+
+> Les douze secondes et demie restantes sont humaines. **La cible ne se tient pas en optimisant du code, elle se tient en supprimant des gestes.** Le facteur limitant est le nombre de touchers, jamais la base de données.
+
+**Règles :**
+- Rien de lourd au lancement : ouverture de la base, vérification de version, affichage. Repas repliés par défaut. Bandeau de restant servi par **une requête agrégée unique**, pas par le chargement de toutes les entrées.
+- **Listes natives standard**, pas de bibliothèque de liste spécialisée : quelques centaines de lignes au maximum.
+- **Recherche locale par index simple**, sans moteur plein texte. Le plein texte est une option de repli, à activer **sur mesure, pas sur intuition**.
+- **Index normatifs** sur tout ce qui est interrogé par plage de dates (voir §2).
+- **Instrumentation en développement** des quatre transitions du parcours critique. Sans mesure, une cible de performance n'est qu'un vœu.
+
+**Le levier principal, inscrit aux specs :** quantité **pré-remplie** avec la dernière consommée pour cet aliment, clavier numérique ouvert, valeur sélectionnée. Un aliment habituel se logue en deux touchers.
+
+---
+
+## 2. Schéma de données normatif
+
+Conventions : identifiants `TEXT` (ULID), dates civiles `TEXT AAAA-MM-JJ`, instants `INTEGER` (ms epoch), montants `REAL`, booléens `INTEGER 0/1`. Colonnes en `snake_case`.
+
+Toutes les tables portent `created_at` et `updated_at` sauf mention contraire.
+
+### 2.1 Noyau
+
+```sql
+-- Réglages : clé-valeur, pour éviter une migration par préférence ajoutée
+setting(key TEXT PRIMARY KEY, value TEXT NOT NULL)
+-- clés : theme, day_cutoff_hour, adherence_tolerance_pct, default_template_id,
+--        last_export_at, progression_increment_default_kg,
+--        intervals_sync_frequency, export_reminder_days
+```
+
+### 2.2 Nutrition (V1)
+
+```sql
+food(
+  id TEXT PK,
+  name TEXT NOT NULL,
+  brand TEXT,
+  barcode TEXT,
+  source TEXT NOT NULL,            -- 'perso' | 'off'
+  base_unit TEXT NOT NULL,         -- 'g' | 'ml'
+  protein_100 REAL NOT NULL,       -- forme canonique, pour 100 unités de base
+  carbs_100   REAL NOT NULL,
+  fat_100     REAL NOT NULL,
+  kcal_100    REAL NOT NULL,       -- valeur source, jamais recalculée
+  display_ref_qty REAL NOT NULL,   -- préférence d'affichage, non normative
+  is_favorite INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER, updated_at INTEGER
+)
+CREATE UNIQUE INDEX ux_food_barcode ON food(barcode) WHERE barcode IS NOT NULL;
+CREATE INDEX ix_food_name ON food(name);
+
+food_portion(
+  id TEXT PK,
+  food_id TEXT NOT NULL REFERENCES food(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,              -- liste fermée (§6.1)
+  quantity REAL NOT NULL,          -- en unité de base — obligatoire [v2.2]
+  position INTEGER NOT NULL
+)
+CREATE UNIQUE INDEX ux_portion_food_name ON food_portion(food_id, name);
+
+recipe(
+  id TEXT PK, name TEXT NOT NULL, prep_minutes INTEGER,
+  yield_type TEXT NOT NULL,        -- 'portions' | 'weight'
+  yield_value REAL NOT NULL,
+  is_favorite INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER, updated_at INTEGER
+)
+
+recipe_tag(recipe_id TEXT, tag TEXT, PRIMARY KEY(recipe_id, tag))
+recipe_step(id TEXT PK, recipe_id TEXT NOT NULL, position INTEGER, text TEXT)
+
+recipe_ingredient(
+  id TEXT PK,
+  recipe_id TEXT NOT NULL REFERENCES recipe(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  food_id TEXT REFERENCES food(id),   -- NULL une fois gelé
+  quantity REAL NOT NULL,
+  unit TEXT NOT NULL,
+  -- colonnes de gel : vides tant que le lien existe (D5/R3)
+  frozen_name TEXT, frozen_base_unit TEXT,
+  frozen_protein_100 REAL, frozen_carbs_100 REAL,
+  frozen_fat_100 REAL, frozen_kcal_100 REAL,
+  frozen_at INTEGER
+)
+CREATE INDEX ix_ingredient_food ON recipe_ingredient(food_id);
+```
+
+### 2.3 Objectifs, planning, journal (V1)
+
+```sql
+day_template(id TEXT PK, name TEXT NOT NULL, created_at, updated_at)
+
+day_template_meal(
+  id TEXT PK, template_id TEXT NOT NULL REFERENCES day_template(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL, name TEXT NOT NULL,
+  target_protein REAL, target_carbs REAL, target_fat REAL, target_kcal REAL
+)
+
+planning_weekday(weekday INTEGER PK, template_id TEXT NOT NULL)  -- 1 = lundi
+planning_override(date TEXT PK, template_id TEXT NOT NULL)
+
+-- Une journée n'existe que matérialisée (§8.2)
+day(
+  date TEXT PK,                       -- date civile
+  template_id_snapshot TEXT,          -- informatif, sans lien vivant
+  template_name_snapshot TEXT,
+  materialized_at INTEGER NOT NULL
+)
+
+day_meal(
+  id TEXT PK, date TEXT NOT NULL REFERENCES day(date) ON DELETE CASCADE,
+  position INTEGER NOT NULL, name TEXT NOT NULL,
+  target_protein REAL, target_carbs REAL, target_fat REAL, target_kcal REAL
+)
+CREATE INDEX ix_day_meal_date ON day_meal(date);
+
+journal_entry(
+  id TEXT PK,
+  day_meal_id TEXT NOT NULL REFERENCES day_meal(id) ON DELETE CASCADE,
+  date TEXT NOT NULL,                 -- dénormalisé : immuable, rend les stats index-only
+  parent_entry_id TEXT REFERENCES journal_entry(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  kind TEXT NOT NULL,                 -- 'food' | 'recipe' | 'recipe_item' | 'free'
+  source_food_id TEXT,                -- informatif, sans lien vivant
+  source_recipe_id TEXT,
+  -- capsule figée (D5/R1) — NULL sur un parent 'recipe' (D5/R2)
+  name TEXT NOT NULL, brand TEXT,
+  base_unit TEXT, quantity REAL,
+  portion_name TEXT, portion_quantity REAL,
+  protein_100 REAL, carbs_100 REAL, fat_100 REAL, kcal_100 REAL,
+  created_at INTEGER, updated_at INTEGER
+)
+CREATE INDEX ix_entry_date ON journal_entry(date);
+CREATE INDEX ix_entry_meal ON journal_entry(day_meal_id);
+CREATE INDEX ix_entry_parent ON journal_entry(parent_entry_id);
+CREATE INDEX ix_entry_source_food ON journal_entry(source_food_id, created_at);
+```
+
+> **Invariant d'agrégation :** toute somme de macros porte sur les lignes **sans enfant**. Un parent `recipe` a ses colonnes de macros à `NULL`. Une saisie libre est modélisée en `quantity = 100`, `base_unit = 'g'`, macros pour 100 = valeurs saisies.
+
+### 2.4 Cache Open Food Facts (V1, hors export)
+
+```sql
+off_cache(
+  barcode TEXT PRIMARY KEY,
+  payload TEXT NOT NULL,              -- réponse normalisée, champs restreints
+  fetched_at INTEGER NOT NULL
+)
+```
+
+### 2.5 Poids (V2)
+
+```sql
+weight_measure(
+  date TEXT PRIMARY KEY,              -- une mesure au plus par date (§6.2)
+  value_kg REAL NOT NULL,
+  created_at INTEGER, updated_at INTEGER
+)
+
+weight_goal(
+  id TEXT PK, target_kg REAL NOT NULL,
+  mode TEXT NOT NULL,                 -- 'target_date' | 'rate'
+  target_date TEXT, rate_kg_per_week REAL,
+  defined_at INTEGER NOT NULL,
+  is_active INTEGER NOT NULL DEFAULT 1
+)
+
+notification_setting(
+  kind TEXT PRIMARY KEY,              -- 'weigh_in'|'empty_journal'|'daily_summary'|'export_reminder'
+  enabled INTEGER NOT NULL DEFAULT 0,
+  hour INTEGER, minute INTEGER
+)
+```
+
+### 2.6 Musculation (V3)
+
+```sql
+exercise(
+  id TEXT PK, name TEXT NOT NULL,
+  primary_muscle TEXT NOT NULL, equipment TEXT,
+  media_uri TEXT,                     -- fichier local, hors export (D7)
+  note_execution TEXT, note_setup TEXT, note_breathing TEXT, note_mistakes TEXT,
+  increment_kg REAL NOT NULL,
+  is_favorite INTEGER NOT NULL DEFAULT 0,
+  created_at, updated_at
+)
+exercise_secondary_muscle(exercise_id TEXT, muscle TEXT, PRIMARY KEY(exercise_id, muscle))
+
+routine(id TEXT PK, name TEXT NOT NULL, created_at, updated_at)
+routine_warmup_step(id TEXT PK, routine_id TEXT NOT NULL, position INTEGER, text TEXT)
+
+routine_block(
+  id TEXT PK, routine_id TEXT NOT NULL REFERENCES routine(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  rest_seconds INTEGER                -- au niveau du bloc pour un superset (§10.2)
+)
+
+routine_line(
+  id TEXT PK, block_id TEXT NOT NULL REFERENCES routine_block(id) ON DELETE CASCADE,
+  exercise_id TEXT NOT NULL REFERENCES exercise(id),
+  position INTEGER NOT NULL, set_index INTEGER NOT NULL,
+  set_type TEXT NOT NULL,             -- 'warmup'|'work'|'dropset'|'long'
+  reps_min INTEGER, reps_max INTEGER,
+  target_load_kg REAL, target_rir REAL,
+  rest_seconds INTEGER, progression_enabled INTEGER NOT NULL DEFAULT 0,
+  note TEXT
+)
+
+session(
+  id TEXT PK,
+  date TEXT NOT NULL,                 -- date civile de début (D3)
+  routine_id TEXT, routine_name_snapshot TEXT,
+  status TEXT NOT NULL,               -- 'in_progress' | 'done'
+  started_at INTEGER NOT NULL, ended_at INTEGER,
+  notes TEXT, created_at, updated_at
+)
+-- invariant « une seule séance en cours », porté par la base (D12)
+CREATE UNIQUE INDEX ux_session_active ON session(status) WHERE status = 'in_progress';
+CREATE INDEX ix_session_date ON session(date);
+
+-- durée = somme des segments ; la durée n'est jamais stockée (D9, D12)
+session_segment(
+  id TEXT PK, session_id TEXT NOT NULL REFERENCES session(id) ON DELETE CASCADE,
+  started_at INTEGER NOT NULL, ended_at INTEGER
+)
+
+session_block(
+  id TEXT PK, session_id TEXT NOT NULL REFERENCES session(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL, rest_seconds INTEGER
+)
+
+-- une ligne = une série : cible figée + réalisé
+session_set(
+  id TEXT PK, session_block_id TEXT NOT NULL REFERENCES session_block(id) ON DELETE CASCADE,
+  exercise_id TEXT REFERENCES exercise(id),   -- lien VIVANT, exception D5/R4
+  exercise_name_frozen TEXT NOT NULL,         -- survit à la suppression de l'exercice
+  position INTEGER NOT NULL, set_index INTEGER NOT NULL,
+  set_type TEXT NOT NULL,
+  target_reps_min INTEGER, target_reps_max INTEGER,
+  target_load_kg REAL, target_rir REAL,
+  rest_seconds INTEGER, progression_enabled INTEGER NOT NULL DEFAULT 0,
+  actual_reps INTEGER, actual_load_kg REAL, actual_rir REAL,
+  status TEXT NOT NULL,               -- 'pending' | 'done' | 'skipped'
+  completed_at INTEGER
+)
+CREATE INDEX ix_set_exercise ON session_set(exercise_id, completed_at);
+
+exercise_note(
+  id TEXT PK, exercise_id TEXT NOT NULL REFERENCES exercise(id) ON DELETE CASCADE,
+  text TEXT NOT NULL, created_at INTEGER, consumed_at INTEGER
+)
+```
+
+### 2.7 Activités (V4)
+
+```sql
+activity(
+  id TEXT PK,
+  external_id TEXT UNIQUE,            -- identifiant intervals.icu : met à jour, ne duplique pas
+  date TEXT NOT NULL,                 -- date locale fournie par la source (D3)
+  type TEXT NOT NULL,
+  distance_m REAL, moving_seconds INTEGER, elapsed_seconds INTEGER,
+  elevation_m REAL, cadence REAL, avg_hr REAL, kcal REAL,
+  synced_at INTEGER, created_at, updated_at
+)
+CREATE INDEX ix_activity_date ON activity(date);
+```
+
+**Hors base :** la clé API intervals.icu réside dans le trousseau iOS (`expo-secure-store`), jamais dans SQLite ni dans l'export.
+
+---
+
+## 3. Arborescence du projet
+
+```
+/
+├── app/                          # routes expo-router — CÂBLAGE UNIQUEMENT
+│   ├── _layout.tsx
+│   ├── (tabs)/
+│   │   ├── _layout.tsx           # 4 onglets fixes dès la V1
+│   │   ├── index.tsx             # Journal
+│   │   ├── training.tsx
+│   │   ├── stats.tsx
+│   │   └── settings.tsx
+│   ├── library/                  # bibliothèque aliments & recettes
+│   ├── exercise/[id].tsx
+│   ├── routine/[id].tsx
+│   ├── session/live.tsx
+│   └── (modals)/
+│       ├── add-entry.tsx         # modale plein écran (§8.4)
+│       └── quantity.tsx
+│
+├── src/
+│   ├── core/
+│   │   ├── db/
+│   │   │   ├── client.ts         # ouverture, PRAGMA, transactions
+│   │   │   ├── schema/           # définitions Drizzle, une par domaine
+│   │   │   ├── migrations/       # SQL généré — JAMAIS modifié après livraison
+│   │   │   ├── backup.ts         # sauvegarde pré-migration, « préparer une copie »
+│   │   │   └── change-bus.ts     # table modifiée → clés invalidées (D8)
+│   │   ├── date/                 # LocalDate : type marqué + fonctions pures (D3)
+│   │   ├── format/               # arrondis, unités, français
+│   │   ├── theme/                # jetons, clair/sombre/système
+│   │   ├── ui/                   # composants génériques (règle du 2e utilisateur)
+│   │   └── charts/               # primitives SVG : axes, échelles, tracés (D13)
+│   │
+│   ├── features/
+│   │   ├── nutrition/
+│   │   │   ├── screens/  components/  hooks/
+│   │   │   ├── data/             # lectures (hooks) + écritures (transactions)
+│   │   │   ├── domain/           # fonctions pures : macros, adhérence, objectifs
+│   │   │   └── off/              # client Open Food Facts, cache, limiteur (D11)
+│   │   ├── weight/               # V2 — lissage, régression, objectif
+│   │   ├── strength/             # V3 — routines, séance en direct, progression
+│   │   ├── activities/           # V4 — intervals.icu
+│   │   ├── notifications/        # V2 — planification, annulation (D14)
+│   │   ├── backup/               # export / import (D7)
+│   │   ├── stats/                # tableau de bord transversal
+│   │   └── settings/
+│   │
+│   └── dev/
+│       └── seed/                 # générateur de jeu de données (D15)
+│
+├── .github/workflows/
+│   ├── build-dev.yml             # build de développement
+│   ├── build-app.yml             # build quotidien
+│   └── checks.yml                # types, tests, rejeu des migrations (D6/G4)
+│
+└── drizzle.config.ts
+```
+
+**Non versionné :** `ios/`, `android/`, tout export réel, tout jeu de données issu des vraies données.
+
+---
+
+## 4. Conventions de code
+
+**Types**
+- TypeScript en mode strict, sans exception.
+- **Types marqués obligatoires** pour `LocalDate` et les identifiants d'entité. Une date civile ne doit jamais pouvoir être passée là où un instant est attendu.
+- Aucun `any`. Les données extérieures (import JSON, Open Food Facts) sont validées à la frontière, jamais typées par affirmation.
+
+**Dates**
+- `new Date()` sur une chaîne `AAAA-MM-JJ` est **interdit**. Point d'entrée unique : le module `core/date`.
+- Une **fonction unique** détermine la journée courante, seuil de bascule compris, et sert aussi les notifications.
+
+**Base de données**
+- Colonnes en `snake_case`, identifiants TypeScript en `camelCase`.
+- Aucune écriture depuis un composant. Les écritures passent par les fonctions du domaine, qui sont transactionnelles.
+- Toute opération multi-lignes est explicitement transactionnelle.
+- Aucune invalidation de cache écrite à la main : elle passe par le bus de changements.
+
+**Structure**
+- Le dossier `app/` ne contient que du câblage.
+- Aucun calcul métier dans un composant.
+- Un composant ne migre vers `core/ui` qu'à son deuxième utilisateur réel.
+- Fichiers en `kebab-case`, composants React en `PascalCase`.
+
+**Langue**
+- Code, schéma et commentaires en anglais sans accents.
+- Français réservé aux chaînes affichées, colocalisées dans leur domaine.
+
+**Erreurs**
+- Une erreur attendue (produit introuvable, réseau absent, quota dépassé) est une valeur de retour, pas une exception.
+- Aucun message bloquant sur le parcours critique, à l'exception du dépassement de quota Open Food Facts.
+
+---
+
+## 5. Dépendances
+
+| Dépendance | Rôle | Justification | Natif |
+| --- | --- | --- | --- |
+| `expo`, `expo-router` | Socle et routage | Voie par défaut, maintenue (D1, D10) | oui |
+| `expo-dev-client` | Build de développement | Remplace Expo Go (D1) | oui |
+| `expo-sqlite` | Persistance | Officiel Expo, transactionnel, WAL (D2) | oui |
+| `drizzle-orm` | Requêtes et schéma | Intégration `expo-sqlite`, **zéro surface native** (D2) | non |
+| `drizzle-kit` | Migrations générées | Migrations SQL versionnées et relisibles (D6) | dev |
+| `@tanstack/react-query` | Couche de requête | Locale et réseau, invalidation par le bus (D8) | non |
+| `expo-camera` | Scan de code-barres | §8.5 | oui |
+| `expo-notifications` | Notifications locales | §9.3, minuteur de repos (D14) | oui |
+| `expo-file-system` | Fichiers, sauvegardes | Export, copies pré-migration (D6, D7) | oui |
+| `expo-sharing` | Feuille de partage | Export (§5.4) | oui |
+| `expo-document-picker` | Sélection de fichier | Import (§5.4) | oui |
+| `expo-secure-store` | Trousseau | Clé intervals.icu, V4 (§11.1) | oui |
+| `react-native-svg` | Graphiques, carte corporelle | Un seul outil graphique (D13) | oui |
+| `d3-scale`, `d3-shape` | Échelles et tracés | JavaScript pur, quelques kilo-octets (D13) | non |
+| `zod` | Validation aux frontières | Import JSON, Open Food Facts (D7, D15) | non |
+| `ulid` | Identifiants triables | JavaScript pur (D4) | non |
+| `date-fns` | Formatage français | Sous le module `core/date`, jamais appelé directement | non |
+| `react-native-gesture-handler` | Balayages | §8.3, §10.2 — déjà requis par expo-router | oui |
+| `react-native-reanimated` | Animations | Déjà requis par la navigation | oui |
+| `vitest` + `better-sqlite3` | Tests hors appareil | Fonctions pures, invariants, migrations (D15) | dev |
+
+**Explicitement écartées :** toute bibliothèque de composants d'interface, NativeWind, toute bibliothèque d'internationalisation, `victory-native` / Skia, `op-sqlite`, WatermelonDB, Realm, toute bibliothèque de liste virtualisée spécialisée, Detox.
+
+**Règle d'ajout.** Toute nouvelle dépendance **native** exige une justification écrite dans ce document. Une dépendance JavaScript pure ne peut pas casser une compilation ; une dépendance native, si — et le diagnostic coûte un cycle CI.
+
+---
+
+## 6. Points ouverts assumés
+
+| № | Point | Statut |
+| --- | --- | --- |
+| 1 | ~~intervals.icu expose-t-il le poids COROS ?~~ | **Clos, négativement.** Double saisie définitive ; §11.2 abandonné ; l'export reste l'unique protection du poids |
+| 2 | **Le trousseau survit-il à la re-signature hebdomadaire ?** | À tester avant la V4 ; sinon, clé à ressaisir chaque semaine |
+| 3 | **Carte corporelle** : ressource graphique et cartographie vers les groupes musculaires | Ouvert, V3 |
+| 4 | **Heures par défaut des quatre notifications** | À définir à l'usage, V2 |
+| 5 | **Table de résumé quotidien** si une vue dépasse ~250 ms | Volontairement non écrite : donnée dérivée, reconstructible (D9) |
+| 6 | **Fusion à l'import** | Rendue possible par D4, non implémentée, non prévue |
+| 7 | **Limites de débit Open Food Facts** | Constatées au 10/09/2026, susceptibles d'évoluer |
+| 8 | **Médias d'exercices hors filet JSON** | Assumé ; couverts uniquement par la copie manuelle du dossier |
+| 9 | **Minuteur de repos silencieux** en mode silencieux iOS | Limite structurelle, sans contournement gratuit |
+
+---
+
+## 7. Ordre de développement — tranches verticales
+
+Chaque tranche produit quelque chose d'**installé et utilisable**. Aucune tranche horizontale, aucune couche construite « pour plus tard ».
+
+### Tranche 0 — Socle *(rien d'utilisable, mais tout le reste en dépend)*
+Dépôt public, CI produisant les deux builds, dev client et app quotidienne installés. SQLite + Drizzle + première migration + **sauvegarde pré-migration + refus de démarrer sur base plus récente**. Module `core/date` avec ses tests multi-fuseaux. Jetons de thème. Quatre onglets vides.
+**Critère de sortie :** une application installée sur l'iPhone, qui ouvre une base et affiche quatre onglets vides.
+
+### Tranche 1 — Journal en saisie libre *(premier usage réel)*
+Matérialisation d'une journée, repas, saisie libre, bandeau de restant, navigation entre les jours. Générateur de jeu de données de démonstration.
+**Critère de sortie :** vous pouvez loguer un repas. **À partir d'ici, les migrations sont en ajout seul.**
+
+### Tranche 2 — Export / import *(le filet, avant d'accumuler)*
+Export complet, import par construction-puis-bascule, validation, indicateur d'ancienneté, bouton « préparer une copie ». Le test d'aller-retour.
+*Placée délibérément avant toute autre fonctionnalité :* de vraies données s'accumulent depuis la tranche 1, et rien ne les protège encore.
+
+### Tranche 3 — Base d'aliments personnelle
+Création, édition, portions avec quantités, favoris, recherche locale, accès rapide (favoris et récents), **quantité pré-remplie**.
+
+### Tranche 4 — Open Food Facts et scan
+Client, limiteur, cache 30 jours, recherche explicite, dédoublonnage par code-barres, copie automatique, scan, bascule création manuelle pré-remplie, bandeau hors ligne.
+
+### Tranche 5 — Modèles de journée et planning
+Modèles, repas types, objectifs, récurrence hebdomadaire, surcharges, modèle par défaut. Le bandeau de restant devient enfin significatif.
+
+### Tranche 6 — Recettes
+Ingrédients, rendement, macros calculées, ajustement à l'occurrence, bloc groupé, figeage à la suppression.
+
+### Tranche 7 — Statistiques nutrition et réglages → **fin de V1**
+Primitives graphiques SVG, volet nutrition, taux d'adhérence avec dénominateur, agrégations, thème, seuil de bascule, écran À propos.
+
+### Tranche 8 — Poids
+Saisie, historique corrigeable, objectif, lissage, régression, courbes, volet poids du tableau de bord.
+
+### Tranche 9 — Notifications → **fin de V2**
+Quatre notifications, planification à 7 jours, annulation conditionnelle, reprogrammation du bilan chiffré.
+
+### Tranche 10 — Exercices et routines
+Base d'exercices, recherche filtrée, blocs, supersets, carte corporelle.
+
+### Tranche 11 — Séance en direct
+Persistance continue, deux rythmes d'écriture, vidage en arrière-plan, segments d'activité, bandeau persistant, minuteur de repos par notification, reprise.
+
+### Tranche 12 — Historique, progression, statistiques → **fin de V3**
+Historique, double progression, records, 1RM, volet musculation, graphique croisé.
+
+### Tranche 13 — intervals.icu → **V4**
+Clé au trousseau, tirage, identifiant d'origine, écran Activités. Puis arbitrage du tirage de poids selon le point ouvert n° 1.
+
+---
+
+## 8. Récapitulatif des décisions
+
+| № | Sujet | Décision | Réversible ? |
+| --- | --- | --- | --- |
+| D1 | Boucle de développement | Build de développement, deux identifiants d'app, natif régénéré en CI | oui |
+| D2 | Persistance | SQLite / `expo-sqlite` / Drizzle, WAL, `synchronous=NORMAL` | non |
+| D3 | Dates | Date civile `TEXT` comme clé métier, instants réservés aux traces | **non** |
+| D4 | Identifiants et nombres | ULID textuels, flottants, macros canoniques pour 100 | **non** |
+| D5 | Figeage | Référence et non total ; feuilles porteuses ; gel atomique ; exercice en lien vivant | **non** |
+| D6 | Migrations | Générées, sauvegarde préalable, gel après livraison, refus de rétrogradation | **non** |
+| D7 | Export / import | Plat, indenté, construction-puis-bascule, remplacement total, versions découplées | partiellement |
+| D8 | État et accès | TanStack Query + invalidation par la base, couche fine par domaine | oui |
+| D9 | Calculs | Rien de dérivable n'est stocké ; SQL / fonctions pures / rien dans les composants | oui |
+| D10 | Structure | expo-router, organisation par domaine, aucune bibliothèque d'interface | oui |
+| D11 | Open Food Facts | Recherche explicite, cache 30 j, limiteur, bascule si incomplet | oui |
+| D12 | Séance en direct | Deux rythmes d'écriture, segments d'activité, invariant en base | oui |
+| D13 | Graphiques | Maison sur `react-native-svg`, agrégation en amont, pas de zoom | oui |
+| D14 | Notifications | Replanification permanente, fenêtre de 7 jours, bilan reprogrammé | oui |
+| D15 | Tests | Export/import, migrations, dates multi-fuseaux, fonctions pures ; pas d'interface, pas de bout en bout | oui |
+| D16 | Performance | Cible tenue en supprimant des gestes, pas en optimisant du code | oui |
