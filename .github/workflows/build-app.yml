@@ -1,0 +1,29 @@
+name: Build - installation quotidienne
+
+# Daily installation (D1): com.billjackpot.suiviapp
+# This is the one that carries real data. Its container is destroyed by any
+# change of application identifier (specs 2.2), never by a rebuild.
+#
+# Built in Release, so the JavaScript bundle is embedded and the application
+# runs standalone, without Metro and without the development machine.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+
+concurrency:
+  group: build-app-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    uses: ./.github/workflows/ios-build.yml
+    permissions:
+      contents: write
+    with:
+      variant: production
+      configuration: Release
+      tag_prefix: app

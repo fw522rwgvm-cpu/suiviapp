@@ -1,0 +1,174 @@
+name: iOS build (reusable)
+
+# Single build recipe, called by build-dev.yml and build-app.yml.
+# Factored so the two variants cannot drift apart: the only differences
+# between the development and the daily installation are the three inputs
+# below. Everything else is shared by construction.
+#
+# Produces an UNSIGNED ipa (CODE_SIGNING_ALLOWED=NO), signed on device by
+# SideStore with a free Apple ID. This is the chain validated by test A
+# of the specs (2.1).
+
+on:
+  workflow_call:
+    inputs:
+      variant:
+        description: 'dev | production - selects the application identifier'
+        required: true
+        type: string
+      configuration:
+        description: 'Debug (JS served by Metro) | Release (JS embedded)'
+        required: true
+        type: string
+      tag_prefix:
+        description: 'Release tag prefix, e.g. dev or app'
+        required: true
+        type: string
+
+jobs:
+  build:
+    # macOS 26 carries the iOS 26 SDK. expo-router pulls expo-glass-effect and
+    # expo-symbols, which compile against iOS 26 APIs, so an older Xcode is not
+    # a safe default here.
+    runs-on: macos-26
+    timeout-minutes: 60
+
+    permissions:
+      contents: write
+
+    env:
+      # Read by app.config.ts, both at prebuild time and again during the
+      # Release bundling phase run from inside xcodebuild.
+      APP_VARIANT: ${{ inputs.variant }}
+      BUILD_NUMBER: ${{ github.run_number }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Toolchain versions
+        run: |
+          echo "node    $(node --version)"
+          echo "npm     $(npm --version)"
+          echo "pod     $(pod --version)"
+          xcodebuild -version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Resolve the Expo configuration
+        run: |
+          echo "APP_VARIANT=$APP_VARIANT"
+          npx expo config --type public
+
+      # ios/ is not committed. It is regenerated from app.config.ts on every
+      # build, which is what makes "no native file is ever edited by hand" (D1)
+      # an enforceable rule rather than a good intention.
+      - name: Generate the native iOS project
+        run: npx expo prebuild --platform ios --clean
+
+      - name: Install pods
+        run: npx pod-install
+
+      - name: Build (unsigned)
+        id: build
+        run: |
+          set -euo pipefail
+
+          # The native project is named after the variant's app name, so it is
+          # Suivi.xcodeproj for production and Suividev.xcodeproj for dev.
+          # Never hardcode either: discover both container and scheme.
+          WORKSPACE=$(ls -d ios/*.xcworkspace 2>/dev/null | head -1)
+
+          if [ -n "$WORKSPACE" ]; then
+            CONTAINER_FLAG="-workspace"
+            CONTAINER="$WORKSPACE"
+            SCHEME_PATH="workspace"
+          else
+            # CocoaPods did not produce a workspace. Fall back to the project
+            # rather than failing here, so a change in the native toolchain
+            # costs a diagnosis and not a whole CI cycle.
+            echo "::warning::No .xcworkspace found, falling back to .xcodeproj"
+            CONTAINER_FLAG="-project"
+            CONTAINER=$(ls -d ios/*.xcodeproj | head -1)
+            SCHEME_PATH="project"
+          fi
+
+          SCHEME=$(xcodebuild "$CONTAINER_FLAG" "$CONTAINER" -list -json \
+            | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);console.log((j['$SCHEME_PATH'].schemes||[])[0])})")
+
+          echo "container     $CONTAINER_FLAG $CONTAINER"
+          echo "scheme        $SCHEME"
+          echo "configuration ${{ inputs.configuration }}"
+
+          xcodebuild \
+            "$CONTAINER_FLAG" "$CONTAINER" \
+            -scheme "$SCHEME" \
+            -configuration "${{ inputs.configuration }}" \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+      # An ipa is a zip containing a Payload/ directory. Nothing more.
+      - name: Package the ipa
+        id: package
+        run: |
+          set -euo pipefail
+
+          PRODUCTS="build/Build/Products/${{ inputs.configuration }}-iphoneos"
+          APP_PATH=$(find "$PRODUCTS" -maxdepth 1 -name '*.app' | head -1)
+
+          if [ -z "$APP_PATH" ]; then
+            echo "No .app produced in $PRODUCTS" >&2
+            ls -la "$PRODUCTS" >&2 || true
+            exit 1
+          fi
+
+          IPA_NAME="suivi-${{ inputs.tag_prefix }}-b${{ github.run_number }}.ipa"
+
+          rm -rf Payload
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          zip -qry "$IPA_NAME" Payload
+
+          echo "ipa_name=$IPA_NAME" >> "$GITHUB_OUTPUT"
+          echo "Produced $IPA_NAME ($(du -h "$IPA_NAME" | cut -f1))"
+
+      - name: Upload the ipa as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.ipa_name }}
+          path: ${{ steps.package.outputs.ipa_name }}
+          retention-days: 30
+          if-no-files-found: error
+
+      # Published as a release so the iPhone can fetch the ipa from a plain
+      # public URL, without a GitHub login and without unzipping on device.
+      # Tags are unique per build and kept: D6/G3 assumes going back to an
+      # earlier binary will happen, so earlier binaries must stay reachable.
+      - name: Publish the ipa as a release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          TAG="${{ inputs.tag_prefix }}-b${{ github.run_number }}"
+
+          gh release create "$TAG" "${{ steps.package.outputs.ipa_name }}" \
+            --prerelease \
+            --title "Suivi ${{ inputs.variant }} - build ${{ github.run_number }}" \
+            --notes "Variante : \`${{ inputs.variant }}\`
+          Configuration : \`${{ inputs.configuration }}\`
+          Commit : \`${{ github.sha }}\`
+
+          IPA non signee. A installer par SideStore."

@@ -1,0 +1,28 @@
+name: Build - installation de developpement
+
+# Development installation (D1): com.billjackpot.suiviapp.dev
+#
+# Built in Debug, so the JavaScript is served by Metro rather than embedded.
+# That is what makes the reload loop of D1 possible, and it is also why this
+# build does nothing useful when Metro is unreachable.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+
+concurrency:
+  group: build-dev-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    uses: ./.github/workflows/ios-build.yml
+    permissions:
+      contents: write
+    with:
+      variant: dev
+      configuration: Debug
+      tag_prefix: dev
