@@ -46,10 +46,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      # .nvmrc is the single source of truth, so the lockfile is produced and
+      # consumed by the same npm major. A mismatch here is not cosmetic: npm 10
+      # and npm 11 resolve peer dependencies differently, and the disagreement
+      # only surfaces under `npm ci`, on a fifteen-minute macOS runner.
       - name: Set up Node
         uses: actions/setup-node@v5
         with:
-          node-version: '22'
+          node-version-file: .nvmrc
           cache: npm
 
       - name: Toolchain versions
