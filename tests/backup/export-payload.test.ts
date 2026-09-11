@@ -6,6 +6,7 @@ import {
   countExportedRows,
   serializeExportFile,
 } from '../../src/features/backup/domain/export-payload';
+import { exportedTables } from '../../src/features/backup/domain/table-catalog';
 import { addFreeEntry } from '../../src/features/nutrition/data/day-writes';
 import { openTestDatabase, type TestDatabase } from '../helpers/database';
 
@@ -44,13 +45,15 @@ describe('export payload', () => {
     // different things to write. The importer must never have to guess.
     const file = buildExportFile(database.db, ENVELOPE);
 
-    expect(Object.keys(file.tables)).toEqual([
-      'setting',
-      'day',
-      'day_meal',
-      'journal_entry',
-    ]);
+    // Compared against the catalogue rather than a list written out here: the
+    // claim is "every table, in catalogue order", and a second copy of the
+    // list would only ever be a chance for the two to disagree. The assertion
+    // that a table cannot go missing from the catalogue itself lives in
+    // table-catalog.test.ts, which is where it belongs.
+    expect(Object.keys(file.tables)).toEqual(exportedTables().map((table) => table.name));
     expect(file.tables['journal_entry']).toEqual([]);
+    expect(file.tables['food']).toEqual([]);
+    expect(file.tables['food_portion']).toEqual([]);
     expect(countExportedRows(file)).toBe(0);
   });
 

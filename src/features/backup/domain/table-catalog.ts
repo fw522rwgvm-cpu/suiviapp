@@ -26,7 +26,15 @@
 
 import { getTableColumns, getTableName, is } from 'drizzle-orm';
 import { SQLiteTable, type SQLiteColumn } from 'drizzle-orm/sqlite-core';
-import { day, dayMeal, journalEntry, setting } from '@/core/db/schema';
+import {
+  day,
+  dayMeal,
+  food,
+  foodPortion,
+  journalEntry,
+  setting,
+  PORTION_NAMES,
+} from '@/core/db/schema';
 import * as schema from '@/core/db/schema';
 
 /** SQLite storage classes this schema uses. No BLOB, and never will be. */
@@ -108,6 +116,8 @@ export interface TableExclusion {
  */
 const EXPORT_ORDER: readonly { table: SQLiteTable; introducedIn: string }[] = [
   { table: setting, introducedIn: '0000_initial_setting' },
+  { table: food, introducedIn: '0002_food' },
+  { table: foodPortion, introducedIn: '0002_food' },
   { table: day, introducedIn: '0001_journal' },
   { table: dayMeal, introducedIn: '0001_journal' },
   { table: journalEntry, introducedIn: '0001_journal' },
@@ -140,6 +150,31 @@ export const EXCLUDED_TABLES: readonly TableExclusion[] = [
  * file that can be repaired by hand.
  */
 const VALUE_RULES: Record<string, Record<string, ValueRule>> = {
+  food: {
+    id: { rule: 'entity_id' },
+    source: { rule: 'one_of', allowed: ['perso', 'off'] },
+    base_unit: { rule: 'one_of', allowed: ['g', 'ml'] },
+    created_at: { rule: 'epoch_ms' },
+    updated_at: { rule: 'epoch_ms' },
+  },
+  food_portion: {
+    id: { rule: 'entity_id' },
+    food_id: { rule: 'entity_id' },
+    /**
+     * THE CLOSED LIST OF SPECS 6.1, ENFORCED HERE RATHER THAN AS A CHECK.
+     *
+     * food_portion.name deliberately carries no CHECK: eight French display
+     * words are the likeliest thing in this schema to move, and SQLite cannot
+     * widen a CHECK without rebuilding the table. Widening the vocabulary
+     * breaks no invariant — unlike journal_entry.kind, whose closed set is
+     * what makes the clause-free macro SUM correct.
+     *
+     * So the constraint lives where it can name a table, a row index and a
+     * column instead of citing a constraint — and that is the stronger barrier
+     * here, not the weaker one, since D7 wants a file repairable by hand.
+     */
+    name: { rule: 'one_of', allowed: PORTION_NAMES },
+  },
   day: {
     date: { rule: 'civil_date' },
     materialized_at: { rule: 'epoch_ms' },
@@ -153,6 +188,16 @@ const VALUE_RULES: Record<string, Record<string, ValueRule>> = {
     day_meal_id: { rule: 'entity_id' },
     date: { rule: 'civil_date' },
     parent_entry_id: { rule: 'entity_id' },
+    /**
+     * Declarable only now that FoodId exists, and strictly stronger than
+     * before: nothing in the application has ever written anything but a ULID
+     * here, so no archive can hold anything else legitimately.
+     *
+     * It stays a rule rather than becoming a foreign key: the column is
+     * informative, without a live link, so that deleting a consumed food
+     * leaves past entries intact (specs 5.3).
+     */
+    source_food_id: { rule: 'entity_id' },
     kind: { rule: 'one_of', allowed: ['food', 'recipe', 'recipe_item', 'free'] },
     base_unit: { rule: 'one_of', allowed: ['g', 'ml'] },
     created_at: { rule: 'epoch_ms' },

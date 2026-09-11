@@ -15,6 +15,13 @@
       "when": 1789119418521,
       "tag": "0001_journal",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1789157908220,
+      "tag": "0002_food",
+      "breakpoints": true
     }
   ]
 }

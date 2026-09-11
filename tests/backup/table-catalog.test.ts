@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import bundle from '../../src/core/db/migrations/bundle.generated';
+import { PORTION_NAMES } from '../../src/core/db/schema';
 import {
   allSchemaTableNames,
   declaredValueRules,
@@ -33,14 +34,62 @@ describe('table catalog', () => {
     expect(unclassified).toEqual([]);
   });
 
-  it('carries the tables of slices 0 and 1, parents before children', () => {
+  it('carries the tables of slices 0 to 3, parents before children', () => {
     // The importer follows this order, never the file's key order.
     expect(exportedTables().map((table) => table.name)).toEqual([
       'setting',
+      'food',
+      'food_portion',
       'day',
       'day_meal',
       'journal_entry',
     ]);
+  });
+
+  it('dates the food tables to 0002, which is what makes a slice-2 archive readable', () => {
+    // An archive written by slice 2 declares schemaVersion '0001_journal' and
+    // carries no `food` key at all. That is not corruption — the table did not
+    // exist — and this field is the whole of how the importer knows.
+    //
+    // The comparison in validate-payload.ts is on JOURNAL POSITION: a table is
+    // only required when it was introduced at or before the archive's schema.
+    // food sits at index 2, the archive at index 1, so its absence passes and
+    // the table arrives empty, created afterwards by 0002 itself.
+    const byName = new Map(exportedTables().map((table) => [table.name, table]));
+    expect(byName.get('food')?.introducedIn).toBe('0002_food');
+    expect(byName.get('food_portion')?.introducedIn).toBe('0002_food');
+    expect(byName.get('journal_entry')?.introducedIn).toBe('0001_journal');
+  });
+
+  it('constrains the origin to the schema spelling, not the specs spelling', () => {
+    // Schema 2.2 writes 'off'; specs 6.1 writes 'openfoodfacts'. Section 6 of
+    // the specs opens by declaring itself non-normative on the data model, so
+    // 2.2 governs — and this is the assertion that keeps the decision from
+    // being quietly re-taken by whoever next reads 6.1.
+    const byName = new Map(
+      exportedTables()
+        .find((table) => table.name === 'food')
+        ?.columns.map((column) => [column.name, column]),
+    );
+
+    expect(byName.get('source')?.value).toEqual({
+      rule: 'one_of',
+      allowed: ['perso', 'off'],
+    });
+  });
+
+  it('enforces the closed portion list where SQL deliberately does not', () => {
+    // food_portion.name carries no CHECK, on purpose: widening the vocabulary
+    // breaks no invariant, and SQLite cannot widen a CHECK without rebuilding
+    // the table. The list is enforced here instead, where a violation names a
+    // row rather than a constraint.
+    const portions = exportedTables().find((table) => table.name === 'food_portion');
+    const rule = portions?.columns.find((column) => column.name === 'name')?.value;
+
+    expect(rule).toEqual({ rule: 'one_of', allowed: PORTION_NAMES });
+    // The eight of specs 6.1, no more and no fewer.
+    expect(PORTION_NAMES).toHaveLength(8);
+    expect(PORTION_NAMES).toContain('cuillère à soupe');
   });
 
   it('names the Open Food Facts cache as excluded before it exists', () => {

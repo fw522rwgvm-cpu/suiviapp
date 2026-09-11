@@ -13,7 +13,8 @@ import {
 import { validateImportFile } from '../../src/features/backup/domain/validate-payload';
 import { addFreeEntry } from '../../src/features/nutrition/data/day-writes';
 import { seedJournal } from '../../src/dev/seed';
-import { openTestDatabase, type TestDatabase } from '../helpers/database';
+import { countRows, openTestDatabase, type TestDatabase } from '../helpers/database';
+import { tableNames } from '../helpers/migrations';
 
 /**
  * Building the receiving database, and barrier three of D7.
@@ -126,7 +127,81 @@ describe('building the receiving database', () => {
   });
 });
 
+describe('an archive written before the food tables existed', () => {
+  /**
+   * THE UPGRADE PATH EVERY EXISTING ARCHIVE WILL TAKE.
+   *
+   * Slice 2 shipped and archives have been taken since. Every one of them
+   * declares 0001_journal and has no food tables in it — the database it was
+   * read from had none. What must happen: the receiving database is built at
+   * 0001, filled, and then migrated through 0002, which creates the two tables
+   * empty. Not built at the current schema and filled, which D6 rules out
+   * because a later migration's data backfill would be thrown away.
+   */
+  it('imports, then gains the food tables empty, keeping every row', () => {
+    source.db.insert(setting).values({ key: 'theme', value: 'dark' }).run();
+    const report = seedJournal(source.db, { endDate: DAY, days: 40, seed: 3 });
+
+    const file = exported(source) as Record<string, unknown>;
+    const tables = file['tables'] as Record<string, unknown>;
+    // Written by a binary that had never heard of them.
+    delete tables['food'];
+    delete tables['food_portion'];
+
+    const verdict = buildDatabase(receiving.db, validated(file));
+    expect(verdict.ok, JSON.stringify(verdict.ok ? [] : verdict.problems)).toBe(true);
+    if (!verdict.ok) return;
+
+    // The journal came through whole.
+    expect(verdict.value.written['journal_entry']).toBe(report.entries);
+    expect(countRows(receiving.raw, 'journal_entry')).toBe(report.entries);
+
+    // And the tables the archive could not carry exist, empty, created by the
+    // migration rather than by the importer.
+    expect(tableNames(receiving.raw)).toContain('food');
+    expect(countRows(receiving.raw, 'food')).toBe(0);
+    expect(countRows(receiving.raw, 'food_portion')).toBe(0);
+
+    // Fully migrated: the CHECK from 0002 is live on the database that is
+    // about to become the application's.
+    expect(() =>
+      receiving.raw
+        .prepare(
+          `INSERT INTO food (id, name, source, base_unit,
+                             protein_100, carbs_100, fat_100, kcal_100)
+           VALUES ('x', 'x', 'openfoodfacts', 'g', 0, 0, 0, 0)`,
+        )
+        .run(),
+    ).toThrow();
+  });
+});
+
 describe('barrier three — referential integrity', () => {
+  it('refuses a portion attached to a food that is not in the file', () => {
+    // The first real foreign key the food domain brings, and the first time
+    // barrier three has anything to say about it. Caught BEFORE the switch,
+    // which is the whole shape of D7: the current database stays intact.
+    const payload = validated(exported(openTestDatabaseWith(DAY)));
+    const orphan = {
+      id: '01JZZZZZZZZZZZZZZZZZZZZZZY',
+      food_id: '01JZZZZZZZZZZZZZZZZZZZZZZZ',
+      name: 'tranche',
+      quantity: 25,
+      position: 0,
+    };
+
+    const verdict = buildDatabase(receiving.db, {
+      ...payload,
+      rows: { ...payload.rows, food_portion: [orphan] },
+    });
+
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) return;
+    expect(verdict.problems).toContainEqual(
+      expect.objectContaining({ code: 'foreign_key_violated', table: 'food_portion' }),
+    );
+  });
+
   it('refuses an entry whose meal does not exist', () => {
     const payload = validated(exported(openTestDatabaseWith(DAY)));
     const entries = [...(payload.rows['journal_entry'] ?? [])];
@@ -203,9 +278,32 @@ describe('slicing the migration journal', () => {
   });
 
   it('names what is left to apply after the rows are in', () => {
-    expect(tagsAfter(bundle, 0)).toEqual(['0001_journal']);
+    expect(tagsAfter(bundle, 0)).toEqual(['0001_journal', '0002_food']);
     // An archive from this binary has nothing left, which is the ordinary case.
     expect(tagsAfter(bundle, bundle.journal.entries.length - 1)).toEqual([]);
+  });
+
+  it('splits the journal in two without a gap or an overlap, at every point', () => {
+    // The property the whole "restore at the archive's schema, then migrate"
+    // decision rests on, asserted rather than illustrated: what goes in before
+    // the rows and what goes in after must together be the journal, exactly
+    // once each, in order. A gap would leave the database short of a table; an
+    // overlap would replay a migration over its own result.
+    //
+    // Written over every index so it needs no edit at the next slice — which
+    // is the point, since the case that will actually break is the one nobody
+    // thought to enumerate.
+    const all = journalTags(bundle);
+
+    for (let index = 0; index < all.length; index += 1) {
+      const before = bundleUpTo(bundle, index).journal.entries.map((entry) => entry.tag);
+      expect([...before, ...tagsAfter(bundle, index)]).toEqual(all);
+      // Re-indexed from zero: the migrator reads idx as a position in the list
+      // it was handed, not as an identity.
+      expect(bundleUpTo(bundle, index).journal.entries.map((entry) => entry.idx)).toEqual(
+        before.map((_, position) => position),
+      );
+    }
   });
 });
 

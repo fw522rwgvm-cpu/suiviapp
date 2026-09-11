@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { toLocalDate } from '../../src/core/date';
+import bundle from '../../src/core/db/migrations/bundle.generated';
+import { PORTION_NAMES } from '../../src/core/db/schema';
+import { newId } from '../../src/core/id';
 import type { BinarySchema } from '../../src/features/backup/domain/envelope';
 import { buildExportFile } from '../../src/features/backup/domain/export-payload';
+import { journalTags } from '../../src/features/backup/domain/migration-prefix';
 import type { ImportProblem } from '../../src/features/backup/domain/problems';
 import { validateImportFile } from '../../src/features/backup/domain/validate-payload';
 import { addFreeEntry } from '../../src/features/nutrition/data/day-writes';
@@ -266,5 +270,152 @@ describe('import validation — what it refuses', () => {
 
     const problem = problemsOf(file)[0];
     expect(problem).toMatchObject({ table: 'journal_entry', index: 0, column: 'kind' });
+  });
+});
+
+/**
+ * What slice 3 adds to the second barrier.
+ *
+ * Two closed sets SQL does not carry — deliberately, in the case of the
+ * portion names — plus the question the whole introducedIn mechanism exists to
+ * answer: what happens to an archive written before `food` existed.
+ */
+describe('import validation — the food tables', () => {
+  /** A binary carrying all three migrations, unlike BINARY above. */
+  const SLICE_3: BinarySchema = { tags: journalTags(bundle) };
+
+  /** An archive this binary would write, declaring the current schema. */
+  function currentArchive(): Record<string, unknown> {
+    const file = buildExportFile(database.db, {
+      schemaVersion: '0002_food',
+      schemaMigrationCount: bundle.journal.entries.length,
+      appVersion: '0.1.0',
+      appVariant: 'production',
+      exportedAt: 1_789_243_920_000,
+    });
+    return JSON.parse(JSON.stringify(file)) as Record<string, unknown>;
+  }
+
+  function aFood(): Record<string, unknown> {
+    return {
+      id: newId(),
+      name: 'Pain de mie',
+      brand: null,
+      source: 'perso',
+      base_unit: 'g',
+      protein_100: 8.5,
+      carbs_100: 47.2,
+      fat_100: 3.1,
+      kcal_100: 265,
+      display_ref_qty: 30,
+      is_favorite: 0,
+      created_at: 1_789_000_000_001,
+      updated_at: 1_789_000_000_001,
+    };
+  }
+
+  function problemsFor(file: unknown): readonly ImportProblem[] {
+    const verdict = validateImportFile(file, SLICE_3);
+    return verdict.ok ? [] : verdict.problems;
+  }
+
+  it('accepts an archive written before food existed, with no food key at all', () => {
+    // THE CASE THE introducedIn FIELD EXISTS FOR, and the one that matters
+    // most today: every archive taken since slice 2 shipped looks like this.
+    //
+    // It declares 0001_journal and simply has no `food` key. That is not a
+    // corrupt file — the table did not exist — and the comparison is on
+    // journal position, so it stays right as the journal grows.
+    const file = currentArchive();
+    file['schemaVersion'] = '0001_journal';
+    file['schemaMigrationCount'] = 2;
+    const tables = tablesOf(file);
+    delete tables['food'];
+    delete tables['food_portion'];
+
+    const verdict = validateImportFile(file, SLICE_3);
+    expect(verdict.ok, JSON.stringify(verdict.ok ? [] : verdict.problems)).toBe(true);
+    if (!verdict.ok) return;
+
+    // Present and empty, so the builder never has to ask whether a key went
+    // missing on purpose.
+    expect(verdict.value.rows['food']).toEqual([]);
+    expect(verdict.value.rows['food_portion']).toEqual([]);
+  });
+
+  it('refuses an archive from this binary that has lost its food key', () => {
+    // The mirror image, and the reason the rule cannot simply be "a missing
+    // table is fine". An archive declaring 0002_food must carry what
+    // 0002_food created.
+    const file = currentArchive();
+    delete tablesOf(file)['food'];
+
+    expect(problemsFor(file).map((problem) => problem.code)).toContain('table_missing');
+  });
+
+  it("refuses the specs' spelling of the origin, which is the whole point", () => {
+    // specs 6.1 says 'openfoodfacts', schema 2.2 says 'off'. Section 6 opens
+    // by declaring itself non-normative on the data model, so 'off' governs —
+    // and a file carrying the other spelling is refused before a single row is
+    // inserted, naming the row rather than citing a CHECK.
+    const file = currentArchive();
+    tablesOf(file)['food'] = [{ ...aFood(), source: 'openfoodfacts' }];
+
+    expect(problemsFor(file)).toContainEqual(
+      expect.objectContaining({
+        code: 'value_not_in_set',
+        table: 'food',
+        column: 'source',
+        found: 'openfoodfacts',
+      }),
+    );
+  });
+
+  it('refuses a portion name outside the closed list of specs 6.1', () => {
+    // food_portion.name carries NO CHECK, on purpose: widening the vocabulary
+    // breaks no invariant, and SQLite cannot widen a CHECK without rebuilding
+    // the table. This is where the list is actually enforced — and it names a
+    // table, a row and a column, which a constraint violation would not.
+    const one = aFood();
+    const file = currentArchive();
+    tablesOf(file)['food'] = [one];
+    tablesOf(file)['food_portion'] = [
+      { id: newId(), food_id: one['id'], name: 'sachet', quantity: 12, position: 0 },
+    ];
+
+    expect(problemsFor(file)).toContainEqual(
+      expect.objectContaining({
+        code: 'value_not_in_set',
+        table: 'food_portion',
+        column: 'name',
+        found: 'sachet',
+      }),
+    );
+  });
+
+  it('accepts all eight portion names', () => {
+    // The other side of the same constraint. A rule that only ever refuses is
+    // indistinguishable from one that refuses everything.
+    const one = aFood();
+    const file = currentArchive();
+    tablesOf(file)['food'] = [one];
+    tablesOf(file)['food_portion'] = PORTION_NAMES.map((name, position) => ({
+      id: newId(),
+      food_id: one['id'],
+      name,
+      quantity: 10 + position,
+      position,
+    }));
+
+    expect(problemsFor(file)).toEqual([]);
+  });
+
+  it('refuses a food whose favourite flag is neither 0 nor 1', () => {
+    // Caught here as a malformed integer rather than by the CHECK, which would
+    // only speak at INSERT time — past the point where a line number helps.
+    const file = currentArchive();
+    tablesOf(file)['food'] = [{ ...aFood(), is_favorite: 0.5 }];
+
+    expect(problemsFor(file).map((problem) => problem.code)).toContain('value_malformed');
   });
 });

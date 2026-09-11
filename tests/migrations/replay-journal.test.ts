@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   applyAllMigrations,
   applyMigration,
+  applyMigrationsUpTo,
   columnNames,
   openEmptyDatabase,
   readJournal,
@@ -46,7 +47,12 @@ describe('journal schema', () => {
   it('creates the three tables of section 2.3, and only those', () => {
     const db = openEmptyDatabase();
     try {
-      applyAllMigrations(db);
+      // Stops AT 0001 rather than replaying everything, because the claim is
+      // about what this migration created — not about what the schema holds
+      // today. Written against the whole journal it would have to be edited
+      // at every later slice, and each edit is a chance to weaken it into
+      // "whatever happens to be there now".
+      applyMigrationsUpTo(db, 1);
       const tables = tableNames(db);
       expect(tables).toContain('day');
       expect(tables).toContain('day_meal');
@@ -54,9 +60,12 @@ describe('journal schema', () => {
 
       // Templates, planning, foods and recipes belong to later slices. Their
       // absence here is the point: no layer built "for later" (section 7).
+      // `food` arrives in 0002, and it arriving LATER is exactly the property
+      // that lets an archive written at 0001 be imported without it.
       expect(tables).not.toContain('day_template');
       expect(tables).not.toContain('planning_weekday');
       expect(tables).not.toContain('food');
+      expect(tables).not.toContain('food_portion');
       expect(tables).not.toContain('recipe');
     } finally {
       db.close();

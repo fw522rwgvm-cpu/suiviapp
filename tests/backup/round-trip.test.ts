@@ -6,6 +6,7 @@ import { newId } from '../../src/core/id';
 import {
   setting,
   type DayMealId,
+  type FoodId,
   type JournalEntryId,
 } from '../../src/core/db/schema';
 import { buildDatabase } from '../../src/features/backup/domain/build-database';
@@ -160,8 +161,40 @@ function fillEveryColumn(raw: Database.Database): void {
   const mealId = newId<DayMealId>();
   const parentId = newId<JournalEntryId>();
   const childId = newId<JournalEntryId>();
+  const foodId = newId<FoodId>();
+  const plainFoodId = newId<FoodId>();
 
   raw.prepare("INSERT INTO setting (key, value) VALUES ('theme', 'dark')").run();
+
+  const insertFood = raw.prepare(
+    'INSERT INTO food (id, name, brand, source, base_unit, protein_100, carbs_100, ' +
+      'fat_100, kcal_100, display_ref_qty, is_favorite, created_at, updated_at) ' +
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  );
+  // Every column distinguishable and NON-NULL: a brand, a favourite flag at 1
+  // rather than its default, and a reference quantity that is not 100. A
+  // column left at its default is a column a dropped-column bug survives.
+  insertFood.run(
+    foodId, 'Pain de mie complet', 'Sans marque', 'perso', 'g',
+    8.25, 47.5, 3.125, 265.5, 30, 1, 1_789_000_000_010, 1_789_000_000_011,
+  );
+  // A second food in millilitres, not a favourite, with no brand — so the
+  // comparison sees both sides of every flag rather than one.
+  insertFood.run(
+    plainFoodId, 'Lait demi-écrémé', null, 'off', 'ml',
+    3.2, 4.8, 1.55, 46.5, 100, 0, 1_789_000_000_012, 1_789_000_000_013,
+  );
+
+  const insertPortion = raw.prepare(
+    'INSERT INTO food_portion (id, food_id, name, quantity, position) VALUES (?, ?, ?, ?, ?)',
+  );
+  insertPortion.run(newId(), foodId, 'tranche', 25.5, 0);
+  // position 1 as well as 0, so a serialiser that dropped the column and let
+  // SQLite default it could not pass unnoticed.
+  insertPortion.run(newId(), foodId, 'cuillère à soupe', 12.25, 1);
+  // The same name under a different food: the unique index is per food, and an
+  // importer that widened it to a global unique would fail exactly here.
+  insertPortion.run(newId(), plainFoodId, 'tranche', 40.75, 0);
   raw
     .prepare(
       'INSERT INTO day (date, template_id_snapshot, template_name_snapshot, ' +
@@ -184,15 +217,15 @@ function fillEveryColumn(raw: Database.Database): void {
 
   insertEntry.run(
     parentId, mealId, '2026-03-04', null, 0, 'recipe',
-    newId(), newId(), 'Curry de pois chiches', 'Maison', 'g', 320.5,
+    foodId, newId(), 'Curry de pois chiches', 'Maison', 'g', 320.5,
     'portion', 160.25, 8.25, 22.75, 5.5, 176.5, 1_789_000_000_002, 1_789_000_000_003,
   );
   // The child carries a non-null parent_entry_id, the one column no row above
   // could fill.
   insertEntry.run(
     childId, mealId, '2026-03-04', parentId, 1, 'recipe_item',
-    newId(), newId(), 'Pois chiches', 'Sans marque', 'ml', 0.5,
-    'cuillère', 12.5, 0.125, 0.25, 0.375, 3.5, 1_789_000_000_004, 1_789_000_000_005,
+    plainFoodId, newId(), 'Pois chiches', 'Sans marque', 'ml', 0.5,
+    'cuillère à café', 12.5, 0.125, 0.25, 0.375, 3.5, 1_789_000_000_004, 1_789_000_000_005,
   );
 }
 
