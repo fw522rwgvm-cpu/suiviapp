@@ -268,13 +268,23 @@ export function JournalScreen() {
           headerTitleAlign: 'left',
           headerRight: () => (
             <View style={styles.headerGroup}>
-              {/* Direct access to a date (specs 8.3). */}
+              {/*
+                Direct access to a date (specs 8.3).
+
+                Hidden — not unmounted — while the window is open. The window
+                IS this button, grown: leaving the real one in place would let
+                the morph slide off it and reveal the thing it is pretending to
+                be, standing still. Kept mounted so its measured rectangle
+                stays valid for the way back.
+              */}
               <Pressable
                 ref={calendarButton}
                 onPress={openPicker}
                 hitSlop={12}
                 accessibilityRole="button"
                 accessibilityLabel="Choisir une date"
+                accessibilityElementsHidden={pickerOpen}
+                style={{ opacity: pickerOpen ? 0 : 1 }}
               >
                 <SymbolView name="calendar" size={20} tintColor={theme.colors.accent} />
               </Pressable>

@@ -111,7 +111,21 @@ const styles = StyleSheet.create({
   // Cards float on the background rather than butting against each other, so
   // the gap is what separates them and the shadow is what raises them.
   content: { padding: 16, gap: 14, paddingBottom: 56 },
-  pending: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  /**
+   * NO `flex: 1` HERE, and that is the whole of it.
+   *
+   * The carousel is a row, so flex acts on the HORIZONTAL axis: a page with
+   * both `flex: 1` and a fixed width asks Yoga to distribute free space among
+   * the three, and the widths stop being exactly one screen each. The strip is
+   * translated by whole screens, so as soon as one page is a few points off,
+   * every offset is wrong and the day visibly jumps.
+   *
+   * It only showed while a page was pending — which is the page being
+   * pre-mounted off screen, one swipe ahead. The sibling ScrollViews carry no
+   * flex either; they fill the height because the row stretches its children
+   * on the cross axis by default, and so does this.
+   */
+  pending: { alignItems: 'center', justifyContent: 'center' },
   addMeal: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 18,

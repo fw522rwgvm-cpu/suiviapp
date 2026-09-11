@@ -593,7 +593,17 @@ capsule fermée (D5/R1) : corriger « 60 g et non 50 » ne doit pas adopter au
 passage des macros éditées depuis. L'aliment n'est consulté que pour les
 portions qu'il propose aujourd'hui.
 
-### Deux pièges d'interface, établis par l'échec sur l'appareil
+### Trois pièges d'interface, établis par l'échec sur l'appareil
+
+**`flex: 1` dans le carrousel fait sauter le jour.** La bande est en
+`flexDirection: 'row'`, donc `flex` agit sur l'axe **horizontal** : une page
+portant à la fois `flex: 1` et une largeur fixe demande à Yoga de répartir
+l'espace libre entre les trois, et les largeurs cessent de valoir exactement un
+écran. La bande étant translatée par écrans entiers, quelques points d'écart
+suffisent à décaler tous les offsets — le jour bouge visiblement. Ça n'est
+apparu qu'avec la vue de chargement, c'est-à-dire sur la page préchargée hors
+écran. Les `ScrollView` sœurs n'ont pas de `flex` non plus : elles remplissent
+la hauteur parce qu'une rangée étire ses enfants sur l'axe transverse.
 
 **`autoFocus` + `selectTextOnFocus` ne sélectionnent rien quand la valeur
 arrive d'une requête.** `autoFocus` se déclenche **au montage**, or à cet
@@ -648,13 +658,27 @@ appris — la flèche de retour essayée là disait « annuler ». Épinglé par
 l'erreur est facile à refaire : une barre d'icônes est plus jolie qu'une barre
 de mots, et c'est le mauvais critère.
 
-**Le calendrier est une fenêtre ancrée, pas une feuille.** Elle naît du bouton
-et s'y replie, ce qui n'est vrai que si elle part de là où le bouton est
-réellement : la position dépend de la zone sûre et de la hauteur de barre, deux
-nombres qui seraient devinés et faux sur un téléphone sur trois. Le bouton est
-donc **mesuré** au moment du toucher (`measureInWindow`) et la fenêtre reçoit
-son rectangle. `transformOrigin: 'top right'` fait le reste : grandir depuis un
-coin est ce qui la fait venir d'un point plutôt que de son propre milieu.
+**Le calendrier n'est pas une fenêtre qui apparaît près d'un bouton : c'est le
+bouton qui grandit.** La différence fait tout l'effet, et elle est
+géométrique — on interpole `left`, `top`, `width`, `height` et le rayon des
+coins depuis le rectangle du bouton jusqu'à celui de la fenêtre, plutôt que de
+mettre une vue à l'échelle. Une mise à l'échelle étirerait les coins en ellipses
+et écraserait le contenu avec ; animer des propriétés de disposition coûte une
+passe par image sur **une** vue pendant un cinquième de seconde, ce qui est le
+bon échange ici.
+
+Le rectangle de départ est **mesuré** au moment du toucher
+(`measureInWindow`) : la position dépend de la zone sûre et de la hauteur de
+barre, deux nombres qui seraient devinés et faux sur un téléphone sur trois.
+
+Trois détails tiennent l'illusion, chacun invisible tant qu'il est là :
+- **le vrai bouton est masqué** pendant l'ouverture — sinon la morphose s'en
+  décolle et révèle la chose qu'elle prétend être, immobile. Masqué, pas
+  démonté : son rectangle mesuré doit rester valide pour le retour ;
+- le contenu n'apparaît qu'une fois la forme presque à sa taille, sinon on voit
+  la grille du mois écrasée dans un cercle ;
+- le glyphe du bouton s'efface tôt, sur les mêmes images, pour que l'un
+  remplace l'autre au lieu que les deux coexistent.
 
 Et l'animation de fermeture vit **dans** la fenêtre, pas chez l'appelant :
 toutes les sorties — les deux boutons, choisir une date, le balayage, le fond —
