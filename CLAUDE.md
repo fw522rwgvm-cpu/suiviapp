@@ -3,9 +3,16 @@
 ## Documents de référence
 - `specs_v2_2.md` — fonctionnel, fait autorité
 - `architecture_v1_0.md` — technique, décisions D1 à D16, fait autorité
-Toute divergence avec ces documents est un bug. Toute modification
-souhaitée de ces documents doit être proposée explicitement, jamais
-appliquée en silence.
+
+Toute divergence avec ces documents est un bug.
+
+**Depuis le 12/09/2026 : une demande qui diverge des documents modifie les
+documents.** Ils sont normatifs, donc on les tient à jour plutôt que de laisser
+une divergence vivre dans le code — c'était l'erreur à éviter, et accumuler des
+« divergences assumées » dans ce fichier y menait tout droit. La modification
+est **signalée**, jamais silencieuse, et consignée : `specs §14.4`,
+`architecture §9`. Quand une demande contredit une décision structurante, on le
+dit avant de l'appliquer, puis on l'applique.
 
 ## Interdits absolus
 - `new Date()` sur une chaîne `AAAA-MM-JJ`. Point d'entrée unique : `core/date`.
@@ -616,13 +623,17 @@ retour non plus, et il faut le déclarer à la main. Sans lui, se tromper
 d'aliment obligeait à fermer la modale et recommencer — trois touchers pour en
 annuler un.
 
-**Divergence assumée avec le §8.3, demandée : plus de boutons précédent /
-suivant.** Le §8.3 demande trois façons de changer de jour — boutons, accès
-direct à une date, balayage horizontal. La barre porte désormais le jour à
-gauche et deux icônes à droite (calendrier, bibliothèque) ; les deux autres
-voies restent. Le balayage était déjà le geste principal, et les chevrons le
-doublaient. **À rouvrir si naviguer au clavier ou à l'accessibilité s'avère
-pénible** : un balayage n'a pas d'équivalent VoiceOver, là où un bouton en a un.
+**La barre du Journal, et les documents mis à jour avec elle.** Le jour à
+gauche, deux boutons icônes à droite. Les chevrons précédent / suivant sont
+supprimés — le balayage était déjà le geste principal et ils le doublaient.
+**Ce n'est plus une divergence : le §8.3 des specs a été amendé** (voir
+`specs §14.4`). Réserve inscrite dans les specs elles-mêmes : un balayage n'a
+pas d'équivalent VoiceOver, là où un bouton en a un.
+
+**Une seule grammaire pour les boutons icônes** : un symbole teinté à l'accent,
+sans conteneur. En-tête, fenêtre du calendrier, favori de la bibliothèque. Un
+badge et un bouton ne doivent pas se ressembler, et une étoile dessinée seule
+dans une bordure ressemblait aux deux.
 
 **Le calendrier est une fenêtre ancrée, pas une feuille.** Elle naît du bouton
 et s'y replie, ce qui n'est vrai que si elle part de là où le bouton est

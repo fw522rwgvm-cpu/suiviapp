@@ -1,6 +1,7 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { LocalDate } from '@/core/date';
 import { useTheme } from '@/core/theme';
+import { LoadingDots } from '@/core/ui/loading-dots';
 import { useDay, useDayTotals, useMealTotals } from '../data/day-queries';
 import type { JournalEntryView } from '../data/day-reads';
 import { dayTargets, type DayMealView } from '../domain/day-plan';
@@ -49,6 +50,26 @@ export function DayPage({
 
   const meals = day.data?.meals ?? [];
 
+  /**
+   * Nothing to draw yet.
+   *
+   * Almost never true: SQLite is synchronous and local, and React Query keeps
+   * the two neighbouring days warm, so a swipe normally hits the cache and the
+   * page is there on the first frame. What is left is the cold case — a day
+   * far from anything cached, reached from the calendar on a long history.
+   * Drawing an empty day there would be a lie: it would look exactly like a
+   * day with nothing logged.
+   */
+  if (day.isPending || totals.isPending) {
+    return (
+      <View
+        style={[styles.pending, { width, backgroundColor: theme.colors.background }]}
+      >
+        <LoadingDots label="Chargement de la journée" />
+      </View>
+    );
+  }
+
   return (
     <ScrollView
       style={[{ width }, { backgroundColor: theme.colors.background }]}
@@ -90,6 +111,7 @@ const styles = StyleSheet.create({
   // Cards float on the background rather than butting against each other, so
   // the gap is what separates them and the shadow is what raises them.
   content: { padding: 16, gap: 14, paddingBottom: 56 },
+  pending: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   addMeal: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 18,

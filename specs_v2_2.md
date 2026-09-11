@@ -190,7 +190,7 @@ Description conceptuelle, non normative. Le schéma normatif figure dans le docu
 
 **Aliment**
 - Nom, marque (optionnel), code-barres (optionnel)
-- Origine : `perso` | `openfoodfacts`
+- Origine : `perso` | `off` — **[v2.3]** aligné sur le schéma normatif (architecture §2.2), qui fait autorité sur les valeurs stockées ; cette section est conceptuelle. L'écran affiche « Perso » et « Open Food Facts », le jeton n'est jamais montré.
 - Macros de référence : protéines, glucides, lipides, kcal
 - Unité de base : `g` | `ml`
 - **[v2.2]** Les macros sont **stockées sous forme canonique, pour 100 unités de base**. La quantité de référence choisie par l'utilisateur est conservée comme **préférence de saisie et d'affichage**, sans valeur normative.
@@ -344,9 +344,11 @@ Les onglets non pourvus dans une version donnée sont **présents et affichent u
 1. **Bandeau de restant** : anneau de progression pour les calories, barres pour les autres macros. Le restant de calories **doit être lisible sans aucune interaction**.
 2. **Liste des repas**, repliés par défaut, avec sous-total et objectif propre.
 3. **Bouton d'ajout** accessible depuis chaque repas.
-4. **Navigation entre les jours** : boutons précédent / suivant, accès direct à une date, **balayage horizontal**.
-5. **Édition et suppression** : toucher une entrée ouvre l'écran d'ajustement ; **balayer vers la gauche** supprime.
-6. **Poids du jour** (V2), affiché et saisissable sous la liste des repas.
+4. **Navigation entre les jours** : **balayage horizontal** et accès direct à une date. **[v2.3]** La barre supérieure porte le jour affiché à gauche — « Hier », « Aujourd'hui », « Demain », sinon `mar. 15/09` — et deux boutons icônes à droite : calendrier et bibliothèque. Les boutons précédent / suivant sont **supprimés** : le balayage était déjà le geste principal et les chevrons le doublaient. *Réserve inscrite : un balayage n'a pas d'équivalent VoiceOver, là où un bouton en a un ; à rouvrir si l'accessibilité devient un sujet.*
+5. **[v2.3] Accès direct à une date** : le bouton calendrier ouvre une **fenêtre ancrée** qui naît de ce bouton et s'y replie, descend jusqu'au bas de l'écran, et se ferme aussi par un glissement vers le bas. Elle porte deux boutons icônes, « aujourd'hui » et « fermer ».
+6. **Édition et suppression** : toucher une entrée ouvre l'écran d'ajustement ; **balayer vers la gauche** supprime.
+7. **Poids du jour** (V2), affiché et saisissable sous la liste des repas.
+8. **[v2.3] Journée pas encore chargée** : trois points animés. Le cas est rare — la base est locale et synchrone, et les deux journées voisines sont préchargées — mais une journée vide et une journée pas encore lue se ressemblent trop pour qu'on les dessine pareil.
 
 **Modification de la journée en cours :** ajout, renommage et suppression de repas libres, sans impact sur le modèle source, avec recalcul des objectifs.
 
@@ -704,3 +706,16 @@ Aucun dédoublonnage n'est nécessaire, HealthKit ayant disparu du périmètre :
 | 11 | §8.4 | Quantité **pré-remplie** avec la dernière consommée, clavier ouvert, valeur sélectionnée | Seul levier réel sur la cible des 15 secondes |
 | 12 | §5.2, §6.1 | Macros **canoniques pour 100 unités** ; entrée de journal figeant la référence, pas le total | Rend l'édition sans limite de temps réellement possible |
 | 13 | §7, §10.6 | Sélecteur segmenté au lieu d'une navigation imbriquée ; pas de zoom sur les graphiques | Simplicité de l'état de navigation ; doublon avec les sélecteurs de plage |
+
+### 14.4 Modifications issues de la tranche 3 (12/09/2026)
+
+Ces modifications ont ete demandees en cours de realisation et appliquees au
+document plutot que laissees en divergence. La regle de travail est desormais :
+une demande qui diverge des specs modifie les specs.
+
+| No | Section | Modification | Motif |
+| --- | --- | --- | --- |
+| 1 | §8.3 | Boutons **precedent / suivant supprimes** de la barre du Journal ; le jour s'affiche a gauche, deux boutons icones a droite (calendrier, bibliotheque) | Le balayage etait deja le geste principal et les chevrons le doublaient. Reserve : pas d'equivalent VoiceOver a un balayage |
+| 2 | §8.3 | Acces direct a une date par une **fenetre ancree** au bouton calendrier, descendant au bas de l'ecran, fermable par glissement | Une feuille pleine page pour choisir un jour coute une transition entiere |
+| 3 | §8.3 | **Trois points animes** quand la journee n'est pas encore chargee | Une journee vide et une journee pas encore lue se ressemblent trop |
+| 4 | §6.1 | Origine alignee sur `perso` \| `off` | Le §6 se declare non normatif sur le modele de donnees ; le schema de l'architecture fait autorite |

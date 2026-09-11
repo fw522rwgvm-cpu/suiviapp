@@ -48,29 +48,25 @@ export function FoodRow({
 
       {onToggleFavorite === undefined ? null : (
         /*
-          A bordered icon button rather than a bare glyph. A star drawn on its
-          own reads as a badge — something the row is telling you — where this
-          reads as something you can press. It is also a 34pt target inside a
-          row whose whole surface is already a different button, so the two
-          must not be ambiguous.
+          The same treatment as the library and calendar buttons in the header:
+          a tinted symbol with no container. One vocabulary for every icon
+          button in the application.
+
+          Filled when it is a favourite, outlined when it is not — the state is
+          in the symbol, not in a background, so it survives being read at a
+          glance down a list.
         */
         <Pressable
           onPress={onToggleFavorite}
-          hitSlop={8}
+          hitSlop={12}
           accessibilityRole="button"
           accessibilityState={{ selected: food.isFavorite }}
           accessibilityLabel={food.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
-          style={({ pressed }) => [
-            styles.favorite,
-            {
-              backgroundColor: pressed ? theme.colors.border : theme.colors.background,
-              borderColor: theme.colors.border,
-            },
-          ]}
+          style={styles.favorite}
         >
           <SymbolView
             name={food.isFavorite ? 'star.fill' : 'star'}
-            size={17}
+            size={20}
             tintColor={food.isFavorite ? theme.colors.accent : theme.colors.textFaint}
           />
         </Pressable>
@@ -90,12 +86,5 @@ const styles = StyleSheet.create({
   identity: { flex: 1, gap: 2 },
   name: { fontSize: 16 },
   detail: { fontSize: 13 },
-  favorite: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  favorite: { paddingHorizontal: 2, paddingVertical: 6 },
 });

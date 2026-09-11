@@ -53,7 +53,10 @@ export default function JournalLayout() {
         headerTransparent: true,
         headerShadowVisible: false,
         headerTintColor: theme.colors.accent,
-        headerTitleStyle: { color: theme.colors.text },
+        // A touch larger than the system default: it is the one word on the
+        // bar that carries meaning, and it sits beside two icons rather than
+        // centred, so it has the room.
+        headerTitleStyle: { color: theme.colors.text, fontSize: 20 },
         ...(glass
           ? { scrollEdgeEffects: { top: 'soft' as const } }
           : { headerBlurEffect: 'systemChromeMaterial' as const }),

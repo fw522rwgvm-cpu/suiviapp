@@ -368,32 +368,55 @@ setting(key TEXT PRIMARY KEY, value TEXT NOT NULL)
 ### 2.2 Nutrition (V1)
 
 ```sql
+-- [tranche 3] Livré par 0002_food. `barcode` et ux_food_barcode sont DIFFÉRÉS
+-- en tranche 4, avec le scan : une migration porte ce qui ne peut pas être
+-- ajouté plus tard, et diffère ce qui le peut. SQLite sait ALTER TABLE ADD
+-- COLUMN (nullable, ou NOT NULL avec défaut) et CREATE/DROP INDEX ; il ne sait
+-- pas ajouter une CHECK ni une FK sans reconstruire la table. `source` est donc
+-- là trois tranches avant son premier utilisateur, `barcode` non.
 food(
   id TEXT PK,
   name TEXT NOT NULL,
+  source TEXT NOT NULL,            -- CHECK ck_food_source : 'perso' | 'off'
+  base_unit TEXT NOT NULL,         -- CHECK ck_food_base_unit : 'g' | 'ml'
   brand TEXT,
-  barcode TEXT,
-  source TEXT NOT NULL,            -- 'perso' | 'off'
-  base_unit TEXT NOT NULL,         -- 'g' | 'ml'
   protein_100 REAL NOT NULL,       -- forme canonique, pour 100 unités de base
   carbs_100   REAL NOT NULL,
   fat_100     REAL NOT NULL,
   kcal_100    REAL NOT NULL,       -- valeur source, jamais recalculée
-  display_ref_qty REAL NOT NULL,   -- préférence d'affichage, non normative
-  is_favorite INTEGER NOT NULL DEFAULT 0,
+  display_ref_qty REAL NOT NULL DEFAULT 100,  -- préférence d'affichage
+  is_favorite INTEGER NOT NULL DEFAULT 0,     -- CHECK ck_food_favorite : 0 | 1
   created_at INTEGER, updated_at INTEGER
 )
-CREATE UNIQUE INDEX ux_food_barcode ON food(barcode) WHERE barcode IS NOT NULL;
-CREATE INDEX ix_food_name ON food(name);
+-- NOCASE, sinon 'abricot' se classe après toutes les majuscules. Sert le
+-- ORDER BY et NON la recherche : LIKE '%x%' n'utilise aucun index, et même en
+-- préfixe celui-ci serait ignoré, la collation ne correspondant pas au réglage
+-- case_sensitive_like. La recherche est une fonction pure sur une liste en
+-- cache — seul moyen d'ignorer les accents sans stocker une colonne repliée.
+CREATE INDEX ix_food_name ON food(name COLLATE NOCASE);
+
+-- AUCUNE CHECK sur les macros, et c'est un refus : le §8.5 exige que les
+-- valeurs Open Food Facts soient signalées et éditables, jamais refusées, et la
+-- tranche 4 copie automatiquement dans cette table. Une contrainte y
+-- transformerait une anomalie signalable en échec d'INSERT.
 
 food_portion(
   id TEXT PK,
   food_id TEXT NOT NULL REFERENCES food(id) ON DELETE CASCADE,
-  name TEXT NOT NULL,              -- liste fermée (§6.1)
-  quantity REAL NOT NULL,          -- en unité de base — obligatoire [v2.2]
+  name TEXT NOT NULL,              -- liste fermée (§6.1), SANS CHECK — voir ci-dessous
+  quantity REAL NOT NULL,          -- CHECK ck_portion_quantity : > 0
   position INTEGER NOT NULL
 )
 CREATE UNIQUE INDEX ux_portion_food_name ON food_portion(food_id, name);
+
+-- [tranche 3] Où l'on pose une CHECK, et où l'on refuse d'en poser une. La
+-- ligne n'est pas la probabilité qu'un ensemble bouge, c'est ce qu'un
+-- élargissement casserait. Élargir `kind` casse l'invariant d'agrégation ;
+-- élargir `base_unit` casse l'étanchéité du §5.1 ; élargir le vocabulaire des
+-- portions ne casse rien. La liste fermée des huit noms est donc tenue par une
+-- règle `one_of` du catalogue d'export, appliquée avant la première insertion,
+-- qui nomme table, ligne et colonne au lieu de citer une contrainte — la
+-- barrière forte, D7 voulant un fichier réparable à la main.
 
 recipe(
   id TEXT PK, name TEXT NOT NULL, prep_minutes INTEGER,
@@ -457,12 +480,18 @@ journal_entry(
   date TEXT NOT NULL,                 -- dénormalisé : immuable, rend les stats index-only
   parent_entry_id TEXT REFERENCES journal_entry(id) ON DELETE CASCADE,
   position INTEGER NOT NULL,
-  kind TEXT NOT NULL,                 -- 'food' | 'recipe' | 'recipe_item' | 'free'
-  source_food_id TEXT,                -- informatif, sans lien vivant
+  kind TEXT NOT NULL,                 -- CHECK ck_entry_kind [tranche 1]
+  -- Informatif, SANS LIEN VIVANT, et sans clé étrangère possible : un cascade
+  -- détruirait l'historique et un restrict bloquerait une suppression que le
+  -- §5.3 dit n'être jamais bloquée — et la table est gelée depuis 0001, or
+  -- SQLite n'a pas d'ALTER TABLE ADD CONSTRAINT. Conséquence actée : la
+  -- vérification d'intégrité de l'import ne verra jamais une entrée pointant
+  -- vers un aliment supprimé. C'est la spécification, pas un trou.
+  source_food_id TEXT,
   source_recipe_id TEXT,
   -- capsule figée (D5/R1) — NULL sur un parent 'recipe' (D5/R2)
   name TEXT NOT NULL, brand TEXT,
-  base_unit TEXT, quantity REAL,
+  base_unit TEXT, quantity REAL,      -- CHECK ck_entry_base_unit [tranche 1]
   portion_name TEXT, portion_quantity REAL,
   protein_100 REAL, carbs_100 REAL, fat_100 REAL, kcal_100 REAL,
   created_at INTEGER, updated_at INTEGER
@@ -615,11 +644,15 @@ CREATE INDEX ix_activity_date ON activity(date);
 │   ├── _layout.tsx
 │   ├── (tabs)/
 │   │   ├── _layout.tsx           # 4 onglets fixes dès la V1
-│   │   ├── index.tsx             # Journal
+│   │   ├── (journal)/            # groupe sans segment : donne un Stack natif
+│   │   │   ├── _layout.tsx
+│   │   │   ├── index.tsx         # Journal
+│   │   │   └── library/          # bibliothèque aliments & recettes
+│   │   │       ├── index.tsx
+│   │   │       └── food/[id].tsx
 │   │   ├── training.tsx
 │   │   ├── stats.tsx
 │   │   └── settings.tsx
-│   ├── library/                  # bibliothèque aliments & recettes
 │   ├── exercise/[id].tsx
 │   ├── routine/[id].tsx
 │   ├── session/live.tsx
@@ -717,7 +750,6 @@ CREATE INDEX ix_activity_date ON activity(date);
 | `expo-notifications` | Notifications locales | §9.3, minuteur de repos (D14) | oui |
 | `expo-file-system` | Fichiers, sauvegardes | Export, copies pré-migration (D6, D7) | oui |
 | `expo-sharing` | Feuille de partage | Export (§5.4) | oui |
-| `expo-document-picker` | Sélection de fichier | Import (§5.4) | oui |
 | `expo-secure-store` | Trousseau | Clé intervals.icu, V4 (§11.1) | oui |
 | `react-native-svg` | Graphiques, carte corporelle | Un seul outil graphique (D13) | oui |
 | `d3-scale`, `d3-shape` | Échelles et tracés | JavaScript pur, quelques kilo-octets (D13) | non |
@@ -727,6 +759,8 @@ CREATE INDEX ix_activity_date ON activity(date);
 | `react-native-gesture-handler` | Balayages | §8.3, §10.2 — déjà requis par expo-router | oui |
 | `react-native-reanimated` | Animations | Déjà requis par la navigation | oui |
 | `vitest` + `better-sqlite3` | Tests hors appareil | Fonctions pures, invariants, migrations (D15) | dev |
+
+**[tranche 2] `expo-document-picker` retiré de cette table.** `File.pickFileAsync` d'`expo-file-system` 57 ouvre le même sélecteur iOS et rend une copie temporaire : une dépendance native de moins, pour toujours.
 
 **Explicitement écartées :** toute bibliothèque de composants d'interface, NativeWind, toute bibliothèque d'internationalisation, `victory-native` / Skia, `op-sqlite`, WatermelonDB, Realm, toute bibliothèque de liste virtualisée spécialisée, Detox.
 
@@ -821,3 +855,36 @@ Clé au trousseau, tirage, identifiant d'origine, écran Activités. Puis arbitr
 | D14 | Notifications | Replanification permanente, fenêtre de 7 jours, bilan reprogrammé | oui |
 | D15 | Tests | Export/import, migrations, dates multi-fuseaux, fonctions pures ; pas d'interface, pas de bout en bout | oui |
 | D16 | Performance | Cible tenue en supprimant des gestes, pas en optimisant du code | oui |
+
+---
+
+## 9. Amendements
+
+Le document est normatif, donc il est tenu a jour : une demande qui diverge de
+ce qui est ecrit ici modifie ce qui est ecrit ici, plutot que de laisser une
+divergence vivre dans le code.
+
+### 9.1 Tranche 1 (11/09/2026)
+
+| No | Section | Amendement | Motif |
+| --- | --- | --- | --- |
+| 1 | §2.3 | `journal_entry.kind` et `base_unit` portent de vraies contraintes `CHECK`, la ou le schema les donnait en commentaires | SQLite ne permet pas d'ajouter une CHECK sans reconstruire la table, et la tranche 2 importe du JSON arbitraire dedans |
+
+### 9.2 Tranche 2 (12/09/2026)
+
+| No | Section | Amendement | Motif |
+| --- | --- | --- | --- |
+| 1 | §5 | `expo-document-picker` **retire** des dependances | `File.pickFileAsync` d'`expo-file-system` 57 ouvre le meme selecteur : une dependance native de moins |
+| 2 | §3 | `core/db/staging.ts` et `core/db/database-files.ts` ajoutes hors arborescence initiale | L'import par construction-puis-bascule a besoin d'un porteur, et le nettoyage d'un nom de fichier isole |
+
+### 9.3 Tranche 3 (12/09/2026)
+
+| No | Section | Amendement | Motif |
+| --- | --- | --- | --- |
+| 1 | §2.2 | `barcode` et `ux_food_barcode` **differes** en tranche 4 | Une migration porte ce qui ne peut pas etre ajoute plus tard et differe ce qui le peut ; une colonne nullable sans CHECK peut arriver par ALTER TABLE |
+| 2 | §2.2 | `display_ref_qty` gagne `DEFAULT 100` ; `ck_food_favorite` et `ck_portion_quantity` ajoutees | 100 est la forme canonique, donc le defaut est l'identite ; un booleen et une quantite de portion ne peuvent jamais s'elargir |
+| 3 | §2.2 | `ix_food_name` en `COLLATE NOCASE` ; **aucune CHECK** sur les macros ni sur `food_portion.name` | Sinon 'abricot' se classe apres les majuscules. Les macros : le §8.5 veut des valeurs Open Food Facts signalees, jamais refusees. Les portions : elargir le vocabulaire ne casse aucun invariant |
+| 4 | §2.3 | `journal_entry.source_food_id` **restera sans cle etrangere** | Un cascade detruirait l'historique, un restrict bloquerait une suppression que le §5.3 dit n'etre jamais bloquee — et la table est gelee depuis 0001 |
+| 5 | §3 | La bibliotheque passe de `app/library/` a `app/(tabs)/(journal)/library/` | A la racine elle recouvrirait la barre d'onglets ; le §7 la decrit comme un endroit ou le Journal mene. Regle qui en sort : consulter est un empilement, ajouter est une modale |
+| 6 | §3 | S'ajoutent hors arborescence initiale : `core/db/version-guard.ts`, `database-gate.tsx`, `database.ts`, `app-database.ts`, `core/id/`, `core/format/`, `core/query/` | G3 exige un refus de demarrage avec message, il lui faut un porteur |
+

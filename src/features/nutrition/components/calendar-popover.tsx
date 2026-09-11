@@ -1,9 +1,9 @@
 import { useEffect } from 'react';
+import { SymbolView } from 'expo-symbols';
 import {
   Modal,
   Pressable,
   StyleSheet,
-  Text,
   useWindowDimensions,
   View,
 } from 'react-native';
@@ -137,8 +137,14 @@ export function CalendarPopover({
 
   if (anchor === null) return null;
 
-  // Below the button, and right-aligned with it: the window hangs from the
-  // corner it grows out of.
+  // Below the button, right-aligned with it, and down to the bottom edge.
+  //
+  // The height is fixed rather than fitted to the grid on purpose: a month
+  // spanning six rows is taller than one spanning five, so a window that hugged
+  // its contents would change size as you paged through months — and it would
+  // do it while the thing you are aiming at moves. Reaching the bottom edge
+  // also means the bottom corners are off-screen, so only the top two are
+  // rounded.
   const top = anchor.y + anchor.height + 6;
   const right = Math.max(8, width - (anchor.x + anchor.width));
 
@@ -166,12 +172,13 @@ export function CalendarPopover({
               maxWidth: width - right - 8,
               backgroundColor: theme.colors.surface,
               borderColor: theme.colors.border,
-              borderRadius: theme.radius.xl,
+              borderTopLeftRadius: theme.radius.xl,
+              borderTopRightRadius: theme.radius.xl,
               // Grows out of its top-right corner, which is where the button is.
               transformOrigin: 'top right',
               ...theme.shadow,
-              // The popover floats over content rather than sitting on the
-              // page, so it carries its own lift even in the dark, where cards
+              // The window floats over content rather than sitting on the page,
+              // so it carries its own lift even in the dark, where cards
               // deliberately have none.
               shadowOpacity: theme.scheme === 'dark' ? 0.5 : 0.18,
               shadowRadius: 24,
@@ -179,30 +186,42 @@ export function CalendarPopover({
             windowStyle,
           ]}
         >
+          {/*
+            Icon buttons, the same treatment as the calendar button that opened
+            this: a tinted symbol with no container. One vocabulary for every
+            control that lives in chrome.
+          */}
           <View style={styles.actions}>
             <Pressable
               onPress={() => dismiss(onToday)}
-              hitSlop={8}
+              hitSlop={12}
               accessibilityRole="button"
+              accessibilityLabel="Aujourd’hui"
               style={styles.action}
             >
-              <Text style={[styles.actionLabel, { color: theme.colors.accent }]}>
-                Aujourd’hui
-              </Text>
+              <SymbolView
+                name="arrow.uturn.backward"
+                size={20}
+                tintColor={theme.colors.accent}
+                weight="semibold"
+              />
             </Pressable>
 
             <Pressable
               onPress={() => dismiss()}
-              hitSlop={8}
+              hitSlop={12}
               accessibilityRole="button"
+              accessibilityLabel="Fermer"
               style={styles.action}
             >
-              <Text style={[styles.actionLabel, { color: theme.colors.accent }]}>Fermer</Text>
+              <SymbolView
+                name="xmark"
+                size={20}
+                tintColor={theme.colors.accent}
+                weight="semibold"
+              />
             </Pressable>
           </View>
-
-          {/* The grab handle says the window can be pushed away. */}
-          <View style={[styles.grip, { backgroundColor: theme.colors.border }]} />
 
           <MonthCalendar
             month={month}
@@ -222,15 +241,14 @@ const styles = StyleSheet.create({
   backdrop: { backgroundColor: '#000000' },
   window: {
     position: 'absolute',
+    // Reaches the bottom edge, so the height never changes with the month.
+    bottom: 0,
     width: 340,
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 12,
-    paddingBottom: 14,
     paddingTop: 6,
     overflow: 'hidden',
   },
   actions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  action: { paddingVertical: 8, paddingHorizontal: 4 },
-  actionLabel: { fontSize: 17 },
-  grip: { alignSelf: 'center', width: 36, height: 4, borderRadius: 2, marginBottom: 6 },
+  action: { paddingVertical: 10, paddingHorizontal: 6 },
 });
