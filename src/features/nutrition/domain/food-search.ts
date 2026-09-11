@@ -97,7 +97,7 @@ export const FOLD_TABLE = { accented: ACCENTED, plain: PLAIN } as const;
 /**
  * Lower-cased, stripped of diacritics, whitespace collapsed.
  *
- * So that "creme" finds "crème" and "crème" finds "creme" — asymmetry here
+ * So that an unaccented term finds an accented name and the reverse — asymmetry
  * would be worse than no folding at all, because it would work often enough to
  * be trusted.
  *
