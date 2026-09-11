@@ -559,14 +559,45 @@ capsule fermée (D5/R1) : corriger « 60 g et non 50 » ne doit pas adopter au
 passage des macros éditées depuis. L'aliment n'est consulté que pour les
 portions qu'il propose aujourd'hui.
 
+### Deux pièges d'interface, établis par l'échec sur l'appareil
+
+**`autoFocus` + `selectTextOnFocus` ne sélectionnent rien quand la valeur
+arrive d'une requête.** `autoFocus` se déclenche **au montage**, or à cet
+instant le champ est vide : le pré-remplissage vient de React Query et arrive
+un tick plus tard. `selectTextOnFocus` sélectionne donc consciencieusement une
+chaîne vide, puis la valeur apparaît avec le curseur là où iOS l'a laissé —
+pré-rempli mais pas sélectionné, ce qui coûte un toucher pour effacer et fait
+tomber tout le levier du §8.4.
+
+Remède : **pas d'`autoFocus`**, et focaliser depuis l'effet qui pose la valeur,
+dans une `requestAnimationFrame` — le focus place lui-même le curseur, donc une
+sélection posée dans le même tick est écrasée. `selectTextOnFocus` reste, pour
+tous les touchers **ultérieurs** sur le champ. On retombe alors dans le cas où
+il fonctionne : focaliser un champ **déjà rempli**.
+
+**Un `fullScreenModal` n'a aucune sortie par défaut.** C'est la racine de sa
+propre présentation : la pile native ne lui dessine pas de bouton retour, et
+iOS n'offre pas le glissement vers le bas d'une feuille. Un `headerLeft` vide y
+signifie « écran dont on ne sort qu'en le complétant ». La saisie libre vivait
+ainsi depuis la tranche 1 sans que ça se voie, parce que « Ajouter » et
+« Supprimer » ferment tous les deux : **annuler était simplement impossible.**
+`core/ui/header-text-button.tsx` porte la sortie des trois modales.
+
+Corollaire pour l'étape de quantité, qui est un **état** et non une route
+poussée (D16 budgète 0,2 s pour y arriver) : le navigateur ne lui donne aucun
+retour non plus, et il faut le déclarer à la main. Sans lui, se tromper
+d'aliment obligeait à fermer la modale et recommencer — trois touchers pour en
+annuler un.
+
 ## Points ouverts après la tranche 3
-- **Vérification iPhone en attente** : c'est le seul point bloquant. Tout est
-  typé, testé et bundlé ; rien de l'interface n'a tourné sur l'appareil.
-  À vérifier en priorité : le champ de quantité s'ouvre bien *sélectionné* avec
-  le clavier numérique (c'est tout le levier des deux touchers), l'icône de
-  bibliothèque ne serre pas l'en-tête à deux icônes par côté, et la recherche
-  trouve « crème » depuis « creme » — c'est-à-dire que Hermes porte bien
-  `String.prototype.normalize`, ou que le repli prend correctement la main.
+- **Vérification iPhone en cours.** Première passe faite : l'application
+  démarre, la migration `0002` s'applique, et deux défauts ont été trouvés et
+  corrigés — le chiffre pré-rempli non sélectionné, et l'absence de sortie des
+  modales (voir « deux pièges d'interface » ci-dessus). Restent à confirmer :
+  que la sélection tient maintenant, que la recherche trouve « crème » depuis
+  « creme » (c'est-à-dire que Hermes porte `String.prototype.normalize`, ou que
+  le repli prend la main), et que l'en-tête du Journal à deux icônes par côté
+  ne serre pas.
 - **Hypothèse signalée** : `String.prototype.normalize` sur Hermes. Sonde
   écrite, repli écrit, les deux testés en Node — mais lequel s'exécute sur
   l'appareil ne se sait qu'en le regardant.
