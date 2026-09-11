@@ -104,14 +104,19 @@ export function FreeEntryScreen({
   const theoretical = macros === null ? 0 : theoreticalKcal(macros);
   const warn = macros !== null && hasKcalWarning(macros);
 
+  // Navigation waits for the write, rather than racing it. The write is
+  // synchronous and a mutation is not cancelled by unmounting, so closing
+  // first would probably work — "probably" being the wrong standard for the
+  // one gesture this whole slice exists to make reliable.
+  const close = { onSuccess: () => router.back() };
+
   function save(): void {
     if (macros === null) return;
     if (entryId !== null) {
-      updateEntry.mutate({ entryId, name: fields.name, macros });
+      updateEntry.mutate({ entryId, name: fields.name, macros }, close);
     } else if (mealPosition !== null) {
-      addEntry.mutate({ date, mealPosition, name: fields.name, macros });
+      addEntry.mutate({ date, mealPosition, name: fields.name, macros }, close);
     }
-    router.back();
   }
 
   function remove(): void {
@@ -121,10 +126,7 @@ export function FreeEntryScreen({
       {
         text: 'Supprimer',
         style: 'destructive',
-        onPress: () => {
-          deleteEntry.mutate(entryId);
-          router.back();
-        },
+        onPress: () => deleteEntry.mutate(entryId, close),
       },
     ]);
   }
