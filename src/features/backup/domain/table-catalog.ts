@@ -25,7 +25,7 @@
  */
 
 import { getTableColumns, getTableName, is } from 'drizzle-orm';
-import { SQLiteTable } from 'drizzle-orm/sqlite-core';
+import { SQLiteTable, type SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import { day, dayMeal, journalEntry, setting } from '@/core/db/schema';
 import * as schema from '@/core/db/schema';
 
@@ -48,11 +48,22 @@ export interface ExportColumn {
   notNull: boolean;
   isPrimaryKey: boolean;
   value: ValueRule | null;
+  /**
+   * The Drizzle column itself.
+   *
+   * Carried so the exporter can build a projection keyed by SQL name —
+   * db.select({ day_meal_id: journalEntry.dayMealId }) — and get rows already
+   * spelled the way the file spells them. Without it there would be a second
+   * camelCase-to-snake_case mapping somewhere, free to disagree with this one.
+   */
+  column: SQLiteColumn;
 }
 
 export interface ExportedTable {
   /** SQL table name — the key used in the file. */
   name: string;
+  /** The Drizzle table, to select from and to insert into. */
+  table: SQLiteTable;
   columns: readonly ExportColumn[];
   /** SQL names of the primary key columns. Used to order and to deduplicate. */
   primaryKey: readonly string[];
@@ -150,11 +161,13 @@ function describe(table: SQLiteTable): ExportedTable {
       notNull: column.notNull,
       isPrimaryKey: column.primary,
       value: rules[column.name] ?? null,
+      column,
     }),
   );
 
   return {
     name,
+    table,
     columns,
     primaryKey: columns.filter((column) => column.isPrimaryKey).map((column) => column.name),
   };
