@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Pressable,
@@ -144,14 +144,36 @@ function QuantityForm({
   const [portionName, setPortionName] = useState<string | null>(null);
   const [text, setText] = useState('');
   const [loaded, setLoaded] = useState(false);
+  const input = useRef<TextInput>(null);
 
   useEffect(() => {
     // Filled once, when the pre-fill arrives. Reapplying it on every render
     // would overwrite what is being typed.
     if (loaded || initial === null) return;
+    const value = show(initial.portion === null ? initial.baseQuantity : initial.portion.count);
     setPortionName(initial.portion?.name ?? null);
-    setText(show(initial.portion === null ? initial.baseQuantity : initial.portion.count));
+    setText(value);
     setLoaded(true);
+
+    /**
+     * FOCUS AND SELECT HERE, NOT WITH autoFocus. This is the whole of specs
+     * 8.4's "the value selected", and autoFocus cannot deliver it.
+     *
+     * autoFocus fires at mount. At mount this field is EMPTY, because the
+     * pre-fill comes from a query and arrives a tick later — so
+     * selectTextOnFocus dutifully selects an empty string, and the value then
+     * appears with the caret wherever iOS left it. The first device run showed
+     * exactly that: pre-filled, not selected, which costs a tap to clear and
+     * loses the "two taps without the keyboard" the slice is built around.
+     *
+     * One frame of delay because focus itself places the caret: a selection
+     * set in the same tick is overwritten by it.
+     */
+    const frame = requestAnimationFrame(() => {
+      input.current?.focus();
+      input.current?.setSelection(0, value.length);
+    });
+    return () => cancelAnimationFrame(frame);
   }, [initial, loaded]);
 
   const typed = parseDecimal(text);
@@ -205,12 +227,14 @@ function QuantityForm({
         >
           <View style={styles.amountRow}>
             <TextInput
+              ref={input}
               value={text}
               onChangeText={setText}
               keyboardType="decimal-pad"
-              // The two taps of specs 8.4 rest on these three lines: focused on
-              // arrival, contents selected, numeric keyboard already up.
-              autoFocus
+              // No autoFocus: it fires before the pre-fill arrives. The effect
+              // above focuses and selects once the value is actually there.
+              // selectTextOnFocus stays, for every LATER tap on the field:
+              // the habitual gesture is type-over, not clear-then-type.
               selectTextOnFocus
               accessibilityLabel="Quantité"
               style={[

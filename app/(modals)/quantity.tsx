@@ -1,7 +1,8 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import type { JournalEntryId } from '@/core/db/schema';
 import { toEntityId } from '@/core/id';
 import { EmptyState } from '@/core/ui/empty-state';
+import { HeaderTextButton } from '@/core/ui/header-text-button';
 import { QuantityScreen } from '@/features/nutrition/screens/quantity-screen';
 
 /**
@@ -23,15 +24,29 @@ export default function QuantityRoute() {
 
   const id = entryId === undefined ? null : toEntityId<JournalEntryId>(entryId);
 
-  if (id === null) {
-    return (
-      <EmptyState
-        symbol="questionmark.circle"
-        title="Entrée introuvable"
-        message="Cette entrée n’existe plus, ou le lien est incorrect."
+  return (
+    <>
+      {/*
+        A full-screen modal gets no back button from the stack and no
+        swipe-down from iOS, so the way out has to be declared. Wiring, not
+        logic: it navigates and decides nothing.
+      */}
+      <Stack.Screen
+        options={{
+          headerLeft: () => (
+            <HeaderTextButton label="Fermer" onPress={() => router.back()} />
+          ),
+        }}
       />
-    );
-  }
-
-  return <QuantityScreen mode="edit" entryId={id} onDone={() => router.back()} />;
+      {id === null ? (
+        <EmptyState
+          symbol="questionmark.circle"
+          title="Entrée introuvable"
+          message="Cette entrée n’existe plus, ou le lien est incorrect."
+        />
+      ) : (
+        <QuantityScreen mode="edit" entryId={id} onDone={() => router.back()} />
+      )}
+    </>
+  );
 }

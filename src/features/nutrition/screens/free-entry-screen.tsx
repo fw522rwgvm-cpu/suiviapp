@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   Alert,
@@ -13,6 +13,7 @@ import {
 import type { LocalDate } from '@/core/date';
 import { formatKcal, parseDecimal } from '@/core/format';
 import { useTheme } from '@/core/theme';
+import { HeaderTextButton } from '@/core/ui/header-text-button';
 import type { JournalEntryId } from '@/core/db/schema';
 import {
   useAddFreeEntry,
@@ -132,6 +133,21 @@ export function FreeEntryScreen({
   }
 
   return (
+    <>
+      {/*
+        The way out. A full-screen modal is the root of its own presentation:
+        the native stack draws no back button for it and iOS offers no
+        swipe-down, so without this the only way to leave is to save or to
+        delete. Slice 1 shipped it that way and it went unnoticed, because both
+        of those buttons are right there — but cancelling was impossible.
+      */}
+      <Stack.Screen
+        options={{
+          headerLeft: () => (
+            <HeaderTextButton label="Fermer" onPress={() => router.back()} />
+          ),
+        }}
+      />
     <KeyboardAvoidingView behavior="padding" style={styles.flex}>
       <ScrollView
         style={{ backgroundColor: theme.colors.background }}
@@ -206,6 +222,7 @@ export function FreeEntryScreen({
         )}
       </ScrollView>
     </KeyboardAvoidingView>
+    </>
   );
 }
 

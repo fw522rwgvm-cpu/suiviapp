@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { LocalDate } from '@/core/date';
 import { useTheme } from '@/core/theme';
+import { HeaderTextButton } from '@/core/ui/header-text-button';
 import type { FoodId } from '@/core/db/schema';
 import { useFavoriteFoods, useFoods, useRecentFoods } from '../data/food-queries';
 import type { FoodListItem } from '../data/food-reads';
@@ -62,7 +63,27 @@ export function AddEntryScreen({
   if (chosen !== null && mealPosition !== null) {
     return (
       <>
-        <Stack.Screen options={{ title: 'Quantité' }} />
+        <Stack.Screen
+          options={{
+            title: 'Quantité',
+            /**
+             * BACK TO THE LIST, not out of the modal.
+             *
+             * The quantity step is state rather than a pushed route (D16: the
+             * budget from choosing a food to this screen is 0,2 s), and state
+             * gets no back button from the navigator. Without this, choosing
+             * the wrong food means closing the modal and starting again —
+             * which is three taps to undo one.
+             */
+            headerLeft: () => (
+              <HeaderTextButton
+                symbol="chevron.left"
+                label="Aliments"
+                onPress={() => setChosen(null)}
+              />
+            ),
+          }}
+        />
         <QuantityScreen
           mode="add"
           date={date}
@@ -82,7 +103,17 @@ export function AddEntryScreen({
 
   return (
     <>
-      <Stack.Screen options={{ title: 'Ajouter' }} />
+      <Stack.Screen
+        options={{
+          title: 'Ajouter',
+          // A full-screen modal is the root of its own presentation: the stack
+          // draws no back button and iOS offers no swipe-down. Without this
+          // there is no way out of the screen except logging something.
+          headerLeft: () => (
+            <HeaderTextButton label="Fermer" onPress={() => router.back()} />
+          ),
+        }}
+      />
 
       <ScrollView
         style={{ backgroundColor: theme.colors.background }}
