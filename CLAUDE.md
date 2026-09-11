@@ -237,6 +237,24 @@ il n'y a rien à activer.
 **Ne jamais peindre le fond d'une surface en verre** (`backgroundColor` sur la
 barre d'onglets, un en-tête, une feuille). L'opacité annule l'effet.
 
+**Exception assumée depuis la tranche 3, demandée explicitement : les en-têtes
+sont peints en `colors.background`**, avec `headerShadowVisible: false`. La
+bande du haut doit lire comme la même feuille de papier que le contenu, pas
+comme une barre flottant au-dessus — et c'est le filet de séparation qui fait
+que deux surfaces ont l'air d'être deux surfaces. Posé une fois par pile :
+`app/(tabs)/(journal)/_layout.tsx` et `app/_layout.tsx`. En peindre une et pas
+l'autre serait pire que l'un ou l'autre choix.
+
+Ce que ça coûte : ces en-têtes ne se givrent plus quand le contenu passe
+dessous. La réserve déjà écrite ici joue dans l'autre sens — le verre coûte du
+contraste, et rien sur cette barre n'est un chiffre à lire d'un coup d'œil,
+donc la perte est un effet, pas de la lisibilité. **La barre d'onglets, elle,
+n'est pas peinte** : la règle tient partout ailleurs.
+
+Variante qui aurait gardé les deux : `headerTransparent`, le contenu défilant
+dessous. Écartée faute de pouvoir vérifier son interaction avec le carrousel à
+trois pages sans l'appareil.
+
 `expo-glass-effect` fournit `GlassView`, `GlassContainer` et surtout
 `isLiquidGlassAvailable()`, à interroger avant toute option iOS 26 puisque les
 specs annoncent iOS 18 minimum.

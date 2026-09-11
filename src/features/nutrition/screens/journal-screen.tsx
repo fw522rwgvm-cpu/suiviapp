@@ -19,6 +19,7 @@ import Animated, {
   type WithTimingConfig,
 } from 'react-native-reanimated';
 import { addDays, currentLocalDate, type LocalDate } from '@/core/date';
+import { formatDayTitle } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import {
   useAddMeal,
@@ -28,7 +29,6 @@ import {
 } from '../data/day-queries';
 import type { JournalEntryView } from '../data/day-reads';
 import { DayPage } from '../components/day-page';
-import { DaySwitcher } from '../components/day-switcher';
 import { MonthCalendar } from '../components/month-calendar';
 import type { DayMealView } from '../domain/day-plan';
 
@@ -250,51 +250,52 @@ export function JournalScreen() {
   return (
     <>
       {/*
-        The header carries ICONS ONLY, and the day navigation lives in its own
-        row below (see DaySwitcher). Two kinds of control were sharing one bar:
-        chevrons that change what you are looking at, and icons that take you
-        somewhere else. Split, each is easier to find — and the date gets to be
-        larger than a navigation-bar title may be.
+        Everything in one bar: the date being looked at, the two chevrons that
+        change it (specs 8.3), and the two icons that lead elsewhere — the
+        library (specs 7) and the date picker. Two controls a side, with the
+        chevrons on the outer edges where the thumb already reaches for them.
       */}
       <Stack.Screen
         options={{
-          title: 'Journal',
+          title: formatDayTitle(date, today),
           headerLeft: () => (
-            <Pressable
-              onPress={() => router.push('/(tabs)/(journal)/library')}
-              hitSlop={12}
-              accessibilityRole="button"
-              accessibilityLabel="Bibliothèque"
-            >
-              <SymbolView name="books.vertical" size={19} tintColor={theme.colors.accent} />
-            </Pressable>
+            <View style={styles.headerGroup}>
+              <HeaderChevron
+                symbol="chevron.left"
+                label="Jour précédent"
+                onPress={() => slideTo(-1)}
+              />
+              <Pressable
+                onPress={() => router.push('/(tabs)/(journal)/library')}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Bibliothèque"
+              >
+                <SymbolView name="books.vertical" size={19} tintColor={theme.colors.accent} />
+              </Pressable>
+            </View>
           ),
           headerRight: () => (
-            /* Direct access to a date (specs 8.3). The date label below opens
-               the same sheet, and is the far bigger target of the two. */
-            <Pressable
-              onPress={() => {
-                setPickerMonth(date);
-                setPickerOpen(true);
-              }}
-              hitSlop={12}
-              accessibilityRole="button"
-              accessibilityLabel="Choisir une date"
-            >
-              <SymbolView name="calendar" size={19} tintColor={theme.colors.accent} />
-            </Pressable>
+            <View style={styles.headerGroup}>
+              {/* Direct access to a date (specs 8.3). */}
+              <Pressable
+                onPress={() => {
+                  setPickerMonth(date);
+                  setPickerOpen(true);
+                }}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Choisir une date"
+              >
+                <SymbolView name="calendar" size={19} tintColor={theme.colors.accent} />
+              </Pressable>
+              <HeaderChevron
+                symbol="chevron.right"
+                label="Jour suivant"
+                onPress={() => slideTo(1)}
+              />
+            </View>
           ),
-        }}
-      />
-
-      <DaySwitcher
-        date={date}
-        today={today}
-        onPrevious={() => slideTo(-1)}
-        onNext={() => slideTo(1)}
-        onPickDate={() => {
-          setPickerMonth(date);
-          setPickerOpen(true);
         }}
       />
 
@@ -353,8 +354,26 @@ export function JournalScreen() {
   );
 }
 
+function HeaderChevron({
+  symbol,
+  label,
+  onPress,
+}: {
+  symbol: 'chevron.left' | 'chevron.right';
+  label: string;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+  return (
+    <Pressable onPress={onPress} hitSlop={12} accessibilityRole="button" accessibilityLabel={label}>
+      <SymbolView name={symbol} size={17} tintColor={theme.colors.accent} weight="semibold" />
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   strip: { flex: 1, flexDirection: 'row' },
+  headerGroup: { flexDirection: 'row', alignItems: 'center', gap: 18 },
   sheet: { flex: 1, padding: 16, gap: 8 },
   sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8 },
   sheetAction: { fontSize: 17 },
