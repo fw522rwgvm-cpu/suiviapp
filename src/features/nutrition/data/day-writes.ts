@@ -6,11 +6,14 @@ import {
   dayMeal,
   journalEntry,
   type DayMealId,
+  type FoodId,
   type JournalEntryId,
 } from '@/core/db/schema';
 import { newId } from '@/core/id';
 import { defaultDayMeals } from '../domain/day-plan';
 import type { Macros } from '../domain/macros';
+import type { QuantityChoice } from '../domain/portions';
+import { readFood } from './food-reads';
 
 /**
  * Writes to the journal (D8).
@@ -173,6 +176,124 @@ export function addFreeEntry(db: AppDatabase, input: AddFreeEntryInput): Journal
 
     return id;
   });
+}
+
+export interface AddFoodEntryInput {
+  date: LocalDate;
+  /** Meals are addressed by position: on a virtual day they have no id yet. */
+  mealPosition: number;
+  foodId: FoodId;
+  /** Resolved to base units by the domain before it ever gets here. */
+  quantity: QuantityChoice;
+}
+
+/**
+ * Logs a food from the personal database, materialising the day in the same
+ * transaction.
+ *
+ * THE ENTRY IS A CLOSED CAPSULE FROM THIS MOMENT ON (D5/R1, specs 5.2).
+ *
+ * Everything the journal will ever need to display or recompute this line is
+ * copied in now: the name, the brand, the unit, the macros for 100, and — when
+ * a portion was used — its name and the size it had today. The food's row is
+ * never consulted again. That is what makes editing without a time limit
+ * possible (specs 5.3), and what makes deleting the food harmless.
+ *
+ * source_food_id is written, and it is informative only: no foreign key, so
+ * the food can be deleted out from under this row without touching it. Its one
+ * job is to answer "what was the last quantity for this food" through
+ * ix_entry_source_food — the lever on the 15-second target (specs 8.4, D16).
+ *
+ * The quantity stored is ALWAYS in base units. The portion columns record how
+ * it was expressed, never what it amounts to: a total that had to know about
+ * portions would need a special case in every aggregation, and the clause-free
+ * SUM would stop being right.
+ */
+export function addFoodEntry(db: AppDatabase, input: AddFoodEntryInput): JournalEntryId {
+  if (!Number.isFinite(input.quantity.baseQuantity) || input.quantity.baseQuantity <= 0) {
+    throw new Error('A logged quantity must be a positive number of base units');
+  }
+
+  return db.transaction((tx) => {
+    // Read inside the transaction, so a food deleted between the screen
+    // opening and this call is a rollback rather than a half-written entry.
+    const source = readFood(tx, input.foodId);
+    if (source === null) {
+      throw new Error(`No food ${input.foodId} to log`);
+    }
+
+    const meal = requireMeal(ensureMaterialized(tx, input.date), input.mealPosition);
+    const id = newId<JournalEntryId>();
+    const now = Date.now();
+    const { baseQuantity, portion } = input.quantity;
+
+    tx.insert(journalEntry)
+      .values({
+        id,
+        dayMealId: meal.id,
+        date: input.date,
+        parentEntryId: null,
+        position: nextPosition(tx, meal.id),
+        kind: 'food',
+        sourceFoodId: input.foodId,
+        sourceRecipeId: null,
+        name: source.name,
+        brand: source.brand,
+        baseUnit: source.baseUnit,
+        quantity: baseQuantity,
+        portionName: portion?.name ?? null,
+        // The size of ONE portion as of today, frozen. Redefining the portion
+        // later must not move what was eaten (specs 5.2).
+        portionQuantity: portion?.quantity ?? null,
+        protein100: source.reference.protein,
+        carbs100: source.reference.carbs,
+        fat100: source.reference.fat,
+        kcal100: source.reference.kcal,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+
+    return id;
+  });
+}
+
+/**
+ * Changes how much of an already logged food was eaten (specs 5.3, no time
+ * limit).
+ *
+ * DELIBERATELY DOES NOT RE-READ THE FOOD. The capsule stays as it was frozen:
+ * correcting "I had 60 g, not 50" must not also silently adopt macros that
+ * have been edited since. Only the quantity and the way it was expressed
+ * change.
+ *
+ * One row, one statement, so no explicit transaction — the rule about
+ * transactions is about operations touching more than one row.
+ */
+export function updateFoodEntryQuantity(
+  db: AppDatabase,
+  entryId: JournalEntryId,
+  quantity: QuantityChoice,
+): void {
+  if (!Number.isFinite(quantity.baseQuantity) || quantity.baseQuantity <= 0) {
+    throw new Error('A logged quantity must be a positive number of base units');
+  }
+
+  const updated = db
+    .update(journalEntry)
+    .set({
+      quantity: quantity.baseQuantity,
+      portionName: quantity.portion?.name ?? null,
+      portionQuantity: quantity.portion?.quantity ?? null,
+      updatedAt: Date.now(),
+    })
+    .where(eq(journalEntry.id, entryId))
+    .returning({ id: journalEntry.id })
+    .all();
+
+  if (updated.length === 0) {
+    throw new Error(`No journal entry ${entryId} to update`);
+  }
 }
 
 export interface UpdateFreeEntryInput {

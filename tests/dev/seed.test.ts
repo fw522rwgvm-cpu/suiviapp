@@ -125,6 +125,83 @@ describe('seedJournal', () => {
     expect(bounds.last <= END).toBe(true);
   });
 
+  it('creates a personal food database, with portions and favourites', () => {
+    // Quick access — favourites then recents (specs 8.4a) — has nothing to
+    // show on a fresh installation, so without this the one screen slice 3 is
+    // built around cannot be looked at on the device at all.
+    const report = seedJournal(fixture.db, { endDate: END, days: 20, seed: 21 });
+
+    expect(report.foods).toBeGreaterThan(0);
+    expect(countRows(fixture.raw, 'food')).toBe(report.foods);
+    expect(countRows(fixture.raw, 'food_portion')).toBeGreaterThan(0);
+
+    const favourites = fixture.raw
+      .prepare('SELECT COUNT(*) AS n FROM food WHERE is_favorite = 1')
+      .get() as { n: number };
+    expect(favourites.n).toBeGreaterThan(0);
+
+    // Both base units, so the watertightness of specs 5.1 has something to be
+    // watertight about.
+    const units = (
+      fixture.raw.prepare('SELECT DISTINCT base_unit FROM food ORDER BY base_unit').all() as {
+        base_unit: string;
+      }[]
+    ).map((row) => row.base_unit);
+    expect(units).toEqual(['g', 'ml']);
+  });
+
+  it('logs foods that actually resolve, and some as portions', () => {
+    const report = seedJournal(fixture.db, { endDate: END, days: 60, seed: 23 });
+    expect(report.entries).toBeGreaterThan(0);
+
+    // Every source_food_id points at a food that exists. There is no foreign
+    // key to enforce it (specs 5.3), so the generator is where it gets checked.
+    const dangling = fixture.raw
+      .prepare(
+        `SELECT COUNT(*) AS n FROM journal_entry
+          WHERE source_food_id IS NOT NULL
+            AND source_food_id NOT IN (SELECT id FROM food)`,
+      )
+      .get() as { n: number };
+    expect(dangling.n).toBe(0);
+
+    // Both ways of expressing a quantity, so the pre-fill chain of specs 8.4
+    // has both branches to walk on the device.
+    const shapes = fixture.raw
+      .prepare(
+        `SELECT
+           SUM(CASE WHEN kind = 'food' AND portion_name IS NOT NULL THEN 1 ELSE 0 END) AS by_portion,
+           SUM(CASE WHEN kind = 'food' AND portion_name IS NULL THEN 1 ELSE 0 END) AS by_base,
+           SUM(CASE WHEN kind = 'free' THEN 1 ELSE 0 END) AS free
+         FROM journal_entry`,
+      )
+      .get() as { by_portion: number; by_base: number; free: number };
+
+    expect(shapes.by_portion).toBeGreaterThan(0);
+    expect(shapes.by_base).toBeGreaterThan(0);
+    // Free entry stays in the mix: it is still the fastest path (specs 8.4d).
+    expect(shapes.free).toBeGreaterThan(0);
+  });
+
+  it('stores a portion quantity that matches the food it came from', () => {
+    seedJournal(fixture.db, { endDate: END, days: 60, seed: 29 });
+
+    // The frozen portion size must be the one the food carried at the time —
+    // which, the generator never editing a food, is the one it still carries.
+    const mismatched = fixture.raw
+      .prepare(
+        `SELECT COUNT(*) AS n FROM journal_entry e
+          WHERE e.portion_name IS NOT NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM food_portion p
+               WHERE p.food_id = e.source_food_id
+                 AND p.name = e.portion_name
+                 AND p.quantity = e.portion_quantity)`,
+      )
+      .get() as { n: number };
+    expect(mismatched.n).toBe(0);
+  });
+
   it('carries a long history without choking', () => {
     // Three years, which is what D15 means by checking performance on long
     // histories. One transaction for the lot.

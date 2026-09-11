@@ -17,11 +17,13 @@ import {
   readMealTotals,
 } from './day-reads';
 import {
+  addFoodEntry,
   addFreeEntry,
   addMeal,
   deleteEntry,
   deleteMeal,
   renameMeal,
+  updateFoodEntryQuantity,
   updateFreeEntry,
 } from './day-writes';
 
@@ -95,6 +97,25 @@ export function useEntry(entryId: JournalEntryId | null) {
     queryFn: () => (entryId === null ? null : readEntry(getAppDatabase(), entryId)),
     enabled: entryId !== null,
     meta: readsFrom(journalEntry),
+  });
+}
+
+export function useAddFoodEntry() {
+  return useMutation({
+    mutationFn: (input: Parameters<typeof addFoodEntry>[1]) =>
+      Promise.resolve(addFoodEntry(getAppDatabase(), input)),
+  });
+}
+
+export function useUpdateFoodEntryQuantity() {
+  return useMutation({
+    mutationFn: (input: {
+      entryId: JournalEntryId;
+      quantity: Parameters<typeof updateFoodEntryQuantity>[2];
+    }) =>
+      Promise.resolve(
+        updateFoodEntryQuantity(getAppDatabase(), input.entryId, input.quantity),
+      ),
   });
 }
 
