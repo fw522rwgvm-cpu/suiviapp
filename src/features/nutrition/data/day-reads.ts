@@ -1,4 +1,4 @@
-import { asc, eq, sql } from 'drizzle-orm';
+import { asc, eq, sql, type SQL } from 'drizzle-orm';
 import type { LocalDate } from '@/core/date';
 import type { AppDatabase } from '@/core/db/database';
 import {
@@ -148,8 +148,18 @@ export interface JournalEntryView {
   total: Macros | null;
 }
 
+/** One entry, for the screen that edits it. Null once it has been deleted. */
+export function readEntry(db: AppDatabase, entryId: JournalEntryId): JournalEntryView | null {
+  const rows = selectEntries(db, eq(journalEntry.id, entryId));
+  return rows[0] ?? null;
+}
+
 /** The entries of one meal, loaded only when that meal is unfolded. */
 export function readMealEntries(db: AppDatabase, mealId: DayMealId): JournalEntryView[] {
+  return selectEntries(db, eq(journalEntry.dayMealId, mealId));
+}
+
+function selectEntries(db: AppDatabase, where: SQL | undefined): JournalEntryView[] {
   const rows = db
     .select({
       id: journalEntry.id,
@@ -164,7 +174,7 @@ export function readMealEntries(db: AppDatabase, mealId: DayMealId): JournalEntr
       kcal100: journalEntry.kcal100,
     })
     .from(journalEntry)
-    .where(eq(journalEntry.dayMealId, mealId))
+    .where(where)
     .orderBy(asc(journalEntry.position), asc(journalEntry.id))
     .all();
 

@@ -1,11 +1,18 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { LocalDate } from '@/core/date';
 import { getAppDatabase } from '@/core/db/app-database';
-import { day, dayMeal, journalEntry, type DayMealId } from '@/core/db/schema';
+import {
+  day,
+  dayMeal,
+  journalEntry,
+  type DayMealId,
+  type JournalEntryId,
+} from '@/core/db/schema';
 import { readsFrom } from '@/core/query';
 import {
   readDay,
   readDayTotals,
+  readEntry,
   readMealEntries,
   readMealTotals,
 } from './day-reads';
@@ -35,6 +42,7 @@ export const journalKeys = {
   dayTotals: (date: LocalDate) => ['nutrition', 'day-totals', date] as const,
   mealTotals: (date: LocalDate) => ['nutrition', 'meal-totals', date] as const,
   mealEntries: (mealId: DayMealId) => ['nutrition', 'meal-entries', mealId] as const,
+  entry: (entryId: JournalEntryId) => ['nutrition', 'entry', entryId] as const,
 };
 
 /** The day, materialised or virtual. Reading it never creates it (specs 8.2). */
@@ -76,6 +84,16 @@ export function useMealEntries(mealId: DayMealId | null) {
     queryKey: journalKeys.mealEntries(mealId ?? ('' as DayMealId)),
     queryFn: () => readMealEntries(getAppDatabase(), mealId as DayMealId),
     enabled: mealId !== null,
+    meta: readsFrom(journalEntry),
+  });
+}
+
+/** One entry, for the screen that edits it (specs 5.3: no time limit). */
+export function useEntry(entryId: JournalEntryId | null) {
+  return useQuery({
+    queryKey: journalKeys.entry(entryId ?? ('' as JournalEntryId)),
+    queryFn: () => readEntry(getAppDatabase(), entryId as JournalEntryId),
+    enabled: entryId !== null,
     meta: readsFrom(journalEntry),
   });
 }

@@ -61,6 +61,24 @@ export function formatKcal(value: number): string {
 }
 
 /**
+ * Reads a number back from a field the user typed into.
+ *
+ * The iOS decimal keypad offers whichever separator the device is set to, so
+ * both have to be accepted: refusing "20,5" from a French keyboard would be an
+ * obstacle on the critical path, which conventions section 4 forbids outright.
+ * Returns null rather than NaN — an expected failure is a value.
+ */
+export function parseDecimal(text: string): number | null {
+  const cleaned = text.trim().replace(',', '.');
+  if (cleaned === '') return null;
+  // Number('') is 0 and Number(' 1 2') is NaN, so the shape is checked first:
+  // a lone sign or a stray letter must not read as a quantity.
+  if (!/^-?\d*\.?\d*$/.test(cleaned) || !/\d/.test(cleaned)) return null;
+  const value = Number(cleaned);
+  return Number.isFinite(value) ? value : null;
+}
+
+/**
  * "120 g" — a quantity in base units. Quantities are entered by hand and are
  * rarely fractional, so a trailing ",0" would be noise.
  */

@@ -7,6 +7,7 @@ import {
   formatLongDate,
   formatMacro,
   formatQuantity,
+  parseDecimal,
   weekdayName,
 } from '../../src/core/format';
 
@@ -42,6 +43,29 @@ describe('macro and calorie rounding', () => {
   it('drops a pointless decimal on a quantity', () => {
     expect(formatQuantity(120, 'g')).toBe(`120${NBSP}g`);
     expect(formatQuantity(12.5, 'ml')).toBe(`12,5${NBSP}ml`);
+  });
+});
+
+describe('parseDecimal', () => {
+  it('accepts both separators, because the keypad offers either', () => {
+    expect(parseDecimal('20')).toBe(20);
+    expect(parseDecimal('20,5')).toBe(20.5);
+    expect(parseDecimal('20.5')).toBe(20.5);
+    expect(parseDecimal(' 20,5 ')).toBe(20.5);
+    expect(parseDecimal('.5')).toBe(0.5);
+    expect(parseDecimal('0')).toBe(0);
+  });
+
+  it('returns null rather than NaN on anything that is not a number', () => {
+    // An expected failure is a value, not an exception (conventions 4). NaN
+    // would sail straight into a macro and store itself.
+    expect(parseDecimal('')).toBeNull();
+    expect(parseDecimal('   ')).toBeNull();
+    expect(parseDecimal('abc')).toBeNull();
+    expect(parseDecimal('-')).toBeNull();
+    expect(parseDecimal('.')).toBeNull();
+    expect(parseDecimal('1 2')).toBeNull();
+    expect(parseDecimal('12g')).toBeNull();
   });
 });
 

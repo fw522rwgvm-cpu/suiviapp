@@ -32,7 +32,13 @@ export default function TabsLayout() {
       // so it is only asked for when the system can honour it.
       {...(isLiquidGlassAvailable() ? { minimizeBehavior: 'onScrollDown' as const } : {})}
     >
-      <NativeTabs.Trigger name="index">
+      {/*
+        (journal) is a group, so it adds no path segment: this stays the index
+        route of the tabs group. It exists to give the Journal a native stack,
+        and therefore a system header carrying the date and the day navigation
+        of specs 8.3.
+      */}
+      <NativeTabs.Trigger name="(journal)">
         <NativeTabs.Trigger.Icon sf="fork.knife" />
         <NativeTabs.Trigger.Label>Journal</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
