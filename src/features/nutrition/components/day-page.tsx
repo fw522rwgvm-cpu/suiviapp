@@ -2,6 +2,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { LocalDate } from '@/core/date';
 import { useTheme } from '@/core/theme';
 import { LoadingDots } from '@/core/ui/loading-dots';
+import { useMinimumVisible } from '@/core/ui/use-minimum-visible';
 import { useDay, useDayTotals, useMealTotals } from '../data/day-queries';
 import type { JournalEntryView } from '../data/day-reads';
 import { dayTargets, type DayMealView } from '../domain/day-plan';
@@ -51,16 +52,6 @@ export function DayPage({
   const meals = day.data?.meals ?? [];
 
   /**
-   * Nothing to draw yet.
-   *
-   * Almost never true: SQLite is synchronous and local, and React Query keeps
-   * the two neighbouring days warm, so a swipe normally hits the cache and the
-   * page is there on the first frame. What is left is the cold case — a day
-   * far from anything cached, reached from the calendar on a long history.
-   * Drawing an empty day there would be a lie: it would look exactly like a
-   * day with nothing logged.
-   */
-  /**
    * COMPLETELY loaded, not merely started.
    *
    * The meal sub-totals are in here deliberately. Without them the page
@@ -69,6 +60,16 @@ export function DayPage({
    * that was being seen. A day is ready when all three of its queries are.
    */
   const pending = day.isPending || totals.isPending || mealTotals.isPending;
+
+  /**
+   * Held for half a second once it has appeared at all.
+   *
+   * Local SQLite answers in tens of milliseconds, so the indicator was
+   * spending itself as a flash — which reads as a glitch rather than as work
+   * being done. The hook imposes the minimum only once waiting has actually
+   * begun, so a day that was already cached still appears on the first frame.
+   */
+  const showDots = useMinimumVisible(pending, 500);
 
   return (
     /**
@@ -97,7 +98,7 @@ export function DayPage({
         style={styles.fill}
         contentContainerStyle={styles.content}
         contentInsetAdjustmentBehavior="automatic"
-        scrollEnabled={!pending}
+        scrollEnabled={!showDots}
       >
         <RemainingBanner consumed={totals.data ?? ZERO_MACROS} target={dayTargets(meals)} />
 
@@ -128,7 +129,7 @@ export function DayPage({
         </Text>
       </ScrollView>
 
-      {pending ? (
+      {showDots ? (
         <View
           style={[styles.overlay, { backgroundColor: theme.colors.background }]}
           pointerEvents="auto"

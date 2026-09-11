@@ -345,7 +345,7 @@ Les onglets non pourvus dans une version donnée sont **présents et affichent u
 2. **Liste des repas**, repliés par défaut, avec sous-total et objectif propre.
 3. **Bouton d'ajout** accessible depuis chaque repas.
 4. **Navigation entre les jours** : **balayage horizontal** et accès direct à une date. **[v2.3]** La barre supérieure porte le jour affiché à gauche — « Hier », « Aujourd'hui », « Demain », sinon `mar. 15/09` — et deux boutons icônes à droite : calendrier et bibliothèque. Les boutons précédent / suivant sont **supprimés** : le balayage était déjà le geste principal et les chevrons le doublaient. *Réserve inscrite : un balayage n'a pas d'équivalent VoiceOver, là où un bouton en a un ; à rouvrir si l'accessibilité devient un sujet.*
-5. **[v2.3] Accès direct à une date** : le bouton calendrier ouvre une **fenêtre ancrée** qui naît de ce bouton et s'y replie, descend jusqu'au bas de l'écran, et se ferme aussi par un glissement vers le bas. Elle porte deux boutons icônes, « aujourd'hui » et « fermer ».
+5. **[v2.3] Accès direct à une date** : le bouton calendrier **devient** l'écran de calendrier, par la transition zoom native d'iOS — le contrôle se transforme en la vue qu'il présente, et le renvoi interactif le ramène dedans. L'écran porte deux boutons Liquid Glass, « Aujourd'hui » et « Fermer ».
 6. **Édition et suppression** : toucher une entrée ouvre l'écran d'ajustement ; **balayer vers la gauche** supprime.
 7. **Poids du jour** (V2), affiché et saisissable sous la liste des repas.
 8. **[v2.3] Journée pas encore chargée** : trois points animés. Le cas est rare — la base est locale et synchrone, et les deux journées voisines sont préchargées — mais une journée vide et une journée pas encore lue se ressemblent trop pour qu'on les dessine pareil.
@@ -716,7 +716,7 @@ une demande qui diverge des specs modifie les specs.
 | No | Section | Modification | Motif |
 | --- | --- | --- | --- |
 | 1 | §8.3 | Boutons **precedent / suivant supprimes** de la barre du Journal ; le jour s'affiche a gauche, deux boutons icones a droite (calendrier, bibliotheque) | Le balayage etait deja le geste principal et les chevrons le doublaient. Reserve : pas d'equivalent VoiceOver a un balayage |
-| 2 | §8.3 | Acces direct a une date par une **fenetre ancree** au bouton calendrier, pleine largeur, descendant au bas de l'ecran, fermable par glissement. Ses deux actions sont des boutons **Liquid Glass** portant des mots, « Aujourd'hui » et « Fermer » | Une feuille pleine page pour choisir un jour coute une transition entiere. Aucun glyphe ne dit « revenir a aujourd'hui » sans avoir ete appris |
-| 3 | §8.3 | **Trois points animes** quand la journee n'est pas encore chargee | Une journee vide et une journee pas encore lue se ressemblent trop |
+| 2 | §8.3 | Acces direct a une date par la **transition zoom native d'iOS** : le bouton calendrier devient l'ecran de calendrier. Ses deux actions sont des boutons **Liquid Glass** portant des mots, « Aujourd'hui » et « Fermer » | L'effet natif existe et est expose par expo-router ; une morphose ecrite a la main en restait une imitation. Aucun glyphe ne dit « revenir a aujourd'hui » sans avoir ete appris |
+| 3 | §8.3 | **Trois points animes** quand la journee n'est pas encore chargee, tenus au moins une demi-seconde | Une journee vide et une journee pas encore lue se ressemblent trop ; et un indicateur qui clignote se lit comme un defaut |
 | 4 | §8.5 | Le marquage favori de la bibliotheque est un bouton **Liquid Glass**, etoile pleine ou vide | Meme materiau que les boutons natifs de l'en-tete de cet ecran |
 | 5 | §6.1 | Origine alignee sur `perso` \| `off` | Le §6 se declare non normatif sur le modele de donnees ; le schema de l'architecture fait autorite |

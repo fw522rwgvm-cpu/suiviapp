@@ -1,6 +1,7 @@
 import { isLiquidGlassAvailable } from 'expo-glass-effect';
 import { Stack } from 'expo-router';
 import { useTheme } from '@/core/theme';
+import { RequestedDateProvider } from '@/features/nutrition/hooks/requested-date';
 
 /**
  * A native stack inside the Journal tab, so the screens get a system header.
@@ -48,6 +49,13 @@ export default function JournalLayout() {
   const glass = isLiquidGlassAvailable();
 
   return (
+    /*
+      The provider wraps the stack so the Journal and the calendar screen share
+      it: the calendar asks for a day, the Journal takes it once and clears it.
+      See features/nutrition/hooks/requested-date.tsx for why that is not a
+      route parameter. Mounting a provider is wiring, which is all app/ does.
+    */
+    <RequestedDateProvider>
     <Stack
       screenOptions={{
         headerTransparent: true,
@@ -61,6 +69,15 @@ export default function JournalLayout() {
           ? { scrollEdgeEffects: { top: 'soft' as const } }
           : { headerBlurEffect: 'systemChromeMaterial' as const }),
       }}
-    />
+    >
+      <Stack.Screen name="index" />
+      {/*
+        No header: the calendar screen carries its own two buttons, and the
+        zoom transition presents it as the button grown rather than as a page
+        pushed under a bar.
+      */}
+      <Stack.Screen name="calendar" options={{ headerShown: false }} />
+    </Stack>
+    </RequestedDateProvider>
   );
 }

@@ -680,32 +680,35 @@ appris — la flèche de retour essayée là disait « annuler ». Épinglé par
 l'erreur est facile à refaire : une barre d'icônes est plus jolie qu'une barre
 de mots, et c'est le mauvais critère.
 
-**Le calendrier n'est pas une fenêtre qui apparaît près d'un bouton : c'est le
-bouton qui grandit.** La différence fait tout l'effet, et elle est
-géométrique — on interpole `left`, `top`, `width`, `height` et le rayon des
-coins depuis le rectangle du bouton jusqu'à celui de la fenêtre, plutôt que de
-mettre une vue à l'échelle. Une mise à l'échelle étirerait les coins en ellipses
-et écraserait le contenu avec ; animer des propriétés de disposition coûte une
-passe par image sur **une** vue pendant un cinquième de seconde, ce qui est le
-bon échange ici.
+**Le calendrier passe par la transition zoom native d'iOS**, pas par une
+imitation. `expo-router` 57 l'expose — `<Link.AppleZoom>` sur la source,
+`<Link.AppleZoomTarget>` sur la destination, soit `preferredTransition = .zoom`
+d'UIKit (iOS 18+). Rien ne l'exporte à la racine du paquet, d'où le temps mis à
+la trouver : elle vit dans `build/link/zoom/`.
 
-Le rectangle de départ est **mesuré** au moment du toucher
-(`measureInWindow`) : la position dépend de la zone sûre et de la hauteur de
-barre, deux nombres qui seraient devinés et faux sur un téléphone sur trois.
+Elle anime une **navigation**, donc la destination doit être une route. C'est la
+seule raison pour laquelle le calendrier est un écran et non une fenêtre
+dessinée par-dessus le Journal. Une morphose écrite à la main a existé avant —
+interpolation de `left`, `top`, `width`, `height` et du rayon depuis le
+rectangle du bouton mesuré — elle marchait, et elle restait une imitation ; le
+git en garde la trace si l'API venait à manquer.
 
-Trois détails tiennent l'illusion, chacun invisible tant qu'il est là :
-- **le vrai bouton est masqué** pendant l'ouverture — sinon la morphose s'en
-  décolle et révèle la chose qu'elle prétend être, immobile. Masqué, pas
-  démonté : son rectangle mesuré doit rester valide pour le retour ;
-- le contenu n'apparaît qu'une fois la forme presque à sa taille, sinon on voit
-  la grille du mois écrasée dans un cercle ;
-- le glyphe du bouton s'efface tôt, sur les mêmes images, pour que l'un
-  remplace l'autre au lieu que les deux coexistent.
+**Le retour de la date choisie ne passe pas par l'URL**, et c'est le point non
+évident. Un paramètre de route survit à la visite qui l'a posé, or le §7 veut le
+Journal sur la journée courante à chaque lancement ; et le Journal lirait sa
+date de deux endroits à la fois, le paramètre et le balayage — or le carrousel
+est la seule pièce de cet écran vérifiée sur l'appareil. La date voyage donc
+comme une **demande consommée une fois**
+(`features/nutrition/hooks/requested-date.tsx`) : le calendrier demande, le
+Journal prend et efface. Dans l'autre sens, la date affichée voyage bien par
+l'URL — c'est une entrée, une valeur périmée y est sans conséquence.
 
-Et l'animation de fermeture vit **dans** la fenêtre, pas chez l'appelant :
-toutes les sorties — les deux boutons, choisir une date, le balayage, le fond —
-doivent jouer la même animation avant que la modale soit démontée. Si le parent
-basculait `visible` à `false`, React l'arracherait de l'écran en plein vol.
+**Un indicateur de chargement se tient au moins une demi-seconde.** SQLite local
+répond en dizaines de millisecondes : l'indicateur se dépensait en un
+clignotement, et un clignotement se lit comme un défaut, pas comme du travail.
+`core/ui/use-minimum-visible.ts` impose le minimum **seulement une fois
+l'attente commencée** — sans quoi chaque journée déjà en cache serait retardée
+d'une demi-seconde au nom de la fluidité, ce que personne ne veut.
 
 ## Points ouverts après la tranche 3
 - **Vérification iPhone en cours.** Première passe faite : l'application

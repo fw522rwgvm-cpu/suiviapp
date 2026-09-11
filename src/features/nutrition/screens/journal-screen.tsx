@@ -1,6 +1,6 @@
 import { SymbolView } from 'expo-symbols';
-import { Stack, useRouter } from 'expo-router';
-import { useLayoutEffect, useRef, useState } from 'react';
+import { Link, Stack, useRouter } from 'expo-router';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -27,7 +27,7 @@ import {
 } from '../data/day-queries';
 import type { JournalEntryView } from '../data/day-reads';
 import { DayPage } from '../components/day-page';
-import { CalendarPopover, type PopoverAnchor } from '../components/calendar-popover';
+import { useRequestedDate } from '../hooks/requested-date';
 import type { DayMealView } from '../domain/day-plan';
 
 /**
@@ -87,30 +87,20 @@ export function JournalScreen() {
   const [today] = useState<LocalDate>(() => currentLocalDate());
   const [date, setDate] = useState<LocalDate>(today);
 
-  // A plain React Native modal rather than a route: the date is screen state,
-  // and routing it out and back would mean plumbing a return value through the
-  // router for a window that closes on selection.
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [pickerMonth, setPickerMonth] = useState<LocalDate>(today);
-
   /**
-   * Where the calendar button is, in window coordinates.
+   * A day asked for by the calendar screen, taken once and cleared.
    *
-   * Measured at the moment of the tap rather than computed: the position
-   * depends on the safe area and the navigation bar height, two numbers that
-   * would have to be guessed and would be wrong on some phone. The window
-   * grows out of this rectangle and folds back into it.
+   * The carousel keeps owning the date: this only ever pushes one in from
+   * outside. Deliberately not a route parameter — one would outlive the visit
+   * that set it, and specs 7 wants the Journal on today at every launch.
    */
-  const calendarButton = useRef<View>(null);
-  const [anchor, setAnchor] = useState<PopoverAnchor | null>(null);
+  const { requested, clear } = useRequestedDate();
 
-  function openPicker(): void {
-    setPickerMonth(date);
-    calendarButton.current?.measureInWindow((x, y, width, height) => {
-      setAnchor({ x, y, width, height });
-      setPickerOpen(true);
-    });
-  }
+  useEffect(() => {
+    if (requested === null) return;
+    setDate(requested);
+    clear();
+  }, [requested, clear]);
 
   const addMeal = useAddMeal();
   const renameMeal = useRenameMeal();
@@ -269,25 +259,33 @@ export function JournalScreen() {
           headerRight: () => (
             <View style={styles.headerGroup}>
               {/*
-                Direct access to a date (specs 8.3).
+                Direct access to a date (specs 8.3), through the system's zoom
+                transition: this button genuinely becomes the calendar screen,
+                and the interactive dismissal brings it back into the button.
 
-                Hidden — not unmounted — while the window is open. The window
-                IS this button, grown: leaving the real one in place would let
-                the morph slide off it and reveal the thing it is pretending to
-                be, standing still. Kept mounted so its measured rectangle
-                stays valid for the way back.
+                Link.AppleZoom is what asks for it, and it animates a
+                NAVIGATION — which is why the calendar is a route rather than a
+                window drawn over this screen. Below iOS 18 the same navigation
+                simply happens with the ordinary push; nothing here is
+                conditional.
+
+                The day being shown travels out as a parameter. The day chosen
+                comes back through the request context, not through the URL.
               */}
-              <Pressable
-                ref={calendarButton}
-                onPress={openPicker}
-                hitSlop={12}
-                accessibilityRole="button"
-                accessibilityLabel="Choisir une date"
-                accessibilityElementsHidden={pickerOpen}
-                style={{ opacity: pickerOpen ? 0 : 1 }}
+              <Link
+                href={{ pathname: '/(tabs)/(journal)/calendar', params: { date } }}
+                asChild
               >
-                <SymbolView name="calendar" size={20} tintColor={theme.colors.accent} />
-              </Pressable>
+                <Link.AppleZoom>
+                  <Pressable
+                    hitSlop={12}
+                    accessibilityRole="button"
+                    accessibilityLabel="Choisir une date"
+                  >
+                    <SymbolView name="calendar" size={20} tintColor={theme.colors.accent} />
+                  </Pressable>
+                </Link.AppleZoom>
+              </Link>
 
               {/* The library, reached from the Journal header (specs 7). */}
               <Pressable
@@ -316,21 +314,6 @@ export function JournalScreen() {
         </Animated.View>
       </GestureDetector>
 
-      <CalendarPopover
-        visible={pickerOpen}
-        anchor={anchor}
-        month={pickerMonth}
-        selected={date}
-        today={today}
-        onMonthChange={setPickerMonth}
-        onSelect={(chosen) => {
-          // A jump of more than one day has no page to slide to, so it swaps
-          // outright. The strip is already at rest.
-          setDate(chosen);
-        }}
-        onToday={() => setDate(today)}
-        onClose={() => setPickerOpen(false)}
-      />
     </>
   );
 }
