@@ -703,12 +703,25 @@ comme une **demande consommée une fois**
 Journal prend et efface. Dans l'autre sens, la date affichée voyage bien par
 l'URL — c'est une entrée, une valeur périmée y est sans conséquence.
 
-**Un indicateur de chargement se tient au moins une demi-seconde.** SQLite local
+**Le panneau du calendrier porte ses propres dimensions, et ce n'est pas un
+détail.** `Link.AppleZoomTarget` enveloppe son enfant dans une vue native
+stylée `display: 'contents'` — censée ne participer à aucune disposition. Quand
+ça se résout comme prévu, l'enfant se mesure contre l'écran ; quand non, il se
+mesure contre rien, et `flex: 1` dans rien vaut zéro. **C'est exactement à ça
+que ressemble une page blanche**, et c'est ce qui est arrivé. Le panneau est
+donc dimensionné depuis la fenêtre et non depuis son parent : il ne peut pas
+s'effondrer, quoi que fasse l'enveloppe. C'est aussi ce qui le fait monter
+jusqu'à l'île dynamique plutôt que de commencer sous une zone sûre qu'il n'a pas
+demandée — la zone sûre revient ensuite en **marge intérieure**, pour que le
+fond aille au bord sans que rien de lisible se cache sous l'île.
+
+**Un indicateur de chargement se tient au moins une seconde.** SQLite local
 répond en dizaines de millisecondes : l'indicateur se dépensait en un
 clignotement, et un clignotement se lit comme un défaut, pas comme du travail.
 `core/ui/use-minimum-visible.ts` impose le minimum **seulement une fois
 l'attente commencée** — sans quoi chaque journée déjà en cache serait retardée
-d'une demi-seconde au nom de la fluidité, ce que personne ne veut.
+d'une seconde au nom de la fluidité, ce que personne ne veut. Et seul le
+**reste** est attendu, donc ça ne peut jamais ralentir une journée lente.
 
 ## Points ouverts après la tranche 3
 - **Vérification iPhone en cours.** Première passe faite : l'application

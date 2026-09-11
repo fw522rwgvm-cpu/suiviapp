@@ -62,14 +62,15 @@ export function DayPage({
   const pending = day.isPending || totals.isPending || mealTotals.isPending;
 
   /**
-   * Held for half a second once it has appeared at all.
+   * Held for a full second once it has appeared at all.
    *
    * Local SQLite answers in tens of milliseconds, so the indicator was
    * spending itself as a flash — which reads as a glitch rather than as work
    * being done. The hook imposes the minimum only once waiting has actually
-   * begun, so a day that was already cached still appears on the first frame.
+   * begun, so a day that was already cached still appears on the first frame,
+   * and only a genuinely cold day is ever held.
    */
-  const showDots = useMinimumVisible(pending, 500);
+  const showDots = useMinimumVisible(pending, 1000);
 
   return (
     /**
