@@ -2,6 +2,7 @@ import { addDays, type LocalDate } from '@/core/date';
 import type { AppDatabase } from '@/core/db/database';
 import type { BaseUnit, FoodId, PortionName } from '@/core/db/schema';
 import { addFoodEntry, addFreeEntry } from '@/features/nutrition/data/day-writes';
+import { listFoods } from '@/features/nutrition/data/food-reads';
 import { createFood } from '@/features/nutrition/data/food-writes';
 import { emptyFoodDraft } from '@/features/nutrition/domain/food-draft';
 import type { Macros } from '@/features/nutrition/domain/macros';
@@ -194,10 +195,23 @@ interface SeededFood {
  * journal goes through addFreeEntry: the generated database has to be shaped
  * exactly like a real one — canonical macros, portions positioned the same
  * way, the same validation — or it stops reproducing anything.
+ *
+ * REUSES A FOOD THAT IS ALREADY THERE, by name. The button in Settings says
+ * "nothing is erased" and can be pressed twice — to stack thirty days on top
+ * of ninety, which is a reasonable thing to want. Entries accumulating is the
+ * point; the catalogue duplicating is not. Six foods becoming twelve, in two
+ * sets of identical names, would make quick access unreadable and the recents
+ * split between two rows for the same bread.
+ *
+ * Matched on the name alone: there is no unique index on it (specs 8.5 never
+ * asks for one — two yoghurts from different brands are two foods), so this is
+ * the generator's own rule and not a schema guarantee.
  */
 function seedFoods(tx: AppDatabase): SeededFood[] {
+  const existing = new Map(listFoods(tx).map((food) => [food.name, food.id]));
+
   return FOODS.map((food) => ({
-    id: createFood(tx, {
+    id: existing.get(food.name) ?? createFood(tx, {
       ...emptyFoodDraft(),
       name: food.name,
       brand: food.brand,

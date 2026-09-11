@@ -150,6 +150,37 @@ describe('seedJournal', () => {
     expect(units).toEqual(['g', 'ml']);
   });
 
+  it('reuses the food catalogue on a second run instead of duplicating it', () => {
+    // The button in Settings says "nothing is erased" and can be pressed twice
+    // — thirty days stacked on top of ninety is a reasonable thing to want.
+    // Entries accumulating is the point; six foods becoming twelve under two
+    // sets of identical names is not: quick access would show every food
+    // twice, and the recents would split between two rows for the same bread.
+    const first = seedJournal(fixture.db, { endDate: END, days: 20, seed: 31 });
+    const second = seedJournal(fixture.db, { endDate: END, days: 20, seed: 37 });
+
+    expect(countRows(fixture.raw, 'food')).toBe(first.foods);
+    expect(second.foods).toBe(first.foods);
+
+    const names = fixture.raw
+      .prepare('SELECT name, COUNT(*) AS n FROM food GROUP BY name HAVING n > 1')
+      .all();
+    expect(names).toEqual([]);
+
+    // Portions are not duplicated either — they would have been, had the
+    // second run created a second set of foods to hang them from.
+    const portions = fixture.raw
+      .prepare(
+        'SELECT food_id, name, COUNT(*) AS n FROM food_portion GROUP BY food_id, name HAVING n > 1',
+      )
+      .all();
+    expect(portions).toEqual([]);
+
+    // And the entries really did accumulate, which is what makes the two runs
+    // worth allowing at all.
+    expect(countRows(fixture.raw, 'journal_entry')).toBe(first.entries + second.entries);
+  });
+
   it('logs foods that actually resolve, and some as portions', () => {
     const report = seedJournal(fixture.db, { endDate: END, days: 60, seed: 23 });
     expect(report.entries).toBeGreaterThan(0);
