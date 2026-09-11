@@ -20,6 +20,7 @@ android/
 # Real data must never reach a public repository (D15).
 # Demo datasets are generated, never copied from real data.
 *.export.json
+suivi-export-*.json
 /exports/
 /local-data/
 

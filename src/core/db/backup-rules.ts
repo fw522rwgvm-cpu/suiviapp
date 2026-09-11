@@ -1,7 +1,8 @@
 /**
- * Naming and rotation rules for the pre-migration backups (D6/G1) — pure,
- * and importing nothing. The filesystem-facing half lives in backup.ts.
+ * Naming and rotation rules for the pre-migration backups (D6/G1) — pure, and
+ * importing nothing native. The filesystem-facing half lives in backup.ts.
  */
+import { formatInstantStamp } from '@/core/format';
 
 export const BACKUP_DIRECTORY_NAME = 'backups';
 const BACKUP_PREFIX = 'suivi-';
@@ -13,17 +14,13 @@ function isBackup(name: string): boolean {
 }
 
 /**
- * Names a backup from the current instant. This reads the clock, never a civil
- * date string: D3 forbids parsing 'YYYY-MM-DD' through the Date constructor,
- * but turning an instant into a technical filename is what instants are for.
- * Every field is padded so that sorting by name is sorting by age.
+ * Names a backup from the current instant. The stamp now comes from
+ * core/format, which the export naming of D7 shares: two padding loops would
+ * be two loops free to drift, and a backup that stops sorting next to an
+ * export is a folder the user has to think about.
  */
 export function backupFileName(now: Date): string {
-  const pad = (value: number, width = 2): string => String(value).padStart(width, '0');
-  const stamp =
-    `${pad(now.getFullYear(), 4)}${pad(now.getMonth() + 1)}${pad(now.getDate())}` +
-    `-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-  return `${BACKUP_PREFIX}${stamp}${BACKUP_SUFFIX}`;
+  return `${BACKUP_PREFIX}${formatInstantStamp(now)}${BACKUP_SUFFIX}`;
 }
 
 /**
