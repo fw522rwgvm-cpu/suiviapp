@@ -46,6 +46,15 @@ export interface ExportColumn {
   property: string;
   kind: ColumnKind;
   notNull: boolean;
+  /**
+   * Whether SQLite fills this column on its own.
+   *
+   * Read by the validator, not by the exporter: SQLite cannot ALTER TABLE ADD
+   * COLUMN a NOT NULL column without a default, so "NOT NULL and no default"
+   * is exactly the set of columns an old archive cannot legitimately be
+   * missing. The database's own rule does the reasoning.
+   */
+  hasDefault: boolean;
   isPrimaryKey: boolean;
   value: ValueRule | null;
   /**
@@ -64,6 +73,17 @@ export interface ExportedTable {
   name: string;
   /** The Drizzle table, to select from and to insert into. */
   table: SQLiteTable;
+  /**
+   * Migration tag that created this table.
+   *
+   * This is what lets an old archive be read without inventing tables it could
+   * not possibly have carried. An archive written at 0001_journal has no
+   * `food` key, and that is not a corrupt file — `food` did not exist. Without
+   * this field the importer would have to choose between refusing every old
+   * archive and accepting a truncated one in silence, and the second is how a
+   * safety net turns into a trap.
+   */
+  introducedIn: string;
   columns: readonly ExportColumn[];
   /** SQL names of the primary key columns. Used to order and to deduplicate. */
   primaryKey: readonly string[];
@@ -86,7 +106,12 @@ export interface TableExclusion {
  * the fill and checked afterwards, which is the procedure D6 already prescribes
  * for table rebuilds.
  */
-const EXPORT_ORDER = [setting, day, dayMeal, journalEntry] as const;
+const EXPORT_ORDER: readonly { table: SQLiteTable; introducedIn: string }[] = [
+  { table: setting, introducedIn: '0000_initial_setting' },
+  { table: day, introducedIn: '0001_journal' },
+  { table: dayMeal, introducedIn: '0001_journal' },
+  { table: journalEntry, introducedIn: '0001_journal' },
+];
 
 /**
  * Tables deliberately left out of the export, each with its reason (D7).
@@ -149,7 +174,8 @@ function toKind(columnType: string): ColumnKind {
   }
 }
 
-function describe(table: SQLiteTable): ExportedTable {
+function describe(entry: { table: SQLiteTable; introducedIn: string }): ExportedTable {
+  const { table, introducedIn } = entry;
   const name = getTableName(table);
   const rules = VALUE_RULES[name] ?? {};
 
@@ -159,6 +185,7 @@ function describe(table: SQLiteTable): ExportedTable {
       property,
       kind: toKind(column.columnType),
       notNull: column.notNull,
+      hasDefault: column.hasDefault,
       isPrimaryKey: column.primary,
       value: rules[column.name] ?? null,
       column,
@@ -168,6 +195,7 @@ function describe(table: SQLiteTable): ExportedTable {
   return {
     name,
     table,
+    introducedIn,
     columns,
     primaryKey: columns.filter((column) => column.isPrimaryKey).map((column) => column.name),
   };

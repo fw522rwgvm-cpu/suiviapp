@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import bundle from '../../src/core/db/migrations/bundle.generated';
 import {
   allSchemaTableNames,
   declaredValueRules,
@@ -77,6 +78,17 @@ describe('table catalog', () => {
     // without one is a decision to take, not a default to inherit.
     for (const table of exportedTables()) {
       expect(table.primaryKey.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('dates every table by a migration tag the binary actually carries', () => {
+    // A tag nobody recognises would make the "is this archive older than that
+    // table?" comparison fall through, and an old archive would start
+    // importing tables it never carried as missing ones.
+    const tags = new Set(bundle.journal.entries.map((entry) => entry.tag));
+
+    for (const table of exportedTables()) {
+      expect(tags.has(table.introducedIn)).toBe(true);
     }
   });
 
