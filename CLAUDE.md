@@ -46,11 +46,21 @@ L'application doit tolérer un arrêt forcé à tout moment sans perte.
 ---
 
 ## État du projet
-Tranche 0 livrée. Tranche 1 (journal en saisie libre) à venir.
+Tranches 0 et 1 livrées. Tranche 2 (export / import) à venir — le filet, placé
+délibérément avant tout le reste parce que de vraies données s'accumulent
+depuis la tranche 1 et que rien ne les protège encore.
 
-**La migration initiale est encore dégelable.** Elle se gèle le jour où la
-première donnée réelle est saisie sur l'installation quotidienne, c'est-à-dire
-à la tranche 1 (D6/G2). À partir de là : ajout seul.
+**Le schéma est gelé. Ajout seul désormais (D6/G2).** La migration initiale
+n'a jamais été dégelée : `0001_journal` a été ajoutée à côté. Réécrire `0000`
+aurait changé son horodatage, fait voir une migration en attente à
+l'installation quotidienne, qui aurait tenté de recréer `setting` et échoué au
+démarrage. Le dégel servait à corriger `0000` ; `0000` n'avait rien à
+corriger.
+
+Divergence assumée et validée avec le §2.3, qui pose ses ensembles de valeurs
+en commentaires : `journal_entry.kind` et `base_unit` portent de vraies
+contraintes `CHECK`. SQLite ne permet pas d'en ajouter une plus tard sans
+reconstruire la table, et la tranche 2 importera du JSON arbitraire dedans.
 
 ## Identifiants d'application
 Décision irréversible : changer l'identifiant quotidien vide son conteneur
@@ -68,7 +78,9 @@ qui écrase l'installation quotidienne.
 - `npm run typecheck` — TypeScript strict
 - `npm test` — suite complète sous UTC, America/New_York et Pacific/Kiritimati
 - `npm run migrations:generate` — migration Drizzle **et** module embarqué
-- `npm run bundle:ios` — fabrique le bundle JS sans Mac, pré-vol utile
+- `npm run bundle:ios` — fabrique le bundle JS sans Mac, pré-vol utile.
+  C'est le seul contrôle local qui attrape ce que `tsc` ne voit pas :
+  résolution de modules, greffons Babel, routes `expo-router`.
 
 Vérifier avec `npm ci` avant de pousser, jamais `npm install` : le premier est
 strict, le second permissif, et la CI utilise le premier.
@@ -99,6 +111,10 @@ qui enchaîne les deux.
 Séquence de démarrage, normative : ouvrir et poser les PRAGMA → refuser si la
 base est plus récente → sauvegarder → migrer. Le refus précède la sauvegarde.
 
+La connexion s'ouvre avec `enableChangeListener: true`. Sans cette option,
+`addDatabaseChangeListener` ne reçoit rien et le bus de D8 n'invalide jamais
+rien : chaque écran affiche les chiffres d'hier, sans le dire.
+
 ## Pièges de l'environnement local
 - `npm install` échoue : `better-sqlite3` tente de se recompiler alors qu'il
   embarque ses binaires, et `make` est absent de ce WSL2. Utiliser
@@ -109,6 +125,15 @@ base est plus récente → sauvegarder → migrer. Le refus précède la sauvega
   Remède : `rm -rf node_modules package-lock.json && npm install --ignore-scripts`,
   puis vérifier que le lockfile porte bien les quinze liaisons.
 - Un dépôt fraîchement cloné n'a pas de `node_modules` : `npm ci --ignore-scripts`.
+- **`ulid` lève une exception sur l'appareil si on le laisse choisir son
+  générateur.** Il cherche `crypto.getRandomValues` sur l'objet global et
+  échoue s'il ne le trouve pas, sans repli. Ni React Native 0.86 ni les
+  polyfills *winter* d'Expo ne le définissent — ils couvrent `AbortSignal`,
+  `FormData`, `TextDecoder` et `URL`, pas `crypto`. La suite Node reste verte
+  puisque Node l'a. `core/id` lui injecte donc son générateur ;
+  `monotonicFactory` incrémente dans la milliseconde, donc aucune collision
+  n'est possible quelle que soit la qualité du tirage. Un test le fixe en
+  supprimant `crypto` du global.
 - Metro affiche `React Native DevTools ... libnspr4.so: cannot open shared
   object file`. C'est le débogueur graphique de bureau, qui réclame des
   bibliothèques GUI absentes de WSL. Sans effet sur le bundling ni sur
@@ -174,16 +199,84 @@ coup d'œil.
 `expo-router/unstable-native-tabs` est marqué **unstable** : à revérifier à
 chaque montée de SDK, et chaque vérification coûte un cycle CI.
 
-## Points laissés ouverts par la tranche 0
+## Ce que la tranche 1 a établi
+
+**Où vivent lecture et écriture.** `features/*/data/` porte deux faces :
+`*-writes.ts`, fonctions transactionnelles portant les règles métier, et
+`*-reads.ts`, fonctions de lecture pures. Ni l'une ni l'autre n'importe de
+module natif : elles prennent la base en paramètre, typée `AppDatabase` sur
+`BaseSQLiteDatabase<'sync', unknown, typeof schema>`, l'ancêtre commun à
+`expo-sqlite` et `better-sqlite3`. C'est ce qui les fait tourner contre un
+vrai fichier SQLite en Node, ce que D15 réclame. Corollaire : le résultat de
+`.run()` est inconnu et ne se lit jamais — inutile, les identifiants étant
+frappés par l'application. `*-queries.ts` habille le tout en hooks.
+
+**Comment le bus traduit sans table de correspondance.** Chaque requête
+déclare, dans son `meta`, les tables qu'elle lit, via `readsFrom(day, dayMeal)`
+— les noms viennent des objets du schéma, pas de chaînes. Le bus invalide par
+prédicat. Aucun site d'écriture n'énumère quoi que ce soit, et il n'y a pas un
+seul `onSuccess` dans la couche de requête. Regroupement de 60 ms : le hook
+SQLite se déclenche ligne par ligne, et loguer un repas sur une journée
+virtuelle en écrit six.
+
+Deux conséquences assumées : le hook se déclenche **pendant** une transaction,
+y compris une qui sera annulée, donc le bus peut invalider sur une écriture
+qui n'a pas eu lieu — coût : un rafraîchissement pour rien, jamais un chiffre
+faux.
+
+**La matérialisation n'est jamais une opération publique.** `ensureMaterialized`
+n'est pas exporté. Elle est la première instruction, dans la même transaction,
+de chaque écriture qui peut porter sur une journée virtuelle. Appelable seule,
+un arrêt forcé entre elle et l'action qui la justifie laisserait une journée
+vide matérialisée — de la donnée créée par consultation, ce que le §8.2
+interdit. Les repas se désignent **par position**, pas par identifiant : sur
+une journée virtuelle ils n'en ont pas.
+
+**Les repas par défaut sont en code**, dans `features/nutrition/domain/day-plan.ts`.
+Le §8.2 suppose qu'un modèle existe toujours et aucun n'existe avant la
+tranche 5 : c'est un trou de spécification, comblé par une liste de repli.
+`day.template_id_snapshot` reste `NULL`, ce qui évitera tout changement de
+schéma tranche 5.
+
+**La saisie libre tient sans cas particulier — dans les agrégations.** Une
+somme de macros s'écrit sans aucune clause filtrant les feuilles et reste
+juste : un parent groupé porte `NULL`, `SUM` l'ignore. Les cas particuliers
+sont strictement d'affichage : ne pas écrire « 100 g », ne pas proposer de
+champ quantité.
+
+## Points ouverts après la tranche 1
+- **Vérification iPhone en attente** : le code est complet, typé, testé et
+  bundlé, mais rien de l'interface n'a tourné sur l'appareil.
+- L'heure de bascule de la journée n'est **pas lue** : `currentLocalDate()`
+  utilise le défaut de minuit. Son réglage et sa lecture arrivent tranche 7.
+- Pas d'anneau de progression : il réclame `react-native-svg`, dépendance
+  native que le §7 place avec les primitives graphiques de la tranche 7. Sans
+  objectif avant la tranche 5, ce serait un cycle CI pour un cercle vide.
+- **Hypothèse signalée** : le §5.1 parle d'un écart kcal de 10 % sans nommer le
+  dénominateur. La valeur théorique est retenue. Faux positif connu et sans
+  remède dans les specs : l'alcool fait 7 kcal/g et n'est pas une macro suivie,
+  donc un verre de vin déclenchera toujours l'avertissement. Non bloquant.
+- Arbitrage des gestes entre le balayage d'une rangée et celui du jour : le
+  plus interne gagne. À éprouver au doigt.
+- `day_meal` n'a pas de contrainte d'unicité sur `(date, position)` là où
+  `food_portion` en a une sur `(food_id, name)`. Rigueur inégale du §2.3,
+  suivie telle quelle.
+- Le taux d'adhérence de la tranche 7 devra compter les journées **ayant au
+  moins une entrée**, pas les journées matérialisées : une journée vidée de
+  ses entrées reste matérialisée, l'utilisateur ayant bien agi dessus.
+
+## Points hérités de la tranche 0, toujours ouverts
 - Où vit le sélecteur segmenté de l'onglet Entraînement, une fois qu'il
   composera Musculation et Activités (tranche 10). L'écran est provisoirement
   dans `features/strength`.
-- Les en-têtes natifs. `NativeTabs` n'en fournit aucun : les écrans portent
-  leur titre. Le §7 place une icône de bibliothèque dans l'en-tête du Journal,
-  ce qui imposera un `Stack` natif par onglet — à faire à la tranche 1, quand
-  il y aura quelque chose à y mettre, pas avant.
+- ~~Les en-têtes natifs.~~ **Résolu.** Un groupe `app/(tabs)/(journal)/`
+  n'ajoute aucun segment de chemin : l'écran reste la route index du groupe
+  d'onglets et gagne un `Stack` natif. L'icône de bibliothèque du §7 s'y
+  posera tranche 3.
 - Le dossier de sauvegardes s'appelle `backups`, en anglais comme le code,
   alors qu'il est visible dans l'app Fichiers.
 - `src/core/db/version-guard.ts` et `database-gate.tsx` ne figurent pas dans
   l'arborescence du §3 : G3 exige un refus de démarrage avec message, il lui
-  faut un porteur.
+  faut un porteur. S'y ajoutent `core/db/database.ts`, `app-database.ts`,
+  `change-bus.ts` (celui-ci prévu au §3), `core/id/`, `core/format/` et
+  `core/query/`.
