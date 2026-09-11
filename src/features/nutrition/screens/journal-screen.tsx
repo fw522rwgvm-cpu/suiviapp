@@ -1,7 +1,7 @@
 import { SymbolView } from 'expo-symbols';
 import { Stack, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { addDays, currentLocalDate, type LocalDate } from '@/core/date';
 import { formatDayTitle } from '@/core/format';
@@ -17,6 +17,7 @@ import {
 } from '../data/day-queries';
 import type { JournalEntryView } from '../data/day-reads';
 import { MealSection } from '../components/meal-section';
+import { MonthCalendar } from '../components/month-calendar';
 import { RemainingBanner } from '../components/remaining-banner';
 import { dayTargets, type DayMealView } from '../domain/day-plan';
 import { ZERO_MACROS } from '../domain/macros';
@@ -41,6 +42,12 @@ export function JournalScreen() {
   // decides what today is (D3).
   const [today] = useState<LocalDate>(() => currentLocalDate());
   const [date, setDate] = useState<LocalDate>(today);
+
+  // A plain React Native modal rather than a route: the date is screen state,
+  // and routing it out and back would mean plumbing a return value through the
+  // router for a sheet that closes on selection.
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerMonth, setPickerMonth] = useState<LocalDate>(today);
 
   const day = useDay(date);
   const totals = useDayTotals(date);
@@ -140,17 +147,18 @@ export function JournalScreen() {
           ),
           headerRight: () => (
             <View style={styles.headerRight}>
-              {date === today ? null : (
-                <Pressable
-                  onPress={() => setDate(today)}
-                  hitSlop={10}
-                  accessibilityRole="button"
-                >
-                  <Text style={[styles.todayLink, { color: theme.colors.accent }]}>
-                    Aujourd’hui
-                  </Text>
-                </Pressable>
-              )}
+              {/* Direct access to a date (specs 8.3). */}
+              <Pressable
+                onPress={() => {
+                  setPickerMonth(date);
+                  setPickerOpen(true);
+                }}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Choisir une date"
+              >
+                <SymbolView name="calendar" size={19} tintColor={theme.colors.accent} />
+              </Pressable>
               <HeaderChevron
                 symbol="chevron.right"
                 label="Jour suivant"
@@ -200,6 +208,43 @@ export function JournalScreen() {
           </Text>
         </ScrollView>
       </GestureDetector>
+
+      <Modal
+        visible={pickerOpen}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setPickerOpen(false)}
+      >
+        <View style={[styles.sheet, { backgroundColor: theme.colors.background }]}>
+          <View style={styles.sheetHeader}>
+            <Pressable onPress={() => setPickerOpen(false)} accessibilityRole="button">
+              <Text style={[styles.sheetAction, { color: theme.colors.accent }]}>Fermer</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                setDate(today);
+                setPickerOpen(false);
+              }}
+              accessibilityRole="button"
+            >
+              <Text style={[styles.sheetAction, { color: theme.colors.accent }]}>
+                Aujourd’hui
+              </Text>
+            </Pressable>
+          </View>
+
+          <MonthCalendar
+            month={pickerMonth}
+            selected={date}
+            today={today}
+            onMonthChange={setPickerMonth}
+            onSelect={(chosen) => {
+              setDate(chosen);
+              setPickerOpen(false);
+            }}
+          />
+        </View>
+      </Modal>
     </>
   );
 }
@@ -223,8 +268,10 @@ function HeaderChevron({
 
 const styles = StyleSheet.create({
   content: { padding: 16, gap: 12, paddingBottom: 48 },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 16 },
-  todayLink: { fontSize: 16 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 18 },
+  sheet: { flex: 1, padding: 16, gap: 8 },
+  sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8 },
+  sheetAction: { fontSize: 17 },
   addMeal: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 14,
