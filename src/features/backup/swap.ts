@@ -37,11 +37,13 @@ import type { ValidatedPayload } from './domain/validate-payload';
  * What does NOT survive is React Query's cache, because the update hook does
  * not fire for pages written by the backup API. See announceFullReplacement.
  *
- * NOT VERIFIED, AND IT WILL COST A CYCLE: that backupDatabaseSync behaves with
- * a destination opened in WAL mode and with enableChangeListener. SQLite's
- * documented constraint is on page size, which matches here because both files
- * are created by this application with the default. The reasoning holds; it is
- * not an observation.
+ * VERIFIED ON THE DEVICE, 12/09/2026: backupDatabaseSync does work with a
+ * destination opened in WAL mode and with enableChangeListener. It was the one
+ * thing about this slice that could not be settled off the phone — SQLite's
+ * documented constraint is on page size, which matches because both files are
+ * created by this application with the default, but a reasoning is not an
+ * observation. The observation now exists: a full export from the daily
+ * installation imported into the development one, same figures, no restart.
  */
 
 export interface SwapOutcome extends BuildReport {

@@ -46,7 +46,14 @@ L'application doit tolérer un arrêt forcé à tout moment sans perte.
 ---
 
 ## État du projet
-Tranches 0, 1 et 2 livrées. Tranche 3 (base d'aliments personnelle) à venir.
+Tranches 0, 1 et 2 livrées et vérifiées sur l'iPhone. Tranche 3 (base
+d'aliments personnelle) à venir.
+
+**Le filet existe.** Depuis le 12/09/2026, l'aller-retour export / import est
+vérifié de bout en bout sur l'appareil : export depuis la quotidienne, sortie
+par la feuille de partage, import dans la dev, mêmes chiffres. Les refus
+d'archive, la survie de la base après un refus, et le nettoyage d'un import
+interrompu le sont aussi.
 
 **Le numéro de version du format d'export est figé à 1, pour toujours.** Dès
 qu'un export réel existe, la version 1 doit rester lisible : sinon l'archive
@@ -329,11 +336,18 @@ recevoir des fichiers. Avec un compte Apple gratuit et SideStore, une cible de
 plus veut dire un second identifiant et un second profil. `shareAsync` n'en a
 pas besoin : le module natif est autolinké par `expo-module.config.json`.
 
-**La bascule ne redémarre pas l'application.** `backupDatabaseSync` est l'API
-de sauvegarde en ligne de SQLite : elle copie page à page vers une connexion
-**déjà ouverte**. L'objet `SQLiteDatabase`, l'instance Drizzle et l'abonnement
-du bus survivent tous. Aucune dépendance du §5 ne sait redémarrer une
-application, donc c'était la seule voie praticable.
+**La bascule ne redémarre pas l'application, et c'est vérifié sur l'appareil.**
+`backupDatabaseSync` est l'API de sauvegarde en ligne de SQLite : elle copie
+page à page vers une connexion **déjà ouverte**. L'objet `SQLiteDatabase`,
+l'instance Drizzle et l'abonnement du bus survivent tous. Aucune dépendance du
+§5 ne sait redémarrer une application, donc c'était la seule voie praticable.
+
+Le doute portait sur une destination en WAL ouverte avec
+`enableChangeListener` : la contrainte que SQLite documente porte sur la taille
+de page, identique ici, mais un raisonnement n'est pas une observation. Levé le
+12/09/2026 — export complet de la quotidienne importé dans la dev, mêmes
+chiffres, sans redémarrage. **Les deux replis envisagés n'ont pas servi et ne
+sont pas écrits.**
 
 **Mais le hook de mise à jour ne voit rien de cette bascule** : il réagit aux
 lignes, la sauvegarde écrit des pages. Le bus resterait muet pendant que chaque
@@ -390,13 +404,6 @@ de la fenêtre de trois — et celle-là est la copie que personne n'a choisi de
 prendre.
 
 ## Points ouverts après la tranche 2
-- **`backupDatabaseSync` sur une destination en WAL avec `enableChangeListener`
-  n'est pas vérifié.** La contrainte documentée de SQLite porte sur la taille de
-  page, identique ici puisque les deux fichiers naissent de cette application
-  avec le défaut. Le raisonnement tient ; ce n'est pas une observation. Replis,
-  dans l'ordre : fermer, déplacer le fichier, remonter `DatabaseGate` ; puis,
-  seulement si D7 est modifié explicitement, vider et remplir dans une
-  transaction unique.
 - **Hypothèse signalée** : `export_reminder_days` vaut 7 par défaut. Les specs
   demandent une mise en évidence « au-delà d'un délai » sans jamais donner le
   délai. 7 pour coïncider avec le cycle du certificat SideStore. C'est un
