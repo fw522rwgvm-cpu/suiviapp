@@ -1,8 +1,9 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { formatKcal, formatMacro, formatQuantity } from '@/core/format';
+import { formatKcal, formatMacro } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import type { JournalEntryView } from '../data/day-reads';
 import { hasKcalWarning } from '../domain/macros';
+import { formatEntryQuantity } from './portion-text';
 
 /**
  * One line of the journal.
@@ -31,7 +32,14 @@ export function EntryRow({
       ? total === null
         ? null
         : `P ${formatMacro(total.protein)} · G ${formatMacro(total.carbs)} · L ${formatMacro(total.fat)}`
-      : formatQuantity(entry.quantity, entry.baseUnit);
+      : // A food logged as a portion says so: "2 tranches · 50 g". Showing only
+        // the grams would be showing the storage form.
+        formatEntryQuantity(
+          entry.quantity,
+          entry.baseUnit,
+          entry.portionName,
+          entry.portionQuantity,
+        );
 
   return (
     <Pressable

@@ -24,7 +24,25 @@ export default function RootLayout() {
           <QueryProvider>
             <Stack screenOptions={{ headerShown: false }}>
               <Stack.Screen name="(tabs)" />
-              {/* The add screen is a full-screen modal (specs 7). */}
+              {/*
+                The add screen is a full-screen modal (specs 7). All three are
+                siblings rather than a nested stack: the fast path never
+                navigates between them — choosing a food swaps the content of
+                the add modal — so nesting would buy an animation nobody sees
+                and cost a second dismissal on the way out.
+              */}
+              <Stack.Screen
+                name="(modals)/add-entry"
+                options={{ presentation: 'fullScreenModal', headerShown: true }}
+              />
+              <Stack.Screen
+                name="(modals)/quantity"
+                options={{
+                  presentation: 'fullScreenModal',
+                  headerShown: true,
+                  title: 'Quantité',
+                }}
+              />
               <Stack.Screen
                 name="(modals)/free-entry"
                 options={{

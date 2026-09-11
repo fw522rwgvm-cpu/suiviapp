@@ -160,14 +160,31 @@ export function JournalScreen() {
     transform: [{ translateX: -width + drag.value }],
   }));
 
+  /**
+   * The add screen of specs 8.4 — quick access, search, and free entry one tap
+   * away. Slice 1 came straight here to free entry, which was the only path
+   * that existed then.
+   */
   function openAdd(pageDate: LocalDate, meal: DayMealView): void {
     router.push({
-      pathname: '/(modals)/free-entry',
+      pathname: '/(modals)/add-entry',
       params: { date: pageDate, mealPosition: String(meal.position) },
     });
   }
 
+  /**
+   * Editing goes to the screen that matches what the entry IS.
+   *
+   * A free entry is four numbers and has no quantity anyone typed, so it
+   * reopens its own form. A food entry is a frozen capsule plus a quantity —
+   * and the quantity is the only part of it that may change (D5/R1), so it
+   * reopens on that alone.
+   */
   function openEdit(pageDate: LocalDate, entry: JournalEntryView): void {
+    if (entry.kind === 'food') {
+      router.push({ pathname: '/(modals)/quantity', params: { entryId: entry.id } });
+      return;
+    }
     router.push({
       pathname: '/(modals)/free-entry',
       params: { date: pageDate, entryId: entry.id },
@@ -236,11 +253,31 @@ export function JournalScreen() {
         options={{
           title: formatDayTitle(date, today),
           headerLeft: () => (
-            <HeaderChevron
-              symbol="chevron.left"
-              label="Jour précédent"
-              onPress={() => slideTo(-1)}
-            />
+            <View style={styles.headerLeft}>
+              <HeaderChevron
+                symbol="chevron.left"
+                label="Jour précédent"
+                onPress={() => slideTo(-1)}
+              />
+              {/*
+                The library, reached by an icon in the Journal header (specs 7).
+                Two icons a side rather than three on the right: the chevrons
+                keep the outer edges, where the thumb already goes for them, and
+                the two "go somewhere" actions sit inboard.
+              */}
+              <Pressable
+                onPress={() => router.push('/(tabs)/(journal)/library')}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Bibliothèque"
+              >
+                <SymbolView
+                  name="books.vertical"
+                  size={19}
+                  tintColor={theme.colors.accent}
+                />
+              </Pressable>
+            </View>
           ),
           headerRight: () => (
             <View style={styles.headerRight}>
@@ -340,6 +377,7 @@ function HeaderChevron({
 
 const styles = StyleSheet.create({
   strip: { flex: 1, flexDirection: 'row' },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 18 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 18 },
   sheet: { flex: 1, padding: 16, gap: 8 },
   sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8 },

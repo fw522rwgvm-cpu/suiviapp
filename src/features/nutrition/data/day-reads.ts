@@ -7,6 +7,7 @@ import {
   journalEntry,
   type BaseUnit,
   type DayMealId,
+  type FoodId,
   type JournalEntryId,
   type JournalEntryKind,
 } from '@/core/db/schema';
@@ -141,7 +142,19 @@ export interface JournalEntryView {
   name: string;
   brand: string | null;
   baseUnit: BaseUnit | null;
+  /** Always in base units, whatever the user typed. */
   quantity: number | null;
+  /** The food this came from, if any. Informative, without a live link. */
+  sourceFoodId: FoodId | null;
+  /**
+   * How the quantity was expressed, frozen at the time (D5/R1).
+   *
+   * Carried so the journal can say "2 tranches" rather than "50 g" — showing
+   * the base quantity for an entry logged as a portion would be showing the
+   * storage form, the same mistake as showing a free entry as "100 g".
+   */
+  portionName: string | null;
+  portionQuantity: number | null;
   /** Macros for 100 base units, as frozen (D5/R1). NULL on a grouped parent. */
   reference: Macros | null;
   /** Derived, never stored (D9). NULL where there is no reference to scale. */
@@ -168,6 +181,9 @@ function selectEntries(db: AppDatabase, where: SQL | undefined): JournalEntryVie
       brand: journalEntry.brand,
       baseUnit: journalEntry.baseUnit,
       quantity: journalEntry.quantity,
+      sourceFoodId: journalEntry.sourceFoodId,
+      portionName: journalEntry.portionName,
+      portionQuantity: journalEntry.portionQuantity,
       protein100: journalEntry.protein100,
       carbs100: journalEntry.carbs100,
       fat100: journalEntry.fat100,
@@ -197,6 +213,9 @@ function selectEntries(db: AppDatabase, where: SQL | undefined): JournalEntryVie
       brand: row.brand,
       baseUnit: row.baseUnit,
       quantity: row.quantity,
+      sourceFoodId: row.sourceFoodId,
+      portionName: row.portionName,
+      portionQuantity: row.portionQuantity,
       reference,
       total:
         reference === null || row.quantity === null ? null : totalOf(reference, row.quantity),
