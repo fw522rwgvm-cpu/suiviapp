@@ -108,8 +108,40 @@ base est plus récente → sauvegarder → migrer. Le refus précède la sauvega
   **du lockfile**, et les tests échouent sur « Cannot find native binding ».
   Remède : `rm -rf node_modules package-lock.json && npm install --ignore-scripts`,
   puis vérifier que le lockfile porte bien les quinze liaisons.
-- Metro n'est pas joignable depuis WSL2 par défaut : la boucle de D1 exige le
-  mode réseau `mirrored` de WSL2, ou un `netsh portproxy`. Non résolu.
+- Un dépôt fraîchement cloné n'a pas de `node_modules` : `npm ci --ignore-scripts`.
+- Metro affiche `React Native DevTools ... libnspr4.so: cannot open shared
+  object file`. C'est le débogueur graphique de bureau, qui réclame des
+  bibliothèques GUI absentes de WSL. Sans effet sur le bundling ni sur
+  l'appareil. Pour l'avoir : `sudo apt install libnspr4 libnss3`.
+
+## Boucle de développement (résolue)
+WSL2 est en **mode réseau miroir** : il partage les interfaces de Windows, donc
+l'iPhone joint Metro directement. Plus de NAT, et surtout pas d'IP qui change à
+chaque redémarrage.
+
+`C:\Users\colin\.wslconfig` :
+
+```ini
+[wsl2]
+networkingMode=mirrored
+```
+
+Appliqué par `wsl --shutdown` depuis PowerShell — ce qui tue la session WSL en
+cours, terminal Claude Code compris.
+
+Vérifier le mode : `ip -4 -o addr show` doit montrer l'IP Wi-Fi du PC
+(`192.168.1.172` au 11/09/2026) et non un `172.x.x.x`.
+
+Marche à suivre : `npm start`, puis ouvrir `http://<IP>:8081` **dans Safari sur
+l'iPhone** avant de suspecter l'application — ça isole le réseau du client de
+développement. Puis saisir cette URL dans le lanceur de « Suivi dev ».
+
+Le `ip.txt` embarqué dans le build dev contient l'IP du runner GitHub, figée à
+la compilation. C'est normal ; la saisie manuelle de l'URL le contourne.
+
+Si le téléphone ne joint pas Metro : règle de pare-feu entrante sur le port
+8081, puis le pare-feu Hyper-V. Les box isolant les clients sur le réseau
+invité et les VPN actifs cassent aussi la liaison.
 
 ## Direction iOS 26
 Demande explicite : utiliser les outils natifs d'iOS 26, Liquid Glass compris.
