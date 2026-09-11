@@ -37,4 +37,19 @@ for (const zone of ZONES) {
   }
 }
 
+if (failed) {
+  // npm drops platform-specific optional dependencies whenever the tree is
+  // mutated (npm/cli#4828). It has bitten this project three times, always
+  // right after an `expo install`, and the error it produces names rolldown
+  // rather than the cause.
+  console.error(
+    '\nIf the failure above says "Cannot find native binding", the dependency\n' +
+      'tree lost an optional package. Rebuild it with:\n' +
+      '  rm -rf node_modules package-lock.json && npm install --ignore-scripts\n' +
+      '(--ignore-scripts skips better-sqlite3 rebuilding itself for nothing:\n' +
+      ' it ships prebuilt binaries, and building them needs make, which this\n' +
+      ' machine does not have.)',
+  );
+}
+
 process.exit(failed ? 1 : 0);
