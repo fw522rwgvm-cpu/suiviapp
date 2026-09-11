@@ -8,6 +8,13 @@
       "when": 1789109769717,
       "tag": "0000_initial_setting",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1789119418521,
+      "tag": "0001_journal",
+      "breakpoints": true
     }
   ]
 }

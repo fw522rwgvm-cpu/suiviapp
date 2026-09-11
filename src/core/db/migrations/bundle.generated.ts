@@ -33,11 +33,19 @@ const bundle: MigrationBundle = {
         "when": 1789109769717,
         "tag": "0000_initial_setting",
         "breakpoints": true
+      },
+      {
+        "idx": 1,
+        "version": "6",
+        "when": 1789119418521,
+        "tag": "0001_journal",
+        "breakpoints": true
       }
     ]
   },
   migrations: {
   m0000: "CREATE TABLE `setting` (\n\t`key` text PRIMARY KEY NOT NULL,\n\t`value` text NOT NULL\n);\n",
+  m0001: "CREATE TABLE `day` (\n\t`date` text PRIMARY KEY NOT NULL,\n\t`template_id_snapshot` text,\n\t`template_name_snapshot` text,\n\t`materialized_at` integer NOT NULL\n);\n--> statement-breakpoint\nCREATE TABLE `day_meal` (\n\t`id` text PRIMARY KEY NOT NULL,\n\t`date` text NOT NULL,\n\t`position` integer NOT NULL,\n\t`name` text NOT NULL,\n\t`target_protein` real,\n\t`target_carbs` real,\n\t`target_fat` real,\n\t`target_kcal` real,\n\tFOREIGN KEY (`date`) REFERENCES `day`(`date`) ON UPDATE no action ON DELETE cascade\n);\n--> statement-breakpoint\nCREATE INDEX `ix_day_meal_date` ON `day_meal` (`date`);--> statement-breakpoint\nCREATE TABLE `journal_entry` (\n\t`id` text PRIMARY KEY NOT NULL,\n\t`day_meal_id` text NOT NULL,\n\t`date` text NOT NULL,\n\t`parent_entry_id` text,\n\t`position` integer NOT NULL,\n\t`kind` text NOT NULL,\n\t`source_food_id` text,\n\t`source_recipe_id` text,\n\t`name` text NOT NULL,\n\t`brand` text,\n\t`base_unit` text,\n\t`quantity` real,\n\t`portion_name` text,\n\t`portion_quantity` real,\n\t`protein_100` real,\n\t`carbs_100` real,\n\t`fat_100` real,\n\t`kcal_100` real,\n\t`created_at` integer,\n\t`updated_at` integer,\n\tFOREIGN KEY (`day_meal_id`) REFERENCES `day_meal`(`id`) ON UPDATE no action ON DELETE cascade,\n\tFOREIGN KEY (`parent_entry_id`) REFERENCES `journal_entry`(`id`) ON UPDATE no action ON DELETE cascade,\n\tCONSTRAINT \"ck_entry_kind\" CHECK(\"journal_entry\".\"kind\" IN ('food', 'recipe', 'recipe_item', 'free')),\n\tCONSTRAINT \"ck_entry_base_unit\" CHECK(\"journal_entry\".\"base_unit\" IS NULL OR \"journal_entry\".\"base_unit\" IN ('g', 'ml'))\n);\n--> statement-breakpoint\nCREATE INDEX `ix_entry_date` ON `journal_entry` (`date`);--> statement-breakpoint\nCREATE INDEX `ix_entry_meal` ON `journal_entry` (`day_meal_id`);--> statement-breakpoint\nCREATE INDEX `ix_entry_parent` ON `journal_entry` (`parent_entry_id`);--> statement-breakpoint\nCREATE INDEX `ix_entry_source_food` ON `journal_entry` (`source_food_id`,`created_at`);",
   },
 };
 
