@@ -1,8 +1,12 @@
 import { drizzle } from 'drizzle-orm/expo-sqlite';
 import { openDatabaseSync, type SQLiteDatabase } from 'expo-sqlite';
+import { DATABASE_NAME } from './database-files';
 import * as schema from './schema';
 
-export const DATABASE_NAME = 'suivi.db';
+// Re-exported so callers keep one obvious place to ask. The constant itself
+// lives in database-files.ts, which imports nothing native, so the rule that
+// no cleanup ever names the real database is testable in Node.
+export { DATABASE_NAME };
 
 /**
  * Single write connection (D2). Holding one module-level instance is what makes
