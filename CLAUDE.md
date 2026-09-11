@@ -46,8 +46,14 @@ L'application doit tolérer un arrêt forcé à tout moment sans perte.
 ---
 
 ## État du projet
-Tranches 0, 1 et 2 livrées et vérifiées sur l'iPhone. Tranche 3 (base
-d'aliments personnelle) à venir.
+Tranches 0, 1 et 2 livrées et vérifiées sur l'iPhone. **Tranche 3 (base
+d'aliments personnelle) écrite, typée, testée et bundlée — rien de son
+interface n'a encore tourné sur l'appareil.**
+
+**Attention, base de départ.** La tranche 2 vit sur `tranche-2-export`, poussée
+sur `origin`, **jamais fusionnée sur `main`** au 12/09/2026 : `main` est resté
+au merge de la tranche 1. `tranche-3-food` part donc de `tranche-2-export` et
+non de `main`. À fusionner dans l'ordre.
 
 **Le filet existe.** Depuis le 12/09/2026, l'aller-retour export / import est
 vérifié de bout en bout sur l'appareil : export depuis la quotidienne, sortie
@@ -60,16 +66,26 @@ qu'un export réel existe, la version 1 doit rester lisible : sinon l'archive
 est morte, et l'export est l'unique filet du projet.
 
 **Le schéma est gelé. Ajout seul désormais (D6/G2).** La migration initiale
-n'a jamais été dégelée : `0001_journal` a été ajoutée à côté. Réécrire `0000`
-aurait changé son horodatage, fait voir une migration en attente à
-l'installation quotidienne, qui aurait tenté de recréer `setting` et échoué au
-démarrage. Le dégel servait à corriger `0000` ; `0000` n'avait rien à
+n'a jamais été dégelée : `0001_journal` a été ajoutée à côté, puis `0002_food`.
+Réécrire `0000` aurait changé son horodatage, fait voir une migration en
+attente à l'installation quotidienne, qui aurait tenté de recréer `setting` et
+échoué au démarrage. Le dégel servait à corriger `0000` ; `0000` n'avait rien à
 corriger.
 
 Divergence assumée et validée avec le §2.3, qui pose ses ensembles de valeurs
 en commentaires : `journal_entry.kind` et `base_unit` portent de vraies
 contraintes `CHECK`. SQLite ne permet pas d'en ajouter une plus tard sans
 reconstruire la table, et la tranche 2 importera du JSON arbitraire dedans.
+
+**La règle qui décide du contenu d'une migration, posée en tranche 3 :** une
+migration porte ce qui ne peut pas être ajouté plus tard, et diffère ce qui le
+peut. SQLite sait `ALTER TABLE ADD COLUMN` (nullable, ou `NOT NULL` avec
+défaut) et `CREATE` / `DROP INDEX` à volonté ; il ne sait pas ajouter une
+`CHECK` ni une clé étrangère sans reconstruire la table.
+
+Corollaire utile quand l'enjeu paraît maximal : **les index ne sont pas
+irréversibles.** Seules les tables, leurs colonnes `NOT NULL` sans défaut,
+leurs `CHECK` et leurs FK le sont.
 
 ## Identifiants d'application
 Décision irréversible : changer l'identifiant quotidien vide son conteneur
@@ -304,6 +320,13 @@ exclue : quand `food` arrivera tranche 3, la CI passera au rouge tant que
 personne n'aura tranché. C'est ce qui fait vieillir la tranche correctement.
 `off_cache` figure déjà dans les exclusions, avec son motif, avant d'exister.
 
+> **Le mécanisme a fonctionné.** `0002_food` a fait passer quatre tests au
+> rouge d'un coup — le classement des tables, l'ordre d'export, les tags
+> restant à appliquer, et l'inventaire du round-trip contre `PRAGMA
+> table_info`. Deux n'avaient pas été prévus. Et l'archive tranche 2 s'importe
+> **sans une ligne de code en plus** : `introducedIn: '0002_food'` suffit, la
+> comparaison portant sur la position dans le journal.
+
 **Compatibilité ascendante, que D7 ne traite pas.** Une archive écrite à `0000`
 n'a pas de clé `journal_entry`, et ce n'est pas de la corruption : la table
 n'existait pas. Chaque table est donc datée par la migration qui l'a créée, et
@@ -403,6 +426,170 @@ que trois copies délibérées chasseraient sinon la sauvegarde pré-migration h
 de la fenêtre de trois — et celle-là est la copie que personne n'a choisi de
 prendre.
 
+## Ce que la tranche 3 a établi
+
+**Toute colonne doit se réduire à un scalaire JSON — dans tout le schéma, pour
+toujours.** L'exporteur lit les colonnes directement sur les objets Drizzle et
+**lève** sur ce qui n'est ni une chaîne, ni un nombre fini, ni `null`. Donc les
+mappages `mode` de Drizzle sont exclus partout : `mode: 'boolean'` rendrait
+`true`/`false`, `mode: 'timestamp'` une `Date`, et chaque export planterait dès
+la première ligne concernée. `is_favorite` est un `integer` typé `0 | 1`, pas
+un booléen. Découvert en lisant `export-payload.ts` avant d'écrire la colonne,
+pas après ; ça mordra en tranche 8 (poids) et 11 (séances).
+
+**`source` vaut `'perso' | 'off'`, et ce n'est pas un arbitrage.** Les
+documents tranchent : le §6 des specs **s'ouvre en se déclarant « description
+conceptuelle, non normative »**, le schéma normatif étant celui de
+l'architecture. Le §6.1 n'a donc pas autorité sur les valeurs stockées, et son
+`openfoodfacts` ne s'applique pas. `off` est aussi déjà l'orthographe du projet
+partout : `off_cache` (§2.4), `features/nutrition/off/` (§3). Un test refuse
+explicitement `openfoodfacts` à l'import, pour que la décision ne soit pas
+reprise en silence par qui relira le §6.1.
+
+**Où l'on pose une CHECK, et où l'on refuse d'en poser une.** La ligne n'est
+pas la probabilité qu'un ensemble bouge, c'est **ce qu'un élargissement
+casserait** :
+- `kind` et `base_unit` en portent une : élargir `kind` casse l'invariant
+  d'agrégation — le `SUM` sans clause ne tient que parce que l'ensemble est
+  fermé — et élargir `base_unit` casse l'étanchéité du §5.1.
+- `food_portion.name` n'en porte **aucune** : élargir le vocabulaire des
+  portions ne casse rien, c'est une étiquette avec un nombre à côté. La liste
+  fermée du §6.1 est tenue par une règle `one_of` du catalogue d'export,
+  appliquée **avant la première insertion**, qui nomme table, ligne et colonne
+  au lieu de citer une contrainte. D7 veut un fichier réparable à la main : ici
+  la CHECK serait la barrière **faible**.
+
+**Aucune CHECK sur les macros, et c'est un refus.** Le §8.5 exige que les
+valeurs Open Food Facts soient *signalées et éditables*, jamais refusées, et la
+tranche 4 copie automatiquement en base tout produit logué. Une
+`CHECK (protein_100 >= 0)` transformerait une anomalie signalable en échec
+d'INSERT sur ce chemin de copie — un parcours bloqué là où les specs demandent
+un marquage non bloquant.
+
+**`journal_entry.source_food_id` n'a pas de clé étrangère, et ne pouvait pas en
+avoir.** Un cascade détruirait l'historique, un restrict bloquerait une
+suppression que le §5.3 dit n'être jamais bloquée — et de toute façon la table
+est gelée depuis `0001`, or SQLite n'a pas d'`ALTER TABLE ADD CONSTRAINT`.
+`ON DELETE SET NULL` était le seul candidat non absurde : refusé, il effacerait
+la seule trace reliant l'entrée à ce qu'elle fut. Conséquence actée : la
+barrière 3 de l'import ne verra jamais une entrée pointant vers un aliment
+supprimé. C'est la spécification, pas un trou.
+
+**La liste fermée des portions est déclarée une fois, en données.**
+`PORTION_NAMES` est un tableau `as const` dans le module de schéma, et le type
+en est **dérivé**. Une union de littéraux ne se parcourt pas à l'exécution :
+la paire type + tableau devrait être tenue à la main, et l'endroit où elle
+dériverait est le validateur d'import. (`kind` et `base_unit`, plus anciens,
+portent encore la duplication — voir les points ouverts.)
+
+**`display_ref_qty` est clôturée, et la clôture est testée.** Ce n'est pas une
+donnée dérivable : c'est une entrée capturée, ce que D9 déclare légitime. Le
+risque est l'inverse — que quelque chose se mette à dériver *d'elle*. Deux
+fonctions seulement la multiplient, `toCanonical` et `fromCanonical`, toutes
+deux à la frontière d'affichage ; `food-reads.ts` rend toujours les macros pour
+100 ; rien dans `macros.ts` ne l'accepte en argument. **Et un test la rend
+falsifiable : changer `display_ref_qty` sur un aliment et vérifier que tous les
+totaux du journal sont identiques.**
+
+**`ix_food_name` n'achète pas la recherche, et il faut le savoir.**
+`LIKE '%x%'` n'utilise aucun index, jamais ; même en préfixe celui-là serait
+ignoré, SQLite n'appliquant son optimisation LIKE que si la collation de
+l'index correspond au réglage `case_sensitive_like`, qui est *off* par défaut.
+Il sert le `ORDER BY`, en `COLLATE NOCASE` pour qu'« abricot » ne se classe pas
+après toutes les majuscules. À l'échelle du §D16 (quelques centaines de lignes)
+il n'achète rien de mesurable ; il existe parce que le §2.2 est normatif et
+qu'un index se laisse supprimer.
+
+**La recherche est une fonction pure sur une liste en cache.** Zéro SQL par
+frappe, ce que le §8.4b demande, et le seul moyen d'ignorer les accents :
+`NOCASE` et `lower()` de SQLite sont ASCII seuls, et une colonne repliée serait
+de la donnée dérivée stockée (D9). Le repli passe par `normalize('NFD')` quand
+le moteur le sait, et par une table sinon — **Hermes n'est pas Node et peut
+très bien ne pas porter les tables de normalisation Unicode**. La stratégie est
+injectable et les deux chemins sont comparés lettre par lettre, parce que Node
+prend toujours le premier : sans ça, la branche qui tournera sur l'iPhone
+serait la seule ligne non testée du chemin critique.
+
+**Les portions sont remplacées en bloc, pas réconciliées ligne à ligne.**
+`ux_portion_food_name` est unique sur `(food_id, name)` : échanger deux noms en
+une édition fait collisionner toute mise à jour séquentielle sur celle qu'elle
+écrit en premier. Les alternatives — renommage en deux temps, analyse de la
+permutation — sont de la machinerie au service d'identifiants que **rien ne
+référence** : une entrée fige le nom et la taille de la portion dans ses
+propres colonnes. Les laisser changer fait disparaître le cas.
+
+**Le pré-remplissage : quatre temps, et c'est le quatrième cas qui lui donne sa
+forme.** Dernière entrée → même quantité en unité de base si ses termes ne
+tiennent plus → `display_ref_qty` → 100. Si une tranche valait 25 g quand
+« 2 tranches » a été logué et vaut 30 g aujourd'hui, **la taille figée gagne** :
+reproposer « 2 tranches » écrirait 60 g pour une habitude à 50 g, sur l'écran
+dont tout le rôle est d'être validé sans être lu. 50 g n'est pas une réponse
+dégradée, c'est ce qui a été mangé.
+
+**« Dernière » veut dire dernière *enregistrée*.** L'index normatif est
+`(source_food_id, created_at)`, pas `date` : loguer ce matin le déjeuner d'hier
+en fait le pré-remplissage. Lu sur l'index, pas deviné. Et comme `created_at`
+est **nullable** dans le schéma gelé, le tri ajoute `id` : SQLite classe les
+`NULL` en dernier sur un ordre descendant et rendrait donc la ligne la plus
+*ancienne*. Les ULID étant triables par date de création, `id` est à la fois
+départageur et repli.
+
+**Une quantité stockée est toujours en unité de base.** Jamais un nombre de
+portions. `readDayTotals` somme `quantity * protein_100 / 100.0` sans aucune
+clause ; si `quantity` pouvait valoir 2 pour deux tranches, ce total serait faux
+de façon *plausible*. `portion_name` et `portion_quantity` enregistrent comment
+l'utilisateur l'a exprimé — exactement le statut de `display_ref_qty`.
+
+**La bibliothèque vit dans le stack du Journal**, `app/(tabs)/(journal)/library/`,
+et non à la racine comme le dessine le §3. Poussée depuis la racine elle serait
+sœur de `(tabs)` et recouvrirait la barre d'onglets, emportant la minimisation
+iOS 26 — alors que le §7 la décrit comme un endroit où le Journal mène. Une
+règle en sort, valable pour toute la suite : **consulter est un empilement,
+ajouter est une modale.**
+
+**L'étape de quantité est un état de la modale d'ajout, pas une seconde
+modale.** D16 budgète 0,2 s entre le choix d'un aliment et l'écran de quantité,
+et le critère de sortie est deux touchers : échanger le contenu d'une modale
+déjà à l'écran coûte un rendu, en présenter une seconde coûte une animation et
+un second congédiement au retour. `(modals)/quantity` existe quand même comme
+route — le §3 la demande — et sert quand on touche une entrée déjà loguée.
+
+**En édition, l'aliment n'est jamais relu pour ses macros.** L'entrée est une
+capsule fermée (D5/R1) : corriger « 60 g et non 50 » ne doit pas adopter au
+passage des macros éditées depuis. L'aliment n'est consulté que pour les
+portions qu'il propose aujourd'hui.
+
+## Points ouverts après la tranche 3
+- **Vérification iPhone en attente** : c'est le seul point bloquant. Tout est
+  typé, testé et bundlé ; rien de l'interface n'a tourné sur l'appareil.
+  À vérifier en priorité : le champ de quantité s'ouvre bien *sélectionné* avec
+  le clavier numérique (c'est tout le levier des deux touchers), l'icône de
+  bibliothèque ne serre pas l'en-tête à deux icônes par côté, et la recherche
+  trouve « crème » depuis « creme » — c'est-à-dire que Hermes porte bien
+  `String.prototype.normalize`, ou que le repli prend correctement la main.
+- **Hypothèse signalée** : `String.prototype.normalize` sur Hermes. Sonde
+  écrite, repli écrit, les deux testés en Node — mais lequel s'exécute sur
+  l'appareil ne se sait qu'en le regardant.
+- Depuis l'écran d'ajout, « Saisie libre » fait un `router.replace` : le retour
+  ramène au Journal, pas à l'accès rapide. Choisi pour ne pas empiler deux
+  modales plein écran et garder un congédiement unique. À revoir si le
+  demi-tour manque à l'usage.
+- `kind` et `base_unit` dupliquent encore leur ensemble de valeurs entre le
+  type TypeScript et le tableau `one_of` du catalogue. `PORTION_NAMES` montre
+  la forme correcte — données d'abord, type dérivé. Non corrigé : ce serait
+  toucher du code livré sans autre motif que la cohérence.
+- **Hors périmètre, décidé** : les repas récents du §8.4a (le §7 cadre la
+  tranche 3 sur les aliments ; ils iront en tranche 5, où un repas a un sens),
+  le seuil « au-delà de 900 kcal pour 100 g » du §8.5 (écrit pour le parcours
+  Open Food Facts), et `barcode` avec son index unique partiel — nullable, sans
+  CHECK, sans utilisateur avant le scan, donc ajoutable par `ALTER TABLE` en
+  tranche 4.
+- L'avertissement d'écart kcal de 10 % est maintenant devant l'utilisateur dans
+  l'éditeur d'aliment. Le dénominateur reste la valeur théorique et l'alcool
+  reste un faux positif structurel (voir tranche 1). Nouveau et gratuit : un
+  test fixe que l'écart est **invariant d'échelle**, donc saisir les macros pour
+  30 g ou pour 100 g donne le même verdict.
+
 ## Points ouverts après la tranche 2
 - **Hypothèse signalée** : `export_reminder_days` vaut 7 par défaut. Les specs
   demandent une mise en évidence « au-delà d'un délai » sans jamais donner le
@@ -438,7 +625,8 @@ prendre.
   À unifier si l'écart se sent.
 - `day_meal` n'a pas de contrainte d'unicité sur `(date, position)` là où
   `food_portion` en a une sur `(food_id, name)`. Rigueur inégale du §2.3,
-  suivie telle quelle.
+  suivie telle quelle — et `food_portion` n'en a pas non plus sur
+  `(food_id, position)`, même inégalité, même choix.
 - Le taux d'adhérence de la tranche 7 devra compter les journées **ayant au
   moins une entrée**, pas les journées matérialisées : une journée vidée de
   ses entrées reste matérialisée, l'utilisateur ayant bien agi dessus.
@@ -449,8 +637,9 @@ prendre.
   dans `features/strength`.
 - ~~Les en-têtes natifs.~~ **Résolu.** Un groupe `app/(tabs)/(journal)/`
   n'ajoute aucun segment de chemin : l'écran reste la route index du groupe
-  d'onglets et gagne un `Stack` natif. L'icône de bibliothèque du §7 s'y
-  posera tranche 3.
+  d'onglets et gagne un `Stack` natif. ~~L'icône de bibliothèque du §7 s'y
+  posera tranche 3.~~ **Posée**, à gauche à côté du chevron, et c'est ce même
+  `Stack` qui accueille la bibliothèque.
 - Le dossier de sauvegardes s'appelle `backups`, en anglais comme le code,
   alors qu'il est visible dans l'app Fichiers. La tranche 2 y ajoute les copies
   manuelles sous `suivi-copy-`, en anglais par cohérence plutôt que par
@@ -460,4 +649,7 @@ prendre.
   faut un porteur. S'y ajoutent `core/db/database.ts`, `app-database.ts`,
   `change-bus.ts` (celui-ci prévu au §3), `core/id/`, `core/format/` et
   `core/query/`, puis, depuis la tranche 2, `core/db/staging.ts` et
-  `core/db/database-files.ts`.
+  `core/db/database-files.ts`. La tranche 3 y ajoute une divergence d'un autre
+  ordre, parce qu'elle déplace quelque chose que le §3 nomme : la bibliothèque
+  passe de `app/library/` à `app/(tabs)/(journal)/library/`, motif écrit
+  plus haut.
