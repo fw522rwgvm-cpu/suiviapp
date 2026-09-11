@@ -46,7 +46,17 @@ export function MealSection({
   const targetKcal = meal.targets?.kcal ?? null;
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor: theme.colors.surface,
+          borderColor: theme.colors.border,
+          borderRadius: theme.radius.lg,
+        },
+        theme.shadow,
+      ]}
+    >
       <View style={styles.headerRow}>
         <Pressable
           onPress={() => setOpen((current) => !current)}
@@ -55,19 +65,28 @@ export function MealSection({
           accessibilityState={{ expanded: open }}
           style={styles.headerPress}
         >
+          {/*
+            Name above, figure below, rather than both on one line. It gives
+            the meal name room to be a real name — slice 5 lets templates call
+            a meal whatever they like — and puts the kcal where the eye already
+            is after reading it.
+          */}
+          <View style={styles.identity}>
+            <Text style={[styles.name, { color: theme.colors.text }]} numberOfLines={1}>
+              {meal.name}
+            </Text>
+            <Text style={[styles.total, { color: theme.colors.textMuted }]}>
+              {targetKcal === null
+                ? `${formatKcal(consumedKcal)} kcal`
+                : `${formatKcal(consumedKcal)} / ${formatKcal(targetKcal)} kcal`}
+            </Text>
+          </View>
+
           <SymbolView
-            name={open ? 'chevron.down' : 'chevron.right'}
+            name={open ? 'chevron.up' : 'chevron.down'}
             size={13}
             tintColor={theme.colors.textFaint}
           />
-          <Text style={[styles.name, { color: theme.colors.text }]} numberOfLines={1}>
-            {meal.name}
-          </Text>
-          <Text style={[styles.total, { color: theme.colors.textMuted }]}>
-            {targetKcal === null
-              ? `${formatKcal(consumedKcal)} kcal`
-              : `${formatKcal(consumedKcal)} / ${formatKcal(targetKcal)} kcal`}
-          </Text>
         </Pressable>
 
         {/* Reachable whether the meal is open or not (specs 8.3). */}
@@ -78,7 +97,7 @@ export function MealSection({
           hitSlop={10}
           style={styles.add}
         >
-          <SymbolView name="plus.circle.fill" size={24} tintColor={theme.colors.accent} />
+          <SymbolView name="plus.circle.fill" size={28} tintColor={theme.colors.accent} />
         </Pressable>
       </View>
 
@@ -102,19 +121,22 @@ export function MealSection({
 }
 
 const styles = StyleSheet.create({
-  container: { borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
+  // overflow hidden so the swipe-to-delete row cannot paint outside the
+  // rounded corners while it is being dragged.
+  container: { borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
   headerRow: { flexDirection: 'row', alignItems: 'center' },
   headerPress: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    paddingLeft: 14,
+    gap: 10,
+    paddingVertical: 16,
+    paddingLeft: 18,
   },
-  name: { flex: 1, fontSize: 16, fontWeight: '600' },
+  identity: { flex: 1, gap: 3 },
+  name: { fontSize: 17, fontWeight: '600' },
   total: { fontSize: 14, fontVariant: ['tabular-nums'] },
-  add: { paddingHorizontal: 14, paddingVertical: 14 },
+  add: { paddingHorizontal: 16, paddingVertical: 16 },
   entries: { borderTopWidth: StyleSheet.hairlineWidth },
-  empty: { fontSize: 14, paddingHorizontal: 16, paddingVertical: 14 },
+  empty: { fontSize: 14, paddingHorizontal: 18, paddingVertical: 16 },
 });

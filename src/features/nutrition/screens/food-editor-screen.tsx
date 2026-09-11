@@ -322,7 +322,14 @@ function MacroInput({
 }
 
 function cardStyle(theme: ReturnType<typeof useTheme>) {
-  return { backgroundColor: theme.colors.surface, borderColor: theme.colors.border };
+  return [
+    {
+      backgroundColor: theme.colors.surface,
+      borderColor: theme.colors.border,
+      borderRadius: theme.radius.lg,
+    },
+    theme.shadow,
+  ];
 }
 
 function inputStyle(theme: ReturnType<typeof useTheme>) {
@@ -331,8 +338,8 @@ function inputStyle(theme: ReturnType<typeof useTheme>) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  content: { padding: 16, gap: 14, paddingBottom: 48 },
-  card: { borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, padding: 14, gap: 12 },
+  content: { padding: 16, gap: 16, paddingBottom: 56 },
+  card: { borderWidth: StyleSheet.hairlineWidth, padding: 16, gap: 14 },
   field: { gap: 6 },
   label: { fontSize: 13 },
   input: {
@@ -353,7 +360,7 @@ const styles = StyleSheet.create({
   warning: { fontSize: 13, lineHeight: 18 },
   problems: { gap: 4 },
   problem: { fontSize: 13, lineHeight: 18 },
-  save: { borderRadius: 14, paddingVertical: 15, alignItems: 'center' },
+  save: { borderRadius: 18, paddingVertical: 16, alignItems: 'center' },
   saveLabel: { fontSize: 17, fontWeight: '600' },
   delete: { paddingVertical: 12, alignItems: 'center' },
   deleteLabel: { fontSize: 16 },

@@ -222,7 +222,12 @@ function QuantityForm({
         <View
           style={[
             styles.card,
-            { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+              borderRadius: theme.radius.lg,
+              ...theme.shadow,
+            },
           ]}
         >
           <View style={styles.amountRow}>
@@ -279,7 +284,12 @@ function QuantityForm({
           <View
             style={[
               styles.card,
-              { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+                borderRadius: theme.radius.lg,
+                ...theme.shadow,
+              },
             ]}
           >
             <Text style={[styles.kcal, { color: theme.colors.text }]}>
@@ -355,11 +365,11 @@ function show(value: number): string {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  content: { padding: 16, gap: 14, paddingBottom: 48 },
-  identity: { gap: 2 },
-  title: { fontSize: 22, fontWeight: '600' },
+  content: { padding: 16, gap: 16, paddingBottom: 56 },
+  identity: { gap: 3, paddingHorizontal: 2 },
+  title: { fontSize: 24, fontWeight: '700', letterSpacing: -0.3 },
   subtitle: { fontSize: 15 },
-  card: { borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, padding: 14, gap: 12 },
+  card: { borderWidth: StyleSheet.hairlineWidth, padding: 16, gap: 14 },
   amountRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   amount: {
     flex: 1,
@@ -382,6 +392,6 @@ const styles = StyleSheet.create({
   equivalent: { fontSize: 13 },
   kcal: { fontSize: 28, fontWeight: '700', fontVariant: ['tabular-nums'] },
   macros: { fontSize: 14 },
-  save: { borderRadius: 14, paddingVertical: 15, alignItems: 'center' },
+  save: { borderRadius: 18, paddingVertical: 16, alignItems: 'center' },
   saveLabel: { fontSize: 17, fontWeight: '600' },
 });

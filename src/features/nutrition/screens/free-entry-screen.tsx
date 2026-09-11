@@ -163,7 +163,17 @@ export function FreeEntryScreen({
           keyboard="default"
         />
 
-        <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+        <View
+          style={[
+            styles.card,
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+              borderRadius: theme.radius.lg,
+              ...theme.shadow,
+            },
+          ]}
+        >
           <Field
             label="Protéines (g)"
             value={fields.protein}
@@ -263,12 +273,11 @@ function Field({
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  content: { padding: 16, gap: 14, paddingBottom: 48 },
+  content: { padding: 16, gap: 16, paddingBottom: 56 },
   card: {
-    borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
-    padding: 14,
-    gap: 12,
+    padding: 16,
+    gap: 14,
   },
   field: { gap: 6 },
   label: { fontSize: 13 },
@@ -280,7 +289,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   warning: { fontSize: 13, lineHeight: 18 },
-  save: { borderRadius: 14, paddingVertical: 15, alignItems: 'center' },
+  save: { borderRadius: 18, paddingVertical: 16, alignItems: 'center' },
   saveLabel: { fontSize: 17, fontWeight: '600' },
   delete: { paddingVertical: 12, alignItems: 'center' },
   deleteLabel: { fontSize: 16 },

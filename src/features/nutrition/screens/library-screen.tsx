@@ -80,7 +80,12 @@ export function LibraryScreen() {
           <View
             style={[
               styles.list,
-              { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+                borderRadius: theme.radius.lg,
+              },
+              theme.shadow,
             ]}
           >
             {shown.map((food, index) => (
@@ -107,8 +112,8 @@ export function LibraryScreen() {
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 16, gap: 14, paddingBottom: 48 },
+  content: { padding: 16, gap: 16, paddingBottom: 56 },
   empty: { fontSize: 15, lineHeight: 21 },
-  list: { borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
-  separator: { height: StyleSheet.hairlineWidth, marginLeft: 16 },
+  list: { borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
+  separator: { height: StyleSheet.hairlineWidth, marginLeft: 18 },
 });

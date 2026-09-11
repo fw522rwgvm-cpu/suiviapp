@@ -87,12 +87,15 @@ export function DayPage({
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 16, gap: 12, paddingBottom: 48 },
+  // Cards float on the background rather than butting against each other, so
+  // the gap is what separates them and the shadow is what raises them. The top
+  // padding is smaller than the sides: the day switcher already sits above.
+  content: { paddingHorizontal: 16, paddingTop: 4, gap: 14, paddingBottom: 56 },
   addMeal: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 14,
+    borderRadius: 18,
     borderStyle: 'dashed',
-    paddingVertical: 14,
+    paddingVertical: 16,
     alignItems: 'center',
   },
   addMealLabel: { fontSize: 15, fontWeight: '600' },

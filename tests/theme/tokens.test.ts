@@ -57,6 +57,9 @@ describe('token completeness', () => {
     'onAccent',
     'warning',
     'danger',
+    'macroProtein',
+    'macroCarbs',
+    'macroFat',
   ];
 
   it('defines every colour in both schemes', () => {
@@ -83,11 +86,34 @@ describe('token completeness', () => {
     expect(colors.light.text).not.toBe(colors.dark.text);
   });
 
+  it('gives each macro its own colour, distinct from the accent', () => {
+    // Three bars in one colour are three bars you have to read the label of.
+    // The accent is reserved for what can be touched: borrowing it for a
+    // quantity weakens both meanings.
+    for (const scheme of ['light', 'dark'] as const) {
+      const palette = colors[scheme];
+      const macros = [palette.macroProtein, palette.macroCarbs, palette.macroFat];
+
+      expect(new Set(macros).size, scheme).toBe(3);
+      for (const macro of macros) {
+        expect(macro, scheme).not.toBe(palette.accent);
+        expect(macro, scheme).not.toBe(palette.surface);
+      }
+    }
+  });
+
   it('builds a complete theme for either scheme', () => {
     const theme = themeFor('dark');
     expect(theme.scheme).toBe('dark');
     expect(theme.colors).toBe(colors.dark);
     expect(theme.spacing.lg).toBe(16);
     expect(theme.typography.body.fontSize).toBe(16);
+  });
+
+  it('draws no shadow in the dark, where a black one would be invisible', () => {
+    // The border carries the definition there instead. A shadow drawn where it
+    // cannot be seen is cost with no effect.
+    expect(themeFor('dark').shadow.shadowOpacity).toBe(0);
+    expect(themeFor('light').shadow.shadowOpacity).toBeGreaterThan(0);
   });
 });

@@ -139,7 +139,12 @@ export function AddEntryScreen({
           accessibilityRole="button"
           style={[
             styles.freeEntry,
-            { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+              borderRadius: theme.radius.lg,
+            },
+            theme.shadow,
           ]}
         >
           <SymbolView name="square.and.pencil" size={18} tintColor={theme.colors.accent} />
@@ -195,7 +200,12 @@ function Section({
         <View
           style={[
             styles.list,
-            { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+              borderRadius: theme.radius.lg,
+            },
+            theme.shadow,
           ]}
         >
           {foods.map((food, index) => (
@@ -214,20 +224,19 @@ function Section({
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 16, gap: 14, paddingBottom: 48 },
+  content: { padding: 16, gap: 18, paddingBottom: 56 },
   freeEntry: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    paddingVertical: 13,
-    borderRadius: 12,
+    paddingVertical: 15,
     borderWidth: StyleSheet.hairlineWidth,
   },
   freeEntryLabel: { fontSize: 17, fontWeight: '600' },
-  section: { gap: 8 },
-  sectionTitle: { fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.5 },
-  list: { borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
-  separator: { height: StyleSheet.hairlineWidth, marginLeft: 16 },
+  section: { gap: 9 },
+  sectionTitle: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.6 },
+  list: { borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
+  separator: { height: StyleSheet.hairlineWidth, marginLeft: 18 },
   empty: { fontSize: 15, lineHeight: 21 },
 });

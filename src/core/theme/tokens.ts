@@ -38,12 +38,29 @@ export interface ColorTokens {
   warning: string;
   /** Destructive actions. */
   danger: string;
+  /**
+   * One colour per macro, and the same one everywhere it appears.
+   *
+   * Three bars in the accent colour are three bars you have to read the label
+   * of. Given a colour each, the remaining banner is answerable at a glance,
+   * which is what D16 asks of that surface specifically — and specs 8.3 wants
+   * the figures legible without any interaction.
+   *
+   * Deliberately NOT the accent: the accent means "you can touch this". A
+   * quantity of protein is not touchable, and borrowing the interactive colour
+   * for it makes both meanings weaker.
+   */
+  macroProtein: string;
+  macroCarbs: string;
+  macroFat: string;
 }
 
 const light: ColorTokens = {
-  background: '#f7f7f8',
+  // Slightly warmer and lighter than the surfaces, so a white card reads as
+  // raised against it rather than merging into it.
+  background: '#f4f5f7',
   surface: '#ffffff',
-  border: '#e2e2e6',
+  border: '#e6e7ec',
   text: '#111113',
   textMuted: '#65656d',
   textFaint: '#9a9aa3',
@@ -51,6 +68,9 @@ const light: ColorTokens = {
   onAccent: '#ffffff',
   warning: '#8a5a00',
   danger: '#a8291f',
+  macroProtein: '#2f7d8c',
+  macroCarbs: '#d98324',
+  macroFat: '#8a5cc4',
 };
 
 const dark: ColorTokens = {
@@ -64,6 +84,11 @@ const dark: ColorTokens = {
   onAccent: '#0f0f11',
   warning: '#e0a942',
   danger: '#e8796e',
+  // Lifted, not the same hex: a colour that reads on white disappears on near
+  // black, and the point of giving each macro a colour is that it be readable.
+  macroProtein: '#5cc4d4',
+  macroCarbs: '#f0a94c',
+  macroFat: '#b18ce0',
 };
 
 export const colors: Record<ColorScheme, ColorTokens> = { light, dark };
@@ -79,11 +104,52 @@ export const spacing = {
 } as const;
 
 export const radius = {
-  sm: 6,
-  md: 10,
-  lg: 16,
+  sm: 8,
+  md: 12,
+  lg: 18,
+  /** Cards that carry a whole section. Generous, in the current idiom. */
+  xl: 24,
   pill: 999,
 } as const;
+
+/**
+ * Card elevation, per scheme.
+ *
+ * A soft shadow is what makes a light interface read as stacked cards rather
+ * than as boxes drawn on a page, and it is most of the difference between a
+ * hairline-bordered list and something that looks designed.
+ *
+ * It is scheme-dependent because a black shadow does nothing on a near-black
+ * background: in the dark the border does the work instead, so the shadow is
+ * switched off rather than drawn where it cannot be seen.
+ *
+ * A value, not a component: nothing here imports React.
+ */
+export interface ShadowTokens {
+  shadowColor: string;
+  shadowOpacity: number;
+  shadowRadius: number;
+  shadowOffset: { width: number; height: number };
+  /** Android only. Kept so the token is complete, not because it is used. */
+  elevation: number;
+}
+
+const shadows: Record<ColorScheme, ShadowTokens> = {
+  light: {
+    shadowColor: '#0b0b1a',
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 2,
+  },
+  dark: {
+    shadowColor: '#000000',
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 0,
+  },
+};
 
 export const typography = {
   /** Screen titles. */
@@ -104,10 +170,11 @@ export interface Theme {
   spacing: typeof spacing;
   radius: typeof radius;
   typography: typeof typography;
+  shadow: ShadowTokens;
 }
 
 export function themeFor(scheme: ColorScheme): Theme {
-  return { scheme, colors: colors[scheme], spacing, radius, typography };
+  return { scheme, colors: colors[scheme], spacing, radius, typography, shadow: shadows[scheme] };
 }
 
 /**
