@@ -49,9 +49,9 @@ jobs:
       # the application compiles, runs, and fails at the first query.
       - name: Migrations match the schema
         run: |
-          npx drizzle-kit generate
+          npm run migrations:generate
           if [ -n "$(git status --porcelain src/core/db/migrations)" ]; then
-            echo "::error::Schema changed without a generated migration. Run: npx drizzle-kit generate"
+            echo "::error::Migrations are out of date. Run: npm run migrations:generate"
             git status --porcelain src/core/db/migrations
             git diff -- src/core/db/migrations
             exit 1

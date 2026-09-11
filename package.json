@@ -8,7 +8,9 @@
     "typecheck": "tsc --noEmit",
     "bundle:ios": "expo export --platform ios --output-dir dist",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "migrations:bundle": "node scripts/generate-migrations-bundle.mjs",
+    "migrations:generate": "drizzle-kit generate && npm run migrations:bundle"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",
