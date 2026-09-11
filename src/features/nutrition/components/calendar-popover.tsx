@@ -1,3 +1,4 @@
+import { GlassView } from 'expo-glass-effect';
 import { SymbolView } from 'expo-symbols';
 import { useEffect } from 'react';
 import { Modal, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
@@ -13,7 +14,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import type { LocalDate } from '@/core/date';
 import { useTheme } from '@/core/theme';
-import { GlassButton } from '@/core/ui/glass-button';
+import { canUseGlass, GlassButton } from '@/core/ui/glass-button';
 import { MonthCalendar } from './month-calendar';
 
 /**
@@ -93,6 +94,7 @@ export function CalendarPopover({
 }) {
   const theme = useTheme();
   const { width, height } = useWindowDimensions();
+  const glass = canUseGlass();
 
   const progress = useSharedValue(0);
   const drag = useSharedValue(0);
@@ -186,8 +188,10 @@ export function CalendarPopover({
           style={[
             styles.window,
             {
-              backgroundColor: theme.colors.surface,
               borderColor: theme.colors.border,
+              // No background when the material is real: opacity is exactly
+              // what cancels it. The fallback paints, because it is not glass.
+              backgroundColor: glass ? 'transparent' : theme.colors.surface,
               ...theme.shadow,
               // The window floats over content rather than sitting on the page,
               // so it carries its own lift even in the dark, where cards
@@ -198,6 +202,24 @@ export function CalendarPopover({
             windowStyle,
           ]}
         >
+          {/*
+            THE MATERIAL, AS A FILL RATHER THAN AS THE ANIMATED VIEW ITSELF.
+
+            GlassView is a native view; driving its layout props from a worklet
+            frame by frame is not something it promises to survive. So the
+            animation stays on a plain Animated.View, which clips — overflow
+            hidden with an animated corner radius — and the glass simply fills
+            it. The shape morphs, the material is genuinely the system's, and
+            neither has to know about the other.
+          */}
+          {glass ? (
+            <GlassView
+              style={StyleSheet.absoluteFill}
+              glassEffectStyle="regular"
+              pointerEvents="none"
+            />
+          ) : null}
+
           {/* What the button looked like, on its way out. */}
           <Animated.View style={[styles.glyph, glyphStyle]} pointerEvents="none">
             <SymbolView name="calendar" size={20} tintColor={theme.colors.accent} />

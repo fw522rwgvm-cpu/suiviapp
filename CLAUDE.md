@@ -595,15 +595,25 @@ portions qu'il propose aujourd'hui.
 
 ### Trois pièges d'interface, établis par l'échec sur l'appareil
 
-**`flex: 1` dans le carrousel fait sauter le jour.** La bande est en
-`flexDirection: 'row'`, donc `flex` agit sur l'axe **horizontal** : une page
-portant à la fois `flex: 1` et une largeur fixe demande à Yoga de répartir
-l'espace libre entre les trois, et les largeurs cessent de valoir exactement un
-écran. La bande étant translatée par écrans entiers, quelques points d'écart
-suffisent à décaler tous les offsets — le jour bouge visiblement. Ça n'est
-apparu qu'avec la vue de chargement, c'est-à-dire sur la page préchargée hors
-écran. Les `ScrollView` sœurs n'ont pas de `flex` non plus : elles remplissent
-la hauteur parce qu'une rangée étire ses enfants sur l'axe transverse.
+**Ne jamais échanger le type d'élément d'une page selon son état de
+chargement.** Rendre une `View` en attente puis une `ScrollView` une fois
+chargée fait échanger un type d'élément contre un autre : React démonte le
+premier et monte le second, et **UIKit recalcule alors de zéro l'encart de
+contenu d'une `ScrollView` neuve** — encart qui n'est pas nul sous un en-tête
+transparent. Le contenu sautait donc en place. C'est ce qui se lisait comme
+« la page de la journée qui bouge très vite » sur un jour pas encore chargé :
+pas le carrousel du tout, mais une `ScrollView` qui naît sous l'en-tête.
+
+Une seule `ScrollView`, dans les deux états : rien n'est créé, rien n'est
+remesuré, et les points de chargement sont simplement ce que la page contient
+pendant une image ou deux.
+
+Au passage, un piège voisin sur le même écran : `flex: 1` sur une page du
+carrousel agit sur l'axe **horizontal**, la bande étant en `flexDirection:
+'row'`. Avec une largeur fixe à côté, Yoga répartit l'espace libre et les
+largeurs cessent de valoir exactement un écran — or la bande est translatée par
+écrans entiers. Sur la disposition d'un enfant de rangée, préférer `flexGrow`
+sur le conteneur de contenu, qui est une colonne.
 
 **`autoFocus` + `selectTextOnFocus` ne sélectionnent rien quand la valeur
 arrive d'une requête.** `autoFocus` se déclenche **au montage**, or à cet
@@ -647,10 +657,22 @@ applique à ses propres contrôles. `GlassView` est l'exception, et la raison
 d'être d'`expo-glass-effect` au §5 — c'est un vrai `UIVisualEffectView` avec des
 enfants, donc ce qu'on y met est réellement derrière le même matériau au lieu de
 l'imiter. `core/ui/glass-button.tsx` le porte, avec ses deux règles : **aucun
-`backgroundColor`** sur le verre, et `isLiquidGlassAvailable()` avant tout —
-les specs annoncent iOS 18, l'effet demande 26, et sans la sonde le bouton est
-un rectangle invisible sur un téléphone plus ancien. Le repli, lui, peint : ce
-n'est pas du verre.
+`backgroundColor`** sur le verre, et **deux** sondes avant tout, exportées
+sous `canUseGlass()`. `isLiquidGlassAvailable()` parce que les specs annoncent
+iOS 18 quand l'effet demande 26 — sans elle, le bouton est un rectangle
+invisible sur un téléphone plus ancien. Et `isGlassEffectAPIAvailable()`, qui
+n'est pas une ceinture de plus : le paquet l'a ajoutée parce que **certaines
+bêtas d'iOS 26 n'ont pas l'API et plantent** à la création d'une vue en verre.
+Une vérification de version seule leur offrirait un crash. Le repli, lui,
+peint : ce n'est pas du verre.
+
+**Animer la géométrie, mais pas celle d'une vue native.** Piloter les
+propriétés de disposition d'une `GlassView` image par image depuis un worklet
+n'est pas quelque chose qu'elle promet de supporter. La morphose reste donc
+sur une `Animated.View` ordinaire, qui découpe — `overflow: 'hidden'` et un
+rayon animé — et le verre se contente de la remplir. La forme change, le
+matériau est bien celui du système, et ni l'un ni l'autre n'a à connaître
+l'autre.
 
 **Des mots, pas des symboles, quand aucun glyphe ne dit la chose.** « Fermer »
 se lit comme une croix ; rien ne dit « revenir à aujourd'hui » sans avoir été

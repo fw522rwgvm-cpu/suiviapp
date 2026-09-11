@@ -1,4 +1,8 @@
-import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
+import {
+  GlassView,
+  isGlassEffectAPIAvailable,
+  isLiquidGlassAvailable,
+} from 'expo-glass-effect';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '@/core/theme';
@@ -25,14 +29,28 @@ import { useTheme } from '@/core/theme';
  * effect, which is the standing rule for every glass surface in this project.
  * The fallback below does paint, and that is correct: it is not glass.
  *
- * ASK BEFORE ASSUMING. Specs 2 sets iOS 18 as the minimum while the effect
- * needs 26, so isLiquidGlassAvailable() decides, exactly as the tab bar and the
- * transparent headers already do. Without it the button would be an invisible
- * rectangle on an older phone.
+ * ASK BEFORE ASSUMING, AND ASK TWICE. Specs 2 sets iOS 18 as the minimum while
+ * the effect needs 26, so isLiquidGlassAvailable() decides — exactly as the tab
+ * bar and the transparent headers already do. Without it the button would be an
+ * invisible rectangle on an older phone.
  *
- * Lives in core/ui with three real users on the day it is written — the two
- * actions of the calendar window and the favourite of the library list.
+ * The second question is isGlassEffectAPIAvailable(), and it is not belt and
+ * braces: expo-glass-effect added it because some iOS 26 BETAS ship without the
+ * API and CRASH when a glass view is created. A version check alone would hand
+ * those devices a crash on the first library screen.
+ *
+ * Exported so every other glass surface asks the same pair rather than
+ * inventing its own guard.
+ *
+ * Lives in core/ui with four real users on the day it is written — the two
+ * actions of the calendar window, the favourite of the library list, and the
+ * calendar window itself.
  */
+
+/** True when the material can actually be used on this device, right now. */
+export function canUseGlass(): boolean {
+  return isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
+}
 export function GlassButton({
   label,
   symbol,
@@ -51,7 +69,7 @@ export function GlassButton({
   tintColor?: string;
 }) {
   const theme = useTheme();
-  const glass = isLiquidGlassAvailable();
+  const glass = canUseGlass();
   const color = tintColor ?? theme.colors.accent;
 
   // A symbol on its own gets equal padding, so it comes out round rather than
