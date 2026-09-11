@@ -4,4 +4,5 @@
  * string.
  */
 export * from './local-date';
+export * from './month-grid';
 export * from './today';

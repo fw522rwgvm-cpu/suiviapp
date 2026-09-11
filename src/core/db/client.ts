@@ -28,9 +28,15 @@ function applyPragmas(database: SQLiteDatabase): void {
   database.execSync('PRAGMA foreign_keys = ON;');
 }
 
+/**
+ * enableChangeListener wires SQLite's update hook, which is what makes the
+ * change bus of D8 possible: without it addDatabaseChangeListener never fires
+ * and every screen shows yesterday's figures. It is an open option, so it can
+ * only be set here, at the single place the connection is created.
+ */
 export function openDatabase(): SQLiteDatabase {
   if (instance === null) {
-    instance = openDatabaseSync(DATABASE_NAME);
+    instance = openDatabaseSync(DATABASE_NAME, { enableChangeListener: true });
     applyPragmas(instance);
   }
   return instance;

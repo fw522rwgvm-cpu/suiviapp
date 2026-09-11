@@ -2,6 +2,7 @@ import Constants from 'expo-constants';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useStartupReport } from '@/core/db/database-gate';
 import { useTheme } from '@/core/theme';
+import { SeedSection } from '../components/seed-section';
 
 /**
  * The Reglages tab (specs 8.8, 12).
@@ -46,6 +47,9 @@ export function SettingsScreen() {
           value={report.backup?.fileName ?? 'aucune (base neuve)'}
         />
       </View>
+
+      {/* Renders nothing on the daily installation (D15). */}
+      <SeedSection />
     </ScrollView>
   );
 }

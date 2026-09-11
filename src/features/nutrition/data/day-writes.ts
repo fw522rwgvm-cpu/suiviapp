@@ -1,0 +1,279 @@
+import { eq, sql } from 'drizzle-orm';
+import type { LocalDate } from '@/core/date';
+import type { AppDatabase } from '@/core/db/database';
+import {
+  day,
+  dayMeal,
+  journalEntry,
+  type DayMealId,
+  type JournalEntryId,
+} from '@/core/db/schema';
+import { newId } from '@/core/id';
+import { defaultDayMeals } from '../domain/day-plan';
+import type { Macros } from '../domain/macros';
+
+/**
+ * Writes to the journal (D8).
+ *
+ * > Reads are hooks. Writes are transactional functions carrying the business
+ * > rules.
+ *
+ * What this layer is for is not swapping databases out — nobody swaps
+ * databases out. It is for making the invariants unavoidable: materialising a
+ * day, freezing, the deletion transaction. If a screen can write to the tables
+ * directly, one day it will, and it will forget a rule.
+ *
+ * Nothing here imports a native module, so all of it runs against a real
+ * SQLite file in Node (D15).
+ */
+
+/** A free entry is 100 units of a virtual food (D5/R2, schema 2.3). */
+const FREE_ENTRY_QUANTITY = 100;
+const FREE_ENTRY_UNIT = 'g';
+
+/**
+ * Specs 8.4d describes free entry as "P / G / L / kcal directly" and gives it
+ * no name, while the column is NOT NULL. Rather than charge a mandatory field
+ * to the fastest path in the application, the name is optional and falls back
+ * to this — nought extra taps, and the row is still identifiable in the list.
+ */
+export const FREE_ENTRY_DEFAULT_NAME = 'Saisie libre';
+
+interface MealRef {
+  id: DayMealId;
+  position: number;
+}
+
+/**
+ * Materialises a day if it is not already, and hands back its meals.
+ *
+ * Deliberately NOT exported. Specs 8.2 materialises a day at the user's first
+ * action concerning it, and 8.2 again forbids navigation from ever doing so.
+ * If this were callable on its own, a forced quit between the call and the
+ * action that justified it would leave an empty materialised day behind —
+ * which is data created by consultation, exactly what the rule excludes. So it
+ * is the first statement of the writes that need it, inside their transaction,
+ * and it exists nowhere else.
+ *
+ * Both snapshot columns stay NULL: there is no template to snapshot before
+ * slice 5. The meals come from the same function that renders a virtual day,
+ * so what the user saw is what they get.
+ */
+function ensureMaterialized(tx: AppDatabase, date: LocalDate): MealRef[] {
+  const existing = tx.select({ date: day.date }).from(day).where(eq(day.date, date)).all();
+
+  if (existing.length === 0) {
+    const rows = defaultDayMeals().map((meal) => ({
+      id: newId<DayMealId>(),
+      date,
+      position: meal.position,
+      name: meal.name,
+      targetProtein: meal.targets?.protein ?? null,
+      targetCarbs: meal.targets?.carbs ?? null,
+      targetFat: meal.targets?.fat ?? null,
+      targetKcal: meal.targets?.kcal ?? null,
+    }));
+
+    tx.insert(day)
+      .values({
+        date,
+        templateIdSnapshot: null,
+        templateNameSnapshot: null,
+        materializedAt: Date.now(),
+      })
+      .run();
+    tx.insert(dayMeal).values(rows).run();
+
+    return rows.map(({ id, position }) => ({ id, position }));
+  }
+
+  // An already materialised day can legitimately hold no meal at all: the user
+  // is free to delete every one of them (specs 8.3). Its day row, not its meal
+  // count, is what says it exists.
+  return tx
+    .select({ id: dayMeal.id, position: dayMeal.position })
+    .from(dayMeal)
+    .where(eq(dayMeal.date, date))
+    .orderBy(dayMeal.position)
+    .all();
+}
+
+/**
+ * A position the screen offered but the day does not hold is a caller bug, not
+ * an expected failure, so it throws rather than returning a value: conventions
+ * section 4 reserves return values for failures that are part of the domain,
+ * and throwing here rolls the transaction back, undoing a materialisation that
+ * no longer has an action to justify it.
+ */
+function requireMeal(meals: readonly MealRef[], position: number): MealRef {
+  const meal = meals.find((candidate) => candidate.position === position);
+  if (meal === undefined) {
+    throw new Error(`No meal at position ${position} on this day`);
+  }
+  return meal;
+}
+
+function nextPosition(tx: AppDatabase, mealId: DayMealId): number {
+  const rows = tx
+    .select({ highest: sql<number | null>`max(${journalEntry.position})` })
+    .from(journalEntry)
+    .where(eq(journalEntry.dayMealId, mealId))
+    .all();
+  return (rows[0]?.highest ?? -1) + 1;
+}
+
+export interface AddFreeEntryInput {
+  date: LocalDate;
+  /** Meals are addressed by position: on a virtual day they have no id yet. */
+  mealPosition: number;
+  name?: string;
+  /** The values typed in, which are also the macros for 100 units (D5/R2). */
+  macros: Macros;
+}
+
+/**
+ * Logs a free entry, materialising the day in the same transaction.
+ *
+ * The entry freezes the reference and never the total (D5/R1): quantity 100
+ * and the macros for 100 are what is stored, and the total is derived. With
+ * quantity at exactly 100 the total is the value typed in, through the same
+ * expression as every other row — no special case in any aggregation.
+ */
+export function addFreeEntry(db: AppDatabase, input: AddFreeEntryInput): JournalEntryId {
+  return db.transaction((tx) => {
+    const meal = requireMeal(ensureMaterialized(tx, input.date), input.mealPosition);
+    const id = newId<JournalEntryId>();
+    const now = Date.now();
+    const name = (input.name ?? '').trim();
+
+    tx.insert(journalEntry)
+      .values({
+        id,
+        dayMealId: meal.id,
+        date: input.date,
+        parentEntryId: null,
+        position: nextPosition(tx, meal.id),
+        kind: 'free',
+        sourceFoodId: null,
+        sourceRecipeId: null,
+        name: name === '' ? FREE_ENTRY_DEFAULT_NAME : name,
+        brand: null,
+        baseUnit: FREE_ENTRY_UNIT,
+        quantity: FREE_ENTRY_QUANTITY,
+        portionName: null,
+        portionQuantity: null,
+        protein100: input.macros.protein,
+        carbs100: input.macros.carbs,
+        fat100: input.macros.fat,
+        kcal100: input.macros.kcal,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+
+    return id;
+  });
+}
+
+export interface UpdateFreeEntryInput {
+  entryId: JournalEntryId;
+  name?: string;
+  macros: Macros;
+}
+
+/**
+ * Corrects a free entry, without any time limit (specs 5.3).
+ *
+ * One row, one statement: SQLite already wraps a lone statement in its own
+ * transaction, so an explicit one would add ceremony and no guarantee. The
+ * rule that every multi-row operation is explicitly transactional is about
+ * operations that touch more than one row.
+ */
+export function updateFreeEntry(db: AppDatabase, input: UpdateFreeEntryInput): void {
+  const name = (input.name ?? '').trim();
+  const updated = db
+    .update(journalEntry)
+    .set({
+      name: name === '' ? FREE_ENTRY_DEFAULT_NAME : name,
+      protein100: input.macros.protein,
+      carbs100: input.macros.carbs,
+      fat100: input.macros.fat,
+      kcal100: input.macros.kcal,
+      updatedAt: Date.now(),
+    })
+    .where(eq(journalEntry.id, input.entryId))
+    .returning({ id: journalEntry.id })
+    .all();
+
+  if (updated.length === 0) {
+    throw new Error(`No journal entry ${input.entryId} to update`);
+  }
+}
+
+/**
+ * Deletes an entry. Its ingredient lines go with it, by cascade, which is what
+ * makes deleting a grouped recipe block one statement rather than a loop that
+ * can stop halfway (slice 6).
+ *
+ * Sibling positions are left sparse on purpose: order is read from `position`,
+ * and renumbering would rewrite rows nobody asked to touch.
+ */
+export function deleteEntry(db: AppDatabase, entryId: JournalEntryId): void {
+  db.delete(journalEntry).where(eq(journalEntry.id, entryId)).run();
+}
+
+/** Renaming a meal is one of the actions that materialise a day (specs 8.2). */
+export function renameMeal(
+  db: AppDatabase,
+  input: { date: LocalDate; mealPosition: number; name: string },
+): void {
+  db.transaction((tx) => {
+    const meal = requireMeal(ensureMaterialized(tx, input.date), input.mealPosition);
+    tx.update(dayMeal).set({ name: input.name }).where(eq(dayMeal.id, meal.id)).run();
+  });
+}
+
+/** Appends a meal, without any effect on the template it came from (specs 8.3). */
+export function addMeal(
+  db: AppDatabase,
+  input: { date: LocalDate; name: string },
+): DayMealId {
+  return db.transaction((tx) => {
+    const meals = ensureMaterialized(tx, input.date);
+    const id = newId<DayMealId>();
+    const position = meals.reduce((highest, meal) => Math.max(highest, meal.position), -1) + 1;
+
+    tx.insert(dayMeal)
+      .values({
+        id,
+        date: input.date,
+        position,
+        name: input.name,
+        targetProtein: null,
+        targetCarbs: null,
+        targetFat: null,
+        targetKcal: null,
+      })
+      .run();
+
+    return id;
+  });
+}
+
+/**
+ * Removes a meal and everything logged in it, by cascade.
+ *
+ * On a virtual day this materialises first, which reads oddly but is what
+ * specs 8.2 asks for: removing a meal is listed among the actions that
+ * materialise. The day then really does hold three meals rather than four, and
+ * stays insensitive to later planning changes.
+ */
+export function deleteMeal(
+  db: AppDatabase,
+  input: { date: LocalDate; mealPosition: number },
+): void {
+  db.transaction((tx) => {
+    const meal = requireMeal(ensureMaterialized(tx, input.date), input.mealPosition);
+    tx.delete(dayMeal).where(eq(dayMeal.id, meal.id)).run();
+  });
+}
