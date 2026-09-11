@@ -64,6 +64,33 @@ export function applyAllMigrations(db: Database.Database): string[] {
   return applied;
 }
 
+/**
+ * Applies migrations 0 through `index` inclusive — the schema an archive
+ * written at that tag was produced under (D7, slice 2).
+ *
+ * The device does this with drizzle's expo migrator over a sliced bundle; here
+ * the .sql are read from disk. Both replay byte-identical statements, which is
+ * the property the whole "restore then migrate" decision rests on.
+ */
+export function applyMigrationsUpTo(db: Database.Database, index: number): string[] {
+  const applied: string[] = [];
+  for (const entry of readJournal().slice(0, index + 1)) {
+    applyMigration(db, readMigrationSql(entry.tag));
+    applied.push(entry.tag);
+  }
+  return applied;
+}
+
+/** Applies everything after `index`, over a database that already holds rows. */
+export function applyMigrationsAfter(db: Database.Database, index: number): string[] {
+  const applied: string[] = [];
+  for (const entry of readJournal().slice(index + 1)) {
+    applyMigration(db, readMigrationSql(entry.tag));
+    applied.push(entry.tag);
+  }
+  return applied;
+}
+
 export function openEmptyDatabase(): Database.Database {
   const db = new Database(':memory:');
   db.pragma('foreign_keys = ON');

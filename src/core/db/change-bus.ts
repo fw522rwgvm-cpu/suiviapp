@@ -35,6 +35,15 @@ import { createCoalescer, isAffected } from './change-bus-rules';
 export const CHANGE_GROUPING_MS = 60;
 
 /**
+ * The client the bus is currently wired to.
+ *
+ * Held so that announceFullReplacement below has somewhere to announce to.
+ * There is exactly one query client in the application, created by
+ * QueryProvider, and exactly one bus.
+ */
+let active: QueryClient | null = null;
+
+/**
  * Subscribes to database changes for the lifetime of the application.
  * Returns the unsubscribe function.
  */
@@ -42,6 +51,8 @@ export function startChangeBus(
   queryClient: QueryClient,
   delayMs: number = CHANGE_GROUPING_MS,
 ): () => void {
+  active = queryClient;
+
   const coalescer = createCoalescer(delayMs, (tables) => {
     void queryClient.invalidateQueries({
       predicate: (query) => isAffected(query.meta, tables),
@@ -55,5 +66,33 @@ export function startChangeBus(
   return () => {
     subscription.remove();
     coalescer.cancel();
+    if (active === queryClient) active = null;
   };
+}
+
+/**
+ * Announces that the entire database has been replaced (D7, slice 2).
+ *
+ * THE ONE THING THE UPDATE HOOK CANNOT SEE, and the reason this exists.
+ *
+ * The final switch of an import goes through SQLite's online backup API, which
+ * copies PAGES rather than rows. sqlite3_update_hook fires on row-level
+ * INSERT, UPDATE and DELETE through the SQL layer; it never fires for pages
+ * written by the backup. So after a successful import the bus would stay
+ * completely silent while every figure on every screen came from the database
+ * that has just been thrown away.
+ *
+ * This is deliberately a SECOND NAMED ENTRY POINT on the bus rather than an
+ * invalidateQueries call at the import site. The rule is that no invalidation
+ * is written by hand (D8, conventions section 4), and what that rule is
+ * actually protecting against is a write site enumerating query keys — forget
+ * one and a screen quietly shows yesterday's figures. A whole-database
+ * replacement enumerates nothing: it says "all of it". Keeping it here keeps
+ * the property that exactly one module turns change into invalidation.
+ *
+ * Invalidate rather than clear, so a screen keeps showing its previous figures
+ * for the instant it takes to refetch instead of flashing empty.
+ */
+export function announceFullReplacement(): void {
+  void active?.invalidateQueries();
 }

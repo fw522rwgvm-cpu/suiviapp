@@ -1,8 +1,12 @@
 import { drizzle } from 'drizzle-orm/expo-sqlite';
 import { openDatabaseSync, type SQLiteDatabase } from 'expo-sqlite';
+import { DATABASE_NAME } from './database-files';
 import * as schema from './schema';
 
-export const DATABASE_NAME = 'suivi.db';
+// Re-exported so callers keep one obvious place to ask. The constant itself
+// lives in database-files.ts, which imports nothing native, so the rule that
+// no cleanup ever names the real database is testable in Node.
+export { DATABASE_NAME };
 
 /**
  * Single write connection (D2). Holding one module-level instance is what makes
@@ -21,8 +25,12 @@ let instance: SQLiteDatabase | null = null;
  * foreign_keys is per-connection and off by default in SQLite, so it has to be
  * set on every open or the freezing rules of D5 rest on links SQLite does not
  * actually enforce.
+ *
+ * Exported since slice 2: the receiving database of an import opens on its own
+ * connection and must carry the same settings, or the constraints exercised
+ * while it is built are not the ones the application will live under.
  */
-function applyPragmas(database: SQLiteDatabase): void {
+export function applyPragmas(database: SQLiteDatabase): void {
   database.execSync('PRAGMA journal_mode = WAL;');
   database.execSync('PRAGMA synchronous = NORMAL;');
   database.execSync('PRAGMA foreign_keys = ON;');

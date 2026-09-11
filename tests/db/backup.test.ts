@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   backupFileName,
+  manualCopyFileName,
   selectBackupsToDelete,
   selectLatestBackup,
+  selectLatestManualCopy,
+  selectManualCopiesToDelete,
 } from '../../src/core/db/backup-rules';
 
 /**
@@ -64,5 +67,57 @@ describe('backup rotation', () => {
     expect(selectLatestBackup(names)).toBe('suivi-20260105-100000.db');
     expect(selectLatestBackup(['notes.txt'])).toBeNull();
     expect(selectLatestBackup([])).toBeNull();
+  });
+});
+
+/**
+ * Manual copies, from the "prepare a copy" button (specs 5.4, slice 2).
+ *
+ * Same folder as the automatic backups, distinct prefix, independent rotation.
+ * The property worth a test is the one that would be silent if it broke: a
+ * manual copy must never evict a pre-migration backup, because the automatic
+ * one is the copy nobody chose to take.
+ */
+describe('manual copies alongside the automatic backups', () => {
+  const stamp = (day: number) => new Date(2026, 8, day, 10, 0, 0);
+
+  it('is named apart from an automatic backup', () => {
+    expect(manualCopyFileName(stamp(12))).toBe('suivi-copy-20260912-100000.db');
+    expect(backupFileName(stamp(12))).toBe('suivi-20260912-100000.db');
+  });
+
+  it('never evicts a pre-migration backup, however many are taken', () => {
+    const automatic = [1, 2, 3].map((day) => backupFileName(stamp(day)));
+    const manual = [4, 5, 6, 7, 8].map((day) => manualCopyFileName(stamp(day)));
+    const all = [...automatic, ...manual];
+
+    // The automatic rotation sees three copies and deletes none of them.
+    expect(selectBackupsToDelete(all)).toEqual([]);
+    // The manual rotation deletes only its own, keeping three.
+    expect(selectManualCopiesToDelete(all)).toHaveLength(2);
+    expect(
+      selectManualCopiesToDelete(all).every((name) => name.startsWith('suivi-copy-')),
+    ).toBe(true);
+  });
+
+  it('does not mistake a manual copy for the backup named on the G3 screen', () => {
+    const manual = manualCopyFileName(stamp(12));
+    const automatic = backupFileName(stamp(9));
+    expect(selectLatestBackup([manual, automatic])).toBe(automatic);
+  });
+
+  it('leaves an export or a stray file in the folder alone', () => {
+    // Documents is open to the user through the Files app, so it may hold
+    // anything they put there.
+    const others = ['suivi-export-20260912-100000.json', 'notes.txt', 'photo.heic'];
+    expect(selectBackupsToDelete(others, 0)).toEqual([]);
+    expect(selectManualCopiesToDelete(others, 0)).toEqual([]);
+  });
+
+  it('names the most recent manual copy back to the user', () => {
+    const manual = [4, 5, 6].map((day) => manualCopyFileName(stamp(day)));
+    expect(selectLatestManualCopy([...manual, backupFileName(stamp(9))])).toBe(
+      manualCopyFileName(stamp(6)),
+    );
   });
 });
