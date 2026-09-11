@@ -22,6 +22,8 @@ export function SettingsScreen() {
       style={{ backgroundColor: theme.colors.background }}
       contentContainerStyle={styles.container}
     >
+      {/* NativeTabs provides no JS header, so the screen carries its own title. */}
+      <Text style={[styles.screenTitle, { color: theme.colors.text }]}>Réglages</Text>
       <Text style={[styles.lead, { color: theme.colors.textMuted }]}>
         Les réglages arriveront avec la fin de la V1 : thème, heure de bascule de la journée,
         modèles de journée, tolérance d’adhérence, export et import.
@@ -66,7 +68,10 @@ function Separator() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 16, gap: 8 },
+  // Generous bottom padding: the tab bar is translucent now, and content is
+  // meant to scroll under it rather than stop short of it.
+  container: { padding: 16, paddingTop: 24, paddingBottom: 48, gap: 8 },
+  screenTitle: { fontSize: 34, fontWeight: '700', marginBottom: 4 },
   lead: { fontSize: 15, lineHeight: 22, marginBottom: 12 },
   section: { fontSize: 12, fontWeight: '600', letterSpacing: 0.6, marginLeft: 4 },
   card: { borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },

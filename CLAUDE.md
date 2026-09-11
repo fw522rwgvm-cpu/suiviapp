@@ -111,10 +111,45 @@ base est plus récente → sauvegarder → migrer. Le refus précède la sauvega
 - Metro n'est pas joignable depuis WSL2 par défaut : la boucle de D1 exige le
   mode réseau `mirrored` de WSL2, ou un `netsh portproxy`. Non résolu.
 
+## Direction iOS 26
+Demande explicite : utiliser les outils natifs d'iOS 26, Liquid Glass compris.
+
+Ligne de partage avec D10, qui écarte les bibliothèques de composants :
+- **Le chrome appartient au système.** Barre d'onglets, en-têtes, feuilles,
+  accessoires : contrôles natifs, configurés et non peints. Une bibliothèque
+  tierce reste écartée ; la plateforme n'en est pas une.
+- **Le contenu reste sur mesure.** Anneau de progression, rangée de RIR,
+  balayage pour supprimer, carte corporelle, graphiques : maison, sur
+  `react-native-svg` (D13).
+
+Le Liquid Glass est un traitement qu'UIKit applique à ses propres contrôles.
+Une vue dessinée en JavaScript ne peut pas le recevoir, quel que soit son style.
+La CI compilant contre le SDK iOS 26, les contrôles natifs l'adoptent seuls :
+il n'y a rien à activer.
+
+**Ne jamais peindre le fond d'une surface en verre** (`backgroundColor` sur la
+barre d'onglets, un en-tête, une feuille). L'opacité annule l'effet.
+
+`expo-glass-effect` fournit `GlassView`, `GlassContainer` et surtout
+`isLiquidGlassAvailable()`, à interroger avant toute option iOS 26 puisque les
+specs annoncent iOS 18 minimum.
+
+Réserve : le verre coûte du contraste. Le §8.3 exige que le restant de calories
+soit lisible sans aucune interaction, et D16 fait de la lisibilité immédiate la
+priorité. Verre sur le chrome, jamais sous un chiffre qui doit se lire d'un
+coup d'œil.
+
+`expo-router/unstable-native-tabs` est marqué **unstable** : à revérifier à
+chaque montée de SDK, et chaque vérification coûte un cycle CI.
+
 ## Points laissés ouverts par la tranche 0
 - Où vit le sélecteur segmenté de l'onglet Entraînement, une fois qu'il
   composera Musculation et Activités (tranche 10). L'écran est provisoirement
   dans `features/strength`.
+- Les en-têtes natifs. `NativeTabs` n'en fournit aucun : les écrans portent
+  leur titre. Le §7 place une icône de bibliothèque dans l'en-tête du Journal,
+  ce qui imposera un `Stack` natif par onglet — à faire à la tranche 1, quand
+  il y aura quelque chose à y mettre, pas avant.
 - Le dossier de sauvegardes s'appelle `backups`, en anglais comme le code,
   alors qu'il est visible dans l'app Fichiers.
 - `src/core/db/version-guard.ts` et `database-gate.tsx` ne figurent pas dans
