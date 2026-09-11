@@ -25,8 +25,12 @@ let instance: SQLiteDatabase | null = null;
  * foreign_keys is per-connection and off by default in SQLite, so it has to be
  * set on every open or the freezing rules of D5 rest on links SQLite does not
  * actually enforce.
+ *
+ * Exported since slice 2: the receiving database of an import opens on its own
+ * connection and must carry the same settings, or the constraints exercised
+ * while it is built are not the ones the application will live under.
  */
-function applyPragmas(database: SQLiteDatabase): void {
+export function applyPragmas(database: SQLiteDatabase): void {
   database.execSync('PRAGMA journal_mode = WAL;');
   database.execSync('PRAGMA synchronous = NORMAL;');
   database.execSync('PRAGMA foreign_keys = ON;');

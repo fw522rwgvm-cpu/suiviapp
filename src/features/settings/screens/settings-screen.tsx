@@ -2,16 +2,16 @@ import Constants from 'expo-constants';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useStartupReport } from '@/core/db/database-gate';
 import { useTheme } from '@/core/theme';
+import { DataSection } from '@/features/backup/components/data-section';
 import { SeedSection } from '../components/seed-section';
 
 /**
  * The Reglages tab (specs 8.8, 12).
  *
- * Empty of settings: theme, day cutoff, templates, tolerance and export all
- * arrive at slice 7. It does carry the About section already, because specs 8.8
- * asks for the application and schema versions, and because the exit criterion
- * of slice 0 is that the application "opens its database" — which has to be
- * visible somewhere to be checked at all.
+ * Theme, day cutoff, templates and tolerance arrive at slice 7. Two sections
+ * exist before then: About, because specs 8.8 asks for the application and
+ * schema versions, and Données, because slice 2 is the safety net and specs 12
+ * places export, import and the age indicator in V1.
  */
 export function SettingsScreen() {
   const theme = useTheme();
@@ -26,9 +26,12 @@ export function SettingsScreen() {
       {/* NativeTabs provides no JS header, so the screen carries its own title. */}
       <Text style={[styles.screenTitle, { color: theme.colors.text }]}>Réglages</Text>
       <Text style={[styles.lead, { color: theme.colors.textMuted }]}>
-        Les réglages arriveront avec la fin de la V1 : thème, heure de bascule de la journée,
-        modèles de journée, tolérance d’adhérence, export et import.
+        Les autres réglages arriveront avec la fin de la V1 : thème, heure de bascule de la
+        journée, modèles de journée, tolérance d’adhérence.
       </Text>
+
+      {/* The safety net comes first: it is the only one there is (specs 5.4). */}
+      <DataSection />
 
       <Text style={[styles.section, { color: theme.colors.textFaint }]}>À PROPOS</Text>
       <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
@@ -46,6 +49,13 @@ export function SettingsScreen() {
           label="Sauvegarde avant migration"
           value={report.backup?.fileName ?? 'aucune (base neuve)'}
         />
+        {report.interruptedImport ? (
+          <>
+            <Separator />
+            {/* The only trace the user gets that an import did not finish (D7). */}
+            <Row label="Import interrompu" value="nettoyé au démarrage" />
+          </>
+        ) : null}
       </View>
 
       {/* Renders nothing on the daily installation (D15). */}

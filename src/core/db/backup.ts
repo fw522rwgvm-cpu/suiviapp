@@ -3,8 +3,10 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import {
   BACKUP_DIRECTORY_NAME,
   backupFileName,
+  manualCopyFileName,
   selectBackupsToDelete,
   selectLatestBackup,
+  selectManualCopiesToDelete,
 } from './backup-rules';
 import { checkpoint } from './client';
 
@@ -61,6 +63,47 @@ export function backupBeforeMigration(
   rotate(directory);
 
   return { fileName, directoryName: BACKUP_DIRECTORY_NAME };
+}
+
+/**
+ * Consolidates the database and leaves a copy the user can fetch by hand
+ * (specs 5.4, the "prepare a copy" button).
+ *
+ * The second safety net, and the one that carries the media the JSON export
+ * deliberately leaves out. It does NOT go through the share sheet: 5.4 frames
+ * this path as a manual copy of the data folder, so the useful outcome is a
+ * file sitting in Documents where the Files app shows it, not a sheet.
+ *
+ * Its own prefix and its own rotation, so three deliberate copies can never
+ * push the pre-migration backup out of the window of three.
+ */
+export function prepareManualCopy(
+  database: SQLiteDatabase,
+  now: Date = new Date(),
+): BackupOutcome {
+  // Without this the copy misses whatever is still in -wal, which on a
+  // database in daily use is the part the user most wants.
+  checkpoint(database);
+
+  const directory = backupDirectory();
+  directory.create({ intermediates: true, idempotent: true });
+
+  const fileName = manualCopyFileName(now);
+  toFile(database.databasePath).copySync(new File(directory, fileName));
+
+  rotateManualCopies(directory);
+
+  return { fileName, directoryName: BACKUP_DIRECTORY_NAME };
+}
+
+function rotateManualCopies(directory: Directory): void {
+  for (const name of selectManualCopiesToDelete(listFileNames(directory))) {
+    try {
+      new File(directory, name).delete();
+    } catch {
+      // ignored on purpose, as above
+    }
+  }
 }
 
 function rotate(directory: Directory): void {
