@@ -1,6 +1,6 @@
 import { isValid } from 'ulid';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { newId, type EntityId } from '../../src/core/id';
+import { newId, toEntityId, type EntityId } from '../../src/core/id';
 
 /**
  * Identifier generation (D4).
@@ -37,6 +37,16 @@ describe('newId', () => {
 
     const sorted = [...ids].sort();
     expect(sorted).toEqual(ids);
+  });
+
+  it('reads an identifier back from outside, or refuses it', () => {
+    // Route parameters and imported JSON are strings from outside. The brand
+    // is a promise the compiler cannot keep at the edges, so the edges check.
+    const minted = newId<ProbeId>();
+    expect(toEntityId<ProbeId>(minted)).toBe(minted);
+    expect(toEntityId<ProbeId>('')).toBeNull();
+    expect(toEntityId<ProbeId>('not-an-identifier')).toBeNull();
+    expect(toEntityId<ProbeId>(`${minted}X`)).toBeNull();
   });
 
   it('generates without any global crypto, as on the device', async () => {

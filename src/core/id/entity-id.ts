@@ -1,4 +1,4 @@
-import { monotonicFactory } from 'ulid';
+import { isValid, monotonicFactory } from 'ulid';
 
 /**
  * Entity identifiers (D4).
@@ -46,4 +46,17 @@ const nextUlid = monotonicFactory(() => Math.random());
 /** Mints an identifier for a table. `newId<DayMealId>()`. */
 export function newId<T extends EntityId<string>>(): T {
   return nextUlid() as T;
+}
+
+/**
+ * Reads an identifier back from outside — a route parameter, an imported JSON
+ * file. Returns null rather than throwing: an expected failure is a value.
+ *
+ * Validated, never asserted (conventions, section 4). The brand is a promise
+ * the compiler keeps inside the codebase and cannot keep at its edges, so the
+ * edges have to check. The shape is all that can be checked here; whether the
+ * row exists is the database's answer, not this function's.
+ */
+export function toEntityId<T extends EntityId<string>>(value: string): T | null {
+  return isValid(value) ? (value as T) : null;
 }

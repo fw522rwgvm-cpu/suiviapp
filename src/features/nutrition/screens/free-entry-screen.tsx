@@ -87,12 +87,15 @@ export function FreeEntryScreen({
     const entry = existing.data;
     if (loaded || entry === null || entry === undefined) return;
     const reference = entry.reference;
+    // Written back with the separator the field accepts and the user typed,
+    // rather than the one JavaScript prints.
+    const show = (value: number): string => String(value).replace('.', ',');
     setFields({
       name: entry.name === FREE_ENTRY_DEFAULT_NAME ? '' : entry.name,
-      protein: reference === null ? '' : String(reference.protein),
-      carbs: reference === null ? '' : String(reference.carbs),
-      fat: reference === null ? '' : String(reference.fat),
-      kcal: reference === null ? '' : String(reference.kcal),
+      protein: reference === null ? '' : show(reference.protein),
+      carbs: reference === null ? '' : show(reference.carbs),
+      fat: reference === null ? '' : show(reference.fat),
+      kcal: reference === null ? '' : show(reference.kcal),
     });
     setLoaded(true);
   }, [existing.data, loaded]);

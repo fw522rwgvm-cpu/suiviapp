@@ -41,8 +41,8 @@ export const journalKeys = {
   day: (date: LocalDate) => ['nutrition', 'day', date] as const,
   dayTotals: (date: LocalDate) => ['nutrition', 'day-totals', date] as const,
   mealTotals: (date: LocalDate) => ['nutrition', 'meal-totals', date] as const,
-  mealEntries: (mealId: DayMealId) => ['nutrition', 'meal-entries', mealId] as const,
-  entry: (entryId: JournalEntryId) => ['nutrition', 'entry', entryId] as const,
+  mealEntries: (mealId: DayMealId | null) => ['nutrition', 'meal-entries', mealId] as const,
+  entry: (entryId: JournalEntryId | null) => ['nutrition', 'entry', entryId] as const,
 };
 
 /** The day, materialised or virtual. Reading it never creates it (specs 8.2). */
@@ -81,8 +81,8 @@ export function useMealTotals(date: LocalDate) {
  */
 export function useMealEntries(mealId: DayMealId | null) {
   return useQuery({
-    queryKey: journalKeys.mealEntries(mealId ?? ('' as DayMealId)),
-    queryFn: () => readMealEntries(getAppDatabase(), mealId as DayMealId),
+    queryKey: journalKeys.mealEntries(mealId),
+    queryFn: () => (mealId === null ? [] : readMealEntries(getAppDatabase(), mealId)),
     enabled: mealId !== null,
     meta: readsFrom(journalEntry),
   });
@@ -91,8 +91,8 @@ export function useMealEntries(mealId: DayMealId | null) {
 /** One entry, for the screen that edits it (specs 5.3: no time limit). */
 export function useEntry(entryId: JournalEntryId | null) {
   return useQuery({
-    queryKey: journalKeys.entry(entryId ?? ('' as JournalEntryId)),
-    queryFn: () => readEntry(getAppDatabase(), entryId as JournalEntryId),
+    queryKey: journalKeys.entry(entryId),
+    queryFn: () => (entryId === null ? null : readEntry(getAppDatabase(), entryId)),
     enabled: entryId !== null,
     meta: readsFrom(journalEntry),
   });
