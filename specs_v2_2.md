@@ -716,6 +716,7 @@ une demande qui diverge des specs modifie les specs.
 | No | Section | Modification | Motif |
 | --- | --- | --- | --- |
 | 1 | §8.3 | Boutons **precedent / suivant supprimes** de la barre du Journal ; le jour s'affiche a gauche, deux boutons icones a droite (calendrier, bibliotheque) | Le balayage etait deja le geste principal et les chevrons le doublaient. Reserve : pas d'equivalent VoiceOver a un balayage |
-| 2 | §8.3 | Acces direct a une date par une **fenetre ancree** au bouton calendrier, descendant au bas de l'ecran, fermable par glissement | Une feuille pleine page pour choisir un jour coute une transition entiere |
+| 2 | §8.3 | Acces direct a une date par une **fenetre ancree** au bouton calendrier, pleine largeur, descendant au bas de l'ecran, fermable par glissement. Ses deux actions sont des boutons **Liquid Glass** portant des mots, « Aujourd'hui » et « Fermer » | Une feuille pleine page pour choisir un jour coute une transition entiere. Aucun glyphe ne dit « revenir a aujourd'hui » sans avoir ete appris |
 | 3 | §8.3 | **Trois points animes** quand la journee n'est pas encore chargee | Une journee vide et une journee pas encore lue se ressemblent trop |
-| 4 | §6.1 | Origine alignee sur `perso` \| `off` | Le §6 se declare non normatif sur le modele de donnees ; le schema de l'architecture fait autorite |
+| 4 | §8.5 | Le marquage favori de la bibliotheque est un bouton **Liquid Glass**, etoile pleine ou vide | Meme materiau que les boutons natifs de l'en-tete de cet ecran |
+| 5 | §6.1 | Origine alignee sur `perso` \| `off` | Le §6 se declare non normatif sur le modele de donnees ; le schema de l'architecture fait autorite |

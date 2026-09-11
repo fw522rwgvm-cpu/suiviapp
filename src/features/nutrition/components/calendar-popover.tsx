@@ -1,12 +1,5 @@
 import { useEffect } from 'react';
-import { SymbolView } from 'expo-symbols';
-import {
-  Modal,
-  Pressable,
-  StyleSheet,
-  useWindowDimensions,
-  View,
-} from 'react-native';
+import { Modal, Pressable, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
@@ -17,6 +10,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import type { LocalDate } from '@/core/date';
 import { useTheme } from '@/core/theme';
+import { GlassButton } from '@/core/ui/glass-button';
 import { MonthCalendar } from './month-calendar';
 
 /**
@@ -32,9 +26,11 @@ import { MonthCalendar } from './month-calendar';
  * window coordinates at the moment of the tap and hands the rectangle over.
  * Nothing here is a magic number.
  *
- * transformOrigin does the rest: scaling from the top-right corner is what
- * makes the window appear to come from a point rather than from its own
- * middle, and reversing it is what makes it fold back into the button.
+ * transformOrigin does the rest: the window is full width, so it has no corner
+ * near the button to grow from — the origin is computed as the button's
+ * horizontal middle instead. Scaling from that point is what makes the window
+ * appear to come from somewhere rather than from its own centre, and reversing
+ * it is what makes it fold back into the button.
  *
  * ## Why the closing animation lives inside
  *
@@ -85,7 +81,6 @@ export function CalendarPopover({
   onClose: () => void;
 }) {
   const theme = useTheme();
-  const { width } = useWindowDimensions();
 
   const progress = useSharedValue(0);
   const drag = useSharedValue(0);
@@ -137,7 +132,13 @@ export function CalendarPopover({
 
   if (anchor === null) return null;
 
-  // Below the button, right-aligned with it, and down to the bottom edge.
+  // Below the button, the full width of the screen, and down to the bottom.
+  //
+  // Full width means the anchoring can no longer come from the corner the
+  // window happens to sit in — it has no corner near the button any more. So
+  // the transform origin is computed instead: the horizontal middle of the
+  // button, measured in the window's own coordinates. Scaling from that point
+  // is what keeps "it comes out of the button" true at any width.
   //
   // The height is fixed rather than fitted to the grid on purpose: a month
   // spanning six rows is taller than one spanning five, so a window that hugged
@@ -146,7 +147,7 @@ export function CalendarPopover({
   // also means the bottom corners are off-screen, so only the top two are
   // rounded.
   const top = anchor.y + anchor.height + 6;
-  const right = Math.max(8, width - (anchor.x + anchor.width));
+  const originX = anchor.x + anchor.width / 2;
 
   return (
     <Modal
@@ -168,14 +169,12 @@ export function CalendarPopover({
             styles.window,
             {
               top,
-              right,
-              maxWidth: width - right - 8,
               backgroundColor: theme.colors.surface,
               borderColor: theme.colors.border,
               borderTopLeftRadius: theme.radius.xl,
               borderTopRightRadius: theme.radius.xl,
-              // Grows out of its top-right corner, which is where the button is.
-              transformOrigin: 'top right',
+              // Grows out of the button, wherever along the top edge it sits.
+              transformOrigin: [originX, 0, 0],
               ...theme.shadow,
               // The window floats over content rather than sitting on the page,
               // so it carries its own lift even in the dark, where cards
@@ -187,40 +186,15 @@ export function CalendarPopover({
           ]}
         >
           {/*
-            Icon buttons, the same treatment as the calendar button that opened
-            this: a tinted symbol with no container. One vocabulary for every
-            control that lives in chrome.
+            Words, not symbols. "Fermer" reads as a cross well enough, but no
+            glyph says "go back to today" without being learnt first — the
+            uturn arrow that stood here said "undo" to anyone who had not been
+            told. And they are glass, the same material UIKit gives the native
+            header's back button and its "+", which is the look being matched.
           */}
           <View style={styles.actions}>
-            <Pressable
-              onPress={() => dismiss(onToday)}
-              hitSlop={12}
-              accessibilityRole="button"
-              accessibilityLabel="Aujourd’hui"
-              style={styles.action}
-            >
-              <SymbolView
-                name="arrow.uturn.backward"
-                size={20}
-                tintColor={theme.colors.accent}
-                weight="semibold"
-              />
-            </Pressable>
-
-            <Pressable
-              onPress={() => dismiss()}
-              hitSlop={12}
-              accessibilityRole="button"
-              accessibilityLabel="Fermer"
-              style={styles.action}
-            >
-              <SymbolView
-                name="xmark"
-                size={20}
-                tintColor={theme.colors.accent}
-                weight="semibold"
-              />
-            </Pressable>
+            <GlassButton label="Aujourd’hui" onPress={() => dismiss(onToday)} />
+            <GlassButton label="Fermer" onPress={() => dismiss()} />
           </View>
 
           <MonthCalendar
@@ -241,14 +215,20 @@ const styles = StyleSheet.create({
   backdrop: { backgroundColor: '#000000' },
   window: {
     position: 'absolute',
-    // Reaches the bottom edge, so the height never changes with the month.
+    // Full width, and down to the bottom edge: the height never changes with
+    // the month, and there are no side gutters to leave the page showing.
+    left: 0,
+    right: 0,
     bottom: 0,
-    width: 340,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 12,
-    paddingTop: 6,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 16,
+    paddingTop: 8,
     overflow: 'hidden',
   },
-  actions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  action: { paddingVertical: 10, paddingHorizontal: 6 },
+  actions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
 });

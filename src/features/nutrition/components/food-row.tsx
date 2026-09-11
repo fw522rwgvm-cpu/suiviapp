@@ -1,7 +1,7 @@
-import { SymbolView } from 'expo-symbols';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { formatKcal } from '@/core/format';
 import { useTheme } from '@/core/theme';
+import { GlassButton } from '@/core/ui/glass-button';
 import type { FoodListItem } from '../data/food-reads';
 
 /**
@@ -48,28 +48,22 @@ export function FoodRow({
 
       {onToggleFavorite === undefined ? null : (
         /*
-          The same treatment as the library and calendar buttons in the header:
-          a tinted symbol with no container. One vocabulary for every icon
-          button in the application.
+          Glass, the same material UIKit gives the native header's buttons on
+          this very screen — which is the look being matched.
 
-          Filled when it is a favourite, outlined when it is not — the state is
-          in the symbol, not in a background, so it survives being read at a
-          glance down a list.
+          The state lives in the symbol, filled or outlined, rather than in the
+          material: the glass says "press me", and it has to say that whether
+          or not the food is a favourite.
         */
-        <Pressable
+        <GlassButton
+          symbol={food.isFavorite ? 'star.fill' : 'star'}
           onPress={onToggleFavorite}
-          hitSlop={12}
-          accessibilityRole="button"
-          accessibilityState={{ selected: food.isFavorite }}
-          accessibilityLabel={food.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
-          style={styles.favorite}
-        >
-          <SymbolView
-            name={food.isFavorite ? 'star.fill' : 'star'}
-            size={20}
-            tintColor={food.isFavorite ? theme.colors.accent : theme.colors.textFaint}
-          />
-        </Pressable>
+          selected={food.isFavorite}
+          tintColor={food.isFavorite ? theme.colors.accent : theme.colors.textMuted}
+          accessibilityLabel={
+            food.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'
+          }
+        />
       )}
     </Pressable>
   );
@@ -86,5 +80,4 @@ const styles = StyleSheet.create({
   identity: { flex: 1, gap: 2 },
   name: { fontSize: 16 },
   detail: { fontSize: 13 },
-  favorite: { paddingHorizontal: 2, paddingVertical: 6 },
 });

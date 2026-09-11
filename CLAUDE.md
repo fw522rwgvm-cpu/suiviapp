@@ -630,10 +630,23 @@ supprimés — le balayage était déjà le geste principal et ils le doublaient
 `specs §14.4`). Réserve inscrite dans les specs elles-mêmes : un balayage n'a
 pas d'équivalent VoiceOver, là où un bouton en a un.
 
-**Une seule grammaire pour les boutons icônes** : un symbole teinté à l'accent,
-sans conteneur. En-tête, fenêtre du calendrier, favori de la bibliothèque. Un
-badge et un bouton ne doivent pas se ressembler, et une étoile dessinée seule
-dans une bordure ressemblait aux deux.
+**Un bouton dessiné en JS peut recevoir le Liquid Glass — via `GlassView`, et
+seulement là.** La direction iOS 26 dit qu'une vue JavaScript ne peut pas
+l'obtenir, et c'est vrai d'une `View` stylée : c'est un traitement qu'UIKit
+applique à ses propres contrôles. `GlassView` est l'exception, et la raison
+d'être d'`expo-glass-effect` au §5 — c'est un vrai `UIVisualEffectView` avec des
+enfants, donc ce qu'on y met est réellement derrière le même matériau au lieu de
+l'imiter. `core/ui/glass-button.tsx` le porte, avec ses deux règles : **aucun
+`backgroundColor`** sur le verre, et `isLiquidGlassAvailable()` avant tout —
+les specs annoncent iOS 18, l'effet demande 26, et sans la sonde le bouton est
+un rectangle invisible sur un téléphone plus ancien. Le repli, lui, peint : ce
+n'est pas du verre.
+
+**Des mots, pas des symboles, quand aucun glyphe ne dit la chose.** « Fermer »
+se lit comme une croix ; rien ne dit « revenir à aujourd'hui » sans avoir été
+appris — la flèche de retour essayée là disait « annuler ». Épinglé parce que
+l'erreur est facile à refaire : une barre d'icônes est plus jolie qu'une barre
+de mots, et c'est le mauvais critère.
 
 **Le calendrier est une fenêtre ancrée, pas une feuille.** Elle naît du bouton
 et s'y replie, ce qui n'est vrai que si elle part de là où le bouton est
