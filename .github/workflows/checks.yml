@@ -1,0 +1,44 @@
+name: Verifications
+
+# Types, tests and migration replay (D6/G4).
+#
+# Runs on Linux in about a minute, against every push and every branch,
+# where the iOS build costs a fifteen-minute macOS runner. Anything that can
+# fail here must fail here: a dependency conflict caught on Linux is a minute,
+# the same conflict caught on macOS is a coffee.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # Strict install from the lockfile, exactly as the iOS build does it.
+      # This is the step that catches an inconsistent dependency tree, which
+      # `npm install` is too permissive to notice.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Types
+        run: npm run typecheck
+
+      - name: Tests
+        run: npm test
