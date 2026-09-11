@@ -168,6 +168,24 @@ Si le téléphone ne joint pas Metro : règle de pare-feu entrante sur le port
 8081, puis le pare-feu Hyper-V. Les box isolant les clients sur le réseau
 invité et les VPN actifs cassent aussi la liaison.
 
+## Animations et gestes
+**Les worklets Reanimated sont disponibles sans configuration.** Vérifié dans
+la source : `babel-preset-expo` ajoute `react-native-worklets/plugin` de
+lui-même dès que le paquet se résout, et `react-native-worklets` arrive avec
+`react-native-reanimated` 4. Il n'y a pas de `babel.config.js` dans ce dépôt
+et il n'en faut pas.
+
+Vérification qui ne se devine pas : exporter en JS lisible avec
+`npx expo export --platform ios --output-dir dist --no-bytecode`, puis
+chercher `__workletHash` et le nom d'une fonction à soi. Le bundle par défaut
+est du bytecode Hermes, illisible. C'est le seul moyen local de prouver que le
+greffon a bien transformé **ses propres** fichiers et pas seulement ceux des
+bibliothèques, qui sont livrées déjà transformées.
+
+Conséquence : un geste qui suit le doigt tourne sur le fil d'interface.
+Le faire depuis le fil JS saccade dès que React travaille — c'est-à-dire
+exactement au moment intéressant.
+
 ## Direction iOS 26
 Demande explicite : utiliser les outils natifs d'iOS 26, Liquid Glass compris.
 
@@ -257,7 +275,9 @@ champ quantité.
   remède dans les specs : l'alcool fait 7 kcal/g et n'est pas une macro suivie,
   donc un verre de vin déclenchera toujours l'avertissement. Non bloquant.
 - Arbitrage des gestes entre le balayage d'une rangée et celui du jour : le
-  plus interne gagne. À éprouver au doigt.
+  plus interne gagne. Le balayage du jour est un carrousel qui suit le doigt ;
+  celui d'une rangée ne suit pas encore le doigt, il décide au relâchement.
+  À unifier si l'écart se sent.
 - `day_meal` n'a pas de contrainte d'unicité sur `(date, position)` là où
   `food_portion` en a une sur `(food_id, name)`. Rigueur inégale du §2.3,
   suivie telle quelle.
