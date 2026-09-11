@@ -60,68 +60,83 @@ export function DayPage({
    * Drawing an empty day there would be a lie: it would look exactly like a
    * day with nothing logged.
    */
-  const pending = day.isPending || totals.isPending;
+  /**
+   * COMPLETELY loaded, not merely started.
+   *
+   * The meal sub-totals are in here deliberately. Without them the page
+   * appeared with its meals already drawn and their figures a frame behind, so
+   * every card changed size as the numbers arrived — which is the settling
+   * that was being seen. A day is ready when all three of its queries are.
+   */
+  const pending = day.isPending || totals.isPending || mealTotals.isPending;
 
   return (
     /**
-     * ONE SCROLLVIEW, ALWAYS — pending or not, and that is a bug fix rather
-     * than a tidy-up.
+     * ONE SCROLLVIEW, ALWAYS, AND THE DOTS ON TOP OF IT.
      *
-     * Returning a plain View while pending and a ScrollView once loaded makes
-     * React swap one element type for another, which unmounts the first and
-     * mounts the second. A brand-new scroll view then has its content inset
-     * computed from scratch by UIKit — and with a transparent header that
-     * inset is not zero, so the content visibly snapped into place. That is
-     * the "page moving very fast" on a day that had not loaded yet: not the
-     * carousel at all, but a scroll view being born under the header.
+     * Two separate things were making a not-yet-loaded day lurch, and this
+     * shape answers both at once.
      *
-     * Keeping one element across both states means nothing is created, nothing
-     * is measured again, and the dots are simply what the page contains for a
-     * frame or two.
+     * Swapping a plain View for a ScrollView when the data arrived made React
+     * unmount one element type and mount another — and a brand-new scroll view
+     * has its content inset computed from scratch by UIKit, which under a
+     * transparent header is not zero. So the page snapped into place.
+     *
+     * And even with one element kept, the content goes from nothing to a full
+     * day in a single commit: the scroll view resizes, and whatever UIKit does
+     * about that happens in view.
+     *
+     * So the indicator is an OVERLAY rather than a replacement. The scroll view
+     * is mounted from the first frame and fills in underneath, while an opaque
+     * layer covers it until everything has arrived. Whatever settling there is
+     * happens where it cannot be seen — which is the honest fix here, because
+     * the exact native cause cannot be observed from a development machine.
      */
-    <ScrollView
-      style={[{ width }, { backgroundColor: theme.colors.background }]}
-      contentContainerStyle={[styles.content, pending ? styles.pendingContent : null]}
-      contentInsetAdjustmentBehavior="automatic"
-      scrollEnabled={!pending}
-    >
-      {pending ? (
-        <LoadingDots label="Chargement de la journée" />
-      ) : (
-        <>
-          <RemainingBanner
-            consumed={totals.data ?? ZERO_MACROS}
-            target={dayTargets(meals)}
+    <View style={[{ width }, { backgroundColor: theme.colors.background }]}>
+      <ScrollView
+        style={styles.fill}
+        contentContainerStyle={styles.content}
+        contentInsetAdjustmentBehavior="automatic"
+        scrollEnabled={!pending}
+      >
+        <RemainingBanner consumed={totals.data ?? ZERO_MACROS} target={dayTargets(meals)} />
+
+        {meals.map((meal) => (
+          <MealSection
+            key={meal.id ?? `virtual-${meal.position}`}
+            meal={meal}
+            total={meal.id === null ? undefined : mealTotals.data?.get(meal.id)}
+            onAdd={() => onAdd(date, meal)}
+            onEditEntry={(entry) => onEditEntry(date, entry)}
+            onDeleteEntry={onDeleteEntry}
+            onLongPress={() => onMealActions(date, meal)}
           />
+        ))}
 
-          {meals.map((meal) => (
-            <MealSection
-              key={meal.id ?? `virtual-${meal.position}`}
-              meal={meal}
-              total={meal.id === null ? undefined : mealTotals.data?.get(meal.id)}
-              onAdd={() => onAdd(date, meal)}
-              onEditEntry={(entry) => onEditEntry(date, entry)}
-              onDeleteEntry={onDeleteEntry}
-              onLongPress={() => onMealActions(date, meal)}
-            />
-          ))}
-
-          <Pressable
-            onPress={() => onAddMeal(date)}
-            accessibilityRole="button"
-            style={[styles.addMeal, { borderColor: theme.colors.border }]}
-          >
-            <Text style={[styles.addMealLabel, { color: theme.colors.accent }]}>
-              Ajouter un repas
-            </Text>
-          </Pressable>
-
-          <Text style={[styles.hint, { color: theme.colors.textFaint }]}>
-            Appui long sur un repas pour le renommer ou le supprimer.
+        <Pressable
+          onPress={() => onAddMeal(date)}
+          accessibilityRole="button"
+          style={[styles.addMeal, { borderColor: theme.colors.border }]}
+        >
+          <Text style={[styles.addMealLabel, { color: theme.colors.accent }]}>
+            Ajouter un repas
           </Text>
-        </>
-      )}
-    </ScrollView>
+        </Pressable>
+
+        <Text style={[styles.hint, { color: theme.colors.textFaint }]}>
+          Appui long sur un repas pour le renommer ou le supprimer.
+        </Text>
+      </ScrollView>
+
+      {pending ? (
+        <View
+          style={[styles.overlay, { backgroundColor: theme.colors.background }]}
+          pointerEvents="auto"
+        >
+          <LoadingDots label="Chargement de la journée" />
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -130,11 +145,22 @@ const styles = StyleSheet.create({
   // the gap is what separates them and the shadow is what raises them.
   content: { padding: 16, gap: 14, paddingBottom: 56 },
   /**
-   * flexGrow, not flex — and on the CONTENT container, which is a column, so
-   * there is no confusion with the carousel's row. It lets the short content
-   * fill the page so the dots land in the middle rather than at the top.
+   * The scroll view fills its page wrapper. NO `flex` on the wrapper itself:
+   * the carousel is a row, so flex there would act on the HORIZONTAL axis and
+   * fight the fixed width — Yoga would redistribute free space and the pages
+   * would stop being exactly one screen wide, which the strip's whole-screen
+   * translation cannot survive.
    */
-  pendingContent: { flexGrow: 1, alignItems: 'center', justifyContent: 'center' },
+  fill: { flex: 1 },
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   addMeal: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 18,
