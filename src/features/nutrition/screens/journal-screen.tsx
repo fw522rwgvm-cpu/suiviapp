@@ -1,12 +1,10 @@
 import { SymbolView } from 'expo-symbols';
 import { Stack, useRouter } from 'expo-router';
-import { useLayoutEffect, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import {
   Alert,
-  Modal,
   Pressable,
   StyleSheet,
-  Text,
   useWindowDimensions,
   View,
 } from 'react-native';
@@ -19,7 +17,7 @@ import Animated, {
   type WithTimingConfig,
 } from 'react-native-reanimated';
 import { addDays, currentLocalDate, type LocalDate } from '@/core/date';
-import { formatDayTitle } from '@/core/format';
+import { formatDayShort } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import {
   useAddMeal,
@@ -29,7 +27,7 @@ import {
 } from '../data/day-queries';
 import type { JournalEntryView } from '../data/day-reads';
 import { DayPage } from '../components/day-page';
-import { MonthCalendar } from '../components/month-calendar';
+import { CalendarPopover, type PopoverAnchor } from '../components/calendar-popover';
 import type { DayMealView } from '../domain/day-plan';
 
 /**
@@ -91,9 +89,28 @@ export function JournalScreen() {
 
   // A plain React Native modal rather than a route: the date is screen state,
   // and routing it out and back would mean plumbing a return value through the
-  // router for a sheet that closes on selection.
+  // router for a window that closes on selection.
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerMonth, setPickerMonth] = useState<LocalDate>(today);
+
+  /**
+   * Where the calendar button is, in window coordinates.
+   *
+   * Measured at the moment of the tap rather than computed: the position
+   * depends on the safe area and the navigation bar height, two numbers that
+   * would have to be guessed and would be wrong on some phone. The window
+   * grows out of this rectangle and folds back into it.
+   */
+  const calendarButton = useRef<View>(null);
+  const [anchor, setAnchor] = useState<PopoverAnchor | null>(null);
+
+  function openPicker(): void {
+    setPickerMonth(date);
+    calendarButton.current?.measureInWindow((x, y, width, height) => {
+      setAnchor({ x, y, width, height });
+      setPickerOpen(true);
+    });
+  }
 
   const addMeal = useAddMeal();
   const renameMeal = useRenameMeal();
@@ -110,18 +127,6 @@ export function JournalScreen() {
 
   function step(delta: number): void {
     setDate((current) => addDays(current, delta));
-  }
-
-  /**
-   * Slides a whole screen and then commits. Shared by the gesture and by the
-   * header chevrons, so a tap and a swipe land the same way.
-   */
-  function slideTo(delta: -1 | 1): void {
-    drag.value = withTiming(delta === 1 ? -width : width, SLIDE, (finished) => {
-      // finished is false when a new gesture interrupted this animation, in
-      // which case the day must not change under the finger.
-      if (finished === true) runOnJS(step)(delta);
-    });
   }
 
   const pan = Gesture.Pan()
@@ -250,50 +255,39 @@ export function JournalScreen() {
   return (
     <>
       {/*
-        Everything in one bar: the date being looked at, the two chevrons that
-        change it (specs 8.3), and the two icons that lead elsewhere — the
-        library (specs 7) and the date picker. Two controls a side, with the
-        chevrons on the outer edges where the thumb already reaches for them.
+        The day on the left, the two ways out on the right.
+
+        DIVERGENCE, DELIBERATE: specs 8.3 asks for three ways to change day —
+        previous/next buttons, direct access to a date, and the horizontal
+        swipe. The buttons are gone; the other two remain. Requested, and
+        recorded rather than quietly applied.
       */}
       <Stack.Screen
         options={{
-          title: formatDayTitle(date, today),
-          headerLeft: () => (
+          title: formatDayShort(date, today),
+          headerTitleAlign: 'left',
+          headerRight: () => (
             <View style={styles.headerGroup}>
-              <HeaderChevron
-                symbol="chevron.left"
-                label="Jour précédent"
-                onPress={() => slideTo(-1)}
-              />
+              {/* Direct access to a date (specs 8.3). */}
+              <Pressable
+                ref={calendarButton}
+                onPress={openPicker}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Choisir une date"
+              >
+                <SymbolView name="calendar" size={20} tintColor={theme.colors.accent} />
+              </Pressable>
+
+              {/* The library, reached from the Journal header (specs 7). */}
               <Pressable
                 onPress={() => router.push('/(tabs)/(journal)/library')}
                 hitSlop={12}
                 accessibilityRole="button"
                 accessibilityLabel="Bibliothèque"
               >
-                <SymbolView name="books.vertical" size={19} tintColor={theme.colors.accent} />
+                <SymbolView name="books.vertical" size={20} tintColor={theme.colors.accent} />
               </Pressable>
-            </View>
-          ),
-          headerRight: () => (
-            <View style={styles.headerGroup}>
-              {/* Direct access to a date (specs 8.3). */}
-              <Pressable
-                onPress={() => {
-                  setPickerMonth(date);
-                  setPickerOpen(true);
-                }}
-                hitSlop={12}
-                accessibilityRole="button"
-                accessibilityLabel="Choisir une date"
-              >
-                <SymbolView name="calendar" size={19} tintColor={theme.colors.accent} />
-              </Pressable>
-              <HeaderChevron
-                symbol="chevron.right"
-                label="Jour suivant"
-                onPress={() => slideTo(1)}
-              />
             </View>
           ),
         }}
@@ -312,69 +306,26 @@ export function JournalScreen() {
         </Animated.View>
       </GestureDetector>
 
-      <Modal
+      <CalendarPopover
         visible={pickerOpen}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setPickerOpen(false)}
-      >
-        <View style={[styles.sheet, { backgroundColor: theme.colors.background }]}>
-          <View style={styles.sheetHeader}>
-            <Pressable onPress={() => setPickerOpen(false)} accessibilityRole="button">
-              <Text style={[styles.sheetAction, { color: theme.colors.accent }]}>Fermer</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => {
-                setDate(today);
-                setPickerOpen(false);
-              }}
-              accessibilityRole="button"
-            >
-              <Text style={[styles.sheetAction, { color: theme.colors.accent }]}>
-                Aujourd’hui
-              </Text>
-            </Pressable>
-          </View>
-
-          <MonthCalendar
-            month={pickerMonth}
-            selected={date}
-            today={today}
-            onMonthChange={setPickerMonth}
-            onSelect={(chosen) => {
-              // A jump of more than one day has no page to slide to, so it
-              // swaps outright. The strip is already at rest.
-              setDate(chosen);
-              setPickerOpen(false);
-            }}
-          />
-        </View>
-      </Modal>
+        anchor={anchor}
+        month={pickerMonth}
+        selected={date}
+        today={today}
+        onMonthChange={setPickerMonth}
+        onSelect={(chosen) => {
+          // A jump of more than one day has no page to slide to, so it swaps
+          // outright. The strip is already at rest.
+          setDate(chosen);
+        }}
+        onToday={() => setDate(today)}
+        onClose={() => setPickerOpen(false)}
+      />
     </>
-  );
-}
-
-function HeaderChevron({
-  symbol,
-  label,
-  onPress,
-}: {
-  symbol: 'chevron.left' | 'chevron.right';
-  label: string;
-  onPress: () => void;
-}) {
-  const theme = useTheme();
-  return (
-    <Pressable onPress={onPress} hitSlop={12} accessibilityRole="button" accessibilityLabel={label}>
-      <SymbolView name={symbol} size={17} tintColor={theme.colors.accent} weight="semibold" />
-    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   strip: { flex: 1, flexDirection: 'row' },
-  headerGroup: { flexDirection: 'row', alignItems: 'center', gap: 18 },
-  sheet: { flex: 1, padding: 16, gap: 8 },
-  sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8 },
-  sheetAction: { fontSize: 17 },
+  headerGroup: { flexDirection: 'row', alignItems: 'center', gap: 20 },
 });

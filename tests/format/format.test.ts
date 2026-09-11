@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { toLocalDate } from '../../src/core/date';
 import {
   formatDayAndMonth,
+  formatDayShort,
   formatDayTitle,
   formatKcal,
   formatLongDate,
@@ -81,6 +82,61 @@ describe('French dates', () => {
     expect(formatLongDate(toLocalDate('2026-09-11'))).toBe('vendredi 11 septembre 2026');
     expect(formatLongDate(toLocalDate('2026-01-01'))).toBe('jeudi 1 janvier 2026');
     expect(formatDayAndMonth(toLocalDate('2026-08-03'))).toBe('3 août');
+  });
+});
+
+describe('formatDayShort — the label of the Journal bar', () => {
+  const today = toLocalDate('2026-09-11');
+
+  it('names the three days the user lives in', () => {
+    expect(formatDayShort(today, today)).toBe("Aujourd'hui");
+    expect(formatDayShort(toLocalDate('2026-09-10'), today)).toBe('Hier');
+    expect(formatDayShort(toLocalDate('2026-09-12'), today)).toBe('Demain');
+  });
+
+  it('gives everything else an abbreviated weekday and a padded date', () => {
+    // Padded so the label does not change width from the 9th to the 10th,
+    // which in a navigation bar shifts the buttons beside it.
+    expect(formatDayShort(toLocalDate('2026-09-15'), today)).toBe('mar. 15/09');
+    expect(formatDayShort(toLocalDate('2026-03-04'), today)).toBe('mer. 04/03');
+  });
+
+  it('abbreviates all seven days', () => {
+    // A whole week from a Monday, so every entry of the table is exercised
+    // rather than the two that happen to appear above.
+    const week = [
+      '2026-01-05',
+      '2026-01-06',
+      '2026-01-07',
+      '2026-01-08',
+      '2026-01-09',
+      '2026-01-10',
+      '2026-01-11',
+    ];
+    const far = toLocalDate('2026-06-01');
+    expect(week.map((day) => formatDayShort(toLocalDate(day), far).split(' ')[0])).toEqual([
+      'lun.',
+      'mar.',
+      'mer.',
+      'jeu.',
+      'ven.',
+      'sam.',
+      'dim.',
+    ]);
+  });
+
+  it('adds the year only when it is not the current one', () => {
+    // Short in the common case, never ambiguous about an old entry — the rule
+    // formatDayTitle already follows.
+    expect(formatDayShort(toLocalDate('2025-09-15'), today)).toBe('lun. 15/09/2025');
+  });
+
+  it('stays short enough for a navigation bar', () => {
+    // The whole reason this exists beside formatDayTitle: "mardi 15 septembre"
+    // gets truncated next to two buttons.
+    for (const day of ['2026-09-15', '2026-12-31', '2025-01-01']) {
+      expect(formatDayShort(toLocalDate(day), today).length, day).toBeLessThanOrEqual(15);
+    }
   });
 });
 

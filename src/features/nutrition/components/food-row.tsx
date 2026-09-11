@@ -47,15 +47,30 @@ export function FoodRow({
       </View>
 
       {onToggleFavorite === undefined ? null : (
+        /*
+          A bordered icon button rather than a bare glyph. A star drawn on its
+          own reads as a badge — something the row is telling you — where this
+          reads as something you can press. It is also a 34pt target inside a
+          row whose whole surface is already a different button, so the two
+          must not be ambiguous.
+        */
         <Pressable
           onPress={onToggleFavorite}
-          hitSlop={12}
+          hitSlop={8}
           accessibilityRole="button"
+          accessibilityState={{ selected: food.isFavorite }}
           accessibilityLabel={food.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+          style={({ pressed }) => [
+            styles.favorite,
+            {
+              backgroundColor: pressed ? theme.colors.border : theme.colors.background,
+              borderColor: theme.colors.border,
+            },
+          ]}
         >
           <SymbolView
             name={food.isFavorite ? 'star.fill' : 'star'}
-            size={18}
+            size={17}
             tintColor={food.isFavorite ? theme.colors.accent : theme.colors.textFaint}
           />
         </Pressable>
@@ -75,4 +90,12 @@ const styles = StyleSheet.create({
   identity: { flex: 1, gap: 2 },
   name: { fontSize: 16 },
   detail: { fontSize: 13 },
+  favorite: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

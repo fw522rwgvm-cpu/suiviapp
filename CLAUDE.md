@@ -616,6 +616,27 @@ retour non plus, et il faut le déclarer à la main. Sans lui, se tromper
 d'aliment obligeait à fermer la modale et recommencer — trois touchers pour en
 annuler un.
 
+**Divergence assumée avec le §8.3, demandée : plus de boutons précédent /
+suivant.** Le §8.3 demande trois façons de changer de jour — boutons, accès
+direct à une date, balayage horizontal. La barre porte désormais le jour à
+gauche et deux icônes à droite (calendrier, bibliothèque) ; les deux autres
+voies restent. Le balayage était déjà le geste principal, et les chevrons le
+doublaient. **À rouvrir si naviguer au clavier ou à l'accessibilité s'avère
+pénible** : un balayage n'a pas d'équivalent VoiceOver, là où un bouton en a un.
+
+**Le calendrier est une fenêtre ancrée, pas une feuille.** Elle naît du bouton
+et s'y replie, ce qui n'est vrai que si elle part de là où le bouton est
+réellement : la position dépend de la zone sûre et de la hauteur de barre, deux
+nombres qui seraient devinés et faux sur un téléphone sur trois. Le bouton est
+donc **mesuré** au moment du toucher (`measureInWindow`) et la fenêtre reçoit
+son rectangle. `transformOrigin: 'top right'` fait le reste : grandir depuis un
+coin est ce qui la fait venir d'un point plutôt que de son propre milieu.
+
+Et l'animation de fermeture vit **dans** la fenêtre, pas chez l'appelant :
+toutes les sorties — les deux boutons, choisir une date, le balayage, le fond —
+doivent jouer la même animation avant que la modale soit démontée. Si le parent
+basculait `visible` à `false`, React l'arracherait de l'écran en plein vol.
+
 ## Points ouverts après la tranche 3
 - **Vérification iPhone en cours.** Première passe faite : l'application
   démarre, la migration `0002` s'applique, et deux défauts ont été trouvés et

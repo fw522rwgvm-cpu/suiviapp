@@ -24,6 +24,14 @@ const WEEKDAYS = [
   'dimanche',
 ] as const;
 
+/**
+ * The same seven, abbreviated as French abbreviates them: three letters and a
+ * full stop. Written out rather than sliced from the long names, because that
+ * is only true by accident — it would break the day a language, or a name,
+ * abbreviated differently.
+ */
+const WEEKDAYS_SHORT = ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'] as const;
+
 const MONTHS = [
   'janvier',
   'février',
@@ -69,6 +77,38 @@ export function formatDayAndMonth(date: LocalDate): string {
  * and the single function that decides what today is remains the one in
  * core/date (D3).
  */
+export function weekdayShortName(date: LocalDate): string {
+  return WEEKDAYS_SHORT[weekday(date) - 1] ?? '';
+}
+
+/**
+ * The short label of the Journal bar: "Aujourd'hui", or "mar. 15/09".
+ *
+ * Named days for the three the user actually lives in, and a compact dated
+ * label beyond — short enough to sit in a navigation bar beside two buttons
+ * without ever being truncated, which formatDayTitle's "mardi 15 septembre"
+ * could not promise.
+ *
+ * The year appears only when it is not the current one. That keeps the common
+ * case to eleven characters while never being ambiguous about an old entry,
+ * which is the rule formatDayTitle already follows.
+ *
+ * `today` is a parameter rather than a call to the clock, so this stays pure
+ * and the single function that decides what today is remains the one in
+ * core/date (D3).
+ */
+export function formatDayShort(date: LocalDate, today: LocalDate): string {
+  const offset = diffDays(today, date);
+  if (offset === 0) return "Aujourd'hui";
+  if (offset === -1) return 'Hier';
+  if (offset === 1) return 'Demain';
+
+  const { year, month, day } = localDateParts(date);
+  const pad = (value: number): string => String(value).padStart(2, '0');
+  const base = `${weekdayShortName(date)} ${pad(day)}/${pad(month)}`;
+  return year === localDateParts(today).year ? base : `${base}/${year}`;
+}
+
 export function formatDayTitle(date: LocalDate, today: LocalDate): string {
   const offset = diffDays(today, date);
   if (offset === 0) return "Aujourd'hui";
