@@ -1,41 +1,87 @@
 import { SymbolView } from 'expo-symbols';
 import { Stack, useRouter } from 'expo-router';
-import { useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useLayoutEffect, useState } from 'react';
+import {
+  Alert,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+  type WithTimingConfig,
+} from 'react-native-reanimated';
 import { addDays, currentLocalDate, type LocalDate } from '@/core/date';
 import { formatDayTitle } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import {
   useAddMeal,
-  useDay,
-  useDayTotals,
   useDeleteEntry,
   useDeleteMeal,
-  useMealTotals,
   useRenameMeal,
 } from '../data/day-queries';
 import type { JournalEntryView } from '../data/day-reads';
-import { MealSection } from '../components/meal-section';
+import { DayPage } from '../components/day-page';
 import { MonthCalendar } from '../components/month-calendar';
-import { RemainingBanner } from '../components/remaining-banner';
-import { dayTargets, type DayMealView } from '../domain/day-plan';
-import { ZERO_MACROS } from '../domain/macros';
+import type { DayMealView } from '../domain/day-plan';
 
 /**
  * The Journal (specs 8.3).
  *
- * Holds no calculation of its own (D9): totals, targets and remainders all
- * arrive derived. What it does own is the date being looked at, and the rule
- * that looking is free — every read below answers a virtual day for a date
- * that has no row, and writes are the only thing that materialises one.
+ * Holds no calculation of its own (D9). What it owns is the date being looked
+ * at, and the rule that looking is free: every read answers a virtual day for
+ * a date with no row, and only writes materialise one.
  *
  * The date starts on the current day and is not remembered: specs 7 asks for
  * the Journal to open on today, never on the last date consulted.
+ *
+ * ## The day carousel
+ *
+ * Three days are mounted at once — yesterday, today, tomorrow relative to what
+ * is on show — in a strip three screens wide, translated by one screen so the
+ * middle one is centred. Dragging moves the strip with the finger, so the day
+ * leaving and the day arriving move together, as one sheet of paper.
+ *
+ * The gesture runs on the UI thread, as a worklet. This is a reversal of what
+ * slice 1 first shipped, where the gesture ran on the JS thread precisely to
+ * avoid depending on the Reanimated worklets Babel plugin — a toolchain
+ * failure being undiagnosable without a build. Two things changed: the plugin
+ * is confirmed present (babel-preset-expo adds react-native-worklets/plugin
+ * on its own as soon as the package resolves, and it does), and the Metro loop
+ * now reports a failure in seconds rather than in a fifteen-minute cycle. A
+ * finger-following animation driven from the JS thread stutters whenever React
+ * is busy re-rendering, which here is exactly when the day changes.
+ *
+ * ## Why nothing flickers when the day commits
+ *
+ * Once the strip has slid a full screen, the middle slot has to become the new
+ * day. Two things must then happen together: the pages shift by one slot, and
+ * the strip returns to its resting offset. They cancel each other exactly — the
+ * content moves one screen left, the strip moves one screen right — so as long
+ * as both land in the same render, not a single pixel changes.
+ *
+ * That is what the layout effect below is for: React applies the new dates,
+ * then the effect resets the offset in the same commit, before paint. Doing it
+ * the other way round — resetting first, from the animation callback — would
+ * show the old day snapping back into the middle for a frame or two.
  */
+
+const SLIDE: WithTimingConfig = { duration: 220 };
+
+/** A flick counts even when short: velocity in points per second. */
+const FLICK_VELOCITY = 500;
+
 export function JournalScreen() {
   const theme = useTheme();
   const router = useRouter();
+  const { width } = useWindowDimensions();
 
   // The cutoff hour is a setting (specs 8.8) whose screen arrives in slice 7.
   // Until then the default of midnight applies, through the one function that
@@ -49,39 +95,82 @@ export function JournalScreen() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerMonth, setPickerMonth] = useState<LocalDate>(today);
 
-  const day = useDay(date);
-  const totals = useDayTotals(date);
-  const mealTotals = useMealTotals(date);
-
   const addMeal = useAddMeal();
   const renameMeal = useRenameMeal();
   const deleteMeal = useDeleteMeal();
   const deleteEntry = useDeleteEntry();
 
-  const meals = day.data?.meals ?? [];
+  const drag = useSharedValue(0);
 
-  // Horizontal swipe between days (specs 8.3). It only claims the touch once
-  // the movement is clearly horizontal, and a swipe that starts on an entry is
-  // handled by that row instead: the innermost gesture wins.
-  const swipe = Gesture.Pan()
-    .runOnJS(true)
-    .activeOffsetX([-30, 30])
-    .onEnd((event) => {
-      if (event.translationX < -60) setDate((current) => addDays(current, 1));
-      else if (event.translationX > 60) setDate((current) => addDays(current, -1));
-    });
+  // Recentres the strip in the same commit that shifts the pages. See the note
+  // above: the two movements cancel, so nothing moves on screen.
+  useLayoutEffect(() => {
+    drag.value = 0;
+  }, [date, drag]);
 
-  function openAdd(meal: DayMealView): void {
-    router.push({
-      pathname: '/(modals)/free-entry',
-      params: { date, mealPosition: String(meal.position) },
+  function step(delta: number): void {
+    setDate((current) => addDays(current, delta));
+  }
+
+  /**
+   * Slides a whole screen and then commits. Shared by the gesture and by the
+   * header chevrons, so a tap and a swipe land the same way.
+   */
+  function slideTo(delta: -1 | 1): void {
+    drag.value = withTiming(delta === 1 ? -width : width, SLIDE, (finished) => {
+      // finished is false when a new gesture interrupted this animation, in
+      // which case the day must not change under the finger.
+      if (finished === true) runOnJS(step)(delta);
     });
   }
 
-  function openEdit(entry: JournalEntryView): void {
+  const pan = Gesture.Pan()
+    // Only claims the touch once the movement is clearly horizontal, and gives
+    // up if it started as a vertical scroll. A swipe beginning on an entry is
+    // handled by that row instead: the innermost gesture wins.
+    .activeOffsetX([-20, 20])
+    .failOffsetY([-20, 20])
+    .onUpdate((event) => {
+      drag.value = event.translationX;
+    })
+    .onEnd((event) => {
+      // A deliberate flick wins over distance: releasing fast is an intent,
+      // and waiting for a quarter of the screen would make the gesture feel
+      // heavy.
+      const flicked =
+        Math.abs(event.velocityX) > FLICK_VELOCITY ? Math.sign(event.velocityX) : 0;
+      const dragged =
+        Math.abs(event.translationX) > width / 4 ? Math.sign(event.translationX) : 0;
+      const direction = flicked !== 0 ? flicked : dragged;
+
+      if (direction === 0) {
+        drag.value = withTiming(0, SLIDE);
+        return;
+      }
+
+      // A finger moving right uncovers the page on the left, which is the day
+      // before: the day moves against the direction of travel.
+      const delta = -direction;
+      drag.value = withTiming(direction * width, SLIDE, (finished) => {
+        if (finished === true) runOnJS(step)(delta);
+      });
+    });
+
+  const stripStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: -width + drag.value }],
+  }));
+
+  function openAdd(pageDate: LocalDate, meal: DayMealView): void {
     router.push({
       pathname: '/(modals)/free-entry',
-      params: { date, entryId: entry.id },
+      params: { date: pageDate, mealPosition: String(meal.position) },
+    });
+  }
+
+  function openEdit(pageDate: LocalDate, entry: JournalEntryView): void {
+    router.push({
+      pathname: '/(modals)/free-entry',
+      params: { date: pageDate, entryId: entry.id },
     });
   }
 
@@ -91,22 +180,18 @@ export function JournalScreen() {
     // not because the application has an opinion about deleting.
     Alert.alert(`Supprimer « ${entry.name} » ?`, undefined, [
       { text: 'Annuler', style: 'cancel' },
-      {
-        text: 'Supprimer',
-        style: 'destructive',
-        onPress: () => deleteEntry.mutate(entry.id),
-      },
+      { text: 'Supprimer', style: 'destructive', onPress: () => deleteEntry.mutate(entry.id) },
     ]);
   }
 
-  function promptAddMeal(): void {
+  function promptAddMeal(pageDate: LocalDate): void {
     Alert.prompt('Nouveau repas', 'Son nom', (name) => {
       const trimmed = name.trim();
-      if (trimmed !== '') addMeal.mutate({ date, name: trimmed });
+      if (trimmed !== '') addMeal.mutate({ date: pageDate, name: trimmed });
     });
   }
 
-  function promptMealActions(meal: DayMealView): void {
+  function promptMealActions(pageDate: LocalDate, meal: DayMealView): void {
     Alert.alert(meal.name, undefined, [
       { text: 'Annuler', style: 'cancel' },
       {
@@ -118,7 +203,7 @@ export function JournalScreen() {
             (name) => {
               const trimmed = name.trim();
               if (trimmed !== '') {
-                renameMeal.mutate({ date, mealPosition: meal.position, name: trimmed });
+                renameMeal.mutate({ date: pageDate, mealPosition: meal.position, name: trimmed });
               }
             },
             'plain-text',
@@ -128,10 +213,22 @@ export function JournalScreen() {
       {
         text: 'Supprimer le repas',
         style: 'destructive',
-        onPress: () => deleteMeal.mutate({ date, mealPosition: meal.position }),
+        onPress: () => deleteMeal.mutate({ date: pageDate, mealPosition: meal.position }),
       },
     ]);
   }
+
+  const pageProps = {
+    width,
+    onAdd: openAdd,
+    onEditEntry: openEdit,
+    onDeleteEntry: confirmDeleteEntry,
+    onMealActions: promptMealActions,
+    onAddMeal: promptAddMeal,
+  };
+
+  const previous = addDays(date, -1);
+  const next = addDays(date, 1);
 
   return (
     <>
@@ -142,7 +239,7 @@ export function JournalScreen() {
             <HeaderChevron
               symbol="chevron.left"
               label="Jour précédent"
-              onPress={() => setDate((current) => addDays(current, -1))}
+              onPress={() => slideTo(-1)}
             />
           ),
           headerRight: () => (
@@ -162,51 +259,24 @@ export function JournalScreen() {
               <HeaderChevron
                 symbol="chevron.right"
                 label="Jour suivant"
-                onPress={() => setDate((current) => addDays(current, 1))}
+                onPress={() => slideTo(1)}
               />
             </View>
           ),
         }}
       />
 
-      <GestureDetector gesture={swipe}>
-        <ScrollView
-          style={{ backgroundColor: theme.colors.background }}
-          contentContainerStyle={styles.content}
-          contentInsetAdjustmentBehavior="automatic"
-        >
-          <RemainingBanner
-            consumed={totals.data ?? ZERO_MACROS}
-            target={dayTargets(meals)}
-          />
-
-          {meals.map((meal) => (
-            <MealSection
-              key={meal.id ?? `virtual-${meal.position}`}
-              meal={meal}
-              total={meal.id === null ? undefined : mealTotals.data?.get(meal.id)}
-              onAdd={() => openAdd(meal)}
-              onEditEntry={openEdit}
-              onDeleteEntry={confirmDeleteEntry}
-              onLongPress={() => promptMealActions(meal)}
-            />
-          ))}
-
-          <Pressable
-            onPress={promptAddMeal}
-            accessibilityRole="button"
-            style={[styles.addMeal, { borderColor: theme.colors.border }]}
-          >
-            <Text style={[styles.addMealLabel, { color: theme.colors.accent }]}>
-              Ajouter un repas
-            </Text>
-          </Pressable>
-
-          <Text style={[styles.hint, { color: theme.colors.textFaint }]}>
-            Balayez horizontalement pour changer de jour. Appui long sur un repas pour le
-            renommer ou le supprimer.
-          </Text>
-        </ScrollView>
+      <GestureDetector gesture={pan}>
+        <Animated.View style={[styles.strip, { width: width * 3 }, stripStyle]}>
+          {/*
+            Keyed by date, so the three pages are reconciled by identity: on a
+            step, the page that was arriving is reused rather than remounted,
+            and keeps its unfolded meals and its scroll position.
+          */}
+          <DayPage key={previous} date={previous} {...pageProps} />
+          <DayPage key={date} date={date} {...pageProps} />
+          <DayPage key={next} date={next} {...pageProps} />
+        </Animated.View>
       </GestureDetector>
 
       <Modal
@@ -239,6 +309,8 @@ export function JournalScreen() {
             today={today}
             onMonthChange={setPickerMonth}
             onSelect={(chosen) => {
+              // A jump of more than one day has no page to slide to, so it
+              // swaps outright. The strip is already at rest.
               setDate(chosen);
               setPickerOpen(false);
             }}
@@ -267,18 +339,9 @@ function HeaderChevron({
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 16, gap: 12, paddingBottom: 48 },
+  strip: { flex: 1, flexDirection: 'row' },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 18 },
   sheet: { flex: 1, padding: 16, gap: 8 },
   sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8 },
   sheetAction: { fontSize: 17 },
-  addMeal: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 14,
-    borderStyle: 'dashed',
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  addMealLabel: { fontSize: 15, fontWeight: '600' },
-  hint: { fontSize: 12, lineHeight: 17, textAlign: 'center', marginTop: 4 },
 });
