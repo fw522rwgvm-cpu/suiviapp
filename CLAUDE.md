@@ -237,23 +237,32 @@ il n'y a rien à activer.
 **Ne jamais peindre le fond d'une surface en verre** (`backgroundColor` sur la
 barre d'onglets, un en-tête, une feuille). L'opacité annule l'effet.
 
-**Exception assumée depuis la tranche 3, demandée explicitement : les en-têtes
-sont peints en `colors.background`**, avec `headerShadowVisible: false`. La
-bande du haut doit lire comme la même feuille de papier que le contenu, pas
-comme une barre flottant au-dessus — et c'est le filet de séparation qui fait
-que deux surfaces ont l'air d'être deux surfaces. Posé une fois par pile :
-`app/(tabs)/(journal)/_layout.tsx` et `app/_layout.tsx`. En peindre une et pas
-l'autre serait pire que l'un ou l'autre choix.
+**Et la règle a une conséquence non évidente, trouvée en tranche 3 : pour qu'une
+bande du haut lise comme la même feuille de papier que le contenu, il ne faut
+surtout pas la peindre — il faut `headerTransparent`.**
 
-Ce que ça coûte : ces en-têtes ne se givrent plus quand le contenu passe
-dessous. La réserve déjà écrite ici joue dans l'autre sens — le verre coûte du
-contraste, et rien sur cette barre n'est un chiffre à lire d'un coup d'œil,
-donc la perte est un effet, pas de la lisibilité. **La barre d'onglets, elle,
-n'est pas peinte** : la règle tient partout ailleurs.
+Peindre l'en-tête en `colors.background` donne la bonne couleur et tue l'effet.
+Le rendre transparent donne la bonne couleur *parce que c'est littéralement la
+même surface* — le fond de la page se voit à travers — et le contenu continue
+de défiler dessous. Piège d'ordonnancement : `headerTransparent` ne vide le
+fond que si `headerStyle` n'en impose pas un, donc il ne doit y avoir **aucun**
+`backgroundColor` à côté.
 
-Variante qui aurait gardé les deux : `headerTransparent`, le contenu défilant
-dessous. Écartée faute de pouvoir vérifier son interaction avec le carrousel à
-trois pages sans l'appareil.
+Ce qui garde le titre lisible une fois du contenu dessous dépend de l'OS, et la
+documentation prévient que les deux se superposent si on pose les deux :
+- iOS 26 estompe le contenu au bord lui-même — `scrollEdgeEffects: { top }` ;
+- avant, c'est un flou derrière la barre — `headerBlurEffect`.
+
+Le conditionnel suit le précédent de la barre d'onglets : interroger
+`isLiquidGlassAvailable()` avant de demander un comportement iOS 26. Posé une
+fois par pile, dans `app/(tabs)/(journal)/_layout.tsx` et `app/_layout.tsx`.
+
+Ça repose sur `contentInsetAdjustmentBehavior="automatic"` dans chaque écran —
+c'est la combinaison que `react-native-screens` prévoit — pour que le contenu
+commence **sous** la barre et non **derrière** elle.
+
+`headerShadowVisible: false` complète : c'est le filet de séparation, plus
+encore que la couleur, qui fait que deux surfaces ont l'air d'être deux.
 
 `expo-glass-effect` fournit `GlassView`, `GlassContainer` et surtout
 `isLiquidGlassAvailable()`, à interroger avant toute option iOS 26 puisque les

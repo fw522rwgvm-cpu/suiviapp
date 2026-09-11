@@ -1,3 +1,4 @@
+import { isLiquidGlassAvailable } from 'expo-glass-effect';
 import { Stack } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { DatabaseGate } from '@/core/db/database-gate';
@@ -34,22 +35,27 @@ export default function RootLayout() {
  * Split out only so it can read the theme: RootLayout is the component that
  * renders ThemeProvider, so it sits outside its own context.
  *
- * The modal headers are painted with the app background, like the Journal
- * stack — see the note in app/(tabs)/(journal)/_layout.tsx for why that is a
- * deliberate divergence from the no-paint-on-glass rule. Painting one and not
- * the other would be worse than either choice on its own.
+ * The modal headers are transparent like the Journal stack's — see the note in
+ * app/(tabs)/(journal)/_layout.tsx for the whole reasoning. Doing it to one
+ * stack and not the other would be worse than either choice on its own, and
+ * these screens are the easy case: one ScrollView each, rather than the three
+ * side by side that the day carousel mounts.
  */
 function RootStack() {
   const theme = useTheme();
+  const glass = isLiquidGlassAvailable();
 
   return (
     <Stack
       screenOptions={{
         headerShown: false,
-        headerStyle: { backgroundColor: theme.colors.background },
+        headerTransparent: true,
         headerShadowVisible: false,
         headerTintColor: theme.colors.accent,
         headerTitleStyle: { color: theme.colors.text },
+        ...(glass
+          ? { scrollEdgeEffects: { top: 'soft' as const } }
+          : { headerBlurEffect: 'systemChromeMaterial' as const }),
       }}
     >
       <Stack.Screen name="(tabs)" />

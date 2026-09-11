@@ -1,3 +1,4 @@
+import { isLiquidGlassAvailable } from 'expo-glass-effect';
 import { Stack } from 'expo-router';
 import { useTheme } from '@/core/theme';
 
@@ -13,37 +14,49 @@ import { useTheme } from '@/core/theme';
  * The group parentheses matter: (journal) adds no path segment, so the Journal
  * stays the tabs group's index route rather than moving to /journal.
  *
- * THE HEADER BACKGROUND IS PAINTED, AND THAT IS A DIVERGENCE.
+ * ## The header is TRANSPARENT, not painted
  *
- * The iOS 26 direction says never to paint the background of a glass surface,
- * because opacity is exactly what cancels the effect — and that rule stands for
- * the tab bar, which is left alone. Here it is set aside deliberately, on
- * request: the header is to read as the same sheet of paper as the content
- * under it rather than as a separate bar floating above it. headerShadowVisible
- * is off for the same reason — the hairline seam is what makes two surfaces
- * look like two surfaces.
+ * The brief was that the top band read as the same sheet of paper as the
+ * content under it. Painting it colors.background did that and cost the glass,
+ * which the iOS 26 direction warns about in as many words: opacity is exactly
+ * what cancels the effect.
  *
- * What it costs: this header no longer frosts as content scrolls under it. The
- * reservation CLAUDE.md already records cuts the other way here — glass costs
- * contrast, and nothing on this bar is a figure that has to be read at a
- * glance, so the loss is an effect rather than legibility.
+ * headerTransparent gets the same result without the cost. The bar has no
+ * background of its own, so at rest what shows through IS the page background —
+ * the same colour, because it is literally the same surface — and the content
+ * keeps scrolling underneath. Note the ordering trap: headerTransparent only
+ * clears the background if headerStyle does not set one, so there must be no
+ * backgroundColor here.
  *
- * The variant that would have kept both is headerTransparent, letting the
- * content scroll underneath. It is not taken because its interaction with the
- * three-page carousel cannot be checked without the device.
+ * What keeps the title legible once content is under it differs by OS, and the
+ * two are documented to overlap if both are set:
+ *
+ *  - iOS 26 fades the content out at the edge itself (scrollEdgeEffects), which
+ *    is the native answer and the better-looking one;
+ *  - before that, a blur behind the bar is what does it.
+ *
+ * The conditional follows the precedent already set in the tabs layout, which
+ * asks isLiquidGlassAvailable() before requesting an iOS 26 behaviour.
+ *
+ * This rests on the screens using contentInsetAdjustmentBehavior="automatic" —
+ * they do — so that the content starts below the bar rather than under it.
  *
  * Route wiring only (D10): this reads the theme and declares screen options.
  */
 export default function JournalLayout() {
   const theme = useTheme();
+  const glass = isLiquidGlassAvailable();
 
   return (
     <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: theme.colors.background },
+        headerTransparent: true,
         headerShadowVisible: false,
         headerTintColor: theme.colors.accent,
         headerTitleStyle: { color: theme.colors.text },
+        ...(glass
+          ? { scrollEdgeEffects: { top: 'soft' as const } }
+          : { headerBlurEffect: 'systemChromeMaterial' as const }),
       }}
     />
   );
