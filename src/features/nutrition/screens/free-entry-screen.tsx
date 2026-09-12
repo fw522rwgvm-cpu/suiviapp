@@ -1,4 +1,4 @@
-import { Stack, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   Alert,
@@ -13,7 +13,6 @@ import {
 import type { LocalDate } from '@/core/date';
 import { formatKcal, parseDecimal } from '@/core/format';
 import { useTheme } from '@/core/theme';
-import { HeaderTextButton } from '@/core/ui/header-text-button';
 import type { JournalEntryId } from '@/core/db/schema';
 import {
   useAddFreeEntry,
@@ -36,6 +35,11 @@ import { hasKcalWarning, theoreticalKcal, type Macros } from '../domain/macros';
  * No quantity field, deliberately. The row is stored as 100 units of a virtual
  * food (D5/R2) so that it aggregates like everything else, but that is an
  * implementation detail and never a number the user typed.
+ *
+ * DRAWS NO CHROME OF ITS OWN, because it is used two ways: as a step inside
+ * the add modal, where the surrounding screen owns the header, and as an
+ * overlay route for editing, where OverlayPanel does. A screen that declared
+ * its own would fight whichever of the two it happened to be inside.
  */
 
 interface Fields {
@@ -133,21 +137,6 @@ export function FreeEntryScreen({
   }
 
   return (
-    <>
-      {/*
-        The way out. A full-screen modal is the root of its own presentation:
-        the native stack draws no back button for it and iOS offers no
-        swipe-down, so without this the only way to leave is to save or to
-        delete. Slice 1 shipped it that way and it went unnoticed, because both
-        of those buttons are right there — but cancelling was impossible.
-      */}
-      <Stack.Screen
-        options={{
-          headerLeft: () => (
-            <HeaderTextButton label="Fermer" onPress={() => router.back()} />
-          ),
-        }}
-      />
     <KeyboardAvoidingView behavior="padding" style={styles.flex}>
       <ScrollView
         style={{ backgroundColor: theme.colors.background }}
@@ -232,7 +221,6 @@ export function FreeEntryScreen({
         )}
       </ScrollView>
     </KeyboardAvoidingView>
-    </>
   );
 }
 

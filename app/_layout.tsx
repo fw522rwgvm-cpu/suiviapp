@@ -69,20 +69,35 @@ function RootStack() {
         name="(modals)/add-entry"
         options={{ presentation: 'fullScreenModal', headerShown: true }}
       />
+      {/*
+        THE TWO EDITING ROUTES ARE OVERLAYS, not full-screen modals.
+
+        Correcting a line already in the journal — a quantity, or four typed
+        numbers — is done ON the day rather than instead of it. A transparent
+        modal keeps the Journal mounted and visible behind, and OverlayPanel
+        draws the window over it; an opaque screen would read as going
+        somewhere else, which is the wrong thing to say about an edit.
+
+        Adding comes through neither: both are steps inside the add modal
+        above, so the whole "add something" journey stays in one screen.
+
+        No header, because the panel carries its own way out — a bar above a
+        floating window would make it look like a page again.
+      */}
       <Stack.Screen
         name="(modals)/quantity"
         options={{
-          presentation: 'fullScreenModal',
-          headerShown: true,
-          title: 'Quantité',
+          presentation: 'transparentModal',
+          headerShown: false,
+          contentStyle: { backgroundColor: 'transparent' },
         }}
       />
       <Stack.Screen
         name="(modals)/free-entry"
         options={{
-          presentation: 'fullScreenModal',
-          headerShown: true,
-          title: 'Saisie libre',
+          presentation: 'transparentModal',
+          headerShown: false,
+          contentStyle: { backgroundColor: 'transparent' },
         }}
       />
     </Stack>

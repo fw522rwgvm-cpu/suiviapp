@@ -11,6 +11,7 @@ import type { FoodListItem } from '../data/food-reads';
 import { searchFoods } from '../domain/food-search';
 import { FoodRow } from '../components/food-row';
 import { SearchField } from '../components/search-field';
+import { FreeEntryScreen } from './free-entry-screen';
 import { QuantityScreen } from './quantity-screen';
 
 /**
@@ -21,15 +22,21 @@ import { QuantityScreen } from './quantity-screen';
  * > b) Search — personal results first.
  * > d) Free entry — accessible in a single tap.
  *
- * WHY THE QUANTITY STEP IS STATE HERE AND NOT A SECOND MODAL.
+ * BOTH INNER STEPS ARE STATE HERE, NOT SEPARATE MODALS — the quantity of a
+ * chosen food, and free entry.
  *
  * D16 budgets 0,2 s from choosing a food to the quantity screen, and the exit
  * criterion of this slice is two taps. Swapping the content of a modal already
  * on screen costs a render; pushing a second modal costs a presentation
  * animation, and stacks two dismissals on the way out. The quantity screen
  * still exists as a route of its own — specs 3 asks for it, and the Journal
- * pushes it directly when an already-logged food is tapped — but the fast path
- * does not travel through the router.
+ * opens it when an already-logged food is tapped — but the fast path does not
+ * travel through the router.
+ *
+ * Free entry works the same way, and used to not: it was a router.replace onto
+ * its own modal, which meant the way back landed on the Journal rather than on
+ * this list. One tap to reach it, one to leave it, and the whole "add
+ * something" journey stays in one screen.
  *
  * WHAT IS DELIBERATELY ABSENT. Recipes (slice 6) and recent meals both belong
  * to 8.4a and neither is here: section 7 scopes this slice to the personal
@@ -49,6 +56,7 @@ export function AddEntryScreen({
 
   const [term, setTerm] = useState('');
   const [chosen, setChosen] = useState<FoodId | null>(null);
+  const [freeEntry, setFreeEntry] = useState(false);
 
   const foods = useFoods();
   const favorites = useFavoriteFoods();
@@ -59,6 +67,26 @@ export function AddEntryScreen({
     () => (searching ? searchFoods(foods.data ?? [], term) : []),
     [foods.data, term, searching],
   );
+
+  if (freeEntry && mealPosition !== null) {
+    return (
+      <>
+        <Stack.Screen
+          options={{
+            title: 'Saisie libre',
+            headerLeft: () => (
+              <HeaderTextButton
+                symbol="chevron.left"
+                label="Aliments"
+                onPress={() => setFreeEntry(false)}
+              />
+            ),
+          }}
+        />
+        <FreeEntryScreen date={date} mealPosition={mealPosition} entryId={null} />
+      </>
+    );
+  }
 
   if (chosen !== null && mealPosition !== null) {
     return (
@@ -130,12 +158,7 @@ export function AddEntryScreen({
           path must not move as the food database fills up.
         */}
         <Pressable
-          onPress={() =>
-            router.replace({
-              pathname: '/(modals)/free-entry',
-              params: { date, mealPosition: String(mealPosition ?? 0) },
-            })
-          }
+          onPress={() => setFreeEntry(true)}
           accessibilityRole="button"
           style={[
             styles.freeEntry,

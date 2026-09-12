@@ -629,6 +629,16 @@ sélection posée dans le même tick est écrasée. `selectTextOnFocus` reste, p
 tous les touchers **ultérieurs** sur le champ. On retombe alors dans le cas où
 il fonctionne : focaliser un champ **déjà rempli**.
 
+**Ajouter est une modale opaque, modifier est une fenêtre par-dessus.** La
+règle de la tranche 3 était « consulter est un empilement, ajouter est une
+modale » ; elle gagne un troisième terme. Corriger une ligne déjà au journal —
+une quantité, quatre nombres saisis — se fait **sur** la journée et non à sa
+place, et un écran opaque dit le contraire. Les deux routes d'édition passent
+donc en `transparentModal`, et `core/ui/overlay-panel.tsx` dessine la fenêtre.
+Le panneau est au fond de **page**, pas au fond de carte : ce qu'on y met porte
+ses propres cartes, et des cartes `surface` sur un panneau `surface` cessent
+d'être visibles.
+
 **Un `fullScreenModal` n'a aucune sortie par défaut.** C'est la racine de sa
 propre présentation : la pile native ne lui dessine pas de bouton retour, et
 iOS n'offre pas le glissement vers le bas d'une feuille. Un `headerLeft` vide y
@@ -746,10 +756,10 @@ d'une seconde au nom de la fluidité, ce que personne ne veut. Et seul le
 - **Hypothèse signalée** : `String.prototype.normalize` sur Hermes. Sonde
   écrite, repli écrit, les deux testés en Node — mais lequel s'exécute sur
   l'appareil ne se sait qu'en le regardant.
-- Depuis l'écran d'ajout, « Saisie libre » fait un `router.replace` : le retour
-  ramène au Journal, pas à l'accès rapide. Choisi pour ne pas empiler deux
-  modales plein écran et garder un congédiement unique. À revoir si le
-  demi-tour manque à l'usage.
+- ~~Depuis l'écran d'ajout, « Saisie libre » fait un `router.replace ».~~
+  **Résolu.** C'est une étape en place, comme celle de la quantité : le retour
+  revient à la liste d'aliments et le parcours « ajouter quelque chose » tient
+  dans un seul écran.
 - `kind` et `base_unit` dupliquent encore leur ensemble de valeurs entre le
   type TypeScript et le tableau `one_of` du catalogue. `PORTION_NAMES` montre
   la forme correcte — données d'abord, type dérivé. Non corrigé : ce serait
