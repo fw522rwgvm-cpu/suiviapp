@@ -613,9 +613,24 @@ d'onglets.
 **Et viser la bonne valeur ne suffit pas : `scrollTo` la rogne.**
 `RCTScrollView` borne la cible avec `contentInset` — l'explicite, laissé à zéro
 par l'ajustement automatique — donc toute cible négative devient silencieusement
-zéro, c'est-à-dire exactement une hauteur de barre trop bas. **`scrollToOverflowEnabled`**
-désactive ce bornage. Sans cette prop, viser `-headerHeight` ne change
-strictement rien, et l'écran a l'air de ne pas répondre.
+zéro. `scrollToOverflowEnabled` désactive ce bornage.
+
+**Mais c'est la mauvaise sortie, et le carrousel l'a prouvé en trois tours.**
+Viser `-useHeaderHeight()` est *proche*, et proche est précisément le problème :
+sans le bornage, une visée de quelques points trop généreuse **dépasse**, le
+contenu se repose plus bas que son haut, et rien ne le ramène — une bande de
+vide sous la barre.
+
+**La sortie est de déclarer les encarts au lieu d'en hériter.**
+`contentInsetAdjustmentBehavior="never"` plus `paddingTop: useHeaderHeight()` :
+le haut vaut zéro, le bornage le protège, et aucun dépassement n'est atteignable.
+Le prix est d'assumer aussi le bas, que « never » supprime — ce qui est sans
+gravité, le contenu passant sous une barre d'onglets en verre étant l'intention
+d'iOS 26 ; il suffit d'assez de marge pour lire la dernière ligne au clair.
+
+**Et une page montée vide n'a rien à faire défiler.** Un retour en haut posé
+avant l'arrivée du contenu ne fait rien du tout ; il en faut un second au moment
+où les données arrivent, pendant que l'indicateur couvre encore la page.
 
 **Ne jamais échanger le type d'élément d'une page selon son état de
 chargement.** Rendre une `View` en attente puis une `ScrollView` une fois

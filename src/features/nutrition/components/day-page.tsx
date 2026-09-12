@@ -1,6 +1,7 @@
 import { useHeaderHeight } from 'expo-router/build/react-navigation/elements';
 import { useEffect, useRef } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { LocalDate } from '@/core/date';
 import { useTheme } from '@/core/theme';
 import { LoadingDots } from '@/core/ui/loading-dots';
@@ -52,30 +53,29 @@ export function DayPage({
   const theme = useTheme();
   const scroll = useRef<ScrollView>(null);
   /**
-   * WHERE THE TOP ACTUALLY IS.
+   * THE INSETS ARE DECLARED, NOT INHERITED — so that zero means the top.
    *
    * With contentInsetAdjustmentBehavior="automatic" the system pushes the
    * content below the transparent header by setting adjustedContentInset, and
-   * the resting position is then MINUS that inset — not zero. scrollTo({ y: 0 })
-   * therefore lands a header's height too low, which is what "not quite at the
-   * top" was.
+   * the resting position becomes MINUS that inset rather than zero. The value
+   * cannot be read back: the scroll event carries contentInset, which automatic
+   * adjustment leaves at zero (RCTScrollView sends scrollView.contentInset, not
+   * adjustedContentInset).
    *
-   * The value cannot be read back from JavaScript: the scroll event carries
-   * contentInset, which automatic adjustment leaves at zero (RCTScrollView
-   * sends scrollView.contentInset, not adjustedContentInset). The navigator
-   * knows it, though, and that is the same number — safe area plus bar.
+   * Aiming at -useHeaderHeight() was close, and close is the problem. It needs
+   * scrollToOverflowEnabled to get past RCTScrollView's clamp, and that same
+   * prop lets an aim that is a few points too generous OVERSHOOT — the content
+   * then rests lower than its top, leaving a band of nothing under the bar,
+   * with nothing to pull it back.
    *
-   * Declaring the padding by hand instead was the other way, and it is worse:
-   * switching the behaviour off would also drop the BOTTOM inset, and the
-   * content would run under the tab bar.
-   *
-   * AND THE TARGET HAS TO BE ALLOWED THROUGH. RCTScrollView clamps scrollTo
-   * against contentInset — the explicit one, which automatic adjustment leaves
-   * at zero — so every negative target silently became 0, which is precisely
-   * one header below the top. scrollToOverflowEnabled turns that clamping off,
-   * and it is the whole reason the previous two attempts changed nothing.
+   * Declaring the padding removes the guess entirely: the top is zero, the
+   * clamp protects it, and no overshoot is reachable. The cost is owning the
+   * bottom as well, since "never" drops that inset too — content passing under
+   * the tab bar is the iOS 26 intent anyway, so what is needed there is only
+   * enough room to read the last row clear of it.
    */
   const headerHeight = useHeaderHeight();
+  const insets = useSafeAreaInsets();
   const day = useDay(date);
   const totals = useDayTotals(date);
   const mealTotals = useMealTotals(date);
@@ -110,21 +110,29 @@ export function DayPage({
    * stays mounted with its scroll where you left it — and coming back showed it
    * half way down. Slice 1 kept that deliberately, to preserve unfolded meals
    * and position; keeping the meals is still right, keeping the scroll is not.
-   * A day you return to is a day you read again from its figures down.
    *
    * Doing it on arrival worked and could be SEEN doing it: the page was already
    * on screen, so it appeared at its old offset and then jumped. On departure
-   * the page has just moved a full screen sideways and is out of view, so the
-   * same correction happens where there is nobody to notice — and what comes
-   * back is simply a day that was already at the top.
-   *
-   * The `!active` form also fires on mount for the two neighbours, which is
-   * harmless: they are at the top already.
+   * it has just moved a full screen sideways and is out of view.
    */
   useEffect(() => {
     if (active) return;
-    scroll.current?.scrollTo({ y: -headerHeight, animated: false });
-  }, [active, headerHeight]);
+    scroll.current?.scrollTo({ y: 0, animated: false });
+  }, [active]);
+
+  /**
+   * And again the moment the day's content arrives.
+   *
+   * A page that mounts empty has nothing to scroll, so the reset above lands on
+   * a view with no content and achieves nothing; the rows then appear at
+   * whatever offset the scroll view settles on. This second pass runs while the
+   * indicator is still covering the page — it is held a full second — so the
+   * correction happens out of sight, exactly like the one on departure.
+   */
+  useEffect(() => {
+    if (pending) return;
+    scroll.current?.scrollTo({ y: 0, animated: false });
+  }, [pending]);
 
   return (
     /**
@@ -152,10 +160,11 @@ export function DayPage({
       <ScrollView
         ref={scroll}
         style={styles.fill}
-        contentContainerStyle={styles.content}
-        contentInsetAdjustmentBehavior="automatic"
-        // Without this, scrollTo cannot reach above zero — see the note above.
-        scrollToOverflowEnabled
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: headerHeight + 8, paddingBottom: insets.bottom + 96 },
+        ]}
+        contentInsetAdjustmentBehavior="never"
         scrollEnabled={!showDots}
       >
         <RemainingBanner consumed={totals.data ?? ZERO_MACROS} target={dayTargets(meals)} />
@@ -202,7 +211,7 @@ export function DayPage({
 const styles = StyleSheet.create({
   // Cards float on the background rather than butting against each other, so
   // the gap is what separates them and the shadow is what raises them.
-  content: { padding: 16, gap: 14, paddingBottom: 56 },
+  content: { paddingHorizontal: 16, gap: 14 },
   /**
    * The scroll view fills its page wrapper. NO `flex` on the wrapper itself:
    * the carousel is a row, so flex there would act on the HORIZONTAL axis and
