@@ -77,7 +77,18 @@ function replacePortions(tx: AppDatabase, foodId: FoodId, draft: FoodDraft): voi
     .run();
 }
 
-/** Macros and the flags, shared by create and update. */
+/**
+ * The columns both create and update write.
+ *
+ * `is_favorite` IS NOT ONE OF THEM, and that is the point of the split. It is
+ * set by its own one-tap action, from the library list and from the editor's
+ * own star, and it takes effect at once -- so a form that had loaded the food
+ * a minute earlier still holds whatever the flag was then. Writing it back on
+ * save would quietly undo a tap nobody thought of as an edit.
+ *
+ * Creation is the exception, and cannot be otherwise: a food that does not
+ * exist yet has no row to flip.
+ */
 function columnsOf(draft: FoodDraft) {
   const canonical = canonicalMacrosOf(draft);
   const brand = (draft.brand ?? '').trim();
@@ -94,7 +105,6 @@ function columnsOf(draft: FoodDraft) {
     fat100: canonical.fat,
     kcal100: canonical.kcal,
     displayRefQty: draft.refQty,
-    isFavorite: draft.isFavorite ? (1 as const) : (0 as const),
   };
 }
 
@@ -106,7 +116,13 @@ export function createFood(db: AppDatabase, draft: FoodDraft): FoodId {
     const now = Date.now();
 
     tx.insert(food)
-      .values({ id, ...columnsOf(draft), createdAt: now, updatedAt: now })
+      .values({
+        id,
+        ...columnsOf(draft),
+        isFavorite: draft.isFavorite ? (1 as const) : (0 as const),
+        createdAt: now,
+        updatedAt: now,
+      })
       .run();
     replacePortions(tx, id, draft);
 

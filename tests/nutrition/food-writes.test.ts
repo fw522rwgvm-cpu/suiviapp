@@ -252,6 +252,27 @@ describe('favourites', () => {
     expect(readFood(database.db, id)?.isFavorite).toBe(false);
   });
 
+  it('SURVIVES A LATER SAVE THAT STILL CARRIES THE OLD FLAG', () => {
+    // The one that bit. The star acts at once, from the list or from the
+    // editor's header; the editor's draft was loaded before that tap and goes
+    // on holding whatever the flag was then. If a save wrote it back, marking
+    // a favourite and then correcting a typo would silently unmark it -- and
+    // nobody would connect the two.
+    const stale = bread({ isFavorite: false });
+    const id = createFood(database.db, stale);
+
+    setFoodFavorite(database.db, id, true);
+    updateFood(database.db, id, { ...stale, name: 'Pain de mie complet' });
+
+    expect(readFood(database.db, id)?.isFavorite).toBe(true);
+    expect(readFood(database.db, id)?.name).toBe('Pain de mie complet');
+  });
+
+  it('is still what creation was told, since a new food has no row to flip', () => {
+    const id = createFood(database.db, bread({ isFavorite: true }));
+    expect(readFood(database.db, id)?.isFavorite).toBe(true);
+  });
+
   it('stores 0 and 1, never a boolean', () => {
     // A boolean would reach the exporter, which throws on anything that is not
     // a string, a finite number or null.

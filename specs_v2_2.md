@@ -384,7 +384,7 @@ Les onglets non pourvus dans une version donnée sont **présents et affichent u
 **Base personnelle**
 - Création, modification, suppression d'aliments
 - Gestion des portions nommées, avec leur quantité en unité de base
-- Marquage favori
+- Marquage favori. **[v2.3] Il agit immediatement, jamais a l'enregistrement**, et par le meme bouton etoile depuis la liste et depuis la fiche de l'aliment. Corollaire : enregistrer une fiche **ne reecrit pas** le favori, le formulaire pouvant avoir ete ouvert avant le marquage.
 - Un aliment issu d'Open Food Facts est **librement corrigeable** une fois copié : c'est le mécanisme principal de compensation de la qualité inégale de la source
 
 **Open Food Facts**
@@ -742,6 +742,8 @@ une demande qui diverge des specs modifie les specs.
 | 14 | §8.3 | Une entree du Journal affiche **quantite et macros** sur sa ligne grise, et ses calories **avec l'unite** | Le §8.3 ne disait pas ce que porte une entree. Les macros y manquaient : une ligne loguee repond a deux questions, combien et ce que ca coute. Et un nombre nu au milieu de grammes se calcule au lieu de se lire |
 
 | 15 | §8.3, §8.4 | **Une couleur par nutriment, calories comprises**, portee en petit cercle plein a cote du nom. Sur l'ecran de quantite, les quatre s'affichent en une rangee : nom au-dessus, valeur en dessous | Quatre teintes aussi eloignees que quatre peuvent l'etre une fois l'accent et le rouge destructif exclus. Les quatre chiffres se lisent par comparaison, et une phrase doit etre analysee avant d'etre comparee. La bannière de restant (§8.3.1) et l'anneau de la tranche 7 porteront les memes |
+
+| 16 | §8.5 | Le **favori agit immediatement**, par un bouton etoile identique depuis la liste et depuis la fiche ; il quitte le formulaire, et un enregistrement ne le reecrit plus | Un drapeau qu'un seul toucher change ailleurs ne devrait pas demander ici un formulaire soumis. Et un formulaire ouvert avant le marquage porte l'ancienne valeur : la reecrire annulerait en silence un geste que personne ne compte comme une modification |
 
 **Reserve sur les gestes 9 et 11, enoncee une fois pour toutes.** Les deux
 reproduisent un comportement d'UIKit sans etre ce comportement. React Native

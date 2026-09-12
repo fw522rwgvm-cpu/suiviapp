@@ -6,7 +6,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
@@ -18,6 +17,7 @@ import {
   useCreateFood,
   useDeleteFood,
   useFoodDraft,
+  useSetFoodFavorite,
   useUpdateFood,
 } from '../data/food-queries';
 import {
@@ -29,6 +29,7 @@ import {
 import { hasKcalWarning, theoreticalKcal } from '../domain/macros';
 import { PortionEditor } from '../components/portion-editor';
 import { foodProblemText } from '../components/food-problem-text';
+import { GlassButton } from '@/core/ui/glass-button';
 
 /**
  * Creating and editing a food (specs 8.5).
@@ -50,13 +51,42 @@ export function FoodEditorScreen({ foodId }: { foodId: FoodId | null }) {
   const theme = useTheme();
   const router = useRouter();
 
+  const [draft, setDraft] = useState<FoodDraft>(emptyFoodDraft);
+  const [loaded, setLoaded] = useState(false);
+
   const stored = useFoodDraft(foodId);
   const create = useCreateFood();
   const update = useUpdateFood();
   const remove = useDeleteFood();
+  const favorite = useSetFoodFavorite();
 
-  const [draft, setDraft] = useState<FoodDraft>(emptyFoodDraft);
-  const [loaded, setLoaded] = useState(false);
+  /**
+   * THE FAVOURITE IS NOT PART OF THE FORM, once the food exists.
+   *
+   * It was, and it was wrong twice over. It acted only on save, so a flag
+   * everywhere else flipped by one tap needed a form filled in and submitted
+   * here. And it was seeded into local state the first time the query
+   * answered, so a food marked from the library list opened showing the OLD
+   * star -- the cached answer -- and only told the truth on a second visit,
+   * once the background refetch had landed in a cache nobody was reading.
+   *
+   * Read straight from the query and written straight to the row, it cannot
+   * lag: there is no copy left to go stale.
+   *
+   * A food being CREATED is the exception, and has to be: there is no row yet
+   * to flip, so its star is a wish the draft carries until creation writes it.
+   */
+  const starred =
+    foodId === null ? draft.isFavorite : (stored.data?.isFavorite ?? false);
+
+  function toggleStar(): void {
+    if (foodId === null) {
+      setDraft((current) => ({ ...current, isFavorite: !current.isFavorite }));
+      return;
+    }
+    favorite.mutate({ foodId, isFavorite: !starred });
+  }
+
 
   useEffect(() => {
     // Filled once, when the food arrives. Reapplying it on every render would
@@ -115,7 +145,21 @@ export function FoodEditorScreen({ foodId }: { foodId: FoodId | null }) {
   return (
     <>
       <Stack.Screen
-        options={{ title: foodId === null ? 'Nouvel aliment' : 'Modifier l’aliment' }}
+        options={{
+          title: foodId === null ? 'Nouvel aliment' : 'Modifier l’aliment',
+          // The same control as the one in the library list, in the same
+          // material: one gesture for one meaning, wherever a food is looked
+          // at. It acts at once — nothing here waits for "Enregistrer".
+          headerRight: () => (
+            <GlassButton
+              symbol={starred ? 'star.fill' : 'star'}
+              onPress={toggleStar}
+              selected={starred}
+              tintColor={starred ? theme.colors.accent : theme.colors.textMuted}
+              accessibilityLabel={starred ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+            />
+          ),
+        }}
       />
 
       <KeyboardAvoidingView behavior="padding" style={styles.flex}>
@@ -181,16 +225,6 @@ export function FoodEditorScreen({ foodId }: { foodId: FoodId | null }) {
                   </Pressable>
                 ))}
               </View>
-            </View>
-
-            <View style={styles.favoriteRow}>
-              <Text style={[styles.label, { color: theme.colors.text }]}>Favori</Text>
-              <Switch
-                value={draft.isFavorite}
-                onValueChange={(isFavorite) =>
-                  setDraft((current) => ({ ...current, isFavorite }))
-                }
-              />
             </View>
           </View>
 
@@ -356,7 +390,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  favoriteRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   warning: { fontSize: 13, lineHeight: 18 },
   problems: { gap: 4 },
   problem: { fontSize: 13, lineHeight: 18 },

@@ -279,10 +279,13 @@ const styles = StyleSheet.create({
     paddingTop: 10,
   },
   // It takes what the two actions leave, and no more: a long name must push
-  // neither of them off, since one of them is the way out.
-  heading: { flex: 1, gap: 1, paddingHorizontal: 12 },
-  title: { fontSize: 16, fontWeight: '600' },
-  subtitle: { fontSize: 12 },
+  // neither of them off, since one of them is the way out. Centred in what is
+  // left rather than in the panel -- truly centring it would mean taking it
+  // out of the row and laying it over the actions, which is a title that can
+  // sit on top of a button.
+  heading: { flex: 1, gap: 1, paddingHorizontal: 12, alignItems: 'center' },
+  title: { fontSize: 16, fontWeight: '600', textAlign: 'center' },
+  subtitle: { fontSize: 12, textAlign: 'center' },
   actions: {
     flexDirection: 'row',
     justifyContent: 'space-between',
