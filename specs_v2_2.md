@@ -370,7 +370,7 @@ Les onglets non pourvus dans une version donnée sont **présents et affichent u
 **[v2.3] Un repas s'assemble, puis se valide.** Choisir un aliment ou saisir une entrée libre ajoute une ligne à une **liste temporaire** et ramène à l'écran d'accès rapide ; rien n'est écrit avant « Confirmer ». Un repas de quatre choses est alors quatre choix, et non quatre allers-retours par le Journal.
 
 - L'écran d'accès rapide porte **« Confirmer »** en bas, absent tant que la liste est vide.
-- Un bouton de tête, portant le **nombre de lignes en attente**, ouvre la liste ; une ligne s'en retire par un **balayage vers la gauche en deux temps**, comme une entrée du Journal (§8.3) et comme un fichier dans l'app Fichiers.
+- Un bouton de tête, portant le **nombre de lignes en attente**, ouvre la liste ; une ligne s'en retire par un **balayage vers la gauche en deux temps**, comme une entrée du Journal (§8.3) et comme un fichier dans l'app Fichiers. **[v2.3] Toucher une ligne rouvre le choix qui l'a faite** : la quantité pour un aliment, les quatre chiffres pour une saisie libre. La ligne corrigée remplace la précédente et l'on revient à la liste.
 - Une ligne dit ce qu'elle apporte : **nom et quantité** sur une ligne, les trois macros dessous, les kcal à droite. La quantité est le **nom de la portion** quand une portion a été choisie — « 2 tranches » est ce qui a été décidé, « 50 g » ce à quoi cela revient, et les deux ensemble disent le même fait deux fois. Si le nom ne tient pas à côté, **c'est la quantité qui disparaît** : une moitié de nom n'identifie rien.
 - **L'écriture est atomique** : la liste entière part en une transaction. L'application peut être arrêtée à tout moment (§2.2), et un demi-repas est pire qu'aucun — aucun se voit manquer, un demi non.
 - La liste est **abandonnée avec l'écran**. Une intention abandonnée ne se conserve pas : il faudrait sinon expliquer, des jours plus tard, pourquoi un repas que personne n'a validé attend encore.
@@ -736,6 +736,8 @@ une demande qui diverge des specs modifie les specs.
 | 11 | §8.4 | Un retour aux etapes internes de l'ajout (quantite, saisie libre, liste) se fait par **glissement depuis le bord gauche**, les deux couches se deplacant ensemble ; le bouton de retour ne porte qu'un chevron | Ces etapes sont un etat et non des routes (D16 : 0,2 s), donc aucun geste systeme ne vient avec elles. Meme reserve qu'en 9 |
 
 | 12 | §8.3, §8.4 | **Supprimer par balayage demande deux gestes.** Le premier decouvre le bouton sans jamais supprimer, si loin et si fort qu'il soit lance ; le second balayage, ou un appui sur le bouton, supprime | Un balayage long qui supprime place une action irreversible au bout du mouvement qui sert aussi a defiler, parcourir et revenir, et il part d'un geste dont personne n'a encore vu la consequence — le bouton n'est decouvert qu'au moment ou on le traverse. Un geste de plus coute un instant et achete la vue de ce qui va arriver |
+
+| 13 | §8.4 | **Une ligne en attente se corrige en la touchant** : quantite pour un aliment, quatre chiffres pour une saisie libre. L'ecran de quantite s'ouvre alors sur la quantite choisie et non sur le pre-remplissage du §8.4 | Une ligne pas encore ecrite est une decision en cours ; la reprendre ne devrait pas vouloir dire la retirer et recommencer. Et le pre-remplissage repond a « combien en prends-tu d'habitude », question a laquelle cette ligne a deja repondu |
 
 **Reserve sur les gestes 9 et 11, enoncee une fois pour toutes.** Les deux
 reproduisent un comportement d'UIKit sans etre ce comportement. React Native

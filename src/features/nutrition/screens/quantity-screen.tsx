@@ -66,6 +66,13 @@ type Props =
        */
       mode: 'collect';
       foodId: FoodId;
+      /**
+       * A line ALREADY IN THE BASKET being corrected: its own quantity, in
+       * place of the pre-fill. The pre-fill answers "how much of this do you
+       * usually have"; a line being corrected has already answered it, and
+       * proposing the habit again would discard what was just chosen.
+       */
+      amending?: QuantityChoice;
       onCollect: (quantity: QuantityChoice, food: FoodView) => void;
     })
   | (Common & { mode: 'edit'; entryId: JournalEntryId });
@@ -86,10 +93,16 @@ function useEnding(onDone?: () => void): () => void {
 
 function CollectQuantity({
   foodId,
+  amending,
   onCollect,
-}: Common & { foodId: FoodId; onCollect: (q: QuantityChoice, food: FoodView) => void }) {
+}: Common & {
+  foodId: FoodId;
+  amending?: QuantityChoice;
+  onCollect: (q: QuantityChoice, food: FoodView) => void;
+}) {
   const prefill = useQuantityPrefill(foodId);
   const loaded = prefill.data ?? null;
+  const correcting = amending !== undefined;
 
   return (
     <QuantityForm
@@ -98,8 +111,12 @@ function CollectQuantity({
       baseUnit={loaded?.food.baseUnit ?? 'g'}
       reference={loaded?.food.reference ?? null}
       portions={loaded?.food.portions ?? []}
-      initial={loaded?.quantity ?? null}
-      action="Ajouter"
+      // A correction shows what was chosen, and it is there from the first
+      // frame rather than a query away: the basket carries it.
+      initial={amending ?? loaded?.quantity ?? null}
+      // The button says which of the two this is. "Ajouter" on a line already
+      // in the basket would read as a second helping.
+      action={correcting ? 'Enregistrer' : 'Ajouter'}
       onSubmit={(quantity) => {
         if (loaded !== null) onCollect(quantity, loaded.food);
       }}

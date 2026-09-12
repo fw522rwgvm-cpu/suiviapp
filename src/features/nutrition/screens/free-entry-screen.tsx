@@ -69,11 +69,18 @@ export function FreeEntryScreen({
   date,
   mealPosition,
   entryId,
+  initial,
   onCollect,
 }: {
   date: LocalDate;
   mealPosition: number | null;
   entryId: JournalEntryId | null;
+  /**
+   * A line ALREADY IN THE BASKET being corrected. It has no entry id to be
+   * read back from -- nothing is written until the meal is confirmed -- so it
+   * arrives by value, from the basket that holds it.
+   */
+  initial?: { name: string; macros: Macros };
   /**
    * Supplied by the add screen, which collects lines and commits the lot in
    * one transaction when the meal is confirmed (specs 8.4). When it is here
@@ -94,23 +101,35 @@ export function FreeEntryScreen({
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    // Filled once, when the entry arrives. Reapplying it on every render would
-    // overwrite what is being typed.
+    // Filled once, from whichever of the two sources this screen has: a line
+    // held in the basket, or an entry read back from the database. Reapplying
+    // on every render would overwrite what is being typed.
+    if (loaded) return;
     const entry = existing.data;
-    if (loaded || entry === null || entry === undefined) return;
-    const reference = entry.reference;
+    // Macros stay nullable on the read side: only childless rows carry them,
+    // and a name with no figures is still a name worth putting back.
+    const source: { name: string; macros: Macros | null } | null =
+      initial ??
+      (entry === null || entry === undefined
+        ? null
+        : { name: entry.name, macros: entry.reference });
+    if (source === null) return;
+    const { macros: filled } = source;
+
     // Written back with the separator the field accepts and the user typed,
     // rather than the one JavaScript prints.
     const show = (value: number): string => String(value).replace('.', ',');
     setFields({
-      name: entry.name === FREE_ENTRY_DEFAULT_NAME ? '' : entry.name,
-      protein: reference === null ? '' : show(reference.protein),
-      carbs: reference === null ? '' : show(reference.carbs),
-      fat: reference === null ? '' : show(reference.fat),
-      kcal: reference === null ? '' : show(reference.kcal),
+      // The stand-in name is storage, not something anyone typed: showing it
+      // back would make the user delete a word they never wrote.
+      name: source.name === FREE_ENTRY_DEFAULT_NAME ? '' : source.name,
+      protein: filled === null ? '' : show(filled.protein),
+      carbs: filled === null ? '' : show(filled.carbs),
+      fat: filled === null ? '' : show(filled.fat),
+      kcal: filled === null ? '' : show(filled.kcal),
     });
     setLoaded(true);
-  }, [existing.data, loaded]);
+  }, [existing.data, initial, loaded]);
 
   const macros = toMacros(fields);
   const theoretical = macros === null ? 0 : theoreticalKcal(macros);

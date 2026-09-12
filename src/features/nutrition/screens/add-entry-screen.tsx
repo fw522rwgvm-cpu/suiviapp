@@ -76,6 +76,11 @@ export function AddEntryScreen({
   const [freeEntry, setFreeEntry] = useState(false);
   const [showBasket, setShowBasket] = useState(false);
   const [basket, setBasket] = useState<PendingEntry[]>([]);
+  // Which line of the basket is being corrected, by position. An index rather
+  // than the line itself: what is edited is the SLOT, and the line in it is
+  // replaced. A pending line has no identity of its own -- nothing is written
+  // until the meal is confirmed, so there is nothing yet for an id to name.
+  const [amending, setAmending] = useState<number | null>(null);
 
   const foods = useFoods();
   const favorites = useFavoriteFoods();
@@ -91,6 +96,12 @@ export function AddEntryScreen({
     setChosen(null);
     setFreeEntry(false);
     setShowBasket(false);
+    setAmending(null);
+  }
+
+  /** Out of a correction, back to the list it was opened from. */
+  function backToBasket(): void {
+    setAmending(null);
   }
 
   function collect(entry: PendingEntry): void {
@@ -98,13 +109,33 @@ export function AddEntryScreen({
     backToList();
   }
 
-  const step = showBasket
-    ? 'basket'
-    : freeEntry && mealPosition !== null
-      ? 'free'
-      : chosen !== null
-        ? 'quantity'
-        : 'list';
+  /**
+   * A corrected line replaces the one in its slot, and the basket reappears.
+   *
+   * It is REBUILT rather than patched, from the same expression a fresh line
+   * comes from: nothing here is written yet, so a corrected line has no reason
+   * to differ from one just chosen. Freezing belongs to the entry, at the
+   * moment of the write, and is not this screen's to imitate (D5/R1).
+   */
+  function amend(index: number, entry: PendingEntry): void {
+    setBasket((current) => current.map((line, at) => (at === index ? entry : line)));
+    setAmending(null);
+  }
+
+  // Undefined when nothing is being corrected -- and also if the line went
+  // away underneath, which a swipe on the list behind can do.
+  const editing = amending === null ? undefined : basket[amending];
+
+  const step =
+    editing !== undefined
+      ? 'amend'
+      : showBasket
+        ? 'basket'
+        : freeEntry && mealPosition !== null
+          ? 'free'
+          : chosen !== null
+            ? 'quantity'
+            : 'list';
 
   /**
    * The screen shown by default (specs 8.4a), built once and used twice:
@@ -180,6 +211,20 @@ export function AddEntryScreen({
     </View>
   );
 
+  /**
+   * The basket, built once and used twice for the same reason as the picker:
+   * on its own, and as what a correction is laid over and reveals on the way
+   * back. A correction returns HERE and not to the food list -- it was opened
+   * from this list, and landing somewhere else would lose the place.
+   */
+  const basketList = (
+    <Basket
+      entries={basket}
+      onRemove={(index) => setBasket((current) => current.filter((_, at) => at !== index))}
+      onEdit={setAmending}
+    />
+  );
+
   return (
     <OverlayPanel
       onDismiss={() => router.back()}
@@ -200,6 +245,12 @@ export function AddEntryScreen({
               accessibilityLabel={`Voir les ${basket.length} lignes à ajouter`}
             />
           )
+        ) : step === 'amend' ? (
+          <GlassButton
+            symbol="chevron.left"
+            onPress={backToBasket}
+            accessibilityLabel="Retour à la liste"
+          />
         ) : (
           <GlassButton
             symbol="chevron.left"
@@ -210,7 +261,42 @@ export function AddEntryScreen({
       }
       right={<CancelAction />}
     >
-      {step === 'free' && mealPosition !== null ? (
+      {editing !== undefined && amending !== null ? (
+        <SwipeBack onBack={backToBasket} behind={basketList}>
+          {editing.kind === 'food' ? (
+            <QuantityScreen
+              mode="collect"
+              foodId={editing.foodId}
+              amending={editing.quantity}
+              onCollect={(quantity, food) =>
+                amend(amending, {
+                  kind: 'food',
+                  foodId: food.id,
+                  name: food.name,
+                  brand: food.brand,
+                  baseUnit: food.baseUnit,
+                  reference: food.reference,
+                  quantity,
+                })
+              }
+            />
+          ) : (
+            <FreeEntryScreen
+              date={date}
+              mealPosition={mealPosition}
+              entryId={null}
+              initial={{ name: editing.name, macros: editing.macros }}
+              onCollect={(entry) =>
+                amend(amending, {
+                  kind: 'free',
+                  name: entry.name.trim(),
+                  macros: entry.macros,
+                })
+              }
+            />
+          )}
+        </SwipeBack>
+      ) : step === 'free' && mealPosition !== null ? (
         <SwipeBack onBack={backToList} behind={picker}>
           <FreeEntryScreen
             date={date}
@@ -241,12 +327,7 @@ export function AddEntryScreen({
         </SwipeBack>
       ) : step === 'basket' ? (
         <SwipeBack onBack={backToList} behind={picker}>
-          <Basket
-            entries={basket}
-            onRemove={(index) =>
-              setBasket((current) => current.filter((_, at) => at !== index))
-            }
-          />
+          {basketList}
         </SwipeBack>
       ) : (
         picker
@@ -326,9 +407,11 @@ function Confirm({
 function Basket({
   entries,
   onRemove,
+  onEdit,
 }: {
   entries: readonly PendingEntry[];
   onRemove: (index: number) => void;
+  onEdit: (index: number) => void;
 }) {
   const theme = useTheme();
 
@@ -367,7 +450,23 @@ function Basket({
               which travels the other way and only from the edge.
             */}
             <SwipeToDeleteRow actionLabel="Retirer" onDelete={() => onRemove(index)}>
-              <PendingEntryRow entry={entry} />
+              {/*
+                Touching a line reopens the choice that made it -- a quantity,
+                or four figures. A line waiting to be written is still a
+                decision being taken, and taking it back should not mean
+                removing it and starting over.
+
+                The press reaches this only while the row is at rest: an open
+                row takes the touch itself and closes, exactly as a row does
+                in Files.
+              */}
+              <Pressable
+                onPress={() => onEdit(index)}
+                accessibilityRole="button"
+                accessibilityLabel={`Modifier ${entry.name}`}
+              >
+                <PendingEntryRow entry={entry} />
+              </Pressable>
             </SwipeToDeleteRow>
           </View>
         ))}
