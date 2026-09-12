@@ -39,8 +39,19 @@ export function FoodRow({
       <View style={styles.identity}>
         <Text style={[styles.name, { color: theme.colors.text }]} numberOfLines={1}>
           {food.name}
-          {food.brand === null ? '' : ` · ${food.brand}`}
         </Text>
+
+        {/*
+          Its own line, under the name it qualifies rather than trailing after
+          it. Two foods of the same name are told apart by their brand, and a
+          brand chasing a long name is the half that gets cut.
+        */}
+        {food.brand === null || food.brand === '' ? null : (
+          <Text style={[styles.brand, { color: theme.colors.textMuted }]} numberOfLines={1}>
+            {food.brand}
+          </Text>
+        )}
+
         <Text style={[styles.detail, { color: theme.colors.textMuted }]} numberOfLines={1}>
           {formatKcal(food.reference.kcal)} kcal / 100 {food.baseUnit}
         </Text>
@@ -77,7 +88,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     gap: 12,
   },
-  identity: { flex: 1, gap: 2 },
+  identity: { flex: 1, gap: 1 },
   name: { fontSize: 16 },
-  detail: { fontSize: 13 },
+  // Between the name and the figures in weight as well as in place: it says
+  // which food this is, not what it is worth.
+  brand: { fontSize: 13 },
+  detail: { fontSize: 12 },
 });

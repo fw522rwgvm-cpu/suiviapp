@@ -1,3 +1,4 @@
+import { SymbolView } from 'expo-symbols';
 import { Stack, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
@@ -29,7 +30,6 @@ import {
 import { hasKcalWarning, theoreticalKcal } from '../domain/macros';
 import { PortionEditor } from '../components/portion-editor';
 import { foodProblemText } from '../components/food-problem-text';
-import { GlassButton } from '@/core/ui/glass-button';
 
 /**
  * Creating and editing a food (specs 8.5).
@@ -150,14 +150,26 @@ export function FoodEditorScreen({ foodId }: { foodId: FoodId | null }) {
           // The same control as the one in the library list, in the same
           // material: one gesture for one meaning, wherever a food is looked
           // at. It acts at once — nothing here waits for "Enregistrer".
+          // A BARE PRESSABLE, NOT A GLASS BUTTON. On iOS 26 the native header
+          // already puts its own material behind whatever it is given, so a
+          // glass button here is glass inside glass -- which is exactly what
+          // it looked like. The chrome belongs to the system; what goes in it
+          // is configured, not painted. The list's star IS a glass button
+          // because a list row is content, and content gets no material free.
           headerRight: () => (
-            <GlassButton
-              symbol={starred ? 'star.fill' : 'star'}
+            <Pressable
               onPress={toggleStar}
-              selected={starred}
-              tintColor={starred ? theme.colors.accent : theme.colors.textMuted}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityState={{ selected: starred }}
               accessibilityLabel={starred ? 'Retirer des favoris' : 'Ajouter aux favoris'}
-            />
+            >
+              <SymbolView
+                name={starred ? 'star.fill' : 'star'}
+                size={19}
+                tintColor={starred ? theme.colors.accent : theme.colors.textMuted}
+              />
+            </Pressable>
           ),
         }}
       />

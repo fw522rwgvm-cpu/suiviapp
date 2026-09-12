@@ -865,6 +865,14 @@ bêtas d'iOS 26 n'ont pas l'API et plantent** à la création d'une vue en verre
 Une vérification de version seule leur offrirait un crash. Le repli, lui,
 peint : ce n'est pas du verre.
 
+**Jamais de `GlassButton` dans un en-tête natif.** Sur iOS 26 la barre pose
+déjà son propre matériau derrière ce qu'on lui donne : un bouton de verre
+dedans, c'est du verre dans du verre, et ça se voit — un bouton dans un bouton.
+Dans un en-tête, un `Pressable` nu avec son seul `SymbolView`. `GlassButton`
+est pour le **contenu**, qui ne reçoit aucun matériau gratuitement : l'étoile
+d'une rangée de liste, les actions d'un panneau dessiné à la main. C'est la
+ligne de partage de la direction iOS 26, prise du mauvais côté une fois.
+
 **Animer la géométrie, mais pas celle d'une vue native.** Piloter les
 propriétés de disposition d'une `GlassView` image par image depuis un worklet
 n'est pas quelque chose qu'elle promet de supporter. La morphose reste donc
