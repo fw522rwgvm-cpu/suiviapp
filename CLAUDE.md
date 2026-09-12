@@ -277,6 +277,20 @@ Elle porte la directive `'worklet'` et tourne donc sur le fil d'interface.
 Verifie par la methode ci-dessus, pas suppose : dans l'export lisible, elle
 porte `__workletHash`, son `__closure` et son `__initData`.
 
+**Une animation Reanimated s'écrit en UNE seule écriture.** Remettre une
+valeur partagée à zéro puis lancer l'animation dans le même tick ne s'anime
+pas — constaté sur le fondu des boutons d'en-tête, qui restait un changement
+brusque. Toutes les animations qui marchent dans ce dépôt écrivent une fois
+(voir `OverlayPanel`). Le remède n'est pas un `withSequence` de plus : c'est de
+n'avoir rien à remettre à zéro. La valeur se repose à une extrémité et voyage
+vers l'autre a chaque changement, en alternant — et quelle extrémité veut dire
+« arrivé » alterne avec elle. Rien a perdre, aucun ordre entre deux écritures
+à tenir.
+
+Corollaire d'ordonnancement : si un style lit l'extrémité visée, l'écriture va
+dans son **propre** effet, après le rendu qui l'a changée. Dans le meme effet,
+la première image se jouerait à l'envers.
+
 **Un composant qui anime une sortie doit avoir une identité par étape.**
 `SwipeBack` emmène la couche qui part jusqu'au bord de l'écran **puis**
 prévient : au moment où l'appelant échange son contenu, le glissement vaut
