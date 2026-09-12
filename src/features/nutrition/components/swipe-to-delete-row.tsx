@@ -10,6 +10,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useTheme } from '@/core/theme';
+import { ACTION_WIDTH, settleSwipe } from './swipe-settle';
 
 /**
  * Swipe left to delete (specs 8.3), and to take a line out of the basket.
@@ -24,10 +25,26 @@ import { useTheme } from '@/core/theme';
  * view, which is a native dependency and a rewrite.
  *
  * So this reproduces its behaviour rather than being it: the row follows the
- * finger, the action is exactly the strip uncovered, past the resting width
- * the row resists and keeps a third of the movement, and pulled far enough it
- * commits on its own and carries on out rather than bouncing back first.
- * Release is a spring, not a timing, because the system's is.
+ * finger, the action is exactly the strip uncovered, and release is a spring,
+ * not a timing, because the system's is.
+ *
+ * ## REMOVING TAKES TWO GESTURES, NEVER ONE
+ *
+ * The first swipe only uncovers the action, however far it is pulled -- past
+ * the resting width the row resists, keeping a third of the movement, and
+ * releasing leaves it open. What removes is then either a press on the button
+ * now fully visible, or a SECOND swipe.
+ *
+ * A single long swipe that deletes puts an irreversible action at the end of a
+ * movement that is also how one scrolls, browses and goes back, and it fires
+ * from a gesture nobody has yet seen the consequence of -- the button is only
+ * revealed as it is being crossed. Two gestures cost one more moment and buy
+ * the sight of what is about to happen. The Journal deletes a logged entry
+ * through this same component, so the rule is worth more there still.
+ *
+ * Once open the row stops resisting: the pull that removes travels freely, the
+ * action spreads with it, and the row carries on out rather than bouncing back
+ * first -- a row that returns before vanishing reads as a mistake corrected.
  *
  * ## THE GESTURE'S SHAPE IS THE REFERENCE IMPLEMENTATION'S, NOT AN INVENTION
  *
@@ -57,14 +74,6 @@ import { useTheme } from '@/core/theme';
  * -- the Journal's rows are pressable, this component's second user.
  */
 
-/** Where the row rests when open, and how wide the action reads. */
-const ACTION_WIDTH = 96;
-/** Past this, releasing opens rather than closes. */
-const OPEN_THRESHOLD = ACTION_WIDTH / 2;
-/** Past this, the swipe was unambiguous: run the action. */
-const FULL_SWIPE = 200;
-/** A flick counts even when short: points per second. */
-const FLICK_VELOCITY = 800;
 /** How much of the drag survives past the resting position. */
 const RESISTANCE = 1 / 3;
 /** Horizontal travel that claims the touch. The reference's own figure. */
@@ -112,29 +121,37 @@ export function SwipeToDeleteRow({
     .onUpdate((event) => {
       const raw = start.value + event.translationX;
       if (raw > 0) {
-        // Closed and pulled the other way: nothing to reveal on that side.
+        // Pulled the other way past its closed position: nothing on that side.
         offset.value = 0;
         return;
       }
-      // Past the resting width the row still moves, but grudgingly -- what
-      // follows is a decision, and it should feel like one.
+      if (open) {
+        // Already open, so this pull is the one that removes: it follows the
+        // finger with nothing held back, and the action spreads with it.
+        offset.value = raw;
+        return;
+      }
+      // Closed, the row resists past the resting width. It cannot remove
+      // whatever it is given, and resistance is how a movement says so
+      // without the row simply stopping dead.
       offset.value =
         raw < -ACTION_WIDTH ? -ACTION_WIDTH + (raw + ACTION_WIDTH) * RESISTANCE : raw;
     })
     .onEnd((event) => {
-      const travelled = -offset.value;
+      const landing = settleSwipe({
+        open,
+        travelled: -offset.value,
+        velocityX: event.velocityX,
+      });
 
-      if (travelled > FULL_SWIPE || event.velocityX < -FLICK_VELOCITY) {
-        // Carries on out rather than bouncing back first: the row leaving IS
-        // the confirmation, and one that returns before vanishing reads as a
-        // mistake being corrected.
+      if (landing === 'removed') {
         offset.value = withTiming(-width, EXIT, (finished) => {
           if (finished === true) runOnJS(onDelete)();
         });
         return;
       }
 
-      const opening = travelled > OPEN_THRESHOLD;
+      const opening = landing === 'open';
       offset.value = withSpring(opening ? -ACTION_WIDTH : 0, SPRING);
       runOnJS(setOpen)(opening);
     });

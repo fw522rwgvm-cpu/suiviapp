@@ -253,6 +253,21 @@ plutôt qu'un `Pressable`. Mélanger le système de responder de React Native et
 les gestes dans le même sous-arbre est un piège documenté, et les rangées du
 Journal sont pressables — un tap toujours actif les rendrait inertes.
 
+**Supprimer par balayage demande deux gestes, et c'est une regle, pas un
+reglage.** Le premier balayage decouvre le bouton sans jamais supprimer, si
+loin et si fort qu'il soit lance ; le second, ou un appui sur le bouton,
+supprime. D'ou `swipe-settle.ts` : la decision est sortie du geste parce
+qu'elle n'a rien a voir avec la sensation, et qu'un reglage ulterieur d'un
+ressort ou d'un seuil la deferait sans que rien ait l'air faux. Elle est
+testee, et elle porte un piege qui ne se voit pas : un balayage vif depuis une
+rangee ouverte mais revenue vers sa position fermee est quelqu'un qui se
+ravise, pas qui confirme — d'ou la condition « plus loin que la ou il a
+commence ».
+
+Elle porte la directive `'worklet'` et tourne donc sur le fil d'interface.
+Verifie par la methode ci-dessus, pas suppose : dans l'export lisible, elle
+porte `__workletHash`, son `__closure` et son `__initData`.
+
 **Une ombre déborde du côté où on ne la veut pas.** `shadowRadius` diffuse sur
 les quatre côtés quel que soit `shadowOffset` : l'ombre de bord d'attaque d'une
 couche qui glisse remonte donc au-dessus d'elle, et sous un en-tête transparent
