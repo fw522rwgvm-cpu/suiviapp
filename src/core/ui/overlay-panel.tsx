@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { useRouter } from 'expo-router';
+import { createContext, useContext, useEffect, type ReactNode } from 'react';
 import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -6,6 +7,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withTiming,
+  type WithTimingConfig,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/core/theme';
@@ -20,27 +22,31 @@ import { useTheme } from '@/core/theme';
  * none of those is leaving the day. They are things done ON it, and a panel
  * with the Journal showing behind says so before a single word is read.
  *
- * Used with `presentation: 'transparentModal'`, which is what keeps the screen
- * underneath mounted and visible. Without that the backdrop here would dim
- * nothing and the rounded corners would frame a black rectangle.
+ * Used with `presentation: 'transparentModal'`, which keeps the screen beneath
+ * mounted and visible, and with `animation: 'none'`, which is the subtle half.
  *
- * AND WITH `animation: 'fade'`, which is not cosmetic. The default slides the
- * WHOLE SCREEN up from the bottom — the dimming backdrop included — so the
- * black rose into place along with the window, which reads as a sheet of dark
- * paper arriving rather than as the room going dim. A dim happens where it is;
- * only the window should travel.
+ * ## Why the animation is ours and not the presentation's
  *
- * ## Two things it does deliberately
+ * The window has to rise from the bottom and fall back down; the backdrop has
+ * to darken WHERE IT IS. Every built-in presentation moves the whole screen as
+ * one, so the dimming veil rose along with the window — which reads as a sheet
+ * of dark paper arriving rather than as the room going dim. Fading the screen
+ * fixed that and lost the rising.
  *
- * IT CARRIES ITS OWN SIZE, taken from the window rather than from its parent.
- * The calendar screen came up blank twice because a wrapper it was inside took
- * no part in layout, and `flex: 1` inside nothing is zero. Sizing from the
- * window cannot collapse, whatever a presentation or a wrapper turns out to do.
+ * Two movements, two rules, so two animations: the panel translates, the
+ * backdrop only changes opacity. Nothing built in expresses that, so the
+ * presentation is told to do nothing at all.
  *
- * ITS TOP EDGE IS AT THE ISLAND, its bottom at the screen edge. So the bottom
- * corners fall off screen and only the top two are rounded: the panel hangs
- * from the top rather than floating in the middle, which is what makes the
- * strip of dimmed Journal above read as "behind" rather than as a margin.
+ * ## The cost, and how it is paid
+ *
+ * Doing it here means EVERY way out has to play it — the button, the swipe,
+ * the backdrop, and a screen inside that saves and closes itself. A child
+ * calling router.back() directly would have the window vanish mid-flight.
+ *
+ * So the closing function is published on a context, and useDismiss() hands it
+ * to whoever asks. Outside a panel the same hook answers with a plain
+ * router.back(), which is what lets the very same screens serve as a step
+ * inside the add modal, where there is no panel to fold away.
  *
  * ## The drag lives on the actions row, not on the whole panel
  *
@@ -53,16 +59,35 @@ import { useTheme } from '@/core/theme';
  * calendar, the quantity editor and free entry.
  */
 
+const RISE: WithTimingConfig = { duration: 260 };
+const FALL: WithTimingConfig = { duration: 200 };
+
 /** Far enough to be a decision rather than a twitch. */
 const DISMISS_DISTANCE = 90;
 const DISMISS_VELOCITY = 700;
+
+const DismissContext = createContext<(() => void) | null>(null);
+
+/**
+ * How to leave, whatever you are inside.
+ *
+ * In a panel it folds the window away first; anywhere else it is router.back().
+ * Screens call this rather than the router, so that one screen can be both a
+ * step in a modal and an overlay route without knowing which it is.
+ */
+export function useDismiss(): () => void {
+  const inPanel = useContext(DismissContext);
+  const router = useRouter();
+  return inPanel ?? (() => router.back());
+}
+
 export function OverlayPanel({
   onDismiss,
   left,
   right,
   children,
 }: {
-  /** Tapping the strip of screen still showing above. */
+  /** Called once the window has finished folding away. */
   onDismiss: () => void;
   /** Leading action, if the panel has one. */
   left?: ReactNode;
@@ -74,7 +99,20 @@ export function OverlayPanel({
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
+  // 0 is fully below the screen, 1 is open.
+  const progress = useSharedValue(0);
   const drag = useSharedValue(0);
+  const travel = height - insets.top;
+
+  useEffect(() => {
+    progress.value = withTiming(1, RISE);
+  }, [progress]);
+
+  function close(): void {
+    progress.value = withTiming(0, FALL, (finished) => {
+      if (finished === true) runOnJS(onDismiss)();
+    });
+  }
 
   const pan = Gesture.Pan()
     .activeOffsetY(10)
@@ -85,65 +123,73 @@ export function OverlayPanel({
     })
     .onEnd((event) => {
       if (event.translationY > DISMISS_DISTANCE || event.velocityY > DISMISS_VELOCITY) {
-        // The screen's own fade carries it out from here; the panel just has
-        // to stop resisting.
-        runOnJS(onDismiss)();
+        // The drag is handed over to the closing animation rather than reset,
+        // so the window carries on downward from where the finger left it
+        // instead of snapping back up first.
+        progress.value = 1 - drag.value / travel;
+        drag.value = 0;
+        runOnJS(close)();
         return;
       }
-      drag.value = withTiming(0, { duration: 180 });
+      drag.value = withTiming(0, RISE);
     });
 
+  // Darkens where it is. The panel travels; this never does.
+  const backdropStyle = useAnimatedStyle(() => ({ opacity: progress.value * 0.28 }));
+
   const panelStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: drag.value }],
+    transform: [{ translateY: (1 - progress.value) * travel + drag.value }],
   }));
 
   return (
-    <View style={{ width, height }}>
-      {/* Tapping what is still visible closes, as tapping outside should. */}
-      <Pressable style={styles.fill} onPress={onDismiss} accessibilityLabel="Fermer">
-        <View style={[styles.fill, styles.backdrop]} />
-      </Pressable>
+    <DismissContext.Provider value={close}>
+      <View style={{ width, height }}>
+        {/* Tapping what is still visible closes, as tapping outside should. */}
+        <Pressable style={styles.fill} onPress={close} accessibilityLabel="Fermer">
+          <Animated.View style={[styles.fill, styles.backdrop, backdropStyle]} />
+        </Pressable>
 
-      <Animated.View
-        style={[
-          styles.panel,
-          {
-            top: insets.top,
-            paddingBottom: insets.bottom,
-            // The PAGE colour, not the card colour: what goes inside carries
-            // its own cards, and cards painted surface on a surface panel stop
-            // being visible. The backdrop, the corners and the lift are what
-            // say this is floating — not its fill.
-            backgroundColor: theme.colors.background,
-            borderTopLeftRadius: theme.radius.xl,
-            borderTopRightRadius: theme.radius.xl,
-            ...theme.shadow,
-            // It floats over the page rather than sitting on it, so it carries
-            // its own lift even in the dark, where cards deliberately have none.
-            shadowOpacity: theme.scheme === 'dark' ? 0.5 : 0.18,
-            shadowRadius: 24,
-          },
-          panelStyle,
-        ]}
-      >
-        <GestureDetector gesture={pan}>
-          <View style={styles.actions}>
-            {/* A spacer keeps the trailing action trailing when there is no
-                leading one, without a second layout branch. */}
-            {left ?? <View />}
-            {right ?? <View />}
-          </View>
-        </GestureDetector>
+        <Animated.View
+          style={[
+            styles.panel,
+            {
+              top: insets.top,
+              paddingBottom: insets.bottom,
+              // The PAGE colour, not the card colour: what goes inside carries
+              // its own cards, and cards painted surface on a surface panel
+              // stop being visible. The backdrop, the corners and the lift are
+              // what say this is floating — not its fill.
+              backgroundColor: theme.colors.background,
+              borderTopLeftRadius: theme.radius.xl,
+              borderTopRightRadius: theme.radius.xl,
+              ...theme.shadow,
+              // It floats over the page rather than sitting on it, so it
+              // carries its own lift even in the dark, where cards have none.
+              shadowOpacity: theme.scheme === 'dark' ? 0.5 : 0.18,
+              shadowRadius: 24,
+            },
+            panelStyle,
+          ]}
+        >
+          <GestureDetector gesture={pan}>
+            <View style={styles.actions}>
+              {/* A spacer keeps the trailing action trailing when there is no
+                  leading one, without a second layout branch. */}
+              {left ?? <View />}
+              {right ?? <View />}
+            </View>
+          </GestureDetector>
 
-        <View style={styles.body}>{children}</View>
-      </Animated.View>
-    </View>
+          <View style={styles.body}>{children}</View>
+        </Animated.View>
+      </View>
+    </DismissContext.Provider>
   );
 }
 
 const styles = StyleSheet.create({
   fill: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
-  backdrop: { backgroundColor: '#000000', opacity: 0.28 },
+  backdrop: { backgroundColor: '#000000' },
   panel: {
     position: 'absolute',
     left: 0,

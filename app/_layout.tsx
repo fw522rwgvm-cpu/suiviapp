@@ -90,11 +90,11 @@ function RootStack() {
           presentation: 'transparentModal',
           headerShown: false,
           contentStyle: { backgroundColor: 'transparent' },
-          // Fade, not the default slide. The default moves the WHOLE screen up
-          // from the bottom — the dimming backdrop with it — so the black rose
-          // into place alongside the window, which reads as dark paper
-          // arriving rather than as the room going dim.
-          animation: 'fade',
+          // NOTHING, because OverlayPanel does it. The window has to rise
+          // from the bottom while the backdrop darkens where it is, and every
+          // built-in presentation moves the whole screen as one — which is
+          // what made the veil rise along with the window.
+          animation: 'none',
         }}
       />
       <Stack.Screen
@@ -103,11 +103,11 @@ function RootStack() {
           presentation: 'transparentModal',
           headerShown: false,
           contentStyle: { backgroundColor: 'transparent' },
-          // Fade, not the default slide. The default moves the WHOLE screen up
-          // from the bottom — the dimming backdrop with it — so the black rose
-          // into place alongside the window, which reads as dark paper
-          // arriving rather than as the room going dim.
-          animation: 'fade',
+          // NOTHING, because OverlayPanel does it. The window has to rise
+          // from the bottom while the backdrop darkens where it is, and every
+          // built-in presentation moves the whole screen as one — which is
+          // what made the veil rise along with the window.
+          animation: 'none',
         }}
       />
     </Stack>

@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { currentLocalDate, type LocalDate } from '@/core/date';
 import { GlassButton } from '@/core/ui/glass-button';
-import { OverlayPanel } from '@/core/ui/overlay-panel';
+import { OverlayPanel, useDismiss } from '@/core/ui/overlay-panel';
 import { MonthCalendar } from '../components/month-calendar';
 import { useRequestDate } from '../hooks/requested-date';
 
@@ -23,64 +23,84 @@ import { useRequestDate } from '../hooks/requested-date';
  * hooks/requested-date.tsx: a route parameter would outlive the visit, and
  * specs 7 wants the Journal on today at every launch).
  *
- * ## THERE IS NO Link.AppleZoomTarget HERE, AND THAT IS THE FIX
+ * ## THERE IS NO Link.AppleZoomTarget HERE, AND THAT IS DELIBERATE
  *
- * It looked like the name for "the view the button becomes", so it went round
- * the whole screen. It is not that. It marks the ALIGNMENT RECT — which part of
- * the destination corresponds to the source — and the library's own example
- * puts it round a 200-point image sitting inside an ordinary screen, never
- * round the screen itself.
+ * It looked like the name for "the view the button becomes", so it once went
+ * round the whole screen. It is not that. It marks the ALIGNMENT RECT — which
+ * part of the destination corresponds to the source — and the library's own
+ * example puts it round a 200-point image inside an ordinary screen, never
+ * round the screen itself. As a screen root it removes the root from layout,
+ * and everything inside then measures against nothing.
  *
- * The cost of the mistake was total: the component wraps its child in a native
- * view styled `display: 'contents'`, meant to take part in no layout. As a
- * screen root that removes the root from layout, so everything inside measured
- * against nothing and the page came up blank twice over.
+ * ## Why the parts are separate components
  *
- * The transition does not need it. The zoom is asked for by Link.AppleZoom on
- * the source; the target only refines where the two line up. Without it the
- * system picks its own alignment, which is the right default here — the
- * destination is a whole panel, not a picture with a counterpart.
- *
- * ## A window over the Journal, not a page instead of it
- *
- * The route is presented as a TRANSPARENT MODAL and the panel is drawn by
- * OverlayPanel, which carries the geometry and the reasoning — the Journal
- * stays visible underneath, because choosing a date is not leaving the day.
+ * useDismiss() reads a context OverlayPanel publishes from INSIDE itself. A
+ * hook called in the component that RENDERS the panel sits above that provider
+ * and silently gets the fallback — a plain router.back() — so the window would
+ * vanish instead of folding away. Anything that dismisses therefore lives as a
+ * child, which is also why the actions are passed as elements rather than as
+ * callbacks.
  */
 export function CalendarScreen({ date }: { date: LocalDate }) {
   const router = useRouter();
-  const requestDate = useRequestDate();
-
-  // Read once, here, through the single function that decides what today is
-  // (D3). The Journal holds its own copy from its own mount; they can only
-  // differ across a midnight, and then both are right about their own moment.
-  const [today] = useState<LocalDate>(() => currentLocalDate());
-  const [month, setMonth] = useState<LocalDate>(date);
-
-  function choose(chosen: LocalDate): void {
-    // Asked for first, then dismissed: the Journal applies it while this screen
-    // is still on its way out, so the day underneath is already the right one
-    // when the transition finishes.
-    requestDate(chosen);
-    router.back();
-  }
 
   return (
     <OverlayPanel
       onDismiss={() => router.back()}
-      left={<GlassButton label="Aujourd’hui" onPress={() => choose(today)} />}
-      right={<GlassButton label="Fermer" onPress={() => router.back()} />}
+      left={<TodayAction />}
+      right={<CloseAction />}
     >
-      <View style={styles.grid}>
-        <MonthCalendar
-          month={month}
-          selected={date}
-          today={today}
-          onMonthChange={setMonth}
-          onSelect={choose}
-        />
-      </View>
+      <Grid date={date} />
     </OverlayPanel>
+  );
+}
+
+function TodayAction() {
+  const requestDate = useRequestDate();
+  const dismiss = useDismiss();
+
+  return (
+    <GlassButton
+      label="Aujourd’hui"
+      onPress={() => {
+        // Asked for first, then dismissed: the Journal applies it while the
+        // window is still folding away, so the day underneath is already the
+        // right one by the time it is uncovered.
+        requestDate(currentLocalDate());
+        dismiss();
+      }}
+    />
+  );
+}
+
+function CloseAction() {
+  const dismiss = useDismiss();
+  return <GlassButton label="Fermer" onPress={dismiss} />;
+}
+
+function Grid({ date }: { date: LocalDate }) {
+  const requestDate = useRequestDate();
+  const dismiss = useDismiss();
+
+  // Read through the single function that decides what today is (D3). The
+  // Journal holds its own copy from its own mount; they can only differ across
+  // a midnight, and then both are right about their own moment.
+  const [today] = useState<LocalDate>(() => currentLocalDate());
+  const [month, setMonth] = useState<LocalDate>(date);
+
+  return (
+    <View style={styles.grid}>
+      <MonthCalendar
+        month={month}
+        selected={date}
+        today={today}
+        onMonthChange={setMonth}
+        onSelect={(chosen) => {
+          requestDate(chosen);
+          dismiss();
+        }}
+      />
+    </View>
   );
 }
 

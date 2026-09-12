@@ -3,7 +3,7 @@ import type { JournalEntryId } from '@/core/db/schema';
 import { toEntityId } from '@/core/id';
 import { EmptyState } from '@/core/ui/empty-state';
 import { GlassButton } from '@/core/ui/glass-button';
-import { OverlayPanel } from '@/core/ui/overlay-panel';
+import { OverlayPanel, useDismiss } from '@/core/ui/overlay-panel';
 import { QuantityScreen } from '@/features/nutrition/screens/quantity-screen';
 
 /**
@@ -23,6 +23,12 @@ import { QuantityScreen } from '@/features/nutrition/screens/quantity-screen';
  * malformed one is a dead end rather than a crash — nothing on this path may
  * be a blocking message, and there is nothing sensible to fall back to.
  */
+/** Inside the panel, so its dismissal folds the window away first. */
+function CloseButton() {
+  const dismiss = useDismiss();
+  return <GlassButton label="Fermer" onPress={dismiss} />;
+}
+
 export default function QuantityRoute() {
   const router = useRouter();
   const { entryId } = useLocalSearchParams<{ entryId?: string }>();
@@ -30,10 +36,7 @@ export default function QuantityRoute() {
   const id = entryId === undefined ? null : toEntityId<JournalEntryId>(entryId);
 
   return (
-    <OverlayPanel
-      onDismiss={() => router.back()}
-      right={<GlassButton label="Fermer" onPress={() => router.back()} />}
-    >
+    <OverlayPanel onDismiss={() => router.back()} right={<CloseButton />}>
       {id === null ? (
         <EmptyState
           symbol="questionmark.circle"
@@ -41,7 +44,7 @@ export default function QuantityRoute() {
           message="Cette entrée n’existe plus, ou le lien est incorrect."
         />
       ) : (
-        <QuantityScreen mode="edit" entryId={id} onDone={() => router.back()} />
+        <QuantityScreen mode="edit" entryId={id} />
       )}
     </OverlayPanel>
   );

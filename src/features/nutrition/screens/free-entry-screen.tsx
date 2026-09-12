@@ -1,4 +1,3 @@
-import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   Alert,
@@ -13,6 +12,7 @@ import {
 import type { LocalDate } from '@/core/date';
 import { formatKcal, parseDecimal } from '@/core/format';
 import { useTheme } from '@/core/theme';
+import { useDismiss } from '@/core/ui/overlay-panel';
 import type { JournalEntryId } from '@/core/db/schema';
 import {
   useAddFreeEntry,
@@ -76,7 +76,7 @@ export function FreeEntryScreen({
   entryId: JournalEntryId | null;
 }) {
   const theme = useTheme();
-  const router = useRouter();
+  const dismiss = useDismiss();
 
   const existing = useEntry(entryId);
   const addEntry = useAddFreeEntry();
@@ -113,7 +113,7 @@ export function FreeEntryScreen({
   // synchronous and a mutation is not cancelled by unmounting, so closing
   // first would probably work — "probably" being the wrong standard for the
   // one gesture this whole slice exists to make reliable.
-  const close = { onSuccess: () => router.back() };
+  const close = { onSuccess: dismiss };
 
   function save(): void {
     if (macros === null) return;

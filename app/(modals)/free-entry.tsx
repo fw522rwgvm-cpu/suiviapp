@@ -3,7 +3,7 @@ import { currentLocalDate, parseLocalDate } from '@/core/date';
 import type { JournalEntryId } from '@/core/db/schema';
 import { toEntityId } from '@/core/id';
 import { GlassButton } from '@/core/ui/glass-button';
-import { OverlayPanel } from '@/core/ui/overlay-panel';
+import { OverlayPanel, useDismiss } from '@/core/ui/overlay-panel';
 import { FreeEntryScreen } from '@/features/nutrition/screens/free-entry-screen';
 
 /**
@@ -23,6 +23,12 @@ import { FreeEntryScreen } from '@/features/nutrition/screens/free-entry-screen'
  * back instead of throwing: nothing on the critical path may be a blocking
  * message.
  */
+/** Inside the panel, so its dismissal folds the window away first. */
+function CloseButton() {
+  const dismiss = useDismiss();
+  return <GlassButton label="Fermer" onPress={dismiss} />;
+}
+
 export default function FreeEntryRoute() {
   const router = useRouter();
   const params = useLocalSearchParams<{
@@ -36,10 +42,7 @@ export default function FreeEntryRoute() {
     params.mealPosition === undefined ? Number.NaN : Number.parseInt(params.mealPosition, 10);
 
   return (
-    <OverlayPanel
-      onDismiss={() => router.back()}
-      right={<GlassButton label="Fermer" onPress={() => router.back()} />}
-    >
+    <OverlayPanel onDismiss={() => router.back()} right={<CloseButton />}>
       <FreeEntryScreen
         date={date ?? currentLocalDate()}
         mealPosition={Number.isInteger(position) && position >= 0 ? position : null}

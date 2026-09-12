@@ -22,6 +22,7 @@ import {
   portionQuantity,
   type QuantityChoice,
 } from '../domain/portions';
+import { useDismiss } from '@/core/ui/overlay-panel';
 import { formatPortionCount } from '../components/portion-text';
 
 /**
@@ -49,7 +50,12 @@ import { formatPortionCount } from '../components/portion-text';
  */
 
 interface Common {
-  onDone: () => void;
+  /**
+   * What to do once the write has landed. Omitted inside an overlay route,
+   * where useDismiss folds the window away before leaving; supplied by the add
+   * modal, which is a step swap rather than a navigation.
+   */
+  onDone?: () => void;
 }
 
 type Props =
@@ -60,6 +66,12 @@ export function QuantityScreen(props: Props) {
   return props.mode === 'add' ? <AddQuantity {...props} /> : <EditQuantity {...props} />;
 }
 
+/** The caller's own ending, or the panel's — whichever this is inside. */
+function useEnding(onDone?: () => void): () => void {
+  const dismiss = useDismiss();
+  return onDone ?? dismiss;
+}
+
 function AddQuantity({
   date,
   mealPosition,
@@ -68,6 +80,7 @@ function AddQuantity({
 }: Common & { date: LocalDate; mealPosition: number; foodId: FoodId }) {
   const prefill = useQuantityPrefill(foodId);
   const add = useAddFoodEntry();
+  const done = useEnding(onDone);
 
   const loaded = prefill.data ?? null;
 
@@ -81,7 +94,7 @@ function AddQuantity({
       initial={loaded?.quantity ?? null}
       action="Ajouter"
       onSubmit={(quantity) =>
-        add.mutate({ date, mealPosition, foodId, quantity }, { onSuccess: onDone })
+        add.mutate({ date, mealPosition, foodId, quantity }, { onSuccess: done })
       }
     />
   );
@@ -90,6 +103,7 @@ function AddQuantity({
 function EditQuantity({ entryId, onDone }: Common & { entryId: JournalEntryId }) {
   const entry = useEntry(entryId);
   const update = useUpdateFoodEntryQuantity();
+  const done = useEnding(onDone);
 
   const loaded = entry.data ?? null;
   // Only for the portions it offers today. Its macros are deliberately unused:
@@ -114,7 +128,7 @@ function EditQuantity({ entryId, onDone }: Common & { entryId: JournalEntryId })
             )
       }
       action="Enregistrer"
-      onSubmit={(quantity) => update.mutate({ entryId, quantity }, { onSuccess: onDone })}
+      onSubmit={(quantity) => update.mutate({ entryId, quantity }, { onSuccess: done })}
     />
   );
 }
@@ -169,11 +183,34 @@ function QuantityForm({
      * One frame of delay because focus itself places the caret: a selection
      * set in the same tick is overwritten by it.
      */
-    const frame = requestAnimationFrame(() => {
+    function focusAndSelect(): void {
       input.current?.focus();
       input.current?.setSelection(0, value.length);
-    });
-    return () => cancelAnimationFrame(frame);
+    }
+
+    const frame = requestAnimationFrame(focusAndSelect);
+
+    /**
+     * And once more after the window has finished opening.
+     *
+     * The first attempt is what serves the fast path, where this screen is a
+     * step swapped into the add modal and nothing is animating. As an overlay
+     * route it is different: the panel rises for a quarter of a second, and a
+     * focus asked for while a presentation is still in flight is dropped —
+     * silently, so the field ends up filled with no keyboard, which is the
+     * whole lever of specs 8.4 gone.
+     *
+     * Guarded on isFocused so it cannot steal a selection back from someone
+     * who has already started typing.
+     */
+    const retry = setTimeout(() => {
+      if (input.current?.isFocused() !== true) focusAndSelect();
+    }, 320);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(retry);
+    };
   }, [initial, loaded]);
 
   const typed = parseDecimal(text);
