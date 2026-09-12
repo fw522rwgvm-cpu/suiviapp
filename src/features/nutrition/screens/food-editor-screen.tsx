@@ -202,78 +202,98 @@ export function FoodEditorScreen({ foodId }: { foodId: FoodId | null }) {
                 style={inputStyle(theme)}
               />
             </Labelled>
-
-            <View style={styles.field}>
-              <Text style={[styles.label, { color: theme.colors.textMuted }]}>Unité</Text>
-              {/*
-                Watertight: no conversion, no density (specs 5.1). Changing it
-                does not convert anything — it says what the numbers mean.
-              */}
-              <View style={styles.segments}>
-                {(['g', 'ml'] as BaseUnit[]).map((unit) => (
-                  <Pressable
-                    key={unit}
-                    onPress={() => setDraft((current) => ({ ...current, baseUnit: unit }))}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: draft.baseUnit === unit }}
-                    style={[
-                      styles.segment,
-                      {
-                        backgroundColor:
-                          draft.baseUnit === unit ? theme.colors.accent : 'transparent',
-                        borderColor: theme.colors.border,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={{
-                        color:
-                          draft.baseUnit === unit ? theme.colors.onAccent : theme.colors.text,
-                        fontSize: 16,
-                      }}
-                    >
-                      {unit}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            </View>
           </View>
 
           <View style={[styles.card, cardStyle(theme)]}>
-            <Labelled label={`Macros pour cette quantité (${draft.baseUnit})`}>
-              <TextInput
-                value={draft.refQty === 0 ? '' : String(draft.refQty).replace('.', ',')}
-                onChangeText={(text) =>
-                  setDraft((current) => ({ ...current, refQty: parseDecimal(text) ?? 0 }))
-                }
-                keyboardType="decimal-pad"
-                selectTextOnFocus
-                style={inputStyle(theme)}
-              />
+            {/*
+              THE QUANTITY AND ITS UNIT ARE ONE FIELD, because they are one
+              answer: "per 30 g" is what a label says, and it was being asked
+              as two questions in two cards. The unit is not a property of the
+              food that happens to live elsewhere -- it is what the number
+              beside it means.
+
+              Watertight all the same: no conversion, no density (specs 5.1).
+              Tapping ml does not convert anything; it says what these figures
+              are counted in.
+            */}
+            <Labelled label="Macros pour cette quantité">
+              <View style={styles.quantityRow}>
+                <TextInput
+                  value={draft.refQty === 0 ? '' : String(draft.refQty).replace('.', ',')}
+                  onChangeText={(text) =>
+                    setDraft((current) => ({ ...current, refQty: parseDecimal(text) ?? 0 }))
+                  }
+                  keyboardType="decimal-pad"
+                  selectTextOnFocus
+                  accessibilityLabel="Quantité de référence"
+                  style={[inputStyle(theme), styles.quantityInput]}
+                />
+
+                <View style={styles.segments}>
+                  {(['g', 'ml'] as BaseUnit[]).map((unit) => (
+                    <Pressable
+                      key={unit}
+                      onPress={() => setDraft((current) => ({ ...current, baseUnit: unit }))}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: draft.baseUnit === unit }}
+                      style={[
+                        styles.segment,
+                        {
+                          backgroundColor:
+                            draft.baseUnit === unit ? theme.colors.accent : 'transparent',
+                          borderColor: theme.colors.border,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          color:
+                            draft.baseUnit === unit
+                              ? theme.colors.onAccent
+                              : theme.colors.text,
+                          fontSize: 16,
+                        }}
+                      >
+                        {unit}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
             </Labelled>
 
-            <Labelled label="Protéines (g)">
-              <MacroInput
+            {/*
+              The four side by side, in the order they are read everywhere
+              else. Stacked, they made a column of four identical boxes that
+              had to be labelled to be told apart and scrolled to be checked;
+              in a row, the whole answer is one glance and one tab away.
+
+              No coloured dots here, unlike the block that DISPLAYS them: a
+              colour tells four figures apart at a glance, and glancing is not
+              what one does at a form. Here the label is read, then typed into.
+            */}
+            <View style={styles.macroRow}>
+              <MacroField
+                label="Protéines (g)"
                 value={draft.macros.protein}
                 onChange={(text) => setMacro('protein', text)}
               />
-            </Labelled>
-            <Labelled label="Glucides (g)">
-              <MacroInput
+              <MacroField
+                label="Glucides (g)"
                 value={draft.macros.carbs}
                 onChange={(text) => setMacro('carbs', text)}
               />
-            </Labelled>
-            <Labelled label="Lipides (g)">
-              <MacroInput value={draft.macros.fat} onChange={(text) => setMacro('fat', text)} />
-            </Labelled>
-            <Labelled label="Calories">
-              <MacroInput
+              <MacroField
+                label="Lipides (g)"
+                value={draft.macros.fat}
+                onChange={(text) => setMacro('fat', text)}
+              />
+              <MacroField
+                label="Calories"
                 value={draft.macros.kcal}
                 onChange={(text) => setMacro('kcal', text)}
               />
-            </Labelled>
+            </View>
 
             {warn ? (
               <Text style={[styles.warning, { color: theme.colors.warning }]}>
@@ -346,6 +366,33 @@ function Labelled({ label, children }: { label: string; children: React.ReactNod
   );
 }
 
+/** One of the four columns: its name above, the box to type in below. */
+function MacroField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (text: string) => void;
+}) {
+  const theme = useTheme();
+  return (
+    <View style={styles.macroField}>
+      <Text
+        style={[styles.macroLabel, { color: theme.colors.textMuted }]}
+        numberOfLines={1}
+        // Four names in a row on a narrow screen: shrinking one is better than
+        // cutting it, since what is cut is the unit at the end.
+        adjustsFontSizeToFit
+      >
+        {label}
+      </Text>
+      <MacroInput value={value} onChange={onChange} />
+    </View>
+  );
+}
+
 function MacroInput({
   value,
   onChange,
@@ -362,7 +409,10 @@ function MacroInput({
       placeholderTextColor={theme.colors.textFaint}
       keyboardType="decimal-pad"
       selectTextOnFocus
-      style={inputStyle(theme)}
+      // Narrower and centred: a quarter of a card is not much room, and a
+      // figure hugging the left edge of its box reads as the box being wrong
+      // rather than the figure being short.
+      style={[inputStyle(theme), styles.macroInput]}
     />
   );
 }
@@ -388,6 +438,13 @@ const styles = StyleSheet.create({
   card: { borderWidth: StyleSheet.hairlineWidth, padding: 16, gap: 14 },
   field: { gap: 6 },
   label: { fontSize: 13 },
+  // The number takes the room; the unit takes what it needs.
+  quantityRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  quantityInput: { flex: 1 },
+  macroRow: { flexDirection: 'row', gap: 8 },
+  macroField: { flex: 1, gap: 6 },
+  macroLabel: { fontSize: 11 },
+  macroInput: { paddingHorizontal: 8, textAlign: 'center' },
   input: {
     fontSize: 17,
     paddingVertical: 10,
