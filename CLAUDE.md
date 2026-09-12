@@ -703,17 +703,28 @@ comme une **demande consommée une fois**
 Journal prend et efface. Dans l'autre sens, la date affichée voyage bien par
 l'URL — c'est une entrée, une valeur périmée y est sans conséquence.
 
-**Le panneau du calendrier porte ses propres dimensions, et ce n'est pas un
-détail.** `Link.AppleZoomTarget` enveloppe son enfant dans une vue native
-stylée `display: 'contents'` — censée ne participer à aucune disposition. Quand
-ça se résout comme prévu, l'enfant se mesure contre l'écran ; quand non, il se
-mesure contre rien, et `flex: 1` dans rien vaut zéro. **C'est exactement à ça
-que ressemble une page blanche**, et c'est ce qui est arrivé. Le panneau est
-donc dimensionné depuis la fenêtre et non depuis son parent : il ne peut pas
-s'effondrer, quoi que fasse l'enveloppe. C'est aussi ce qui le fait monter
-jusqu'à l'île dynamique plutôt que de commencer sous une zone sûre qu'il n'a pas
-demandée — la zone sûre revient ensuite en **marge intérieure**, pour que le
-fond aille au bord sans que rien de lisible se cache sous l'île.
+**`Link.AppleZoomTarget` n'entoure PAS l'écran de destination.** C'est l'erreur
+qui a coûté deux tours : le nom se lit comme « la vue que le bouton devient »,
+et c'est faux. Il marque le **rectangle d'alignement** — quelle partie de la
+destination correspond à la source — et l'exemple de la bibliothèque le met
+autour d'une image de 200 pt posée dans un écran ordinaire, jamais autour de
+l'écran.
+
+Le coût de la méprise est total, parce que le composant enveloppe son enfant
+dans une vue native stylée `display: 'contents'`, censée ne participer à aucune
+disposition. En racine d'écran, ça retire la racine de la disposition : tout ce
+qui est dedans se mesure contre rien, et la page est blanche.
+
+**La transition n'en a pas besoin.** Le zoom est demandé par `Link.AppleZoom`
+côté source ; la cible ne fait qu'affiner l'alignement. Sans elle le système
+choisit le sien, ce qui est le bon défaut ici — la destination est un panneau
+entier, pas une image ayant sa contrepartie.
+
+**Le panneau porte quand même ses propres dimensions**, prises de la fenêtre et
+non du parent : il ne peut pas s'effondrer, et il monte jusqu'à l'île dynamique
+au lieu de commencer sous une zone sûre qu'il n'a pas demandée. La zone sûre
+revient en **marge intérieure**, pour que le fond aille au bord sans que rien de
+lisible se cache sous l'île.
 
 **Un indicateur de chargement se tient au moins une seconde.** SQLite local
 répond en dizaines de millisecondes : l'indicateur se dépensait en un

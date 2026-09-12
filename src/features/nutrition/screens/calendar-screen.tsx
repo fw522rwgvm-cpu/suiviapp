@@ -1,4 +1,4 @@
-import { Link, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,28 +18,37 @@ import { useRequestDate } from '../hooks/requested-date';
  * thing: the zoom transition, where a control genuinely becomes the view it
  * presents, with an interactive dismissal that follows the finger back into it.
  *
- * expo-router exposes it as Link.AppleZoom on the source and
- * Link.AppleZoomTarget on the destination — and it animates a NAVIGATION, so
- * the destination has to be a route. Hence this screen, and hence the request
- * context that carries the chosen day back (see hooks/requested-date.tsx: a
- * route parameter would outlive the visit, and specs 7 wants the Journal on
- * today at every launch).
+ * expo-router exposes it as Link.AppleZoom on the source — and it animates a
+ * NAVIGATION, so the destination has to be a route. Hence this screen, and
+ * hence the request context that carries the chosen day back (see
+ * hooks/requested-date.tsx: a route parameter would outlive the visit, and
+ * specs 7 wants the Journal on today at every launch).
  *
- * ## THE PANEL CARRIES ITS OWN SIZE, and that is not a detail
+ * ## THERE IS NO Link.AppleZoomTarget HERE, AND THAT IS THE FIX
  *
- * Link.AppleZoomTarget wraps its child in a native detector view styled
- * `display: 'contents'` — meant to take part in no layout at all. When that
- * resolves as intended the child measures against the screen; when it does
- * not, the child measures against nothing, and `flex: 1` inside nothing is
- * zero. That is exactly what a blank page looks like.
+ * It looked like the name for "the view the button becomes", so it went round
+ * the whole screen. It is not that. It marks the ALIGNMENT RECT — which part of
+ * the destination corresponds to the source — and the library's own example
+ * puts it round a 200-point image sitting inside an ordinary screen, never
+ * round the screen itself.
  *
- * So the panel is sized from the window rather than from its parent. It cannot
- * collapse, whatever the wrapper turns out to do — and it is what makes the
- * screen reach the very top, up past the status bar to the island, rather than
- * starting below a safe area it never asked for.
+ * The cost of the mistake was total: the component wraps its child in a native
+ * view styled `display: 'contents'`, meant to take part in no layout. As a
+ * screen root that removes the root from layout, so everything inside measured
+ * against nothing and the page came up blank twice over.
  *
- * The safe area then comes back as PADDING, so the background runs to the edge
- * while nothing readable hides under the island.
+ * The transition does not need it. The zoom is asked for by Link.AppleZoom on
+ * the source; the target only refines where the two line up. Without it the
+ * system picks its own alignment, which is the right default here — the
+ * destination is a whole panel, not a picture with a counterpart.
+ *
+ * ## The panel still carries its own size
+ *
+ * Sized from the window rather than from its parent, so it cannot collapse
+ * whatever a wrapper does, and so it reaches the very top — past the status bar
+ * to the island — rather than starting below a safe area it never asked for.
+ * The safe area comes back as PADDING: the background runs to the edge while
+ * nothing readable hides under the island.
  */
 export function CalendarScreen({ date }: { date: LocalDate }) {
   const theme = useTheme();
@@ -63,37 +72,31 @@ export function CalendarScreen({ date }: { date: LocalDate }) {
   }
 
   return (
-    /*
-      The target of the zoom: the thing that should appear to BE the button,
-      grown. A single child, which is all this component accepts.
-    */
-    <Link.AppleZoomTarget>
-      <View
-        style={[
-          styles.panel,
-          {
-            width,
-            height,
-            paddingTop: insets.top + 8,
-            paddingBottom: insets.bottom,
-            backgroundColor: theme.colors.background,
-          },
-        ]}
-      >
-        <View style={styles.actions}>
-          <GlassButton label="Aujourd’hui" onPress={() => choose(today)} />
-          <GlassButton label="Fermer" onPress={() => router.back()} />
-        </View>
-
-        <MonthCalendar
-          month={month}
-          selected={date}
-          today={today}
-          onMonthChange={setMonth}
-          onSelect={choose}
-        />
+    <View
+      style={[
+        styles.panel,
+        {
+          width,
+          height,
+          paddingTop: insets.top + 8,
+          paddingBottom: insets.bottom,
+          backgroundColor: theme.colors.background,
+        },
+      ]}
+    >
+      <View style={styles.actions}>
+        <GlassButton label="Aujourd’hui" onPress={() => choose(today)} />
+        <GlassButton label="Fermer" onPress={() => router.back()} />
       </View>
-    </Link.AppleZoomTarget>
+
+      <MonthCalendar
+        month={month}
+        selected={date}
+        today={today}
+        onMonthChange={setMonth}
+        onSelect={choose}
+      />
+    </View>
   );
 }
 
