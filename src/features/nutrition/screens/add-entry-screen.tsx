@@ -20,6 +20,7 @@ import { SwipeToDeleteRow } from '../components/swipe-to-delete-row';
 import { SearchField } from '../components/search-field';
 import { FreeEntryScreen } from './free-entry-screen';
 import { QuantityScreen } from './quantity-screen';
+import { ListSeparator } from '@/core/ui/list-separator';
 
 /**
  * Adding to the journal (specs 8.4).
@@ -452,7 +453,7 @@ function Basket({
         {entries.map((entry, index) => (
           <View key={`${entry.kind}-${index}-${entry.name}`}>
             {index === 0 ? null : (
-              <View style={[styles.separator, { backgroundColor: theme.colors.border }]} />
+              <ListSeparator />
             )}
             {/*
               Swiped LEFT, the same way the Journal deletes an entry and the
@@ -522,7 +523,7 @@ function Section({
           {foods.map((food, index) => (
             <View key={food.id}>
               {index === 0 ? null : (
-                <View style={[styles.separator, { backgroundColor: theme.colors.border }]} />
+                <ListSeparator />
               )}
               {/* One tap. The next one is "Ajouter" (specs 8.4, D16). */}
               <FoodRow food={food} onPress={() => onPick(food.id)} />
@@ -554,7 +555,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
   },
   list: { borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
-  separator: { height: StyleSheet.hairlineWidth, marginLeft: 18 },
   empty: { fontSize: 15, lineHeight: 21 },
   confirmBar: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 8 },
   confirm: { borderRadius: 18, paddingVertical: 16, alignItems: 'center' },

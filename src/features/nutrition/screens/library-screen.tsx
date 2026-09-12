@@ -7,6 +7,7 @@ import { useFoods, useSetFoodFavorite } from '../data/food-queries';
 import { searchFoods } from '../domain/food-search';
 import { FoodRow } from '../components/food-row';
 import { SearchField } from '../components/search-field';
+import { ListSeparator } from '@/core/ui/list-separator';
 
 /**
  * The food library (specs 7, 8.5).
@@ -91,7 +92,7 @@ export function LibraryScreen() {
             {shown.map((food, index) => (
               <View key={food.id}>
                 {index === 0 ? null : (
-                  <View style={[styles.separator, { backgroundColor: theme.colors.border }]} />
+                  <ListSeparator />
                 )}
                 <FoodRow
                   food={food}
@@ -115,5 +116,4 @@ const styles = StyleSheet.create({
   content: { padding: 16, gap: 16, paddingBottom: 56 },
   empty: { fontSize: 15, lineHeight: 21 },
   list: { borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
-  separator: { height: StyleSheet.hairlineWidth, marginLeft: 18 },
 });

@@ -11,6 +11,7 @@ import {
 } from '../data/backup-queries';
 import type { ExportFreshness } from '../domain/export-age';
 import { summariseProblems } from './problem-text';
+import { ListSeparator } from '@/core/ui/list-separator';
 
 /**
  * The "Données" section of Settings (specs 8.8, 12).
@@ -145,9 +146,9 @@ export function DataSection() {
         </Text>
 
         <Action label="Exporter" onPress={onExport} disabled={busy} />
-        <Separator />
+        <ListSeparator />
         <Action label="Importer" onPress={onImport} disabled={busy} destructive />
-        <Separator />
+        <ListSeparator />
         <Action label="Préparer une copie" onPress={onPrepareCopy} disabled={busy} />
 
         {busy ? <ActivityIndicator style={styles.spinner} /> : null}
@@ -239,11 +240,6 @@ function Action({
   );
 }
 
-function Separator() {
-  const theme = useTheme();
-  return <View style={[styles.separator, { backgroundColor: theme.colors.border }]} />;
-}
-
 const styles = StyleSheet.create({
   section: { fontSize: 12, fontWeight: '600', letterSpacing: 0.6, marginLeft: 4, marginTop: 16 },
   banner: {
@@ -257,7 +253,6 @@ const styles = StyleSheet.create({
   card: { borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, paddingVertical: 4 },
   lead: { fontSize: 13, lineHeight: 19, paddingHorizontal: 14, paddingVertical: 10 },
   action: { fontSize: 16, paddingHorizontal: 14, paddingVertical: 12 },
-  separator: { height: StyleSheet.hairlineWidth, marginLeft: 14 },
   spinner: { marginVertical: 8 },
   outcome: { fontSize: 14, lineHeight: 20, paddingHorizontal: 14, paddingVertical: 10 },
   problem: { fontSize: 13, lineHeight: 19, paddingHorizontal: 14, paddingBottom: 6 },

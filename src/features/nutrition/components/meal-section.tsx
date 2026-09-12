@@ -9,6 +9,7 @@ import type { DayMealView } from '../domain/day-plan';
 import type { Macros } from '../domain/macros';
 import { EntryRow } from './entry-row';
 import { SwipeToDeleteRow } from './swipe-to-delete-row';
+import { ListSeparator } from '@/core/ui/list-separator';
 
 /**
  * One meal of the day: header, sub-total, and its entries once unfolded.
@@ -132,7 +133,7 @@ export function MealSection({
                   while a row travels under the finger.
                 */}
                 {index === 0 ? null : (
-                  <View style={[styles.separator, { backgroundColor: theme.colors.border }]} />
+                  <ListSeparator />
                 )}
                 <SwipeToDeleteRow onDelete={() => onDeleteEntry(entry)}>
                   <EntryRow entry={entry} onPress={() => onEditEntry(entry)} />
@@ -166,7 +167,5 @@ const styles = StyleSheet.create({
   // target on its own, so padding here would only push it off the edge.
   add: { paddingHorizontal: 14, paddingVertical: 10 },
   entries: { borderTopWidth: StyleSheet.hairlineWidth },
-  // Aligned with the row text, 16 of padding plus the hairline itself.
-  separator: { height: StyleSheet.hairlineWidth, marginLeft: 16 },
   empty: { fontSize: 14, paddingHorizontal: 18, paddingVertical: 16 },
 });
