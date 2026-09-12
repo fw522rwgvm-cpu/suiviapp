@@ -104,16 +104,25 @@ export function DayPage({
   const showDots = useMinimumVisible(pending, 1000);
 
   /**
-   * A day arrives at the top, every time.
+   * A day is put back to the top WHEN IT IS LEFT, not when it is returned to.
    *
-   * The three pages are reconciled by date, so the one you swipe away from is
-   * still mounted with its scroll where you left it — and swiping back showed
-   * it half way down. Slice 1 kept that on purpose, to preserve unfolded meals
+   * The three pages are reconciled by date, so the one you swipe away from
+   * stays mounted with its scroll where you left it — and coming back showed it
+   * half way down. Slice 1 kept that deliberately, to preserve unfolded meals
    * and position; keeping the meals is still right, keeping the scroll is not.
-   * A day you return to is a day you are reading again from its figures down.
+   * A day you return to is a day you read again from its figures down.
+   *
+   * Doing it on arrival worked and could be SEEN doing it: the page was already
+   * on screen, so it appeared at its old offset and then jumped. On departure
+   * the page has just moved a full screen sideways and is out of view, so the
+   * same correction happens where there is nobody to notice — and what comes
+   * back is simply a day that was already at the top.
+   *
+   * The `!active` form also fires on mount for the two neighbours, which is
+   * harmless: they are at the top already.
    */
   useEffect(() => {
-    if (!active) return;
+    if (active) return;
     scroll.current?.scrollTo({ y: -headerHeight, animated: false });
   }, [active, headerHeight]);
 
