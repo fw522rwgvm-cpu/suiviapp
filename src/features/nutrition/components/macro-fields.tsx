@@ -35,19 +35,22 @@ import { useTheme } from '@/core/theme';
  */
 
 /** The four, in the order they are read everywhere else in the application. */
-const FIELDS = [
-  { key: 'protein', label: 'Protéines', unit: 'g' },
-  { key: 'carbs', label: 'Glucides', unit: 'g' },
-  { key: 'fat', label: 'Lipides', unit: 'g' },
-  { key: 'kcal', label: 'Calories', unit: 'kcal' },
-] as const;
+const FIELDS = {
+  protein: { label: 'Protéines', unit: 'g' },
+  carbs: { label: 'Glucides', unit: 'g' },
+  fat: { label: 'Lipides', unit: 'g' },
+  kcal: { label: 'Calories', unit: 'kcal' },
+} as const;
 
 export type MacroKey = 'protein' | 'carbs' | 'fat' | 'kcal';
 
 export function MacroFields({
+  keys,
   values,
   onChange,
 }: {
+  /** Which of the four to show, in the order they should be read. */
+  keys: readonly MacroKey[];
   values: Record<MacroKey, string>;
   onChange: (key: MacroKey, text: string) => void;
 }) {
@@ -55,8 +58,10 @@ export function MacroFields({
 
   return (
     <View style={styles.row}>
-      {FIELDS.map((field) => (
-        <View key={field.key} style={styles.column}>
+      {keys.map((key) => {
+        const field = FIELDS[key];
+        return (
+        <View key={key} style={styles.column}>
           <Text
             style={[styles.label, { color: theme.colors.textMuted }]}
             numberOfLines={1}
@@ -69,8 +74,8 @@ export function MacroFields({
 
           <View style={[styles.box, { backgroundColor: theme.colors.background }]}>
             <FormInput
-              value={values[field.key]}
-              onChangeText={(text) => onChange(field.key, text)}
+              value={values[key]}
+              onChangeText={(text) => onChange(key, text)}
               placeholder="0"
               keyboardType="decimal-pad"
               selectTextOnFocus
@@ -82,7 +87,8 @@ export function MacroFields({
             <Text style={[styles.unit, { color: theme.colors.textMuted }]}>{field.unit}</Text>
           </View>
         </View>
-      ))}
+        );
+      })}
     </View>
   );
 }

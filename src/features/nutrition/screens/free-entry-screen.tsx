@@ -194,6 +194,7 @@ export function FreeEntryScreen({
           */}
           <FormRow>
             <MacroFields
+              keys={['protein', 'carbs', 'fat']}
               values={{
                 protein: fields.protein,
                 carbs: fields.carbs,
@@ -202,6 +203,22 @@ export function FreeEntryScreen({
               }}
               onChange={(key, text) => setFields((current) => ({ ...current, [key]: text }))}
             />
+          </FormRow>
+
+          {/*
+            Calories on their own row here too. This screen and the food editor
+            ask the very same question, and two spellings of one question get
+            answered as if they were two.
+          */}
+          <FormRow label="Calories">
+            <FormInput
+              value={fields.kcal}
+              onChangeText={(kcal) => setFields((current) => ({ ...current, kcal }))}
+              placeholder="0"
+              keyboardType="decimal-pad"
+              selectTextOnFocus
+            />
+            <Text style={[styles.unit, { color: theme.colors.textMuted }]}>kcal</Text>
           </FormRow>
         </FormSection>
 
@@ -244,6 +261,7 @@ export function FreeEntryScreen({
 }
 
 const styles = StyleSheet.create({
+  unit: { fontSize: 17 },
   flex: { flex: 1 },
   content: { padding: 16, gap: 16, paddingBottom: 56 },
   warning: { fontSize: 13, lineHeight: 18 },

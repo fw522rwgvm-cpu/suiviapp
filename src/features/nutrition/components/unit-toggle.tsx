@@ -18,9 +18,16 @@ import type { BaseUnit } from '@/core/db/schema';
  */
 export function UnitToggle({
   unit,
+  prefix,
   onChange,
 }: {
   unit: BaseUnit;
+  /**
+   * Put in front of each unit, for a toggle that is the whole answer rather
+   * than half of one: "100 g" reads as a reference quantity, "g" only says
+   * what a number beside it means.
+   */
+  prefix?: string;
   onChange: (unit: BaseUnit) => void;
 }) {
   const theme = useTheme();
@@ -47,7 +54,7 @@ export function UnitToggle({
                 { color: chosen ? theme.colors.text : theme.colors.textMuted },
               ]}
             >
-              {candidate}
+              {prefix === undefined ? candidate : `${prefix}\u00A0${candidate}`}
             </Text>
           </Pressable>
         );
@@ -59,6 +66,6 @@ export function UnitToggle({
 const styles = StyleSheet.create({
   track: { flexDirection: 'row', borderRadius: 9, padding: 2 },
   // Both the same width, so the track does not breathe as the choice moves.
-  option: { width: 40, paddingVertical: 5, alignItems: 'center', borderRadius: 7 },
+  option: { minWidth: 40, paddingHorizontal: 12, paddingVertical: 5, alignItems: 'center', borderRadius: 7 },
   label: { fontSize: 15, fontWeight: '500' },
 });

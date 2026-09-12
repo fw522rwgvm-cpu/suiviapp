@@ -745,6 +745,8 @@ une demande qui diverge des specs modifie les specs.
 
 | 16 | §8.5 | Le **favori agit immediatement**, par un bouton etoile identique depuis la liste et depuis la fiche ; il quitte le formulaire, et un enregistrement ne le reecrit plus | Un drapeau qu'un seul toucher change ailleurs ne devrait pas demander ici un formulaire soumis. Et un formulaire ouvert avant le marquage porte l'ancienne valeur : la reecrire annulerait en silence un geste que personne ne compte comme une modification |
 
+| 17 | §6.1, §8.5 | La quantite de reference n'est plus saisissable : l'editeur propose **100 g ou 100 ml**, et les calories quittent la ligne des trois macros pour une rangee a elles | Demande explicite. Cout assume et consigne : une etiquette donnant ses valeurs pour autre chose que 100 doit desormais etre convertie a la main. `display_ref_qty` reste en base et vaut 100, donc rien n'est a migrer et le champ peut revenir. Les calories ne sont pas une quatrieme macro : elles sont ce a quoi les trois autres reviennent, et le §5.1 les verifie l'une contre les autres |
+
 **Reserve sur les gestes 9 et 11, enoncee une fois pour toutes.** Les deux
 reproduisent un comportement d'UIKit sans etre ce comportement. React Native
 n'expose ni `UISwipeActionsConfiguration` ni le retour interactif d'un

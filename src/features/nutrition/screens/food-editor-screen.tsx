@@ -27,6 +27,7 @@ import {
   type FoodDraft,
 } from '../domain/food-draft';
 import { hasKcalWarning, theoreticalKcal } from '../domain/macros';
+import { toCanonical } from '../domain/food-macros';
 import { FormInput, FormRow, FormSection } from '@/core/ui/form-section';
 import { MacroFields, type MacroKey } from '../components/macro-fields';
 import { UnitToggle } from '../components/unit-toggle';
@@ -40,15 +41,28 @@ import { foodProblemText } from '../components/food-problem-text';
  * fields — specs 5.3 puts no time limit on it, and past journal entries are
  * untouched either way, having frozen their own reference (D5/R1).
  *
- * THE REFERENCE QUANTITY IS A FIELD HERE AND NOWHERE ELSE. Macros are typed
- * against it — "per 30 g" for a food whose label says so — and the domain
- * converts once, to the canonical form for 100 base units, on the way to the
- * database. Nothing else in the application ever multiplies by it (D9).
+ * THE REFERENCE QUANTITY IS NO LONGER A FIELD. It was one, so that macros
+ * could be typed "per 30 g" for a food whose label says so; the form now
+ * offers 100 g or 100 ml and nothing else. What that costs is real and worth
+ * stating: such a label has to be converted by hand before it can be entered.
+ *
+ * The column and the conversion both stay. display_ref_qty still exists, the
+ * domain still converts through it on the way in, and it simply always carries
+ * 100 — so the conversion is the identity, nothing needs migrating, and the
+ * field can come back as a field. A food ENTERED against another reference is
+ * brought back to 100 as it is loaded, or saving would read its figures as if
+ * they had always been for 100.
+ *
+ * Nothing else in the application ever multiplies by it (D9).
  *
  * Holds no rule of its own: validateFoodDraft says what is wrong, and the
  * 10% kcal check (specs 5.1) is shown beside the field rather than gating the
  * button, because a non-blocking warning that blocks is not a warning.
  */
+/** The only reference the form can express, since the toggle offers two units
+ *  and no figure. The canonical form of the whole application (D9). */
+const REFERENCE = 100;
+
 /** A stored number, written the way the fields accept it back. */
 function show(value: number): string {
   return value === 0 ? '' : String(value).replace('.', ',');
@@ -100,7 +114,17 @@ export function FoodEditorScreen({ foodId }: { foodId: FoodId | null }) {
     // overwrite what is being typed.
     const value = stored.data;
     if (loaded || foodId === null || value === null || value === undefined) return;
-    setDraft(value);
+
+    // A FOOD ENTERED AGAINST ANOTHER REFERENCE IS BROUGHT BACK TO 100 HERE.
+    // The form can no longer express "per 30 g", so a draft still carrying 30
+    // would have its figures read as being for 100 the moment it was saved --
+    // silently multiplying them by more than three. Converting on the way in
+    // keeps what was eaten true and makes the change invisible.
+    setDraft(
+      value.refQty === REFERENCE
+        ? value
+        : { ...value, refQty: REFERENCE, macros: toCanonical(value.macros, value.refQty) },
+    );
     setLoaded(true);
   }, [stored.data, loaded, foodId]);
 
@@ -208,35 +232,33 @@ export function FoodEditorScreen({ foodId }: { foodId: FoodId | null }) {
           </FormSection>
 
           {/*
-            THE QUANTITY AND ITS UNIT ARE ONE ANSWER: "per 30 g" is what a
-            label says, and it was once asked as two questions in two cards.
-            The unit is not a property of the food that lives elsewhere -- it
-            is what the number beside it means.
+            THE REFERENCE IS A CHOICE OF TWO, NOT A FIGURE TO TYPE.
 
-            Watertight all the same: no conversion, no density (specs 5.1).
-            Tapping ml converts nothing; it says what these figures count.
+            It was a free field, so that macros could be entered "per 30 g" the
+            way a label sometimes states them. That was asked to go, and what
+            is lost is worth writing down: a label stating its figures for
+            anything other than 100 now has to be converted by hand.
+
+            What is NOT lost is the column behind it. display_ref_qty stays in
+            the schema and the domain still converts through it — it simply
+            always carries 100 now, so the conversion is the identity. Nothing
+            has to be migrated, and the free field can come back as a field.
+
+            Watertight, as ever: no conversion, no density (specs 5.1).
+            Choosing ml converts nothing; it says what these figures count.
           */}
-          <FormSection caption="Macros pour cette quantité">
-            <FormRow label="Pour">
-              <View style={styles.quantityRow}>
-                <FormInput
-                  value={draft.refQty === 0 ? '' : String(draft.refQty).replace('.', ',')}
-                  onChangeText={(text) =>
-                    setDraft((current) => ({ ...current, refQty: parseDecimal(text) ?? 0 }))
-                  }
-                  keyboardType="decimal-pad"
-                  selectTextOnFocus
-                  accessibilityLabel="Quantité de référence"
-                />
-                <UnitToggle
-                  unit={draft.baseUnit}
-                  onChange={(baseUnit) => setDraft((current) => ({ ...current, baseUnit }))}
-                />
-              </View>
+          <FormSection caption="Macros">
+            <FormRow label="Valeur pour">
+              <UnitToggle
+                unit={draft.baseUnit}
+                prefix="100"
+                onChange={(baseUnit) => setDraft((current) => ({ ...current, baseUnit }))}
+              />
             </FormRow>
 
             <FormRow>
               <MacroFields
+                keys={['protein', 'carbs', 'fat']}
                 values={{
                   protein: show(draft.macros.protein),
                   carbs: show(draft.macros.carbs),
@@ -245,6 +267,24 @@ export function FoodEditorScreen({ foodId }: { foodId: FoodId | null }) {
                 }}
                 onChange={setMacro}
               />
+            </FormRow>
+
+            {/*
+              Calories on their own row, and not as a fourth column: they are
+              not a fourth macro. They are what the other three come to, which
+              is why specs 5.1 checks one against the others — a figure that
+              can disagree with its neighbours does not belong in a line that
+              reads as one answer.
+            */}
+            <FormRow label="Calories">
+              <FormInput
+                value={show(draft.macros.kcal)}
+                onChangeText={(text) => setMacro('kcal', text)}
+                placeholder="0"
+                keyboardType="decimal-pad"
+                selectTextOnFocus
+              />
+              <Text style={[styles.unit, { color: theme.colors.textMuted }]}>kcal</Text>
             </FormRow>
 
             {warn ? (
@@ -311,8 +351,8 @@ export function FoodEditorScreen({ foodId }: { foodId: FoodId | null }) {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   content: { padding: 16, gap: 16, paddingBottom: 56 },
-  // The number takes the room; the unit takes what it needs.
-  quantityRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  // Beside the figure it counts, in the row's own trailing group.
+  unit: { fontSize: 17 },
   warning: { fontSize: 13, lineHeight: 18 },
   problems: { gap: 4 },
   problem: { fontSize: 13, lineHeight: 18 },
