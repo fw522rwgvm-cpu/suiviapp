@@ -240,8 +240,9 @@ export function FoodEditorScreen({ foodId }: { foodId: FoodId | null }) {
                         styles.segment,
                         {
                           backgroundColor:
-                            draft.baseUnit === unit ? theme.colors.accent : 'transparent',
-                          borderColor: theme.colors.border,
+                            draft.baseUnit === unit
+                              ? theme.colors.accent
+                              : theme.colors.background,
                         },
                       ]}
                     >
@@ -274,22 +275,26 @@ export function FoodEditorScreen({ foodId }: { foodId: FoodId | null }) {
             */}
             <View style={styles.macroRow}>
               <MacroField
-                label="Protéines (g)"
+                label="Protéines"
+                unit="g"
                 value={draft.macros.protein}
                 onChange={(text) => setMacro('protein', text)}
               />
               <MacroField
-                label="Glucides (g)"
+                label="Glucides"
+                unit="g"
                 value={draft.macros.carbs}
                 onChange={(text) => setMacro('carbs', text)}
               />
               <MacroField
-                label="Lipides (g)"
+                label="Lipides"
+                unit="g"
                 value={draft.macros.fat}
                 onChange={(text) => setMacro('fat', text)}
               />
               <MacroField
                 label="Calories"
+                unit="kcal"
                 value={draft.macros.kcal}
                 onChange={(text) => setMacro('kcal', text)}
               />
@@ -369,10 +374,12 @@ function Labelled({ label, children }: { label: string; children: React.ReactNod
 /** One of the four columns: its name above, the box to type in below. */
 function MacroField({
   label,
+  unit,
   value,
   onChange,
 }: {
   label: string;
+  unit: string;
   value: number;
   onChange: (text: string) => void;
 }) {
@@ -388,32 +395,53 @@ function MacroField({
       >
         {label}
       </Text>
-      <MacroInput value={value} onChange={onChange} />
+      <MacroInput value={value} unit={unit} onChange={onChange} />
     </View>
   );
 }
 
+/**
+ * The box, with its unit inside it rather than in the label above.
+ *
+ * A unit is part of the value, not part of the question: "Protéines" is what
+ * is being asked, "g" is what the answer is counted in. Inside, it also stops
+ * the label having to carry a parenthesis on a line four names wide.
+ *
+ * The field's chrome therefore belongs to the row that holds both, and the
+ * text input inside it is bare -- otherwise there would be a box in a box,
+ * which is the mistake the header star had just made.
+ */
 function MacroInput({
   value,
+  unit,
   onChange,
 }: {
   value: number;
+  unit: string;
   onChange: (text: string) => void;
 }) {
   const theme = useTheme();
   return (
-    <TextInput
-      value={value === 0 ? '' : String(value).replace('.', ',')}
-      onChangeText={onChange}
-      placeholder="0"
-      placeholderTextColor={theme.colors.textFaint}
-      keyboardType="decimal-pad"
-      selectTextOnFocus
-      // Narrower and centred: a quarter of a card is not much room, and a
-      // figure hugging the left edge of its box reads as the box being wrong
-      // rather than the figure being short.
-      style={[inputStyle(theme), styles.macroInput]}
-    />
+    <View
+      style={[
+        styles.input,
+        styles.macroBox,
+        { backgroundColor: theme.colors.background },
+      ]}
+    >
+      <TextInput
+        value={value === 0 ? '' : String(value).replace('.', ',')}
+        onChangeText={onChange}
+        placeholder="0"
+        placeholderTextColor={theme.colors.textFaint}
+        keyboardType="decimal-pad"
+        selectTextOnFocus
+        // Right against its unit, the way a figure sits beside one anywhere
+        // else in this application, and the way iOS aligns a value in a form.
+        style={[styles.macroValue, { color: theme.colors.text }]}
+      />
+      <Text style={[styles.macroUnit, { color: theme.colors.textMuted }]}>{unit}</Text>
+    </View>
   );
 }
 
@@ -428,8 +456,17 @@ function cardStyle(theme: ReturnType<typeof useTheme>) {
   ];
 }
 
+/**
+ * FILLED, NOT OUTLINED, which is what iOS actually does.
+ *
+ * A hairline rectangle around a field is a web idiom; the system draws a soft
+ * fill and no border at all, and lets the fill say "you can type here". The
+ * fill is the PAGE colour on a card: the field then reads as recessed into the
+ * card rather than as another box drawn on top of it, and it needs no token of
+ * its own to work in the dark, where the page is darker than the card too.
+ */
 function inputStyle(theme: ReturnType<typeof useTheme>) {
-  return [styles.input, { color: theme.colors.text, borderColor: theme.colors.border }];
+  return [styles.input, { color: theme.colors.text, backgroundColor: theme.colors.background }];
 }
 
 const styles = StyleSheet.create({
@@ -443,21 +480,26 @@ const styles = StyleSheet.create({
   quantityInput: { flex: 1 },
   macroRow: { flexDirection: 'row', gap: 8 },
   macroField: { flex: 1, gap: 6 },
-  macroLabel: { fontSize: 11 },
-  macroInput: { paddingHorizontal: 8, textAlign: 'center' },
+  // Centred over the box it names, now that it is a name and not a name with
+  // a unit hanging off it.
+  macroLabel: { fontSize: 12, textAlign: 'center' },
+  // The box is the field; what is inside it must draw nothing of its own.
+  macroBox: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, gap: 3 },
+  macroValue: { flex: 1, fontSize: 17, textAlign: 'right', padding: 0 },
+  macroUnit: { fontSize: 12 },
   input: {
     fontSize: 17,
-    paddingVertical: 10,
+    paddingVertical: 11,
     paddingHorizontal: 12,
-    borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 10,
   },
   segments: { flexDirection: 'row', gap: 8 },
+  // The same fill as the fields beside it: outlined pills next to filled
+  // boxes read as two different kinds of control, which they are not.
   segment: {
-    paddingVertical: 8,
-    paddingHorizontal: 20,
+    paddingVertical: 11,
+    paddingHorizontal: 18,
     borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
   },
   warning: { fontSize: 13, lineHeight: 18 },
   problems: { gap: 4 },

@@ -82,9 +82,12 @@ export function PortionEditor({
             keyboardType="decimal-pad"
             selectTextOnFocus
             accessibilityLabel={`Quantité pour une ${portion.name}`}
+            // Filled and borderless, like every other field on this screen:
+            // the system draws no rectangle around a text field, and two
+            // idioms on one page read as two pages.
             style={[
               styles.input,
-              { color: theme.colors.text, borderColor: theme.colors.border },
+              { color: theme.colors.text, backgroundColor: theme.colors.background },
             ]}
           />
           <Text style={[styles.unit, { color: theme.colors.textMuted }]}>{baseUnit}</Text>
@@ -127,9 +130,8 @@ const styles = StyleSheet.create({
     width: 84,
     fontSize: 17,
     textAlign: 'right',
-    paddingVertical: 8,
+    paddingVertical: 11,
     paddingHorizontal: 10,
-    borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 10,
   },
   unit: { fontSize: 15, width: 24 },
