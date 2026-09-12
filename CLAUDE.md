@@ -629,15 +629,18 @@ sélection posée dans le même tick est écrasée. `selectTextOnFocus` reste, p
 tous les touchers **ultérieurs** sur le champ. On retombe alors dans le cas où
 il fonctionne : focaliser un champ **déjà rempli**.
 
-**Ajouter est une modale opaque, modifier est une fenêtre par-dessus.** La
-règle de la tranche 3 était « consulter est un empilement, ajouter est une
-modale » ; elle gagne un troisième terme. Corriger une ligne déjà au journal —
-une quantité, quatre nombres saisis — se fait **sur** la journée et non à sa
-place, et un écran opaque dit le contraire. Les deux routes d'édition passent
-donc en `transparentModal`, et `core/ui/overlay-panel.tsx` dessine la fenêtre.
-Le panneau est au fond de **page**, pas au fond de carte : ce qu'on y met porte
-ses propres cartes, et des cartes `surface` sur un panneau `surface` cessent
-d'être visibles.
+**Consulter est un empilement, agir sur une journée est une fenêtre
+par-dessus.** La règle a fini par se simplifier : la bibliothèque s'empile dans
+l'onglet, et **tout le reste** — ajouter au journal, corriger une ligne,
+choisir une date — s'ouvre en panneau sur la journée. Aucune de ces trois
+choses n'est un endroit : elles se font **sur** la journée, et un écran opaque
+dit qu'on l'a quittée. Le §7 appelle l'écran d'ajout une modale plein écran ;
+c'est une fenêtre, et les specs sont amendées en ce sens.
+
+`core/ui/overlay-panel.tsx` porte la fenêtre, avec `transparentModal` et
+`animation: 'none'`. Le panneau est au fond de **page**, pas au fond de carte :
+ce qu'on y met porte ses propres cartes, et des cartes `surface` sur un panneau
+`surface` cessent d'être visibles.
 
 **Un `fullScreenModal` n'a aucune sortie par défaut.** C'est la racine de sa
 propre présentation : la pile native ne lui dessine pas de bouton retour, et
@@ -645,12 +648,13 @@ iOS n'offre pas le glissement vers le bas d'une feuille. Un `headerLeft` vide y
 signifie « écran dont on ne sort qu'en le complétant ». La saisie libre vivait
 ainsi depuis la tranche 1 sans que ça se voie, parce que « Ajouter » et
 « Supprimer » ferment tous les deux : **annuler était simplement impossible.**
-`core/ui/header-text-button.tsx` porte la sortie des trois modales.
 
-Corollaire pour l'étape de quantité, qui est un **état** et non une route
-poussée (D16 budgète 0,2 s pour y arriver) : le navigateur ne lui donne aucun
-retour non plus, et il faut le déclarer à la main. Sans lui, se tromper
-d'aliment obligeait à fermer la modale et recommencer — trois touchers pour en
+Le piège a cessé d'exister en même temps que les modales plein écran : aucune
+n'en est restée une, et `OverlayPanel` porte la sortie de toutes. Même
+corollaire pour les étapes internes — quantité, saisie libre — qui sont des
+**états** et non des routes poussées (D16 budgète 0,2 s pour y arriver) : le
+navigateur ne leur donne aucun retour, il faut le déclarer. Sans lui, se
+tromper d'aliment obligeait à fermer et recommencer — trois touchers pour en
 annuler un.
 
 **La barre du Journal, et les documents mis à jour avec elle.** Le jour à

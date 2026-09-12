@@ -308,9 +308,9 @@ export function JournalScreen() {
             step, the page that was arriving is reused rather than remounted,
             and keeps its unfolded meals and its scroll position.
           */}
-          <DayPage key={previous} date={previous} {...pageProps} />
-          <DayPage key={date} date={date} {...pageProps} />
-          <DayPage key={next} date={next} {...pageProps} />
+          <DayPage key={previous} date={previous} active={false} {...pageProps} />
+          <DayPage key={date} date={date} active {...pageProps} />
+          <DayPage key={next} date={next} active={false} {...pageProps} />
         </Animated.View>
       </GestureDetector>
 

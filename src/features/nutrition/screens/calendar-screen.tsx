@@ -48,7 +48,7 @@ export function CalendarScreen({ date }: { date: LocalDate }) {
     <OverlayPanel
       onDismiss={() => router.back()}
       left={<TodayAction />}
-      right={<CloseAction />}
+      right={<CancelAction />}
     >
       <Grid date={date} />
     </OverlayPanel>
@@ -73,9 +73,9 @@ function TodayAction() {
   );
 }
 
-function CloseAction() {
+function CancelAction() {
   const dismiss = useDismiss();
-  return <GlassButton label="Fermer" onPress={dismiss} />;
+  return <GlassButton label="Annuler" onPress={dismiss} />;
 }
 
 function Grid({ date }: { date: LocalDate }) {

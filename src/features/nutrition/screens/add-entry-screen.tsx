@@ -1,10 +1,11 @@
 import { SymbolView } from 'expo-symbols';
-import { Stack, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { LocalDate } from '@/core/date';
 import { useTheme } from '@/core/theme';
-import { HeaderTextButton } from '@/core/ui/header-text-button';
+import { GlassButton } from '@/core/ui/glass-button';
+import { OverlayPanel, useDismiss } from '@/core/ui/overlay-panel';
 import type { FoodId } from '@/core/db/schema';
 import { useFavoriteFoods, useFoods, useRecentFoods } from '../data/food-queries';
 import type { FoodListItem } from '../data/food-reads';
@@ -68,134 +69,114 @@ export function AddEntryScreen({
     [foods.data, term, searching],
   );
 
-  if (freeEntry && mealPosition !== null) {
-    return (
-      <>
-        <Stack.Screen
-          options={{
-            title: 'Saisie libre',
-            headerLeft: () => (
-              <HeaderTextButton
-                symbol="chevron.left"
-                label="Aliments"
-                onPress={() => setFreeEntry(false)}
-              />
-            ),
-          }}
-        />
-        <FreeEntryScreen date={date} mealPosition={mealPosition} entryId={null} />
-      </>
-    );
-  }
-
-  if (chosen !== null && mealPosition !== null) {
-    return (
-      <>
-        <Stack.Screen
-          options={{
-            title: 'Quantité',
-            /**
-             * BACK TO THE LIST, not out of the modal.
-             *
-             * The quantity step is state rather than a pushed route (D16: the
-             * budget from choosing a food to this screen is 0,2 s), and state
-             * gets no back button from the navigator. Without this, choosing
-             * the wrong food means closing the modal and starting again —
-             * which is three taps to undo one.
-             */
-            headerLeft: () => (
-              <HeaderTextButton
-                symbol="chevron.left"
-                label="Aliments"
-                onPress={() => setChosen(null)}
-              />
-            ),
-          }}
-        />
-        <QuantityScreen
-          mode="add"
-          date={date}
-          mealPosition={mealPosition}
-          foodId={chosen}
-          onDone={() => router.back()}
-        />
-      </>
-    );
-  }
-
   const empty =
     !searching &&
     (favorites.data?.length ?? 0) === 0 &&
     (recents.data?.length ?? 0) === 0 &&
     (foods.data?.length ?? 0) === 0;
 
+  const step =
+    freeEntry && mealPosition !== null
+      ? 'free'
+      : chosen !== null && mealPosition !== null
+        ? 'quantity'
+        : 'list';
+
   return (
-    <>
-      <Stack.Screen
-        options={{
-          title: 'Ajouter',
-          // A full-screen modal is the root of its own presentation: the stack
-          // draws no back button and iOS offers no swipe-down. Without this
-          // there is no way out of the screen except logging something.
-          headerLeft: () => (
-            <HeaderTextButton label="Fermer" onPress={() => router.back()} />
-          ),
-        }}
-      />
-
-      <ScrollView
-        style={{ backgroundColor: theme.colors.background }}
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        contentInsetAdjustmentBehavior="automatic"
-      >
-        <SearchField value={term} onChange={setTerm} />
-
-        {/*
-          One tap, from the screen shown by default (specs 8.4d). It stays at
-          the top rather than at the bottom of a list that grows: the fastest
-          path must not move as the food database fills up.
-        */}
-        <Pressable
-          onPress={() => setFreeEntry(true)}
-          accessibilityRole="button"
-          style={[
-            styles.freeEntry,
-            {
-              backgroundColor: theme.colors.surface,
-              borderColor: theme.colors.border,
-              borderRadius: theme.radius.lg,
-            },
-            theme.shadow,
-          ]}
+    <OverlayPanel
+      onDismiss={() => router.back()}
+      /*
+        Back to the list, not out of the panel. Both inner steps are STATE, so
+        the navigator gives them no back button of their own; without this,
+        choosing the wrong food means closing and starting again — three taps
+        to undo one.
+      */
+      left={
+        step === 'list' ? undefined : (
+          <GlassButton
+            symbol="chevron.left"
+            label="Aliments"
+            onPress={() => {
+              setChosen(null);
+              setFreeEntry(false);
+            }}
+          />
+        )
+      }
+      right={<CancelAction />}
+    >
+      {step === 'free' && mealPosition !== null ? (
+        <FreeEntryScreen date={date} mealPosition={mealPosition} entryId={null} />
+      ) : step === 'quantity' && chosen !== null && mealPosition !== null ? (
+        <QuantityScreen
+          mode="add"
+          date={date}
+          mealPosition={mealPosition}
+          foodId={chosen}
+        />
+      ) : (
+        <ScrollView
+          style={styles.fill}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         >
-          <SymbolView name="square.and.pencil" size={18} tintColor={theme.colors.accent} />
-          <Text style={[styles.freeEntryLabel, { color: theme.colors.accent }]}>
-            Saisie libre
-          </Text>
-        </Pressable>
+          <SearchField value={term} onChange={setTerm} />
 
-        {empty ? (
-          <Text style={[styles.empty, { color: theme.colors.textMuted }]}>
-            Aucun aliment en bibliothèque. Utilisez la saisie libre, ou créez un
-            aliment depuis l’icône de bibliothèque du Journal.
-          </Text>
-        ) : null}
+          {/*
+            One tap, from the screen shown by default (specs 8.4d). It stays at
+            the top rather than at the bottom of a list that grows: the fastest
+            path must not move as the food database fills up.
+          */}
+          <Pressable
+            onPress={() => setFreeEntry(true)}
+            accessibilityRole="button"
+            style={[
+              styles.freeEntry,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+                borderRadius: theme.radius.lg,
+              },
+              theme.shadow,
+            ]}
+          >
+            <SymbolView name="square.and.pencil" size={18} tintColor={theme.colors.accent} />
+            <Text style={[styles.freeEntryLabel, { color: theme.colors.accent }]}>
+              Saisie libre
+            </Text>
+          </Pressable>
 
-        {searching ? (
-          <Section title="Mes aliments" foods={results} onPick={setChosen} emptyText={
-            `Aucun résultat pour « ${term.trim()} ».`
-          } />
-        ) : (
-          <>
-            <Section title="Favoris" foods={favorites.data ?? []} onPick={setChosen} />
-            <Section title="Récents" foods={recents.data ?? []} onPick={setChosen} />
-          </>
-        )}
-      </ScrollView>
-    </>
+          {empty ? (
+            <Text style={[styles.empty, { color: theme.colors.textMuted }]}>
+              Aucun aliment en bibliothèque. Utilisez la saisie libre, ou créez un
+              aliment depuis l’icône de bibliothèque du Journal.
+            </Text>
+          ) : null}
+
+          {searching ? (
+            <Section
+              title="Mes aliments"
+              foods={results}
+              onPick={setChosen}
+              emptyText={`Aucun résultat pour « ${term.trim()} ».`}
+            />
+          ) : (
+            <>
+              <Section title="Favoris" foods={favorites.data ?? []} onPick={setChosen} />
+              <Section title="Récents" foods={recents.data ?? []} onPick={setChosen} />
+            </>
+          )}
+        </ScrollView>
+      )}
+    </OverlayPanel>
   );
+}
+
+/** Inside the panel, so its dismissal folds the window away first. */
+function CancelAction() {
+  const dismiss = useDismiss();
+  return <GlassButton label="Annuler" onPress={dismiss} />;
 }
 
 function Section({
@@ -247,7 +228,8 @@ function Section({
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 16, gap: 18, paddingBottom: 56 },
+  fill: { flex: 1 },
+  content: { paddingHorizontal: 16, paddingBottom: 56, gap: 18 },
   freeEntry: {
     flexDirection: 'row',
     alignItems: 'center',

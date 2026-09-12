@@ -310,7 +310,7 @@ Les onglets non pourvus dans une version donnée sont **présents et affichent u
 
 **Bibliothèque d'aliments et de recettes :** accessible par une icône dédiée en en-tête de l'écran Journal.
 
-**Écran d'ajout au journal :** modale plein écran.
+**Écran d'ajout au journal : [v2.3]** fenêtre ouverte **par-dessus** le Journal, qui reste visible derrière. Ajouter au journal, corriger une ligne et choisir une date se font *sur* la journée et non à sa place ; un écran opaque dirait qu'on l'a quittée.
 
 **Statistiques :** centralisées dans l'onglet Stats, à l'exception de celles attachées à un objet précis — la page d'un exercice affiche ses propres graphiques et records.
 
@@ -719,4 +719,6 @@ une demande qui diverge des specs modifie les specs.
 | 2 | §8.3 | Acces direct a une date par la **transition zoom native d'iOS** : le bouton calendrier devient l'ecran de calendrier. Ses deux actions sont des boutons **Liquid Glass** portant des mots, « Aujourd'hui » et « Fermer » | L'effet natif existe et est expose par expo-router ; une morphose ecrite a la main en restait une imitation. Aucun glyphe ne dit « revenir a aujourd'hui » sans avoir ete appris |
 | 3 | §8.3 | **Trois points animes** quand la journee n'est pas encore chargee, tenus au moins une demi-seconde | Une journee vide et une journee pas encore lue se ressemblent trop ; et un indicateur qui clignote se lit comme un defaut |
 | 4 | §8.5 | Le marquage favori de la bibliotheque est un bouton **Liquid Glass**, etoile pleine ou vide | Meme materiau que les boutons natifs de l'en-tete de cet ecran |
-| 5 | §6.1 | Origine alignee sur `perso` \| `off` | Le §6 se declare non normatif sur le modele de donnees ; le schema de l'architecture fait autorite |
+| 5 | §7, §8.3, §8.4 | L'ecran d'ajout, l'edition d'une entree et le choix d'une date s'ouvrent en **fenetre par-dessus** le Journal, et non en modale plein ecran. Leur action de sortie est « Annuler », a droite | Aucune de ces trois choses n'est un endroit : elles se font sur la journee. Un ecran opaque dit qu'on l'a quittee |
+| 6 | §8.3 | Une journee atteinte par balayage s'affiche **defilement en haut** | On la lit a nouveau depuis ses chiffres |
+| 7 | §6.1 | Origine alignee sur `perso` \| `off` | Le §6 se declare non normatif sur le modele de donnees ; le schema de l'architecture fait autorite |

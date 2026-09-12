@@ -60,14 +60,29 @@ function RootStack() {
     >
       <Stack.Screen name="(tabs)" />
       {/*
-        The add screen is a full-screen modal (specs 7). All three are siblings
-        rather than a nested stack: the fast path never navigates between them —
-        choosing a food swaps the content of the add modal — so nesting would
-        buy an animation nobody sees and cost a second dismissal on the way out.
+        ALL THREE ARE OVERLAYS, and siblings rather than a nested stack.
+
+        Specs 7 calls the add screen a full-screen modal; it is a window over
+        the Journal instead, and the rest of the slice went the same way. What
+        the three have in common is that none of them is a place: adding to a
+        day, correcting a line, picking a date are all things done ON the day.
+        An opaque screen says you left it.
+
+        Siblings because the fast path never navigates between them — choosing
+        a food swaps the content of the add panel — so nesting would buy an
+        animation nobody sees and cost a second dismissal on the way out.
+
+        animation 'none' throughout: OverlayPanel raises the window itself, so
+        that the backdrop can darken where it is instead of rising with it.
       */}
       <Stack.Screen
         name="(modals)/add-entry"
-        options={{ presentation: 'fullScreenModal', headerShown: true }}
+        options={{
+          presentation: 'transparentModal',
+          headerShown: false,
+          contentStyle: { backgroundColor: 'transparent' },
+          animation: 'none',
+        }}
       />
       {/*
         THE TWO EDITING ROUTES ARE OVERLAYS, not full-screen modals.

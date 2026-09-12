@@ -24,9 +24,9 @@ import { FreeEntryScreen } from '@/features/nutrition/screens/free-entry-screen'
  * message.
  */
 /** Inside the panel, so its dismissal folds the window away first. */
-function CloseButton() {
+function CancelAction() {
   const dismiss = useDismiss();
-  return <GlassButton label="Fermer" onPress={dismiss} />;
+  return <GlassButton label="Annuler" onPress={dismiss} />;
 }
 
 export default function FreeEntryRoute() {
@@ -42,7 +42,7 @@ export default function FreeEntryRoute() {
     params.mealPosition === undefined ? Number.NaN : Number.parseInt(params.mealPosition, 10);
 
   return (
-    <OverlayPanel onDismiss={() => router.back()} right={<CloseButton />}>
+    <OverlayPanel onDismiss={() => router.back()} right={<CancelAction />}>
       <FreeEntryScreen
         date={date ?? currentLocalDate()}
         mealPosition={Number.isInteger(position) && position >= 0 ? position : null}

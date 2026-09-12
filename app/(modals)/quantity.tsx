@@ -24,9 +24,9 @@ import { QuantityScreen } from '@/features/nutrition/screens/quantity-screen';
  * be a blocking message, and there is nothing sensible to fall back to.
  */
 /** Inside the panel, so its dismissal folds the window away first. */
-function CloseButton() {
+function CancelAction() {
   const dismiss = useDismiss();
-  return <GlassButton label="Fermer" onPress={dismiss} />;
+  return <GlassButton label="Annuler" onPress={dismiss} />;
 }
 
 export default function QuantityRoute() {
@@ -36,7 +36,7 @@ export default function QuantityRoute() {
   const id = entryId === undefined ? null : toEntityId<JournalEntryId>(entryId);
 
   return (
-    <OverlayPanel onDismiss={() => router.back()} right={<CloseButton />}>
+    <OverlayPanel onDismiss={() => router.back()} right={<CancelAction />}>
       {id === null ? (
         <EmptyState
           symbol="questionmark.circle"

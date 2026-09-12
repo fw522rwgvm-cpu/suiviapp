@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { LocalDate } from '@/core/date';
 import { useTheme } from '@/core/theme';
@@ -30,6 +31,7 @@ import { RemainingBanner } from './remaining-banner';
 export function DayPage({
   date,
   width,
+  active,
   onAdd,
   onEditEntry,
   onDeleteEntry,
@@ -38,6 +40,8 @@ export function DayPage({
 }: {
   date: LocalDate;
   width: number;
+  /** True for the page in the middle of the strip — the one being looked at. */
+  active: boolean;
   onAdd: (date: LocalDate, meal: DayMealView) => void;
   onEditEntry: (date: LocalDate, entry: JournalEntryView) => void;
   onDeleteEntry: (entry: JournalEntryView) => void;
@@ -45,6 +49,7 @@ export function DayPage({
   onAddMeal: (date: LocalDate) => void;
 }) {
   const theme = useTheme();
+  const scroll = useRef<ScrollView>(null);
   const day = useDay(date);
   const totals = useDayTotals(date);
   const mealTotals = useMealTotals(date);
@@ -72,6 +77,20 @@ export function DayPage({
    */
   const showDots = useMinimumVisible(pending, 1000);
 
+  /**
+   * A day arrives at the top, every time.
+   *
+   * The three pages are reconciled by date, so the one you swipe away from is
+   * still mounted with its scroll where you left it — and swiping back showed
+   * it half way down. Slice 1 kept that on purpose, to preserve unfolded meals
+   * and position; keeping the meals is still right, keeping the scroll is not.
+   * A day you return to is a day you are reading again from its figures down.
+   */
+  useEffect(() => {
+    if (!active) return;
+    scroll.current?.scrollTo({ y: 0, animated: false });
+  }, [active]);
+
   return (
     /**
      * ONE SCROLLVIEW, ALWAYS, AND THE DOTS ON TOP OF IT.
@@ -96,6 +115,7 @@ export function DayPage({
      */
     <View style={[{ width }, { backgroundColor: theme.colors.background }]}>
       <ScrollView
+        ref={scroll}
         style={styles.fill}
         contentContainerStyle={styles.content}
         contentInsetAdjustmentBehavior="automatic"
