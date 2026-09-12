@@ -1,7 +1,7 @@
 import type { BaseUnit, FoodId } from '@/core/db/schema';
-import { formatMacro, formatQuantity } from '@/core/format';
+import { formatQuantity } from '@/core/format';
 import { formatPortionCount } from '../components/portion-text';
-import { totalOf, type Macros } from './macros';
+import { describeMacros, totalOf, type Macros } from './macros';
 import type { QuantityChoice } from './portions';
 
 /**
@@ -82,8 +82,7 @@ export function describePendingEntryQuantity(entry: PendingEntry): string | null
  * would be plausible, wrong, and invisible.
  */
 export function describePendingEntryMacros(entry: PendingEntry): string {
-  const { protein, carbs, fat } = pendingEntryMacros(entry);
-  return `P ${formatMacro(protein)} · G ${formatMacro(carbs)} · L ${formatMacro(fat)}`;
+  return describeMacros(pendingEntryMacros(entry));
 }
 
 /**

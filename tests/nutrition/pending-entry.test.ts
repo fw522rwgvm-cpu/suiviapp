@@ -8,6 +8,7 @@ import {
   wasNameTruncated,
   type PendingEntry,
 } from '../../src/features/nutrition/domain/pending-entry';
+import { describeMacros } from '../../src/features/nutrition/domain/macros';
 import { baseQuantity, portionQuantity } from '../../src/features/nutrition/domain/portions';
 
 /**
@@ -153,5 +154,22 @@ describe('whether the name had to be cut', () => {
 
   it('is not fooled by the padding around a laid-out line', () => {
     expect(wasNameTruncated(` ${NAME} `, NAME)).toBe(false);
+  });
+});
+
+describe('the macro line, shared with the journal row', () => {
+  it('is the same three figures wherever it appears', () => {
+    // Not a duplicate of the cases above: it fixes that ONE function spells
+    // them, so a line waiting in the basket and the same line once logged read
+    // identically. Two spellings of one thing get read as two things.
+    expect(describeMacros(pendingEntryMacros(BREAD))).toBe(describePendingEntryMacros(BREAD));
+  });
+
+  it('leaves kcal out', () => {
+    // It has its own place, on the right of every row these appear on, and
+    // repeating it here would spend the width that makes the rest readable.
+    expect(describeMacros({ protein: 8, carbs: 47, fat: 3, kcal: 265 })).toBe(
+      'P 8,0 · G 47,0 · L 3,0',
+    );
   });
 });

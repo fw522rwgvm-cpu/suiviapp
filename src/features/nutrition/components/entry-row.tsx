@@ -1,8 +1,8 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { formatKcal, formatMacro } from '@/core/format';
+import { formatKcal } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import type { JournalEntryView } from '../data/day-reads';
-import { hasKcalWarning } from '../domain/macros';
+import { describeMacros, hasKcalWarning } from '../domain/macros';
 import { formatEntryQuantity } from './portion-text';
 
 /**
@@ -13,6 +13,20 @@ import { formatEntryQuantity } from './portion-text';
  * 100 units of a virtual food and sums like anything else. But it has no
  * quantity the user ever typed, so showing "100 g" would be showing them an
  * implementation detail. The branch is presentational, and only here.
+ *
+ * ## What the grey line under the name carries
+ *
+ * How much, then what it is worth: "2 tranches · 50 g · P 4,0 · G 23,5 · L 1,5".
+ * A logged line answers two questions, and they belong together on one line
+ * because they are read together — how much of it, and what it cost.
+ *
+ * The macros are spelled exactly as the basket spells them, through the same
+ * function: the line about to be added and the same line once added must read
+ * identically, or they are read as two different things.
+ *
+ * KCAL KEEPS ITS UNIT AND ITS PLACE, on the right, out of the grey line. It is
+ * the one figure the journal is scanned for, and a bare number in a row of
+ * grams has to be worked out rather than read.
  *
  * No calculation of its own: the total arrives already derived from the read
  * layer (D9 — nothing in a component).
@@ -27,19 +41,23 @@ export function EntryRow({
   const theme = useTheme();
   const total = entry.total;
 
-  const detail =
+  // A food logged as a portion says so: "2 tranches · 50 g". Showing only the
+  // grams would be showing the storage form. A free entry has no quantity
+  // anyone typed — that is the one concession above — so it starts at the
+  // macros.
+  const quantity =
     entry.kind === 'free' || entry.quantity === null || entry.baseUnit === null
-      ? total === null
-        ? null
-        : `P ${formatMacro(total.protein)} · G ${formatMacro(total.carbs)} · L ${formatMacro(total.fat)}`
-      : // A food logged as a portion says so: "2 tranches · 50 g". Showing only
-        // the grams would be showing the storage form.
-        formatEntryQuantity(
+      ? null
+      : formatEntryQuantity(
           entry.quantity,
           entry.baseUnit,
           entry.portionName,
           entry.portionQuantity,
         );
+
+  const detail = [quantity, total === null ? null : describeMacros(total)]
+    .filter((part): part is string => part !== null)
+    .join(' · ');
 
   return (
     <Pressable
@@ -55,7 +73,7 @@ export function EntryRow({
           {entry.name}
           {entry.brand === null ? '' : ` · ${entry.brand}`}
         </Text>
-        {detail === null ? null : (
+        {detail === '' ? null : (
           <Text style={[styles.detail, { color: theme.colors.textMuted }]} numberOfLines={1}>
             {detail}
           </Text>
@@ -64,7 +82,7 @@ export function EntryRow({
 
       <View style={styles.figures}>
         <Text style={[styles.kcal, { color: theme.colors.text }]}>
-          {total === null ? '—' : formatKcal(total.kcal)}
+          {total === null ? '—' : `${formatKcal(total.kcal)} kcal`}
         </Text>
         {total !== null && hasKcalWarning(total) ? (
           // Non-blocking, and deliberately quiet: specs 5.1 asks for a warning
@@ -86,7 +104,8 @@ const styles = StyleSheet.create({
   },
   identity: { flex: 1, gap: 2 },
   name: { fontSize: 16 },
-  detail: { fontSize: 13 },
+  // A shade smaller than the basket's, because it carries two things.
+  detail: { fontSize: 12 },
   figures: { alignItems: 'flex-end' },
   kcal: { fontSize: 16, fontWeight: '600', fontVariant: ['tabular-nums'] },
   warning: { fontSize: 11 },

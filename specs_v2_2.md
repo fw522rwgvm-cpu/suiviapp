@@ -342,7 +342,7 @@ Les onglets non pourvus dans une version donnée sont **présents et affichent u
 ### 8.3 Écran Journal
 
 1. **Bandeau de restant** : anneau de progression pour les calories, barres pour les autres macros. Le restant de calories **doit être lisible sans aucune interaction**.
-2. **Liste des repas**, repliés par défaut, avec sous-total et objectif propre.
+2. **Liste des repas**, repliés par défaut, avec sous-total et objectif propre. **[v2.3] Une entrée porte son nom, puis une ligne grise « quantité · P · G · L », et ses calories à droite avec l'unité** — `132 kcal` et non `132`. Les macros s'écrivent exactement comme dans la liste temporaire du §8.4 : la ligne sur le point d'être ajoutée et la même une fois ajoutée doivent se lire à l'identique.
 3. **Bouton d'ajout** accessible depuis chaque repas.
 4. **Navigation entre les jours** : **balayage horizontal** et accès direct à une date. **[v2.3]** La barre supérieure porte le jour affiché à gauche — « Hier », « Aujourd'hui », « Demain », sinon `mar. 15/09` — et deux boutons icônes à droite : calendrier et bibliothèque. Les boutons précédent / suivant sont **supprimés** : le balayage était déjà le geste principal et les chevrons le doublaient. *Réserve inscrite : un balayage n'a pas d'équivalent VoiceOver, là où un bouton en a un ; à rouvrir si l'accessibilité devient un sujet.*
 5. **[v2.3] Accès direct à une date** : le bouton calendrier **devient** l'écran de calendrier, par la transition zoom native d'iOS — le contrôle se transforme en la vue qu'il présente, et le renvoi interactif le ramène dedans. L'écran porte deux boutons Liquid Glass, « Aujourd'hui » et « Fermer ».
@@ -738,6 +738,8 @@ une demande qui diverge des specs modifie les specs.
 | 12 | §8.3, §8.4 | **Supprimer par balayage demande deux gestes.** Le premier decouvre le bouton sans jamais supprimer, si loin et si fort qu'il soit lance ; le second balayage, ou un appui sur le bouton, supprime | Un balayage long qui supprime place une action irreversible au bout du mouvement qui sert aussi a defiler, parcourir et revenir, et il part d'un geste dont personne n'a encore vu la consequence — le bouton n'est decouvert qu'au moment ou on le traverse. Un geste de plus coute un instant et achete la vue de ce qui va arriver |
 
 | 13 | §8.4 | **Une ligne en attente se corrige en la touchant** : quantite pour un aliment, quatre chiffres pour une saisie libre. L'ecran de quantite s'ouvre alors sur la quantite choisie et non sur le pre-remplissage du §8.4 | Une ligne pas encore ecrite est une decision en cours ; la reprendre ne devrait pas vouloir dire la retirer et recommencer. Et le pre-remplissage repond a « combien en prends-tu d'habitude », question a laquelle cette ligne a deja repondu |
+
+| 14 | §8.3 | Une entree du Journal affiche **quantite et macros** sur sa ligne grise, et ses calories **avec l'unite** | Le §8.3 ne disait pas ce que porte une entree. Les macros y manquaient : une ligne loguee repond a deux questions, combien et ce que ca coute. Et un nombre nu au milieu de grammes se calcule au lieu de se lire |
 
 **Reserve sur les gestes 9 et 11, enoncee une fois pour toutes.** Les deux
 reproduisent un comportement d'UIKit sans etre ce comportement. React Native

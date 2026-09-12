@@ -10,6 +10,8 @@
  */
 
 /** The closed set of tracked macros. No micronutrients, ever (specs 5.1). */
+import { formatMacro } from '@/core/format';
+
 export interface Macros {
   protein: number;
   carbs: number;
@@ -111,4 +113,19 @@ export function kcalDiscrepancy(macros: Macros): number {
 
 export function hasKcalWarning(macros: Macros): boolean {
   return kcalDiscrepancy(macros) > KCAL_DISCREPANCY_THRESHOLD;
+}
+
+/**
+ * The three macros, as a line to read under a name.
+ *
+ * ONE FORM, EVERYWHERE, because the same three figures appear on a line about
+ * to be added and on the same line once it is in the journal, and two
+ * spellings of one thing would be read as two different things.
+ *
+ * Protein, carbs, fat -- kcal is deliberately absent. It has its own place,
+ * on the right of every row where these appear, and repeating it here would
+ * spend the width that makes the rest readable.
+ */
+export function describeMacros(macros: Macros): string {
+  return `P ${formatMacro(macros.protein)} · G ${formatMacro(macros.carbs)} · L ${formatMacro(macros.fat)}`;
 }
