@@ -163,11 +163,19 @@ export function FreeEntryScreen({
             },
           ]}
         >
+          {/*
+            NO autoFocus. Free entry has four fields and no obvious first one:
+            a label, then P, G, L and calories — and a label that is optional.
+            Putting the keyboard up over a form nobody has read yet hides half
+            of it to save a tap on a screen that needs four.
+
+            The quantity screen is the opposite case and does focus: one field,
+            already filled, where the whole point is to accept or type over it.
+          */}
           <Field
             label="Protéines (g)"
             value={fields.protein}
             onChange={(protein) => setFields((current) => ({ ...current, protein }))}
-            autoFocus
           />
           <Field
             label="Glucides (g)"
@@ -230,14 +238,12 @@ function Field({
   onChange,
   placeholder,
   keyboard = 'decimal-pad',
-  autoFocus = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   keyboard?: 'default' | 'decimal-pad';
-  autoFocus?: boolean;
 }) {
   const theme = useTheme();
   return (
@@ -249,7 +255,6 @@ function Field({
         placeholder={placeholder}
         placeholderTextColor={theme.colors.textFaint}
         keyboardType={keyboard}
-        autoFocus={autoFocus}
         // Selected on focus, so the habitual gesture is type-over rather than
         // clear-then-type. Specs 8.4 makes this the lever on the 15 seconds.
         selectTextOnFocus

@@ -90,6 +90,11 @@ function RootStack() {
           presentation: 'transparentModal',
           headerShown: false,
           contentStyle: { backgroundColor: 'transparent' },
+          // Fade, not the default slide. The default moves the WHOLE screen up
+          // from the bottom — the dimming backdrop with it — so the black rose
+          // into place alongside the window, which reads as dark paper
+          // arriving rather than as the room going dim.
+          animation: 'fade',
         }}
       />
       <Stack.Screen
@@ -98,6 +103,11 @@ function RootStack() {
           presentation: 'transparentModal',
           headerShown: false,
           contentStyle: { backgroundColor: 'transparent' },
+          // Fade, not the default slide. The default moves the WHOLE screen up
+          // from the bottom — the dimming backdrop with it — so the black rose
+          // into place alongside the window, which reads as dark paper
+          // arriving rather than as the room going dim.
+          animation: 'fade',
         }}
       />
     </Stack>

@@ -1,5 +1,12 @@
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/core/theme';
 
@@ -17,6 +24,12 @@ import { useTheme } from '@/core/theme';
  * underneath mounted and visible. Without that the backdrop here would dim
  * nothing and the rounded corners would frame a black rectangle.
  *
+ * AND WITH `animation: 'fade'`, which is not cosmetic. The default slides the
+ * WHOLE SCREEN up from the bottom — the dimming backdrop included — so the
+ * black rose into place along with the window, which reads as a sheet of dark
+ * paper arriving rather than as the room going dim. A dim happens where it is;
+ * only the window should travel.
+ *
  * ## Two things it does deliberately
  *
  * IT CARRIES ITS OWN SIZE, taken from the window rather than from its parent.
@@ -29,9 +42,20 @@ import { useTheme } from '@/core/theme';
  * from the top rather than floating in the middle, which is what makes the
  * strip of dimmed Journal above read as "behind" rather than as a margin.
  *
+ * ## The drag lives on the actions row, not on the whole panel
+ *
+ * Dragging anywhere would fight the scroll view inside: two gestures claiming
+ * the same downward movement, and the one that wins depends on where the
+ * finger happened to land. The top strip is unambiguous — nothing there
+ * scrolls — and it is where the hand already goes to dismiss a sheet.
+ *
  * Lives in core/ui with three real users on the day it is written — the
  * calendar, the quantity editor and free entry.
  */
+
+/** Far enough to be a decision rather than a twitch. */
+const DISMISS_DISTANCE = 90;
+const DISMISS_VELOCITY = 700;
 export function OverlayPanel({
   onDismiss,
   left,
@@ -50,6 +74,29 @@ export function OverlayPanel({
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
+  const drag = useSharedValue(0);
+
+  const pan = Gesture.Pan()
+    .activeOffsetY(10)
+    // Downward only: dragging up is not a dismissal.
+    .failOffsetY(-10)
+    .onUpdate((event) => {
+      drag.value = Math.max(0, event.translationY);
+    })
+    .onEnd((event) => {
+      if (event.translationY > DISMISS_DISTANCE || event.velocityY > DISMISS_VELOCITY) {
+        // The screen's own fade carries it out from here; the panel just has
+        // to stop resisting.
+        runOnJS(onDismiss)();
+        return;
+      }
+      drag.value = withTiming(0, { duration: 180 });
+    });
+
+  const panelStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: drag.value }],
+  }));
+
   return (
     <View style={{ width, height }}>
       {/* Tapping what is still visible closes, as tapping outside should. */}
@@ -57,7 +104,7 @@ export function OverlayPanel({
         <View style={[styles.fill, styles.backdrop]} />
       </Pressable>
 
-      <View
+      <Animated.View
         style={[
           styles.panel,
           {
@@ -76,17 +123,20 @@ export function OverlayPanel({
             shadowOpacity: theme.scheme === 'dark' ? 0.5 : 0.18,
             shadowRadius: 24,
           },
+          panelStyle,
         ]}
       >
-        <View style={styles.actions}>
-          {/* A spacer keeps the trailing action trailing when there is no
-              leading one, without a second layout branch. */}
-          {left ?? <View />}
-          {right ?? <View />}
-        </View>
+        <GestureDetector gesture={pan}>
+          <View style={styles.actions}>
+            {/* A spacer keeps the trailing action trailing when there is no
+                leading one, without a second layout branch. */}
+            {left ?? <View />}
+            {right ?? <View />}
+          </View>
+        </GestureDetector>
 
         <View style={styles.body}>{children}</View>
-      </View>
+      </Animated.View>
     </View>
   );
 }
