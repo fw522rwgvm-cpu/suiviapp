@@ -1,14 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import {
-  KeyboardAvoidingView,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
-import { formatQuantity, parseDecimal } from '@/core/format';
+import { useEffect, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
+import { formatQuantity } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import type { FoodId, JournalEntryId } from '@/core/db/schema';
 import { useEntry, useUpdateFoodEntryQuantity } from '../data/day-queries';
@@ -22,9 +14,15 @@ import {
   type QuantityChoice,
 } from '../domain/portions';
 import { useDismiss, usePanelHeading } from '@/core/ui/overlay-panel';
-import { FormInput, FormNavigation, FormRow, FormSection } from '@/core/ui/form-section';
+import { FormRow, FormSection } from '@/core/ui/form-section';
 import { MacroRow } from '../components/macro-row';
 import { formatPortionCount } from '../components/portion-text';
+import {
+  amountOf,
+  FRACTIONS,
+  QuantityWheel,
+  type WheelChoice,
+} from '../components/quantity-wheel';
 
 /**
  * How much of this food (specs 8.4, D16).
@@ -185,243 +183,140 @@ function QuantityForm({
   // something you can scroll away from while you weigh it.
   usePanelHeading(title, subtitle);
 
-  /** The portion in use, or null for base units. */
-  const [portionName, setPortionName] = useState<string | null>(null);
-  const [text, setText] = useState('');
+  /**
+   * WHAT THE WHEELS ARE ON, and the only state this screen keeps.
+   *
+   * A whole number, a fraction of one, and which unit — the three answers the
+   * three wheels give. Everything else is derived from them (D9): what it
+   * comes to in base units, and what that is worth.
+   *
+   * A hundred to start with, which is also where the pre-fill chain ends when
+   * a food has never been logged (specs 8.4).
+   */
+  const [wheel, setWheel] = useState<WheelChoice>({ whole: 100, fraction: 0, unit: 0 });
   const [loaded, setLoaded] = useState(false);
-  const input = useRef<TextInput>(null);
+
+  /** What it can be counted in: the base unit first, then this food's portions. */
+  const units = [baseUnit, ...portions.map((portion) => portion.name)];
 
   useEffect(() => {
-    // Filled once, when the pre-fill arrives. Reapplying it on every render
-    // would overwrite what is being typed.
+    // Set once, when the pre-fill arrives. Reapplying it on every render would
+    // spin the wheels out from under the finger.
     if (loaded || initial === null) return;
-    const value = show(initial.portion === null ? initial.baseQuantity : initial.portion.count);
-    setPortionName(initial.portion?.name ?? null);
-    setText(value);
+
+    const amount = initial.portion === null ? initial.baseQuantity : initial.portion.count;
+    const named = initial.portion?.name ?? null;
+    const found = portions.findIndex((portion) => portion.name === named);
+    // Its portion may have been renamed or dropped since; base units are the
+    // honest fallback, as they are everywhere else in this chain.
+    const unit = named === null || found < 0 ? 0 : found + 1;
+
+    // The NEAREST face the wheel has, not the exact remainder: these are
+    // wheels, and 0,37 of a slice is not one of their faces. A quantity in
+    // base units lands on the dash, whole numbers being what it deals in.
+    const whole = Math.floor(amount);
+    const rest = amount - whole;
+    const fraction = FRACTIONS.reduce(
+      (best, candidate, index) =>
+        Math.abs(candidate.value - rest) < Math.abs((FRACTIONS[best]?.value ?? 0) - rest)
+          ? index
+          : best,
+      0,
+    );
+
+    setWheel({ whole, fraction, unit });
     setLoaded(true);
+  }, [initial, loaded, portions]);
 
-    /**
-     * FOCUS AND SELECT HERE, NOT WITH autoFocus. This is the whole of specs
-     * 8.4's "the value selected", and autoFocus cannot deliver it.
-     *
-     * autoFocus fires at mount. At mount this field is EMPTY, because the
-     * pre-fill comes from a query and arrives a tick later — so
-     * selectTextOnFocus dutifully selects an empty string, and the value then
-     * appears with the caret wherever iOS left it. The first device run showed
-     * exactly that: pre-filled, not selected, which costs a tap to clear and
-     * loses the "two taps without the keyboard" the slice is built around.
-     *
-     * One frame of delay because focus itself places the caret: a selection
-     * set in the same tick is overwritten by it.
-     */
-    function focusAndSelect(): void {
-      input.current?.focus();
-      input.current?.setSelection(0, value.length);
-    }
-
-    const frame = requestAnimationFrame(focusAndSelect);
-
-    /**
-     * And once more after the window has finished opening.
-     *
-     * The first attempt is what serves the fast path, where this screen is a
-     * step swapped into the add modal and nothing is animating. As an overlay
-     * route it is different: the panel rises for a quarter of a second, and a
-     * focus asked for while a presentation is still in flight is dropped —
-     * silently, so the field ends up filled with no keyboard, which is the
-     * whole lever of specs 8.4 gone.
-     *
-     * Guarded on isFocused so it cannot steal a selection back from someone
-     * who has already started typing.
-     */
-    const retry = setTimeout(() => {
-      if (input.current?.isFocused() !== true) focusAndSelect();
-    }, 320);
-
-    return () => {
-      cancelAnimationFrame(frame);
-      clearTimeout(retry);
-    };
-  }, [initial, loaded]);
-
-  const typed = parseDecimal(text);
-  const chosen = portions.find((portion) => portion.name === portionName) ?? null;
+  const amount = amountOf(wheel);
+  const chosen = wheel.unit === 0 ? null : (portions[wheel.unit - 1] ?? null);
 
   const choice: QuantityChoice | null =
-    typed === null || typed <= 0
-      ? null
-      : chosen === null
-        ? baseQuantity(typed)
-        : portionQuantity(chosen, typed);
+    amount <= 0 ? null : chosen === null ? baseQuantity(amount) : portionQuantity(chosen, amount);
 
   const total =
     choice === null || reference === null ? null : totalOf(reference, choice.baseQuantity);
 
-  /**
-   * Switching unit keeps the AMOUNT, not the number.
-   *
-   * Tapping "tranche" while 50 g is showing must mean "the same 50 g, expressed
-   * in slices" — 2 — rather than "50 slices". Anything else is a screen that
-   * changes what you are about to eat when you look at it differently.
-   */
-  function switchTo(name: string | null): void {
-    const current = choice?.baseQuantity ?? null;
-    setPortionName(name);
-    if (current === null) return;
-    const next = portions.find((portion) => portion.name === name) ?? null;
-    setText(show(next === null ? current : current / next.quantity));
-  }
-
   return (
-    <FormNavigation>
-    <KeyboardAvoidingView behavior="padding" style={styles.flex}>
-      <ScrollView
-        style={{ backgroundColor: theme.colors.background }}
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-        contentInsetAdjustmentBehavior="automatic"
-      >
+    <ScrollView
+      style={{ backgroundColor: theme.colors.background }}
+      contentContainerStyle={styles.content}
+      contentInsetAdjustmentBehavior="automatic"
+    >
+      {/*
+        WHAT IT IS WORTH COMES FIRST, and the wheels under it.
+
+        This screen asks "how much", but the reason anyone answers is the
+        figures — so they are put where the eye lands, and they move under the
+        finger as the wheels turn. The question goes underneath, where the
+        hand already is.
+      */}
+      {total === null ? null : (
         <FormSection>
-          <FormRow label="Quantité">
-            <FormInput
-              ref={input}
-              value={text}
-              onChangeText={setText}
-              keyboardType="decimal-pad"
-              // No autoFocus: it fires before the pre-fill arrives. The effect
-              // above focuses and selects once the value is actually there.
-              // selectTextOnFocus stays, for every LATER tap on the field:
-              // the habitual gesture is type-over, not clear-then-type.
-              selectTextOnFocus
-              accessibilityLabel="Quantité"
-            />
-            <Text style={[styles.unit, { color: theme.colors.textMuted }]}>
-              {chosen === null
-                ? baseUnit
-                : `× ${formatQuantity(chosen.quantity, baseUnit)}`}
+          <FormRow>
+            <MacroRow total={total} />
+          </FormRow>
+        </FormSection>
+      )}
+
+      <FormSection caption="Quantité">
+        {/*
+          The answer in words, above the wheels that make it. Two parts, as
+          they are chosen: how many, and of what.
+        */}
+        <FormRow label="Quantité">
+          <Text style={[styles.amount, { color: theme.colors.text }]}>
+            {choice === null
+              ? '—'
+              : chosen === null
+                ? formatQuantity(choice.baseQuantity, baseUnit)
+                : formatPortionCount(choice.portion?.count ?? 0, chosen.name)}
+          </Text>
+        </FormRow>
+
+        <FormRow>
+          <QuantityWheel units={units} choice={wheel} onChange={setWheel} />
+        </FormRow>
+
+        {choice !== null && chosen !== null ? (
+          // A portion says what it comes to, because that is what is stored
+          // and what a total is made of. In base units it would say the same
+          // thing twice.
+          <FormRow label="Soit">
+            <Text style={[styles.equivalent, { color: theme.colors.textMuted }]}>
+              {formatQuantity(choice.baseQuantity, baseUnit)}
             </Text>
           </FormRow>
+        ) : null}
+      </FormSection>
 
-          {portions.length === 0 ? null : (
-            <FormRow>
-              <View style={styles.segments}>
-                <Segment
-                  label={baseUnit}
-                  selected={portionName === null}
-                  onPress={() => switchTo(null)}
-                />
-                {portions.map((portion) => (
-                  <Segment
-                    key={portion.id}
-                    label={portion.name}
-                    selected={portionName === portion.name}
-                    onPress={() => switchTo(portion.name)}
-                  />
-                ))}
-              </View>
-            </FormRow>
-          )}
-
-          {choice !== null && chosen !== null ? (
-            <FormRow label="Soit">
-              <Text style={[styles.equivalent, { color: theme.colors.textMuted }]}>
-                {formatPortionCount(choice.portion?.count ?? 0, chosen.name)} ·{' '}
-                {formatQuantity(choice.baseQuantity, baseUnit)}
-              </Text>
-            </FormRow>
-          ) : null}
-        </FormSection>
-
-        {total === null ? null : (
-          <View
-            style={[
-              styles.card,
-              {
-                backgroundColor: theme.colors.surface,
-                borderColor: theme.colors.border,
-                borderRadius: theme.radius.lg,
-                ...theme.shadow,
-              },
-            ]}
-          >
-            <MacroRow total={total} />
-          </View>
-        )}
-
-        <Pressable
-          onPress={() => {
-            if (choice !== null) onSubmit(choice);
-          }}
-          disabled={choice === null}
-          accessibilityRole="button"
+      <Pressable
+        onPress={() => {
+          if (choice !== null) onSubmit(choice);
+        }}
+        disabled={choice === null}
+        accessibilityRole="button"
+        style={[
+          styles.save,
+          { backgroundColor: choice === null ? theme.colors.border : theme.colors.accent },
+        ]}
+      >
+        <Text
           style={[
-            styles.save,
-            { backgroundColor: choice === null ? theme.colors.border : theme.colors.accent },
+            styles.saveLabel,
+            { color: choice === null ? theme.colors.textFaint : theme.colors.onAccent },
           ]}
         >
-          <Text
-            style={[
-              styles.saveLabel,
-              { color: choice === null ? theme.colors.textFaint : theme.colors.onAccent },
-            ]}
-          >
-            {action}
-          </Text>
-        </Pressable>
-      </ScrollView>
-    </KeyboardAvoidingView>
-    </FormNavigation>
+          {action}
+        </Text>
+      </Pressable>
+    </ScrollView>
   );
-}
-
-function Segment({
-  label,
-  selected,
-  onPress,
-}: {
-  label: string;
-  selected: boolean;
-  onPress: () => void;
-}) {
-  const theme = useTheme();
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-      style={[
-        styles.segment,
-        {
-          backgroundColor: selected ? theme.colors.accent : 'transparent',
-          borderColor: theme.colors.border,
-        },
-      ]}
-    >
-      <Text style={{ color: selected ? theme.colors.onAccent : theme.colors.text, fontSize: 15 }}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-/** The separator the field accepts and the user types, not the one JS prints. */
-function show(value: number): string {
-  const rounded = Math.round(value * 100) / 100;
-  return String(rounded).replace('.', ',');
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
   content: { padding: 16, gap: 16, paddingBottom: 56 },
-  card: { borderWidth: StyleSheet.hairlineWidth, padding: 16, gap: 14 },
-  unit: { fontSize: 17 },
-  segments: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  segment: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
+  amount: { fontSize: 17 },
   equivalent: { fontSize: 13 },
   save: { borderRadius: 18, paddingVertical: 16, alignItems: 'center' },
   saveLabel: { fontSize: 17, fontWeight: '600' },

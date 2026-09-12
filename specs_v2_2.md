@@ -377,7 +377,9 @@ Les onglets non pourvus dans une version donnée sont **présents et affichent u
 
 **Saisie de la quantité :** en unité de base ou via une **portion prédéfinie**, avec bascule sans quitter l'écran.
 
-**[v2.2] Pré-remplissage de la quantité.** L'écran de quantité s'ouvre pré-rempli avec la **dernière quantité consommée pour cet aliment**, valeur sélectionnée et clavier numérique déjà ouvert. Un aliment habituel se logue alors en deux touchers, sans clavier. C'est le levier principal de la cible des 15 secondes (§4).
+**[v2.2] Pré-remplissage de la quantité.** L'écran de quantité s'ouvre pré-rempli avec la **dernière quantité consommée pour cet aliment**. Un aliment habituel se logue alors en deux touchers, sans clavier. C'est le levier principal de la cible des 15 secondes (§4).
+
+**[v2.3] La quantité se choisit à la molette, plus au clavier.** Trois rouleaux solidaires : un nombre entier à partir de 0, une fraction (—, 1/8, 1/4, 1/3, 1/2, 2/3, 3/4, 7/8) et l'unité — `g` ou `ml` selon l'aliment, suivie de ses portions. Ils s'ouvrent sur la dernière quantité consommée, à défaut sur 100 g. Les macros de la quantité choisie s'affichent **au-dessus** et bougent avec elle. *Le clavier disparaît de cet écran : « valeur sélectionnée, clavier ouvert » n'a plus d'objet, et les deux touchers sont tenus autrement.*
 
 ### 8.5 Base d'aliments, Open Food Facts et scan
 
@@ -746,6 +748,8 @@ une demande qui diverge des specs modifie les specs.
 | 16 | §8.5 | Le **favori agit immediatement**, par un bouton etoile identique depuis la liste et depuis la fiche ; il quitte le formulaire, et un enregistrement ne le reecrit plus | Un drapeau qu'un seul toucher change ailleurs ne devrait pas demander ici un formulaire soumis. Et un formulaire ouvert avant le marquage porte l'ancienne valeur : la reecrire annulerait en silence un geste que personne ne compte comme une modification |
 
 | 17 | §6.1, §8.5 | La quantite de reference n'est plus saisissable : l'editeur propose **100 g ou 100 ml**, et les calories quittent la ligne des trois macros pour une rangee a elles | Demande explicite. Cout assume et consigne : une etiquette donnant ses valeurs pour autre chose que 100 doit desormais etre convertie a la main. `display_ref_qty` reste en base et vaut 100, donc rien n'est a migrer et le champ peut revenir. Les calories ne sont pas une quatrieme macro : elles sont ce a quoi les trois autres reviennent, et le §5.1 les verifie l'une contre les autres |
+
+| 18 | §8.4 | La quantite se choisit a la **molette a trois rouleaux** (entier, fraction, unite ou portion) et non plus au clavier ; les **macros passent au-dessus** de la question. La saisie libre prend son titre en haut de fenetre | Demande explicite. Une fraction de portion se dit « un tiers », pas « 0,333 ». Reserve consignee : un vrai rouleau est un UIPickerView, qu'aucune bibliotheque du §5 n'expose — ce sont des listes qui s'aimantent, sans la courbure ni le son du systeme |
 
 **Reserve sur les gestes 9 et 11, enoncee une fois pour toutes.** Les deux
 reproduisent un comportement d'UIKit sans etre ce comportement. React Native

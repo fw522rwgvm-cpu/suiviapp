@@ -10,7 +10,7 @@ import {
 import type { LocalDate } from '@/core/date';
 import { formatKcal, parseDecimal } from '@/core/format';
 import { useTheme } from '@/core/theme';
-import { useDismiss } from '@/core/ui/overlay-panel';
+import { useDismiss, usePanelHeading } from '@/core/ui/overlay-panel';
 import { FormInput, FormNavigation, FormRow, FormSection } from '@/core/ui/form-section';
 import { MACRO_FIELDS, MacroFieldRow, type MacroKey } from '../components/macro-fields';
 import type { JournalEntryId } from '@/core/db/schema';
@@ -92,6 +92,11 @@ export function FreeEntryScreen({
 }) {
   const theme = useTheme();
   const dismiss = useDismiss();
+
+  // Named at the top of the window, on the line the actions are on, the way
+  // the quantity screen names the food it is weighing. A section caption
+  // saying the same thing underneath would be the title given twice.
+  usePanelHeading('Saisie libre', null);
 
   const existing = useEntry(entryId);
   const addEntry = useAddFreeEntry();
@@ -175,7 +180,7 @@ export function FreeEntryScreen({
         keyboardShouldPersistTaps="handled"
         contentInsetAdjustmentBehavior="automatic"
       >
-        <FormSection caption="Saisie libre">
+        <FormSection>
           <FormRow label="Nom">
             <FormInput
               value={fields.name}
