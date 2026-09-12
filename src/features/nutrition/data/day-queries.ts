@@ -17,6 +17,7 @@ import {
   readMealTotals,
 } from './day-reads';
 import {
+  addEntries,
   addFoodEntry,
   addFreeEntry,
   addMeal,
@@ -97,6 +98,14 @@ export function useEntry(entryId: JournalEntryId | null) {
     queryFn: () => (entryId === null ? null : readEntry(getAppDatabase(), entryId)),
     enabled: entryId !== null,
     meta: readsFrom(journalEntry),
+  });
+}
+
+/** A whole basket, in one transaction (specs 8.4). */
+export function useAddEntries() {
+  return useMutation({
+    mutationFn: (input: Parameters<typeof addEntries>[1]) =>
+      Promise.resolve(addEntries(getAppDatabase(), input)),
   });
 }
 

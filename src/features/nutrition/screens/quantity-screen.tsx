@@ -8,13 +8,12 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import type { LocalDate } from '@/core/date';
 import { formatKcal, formatMacro, formatQuantity, parseDecimal } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import type { FoodId, JournalEntryId } from '@/core/db/schema';
-import { useAddFoodEntry, useEntry, useUpdateFoodEntryQuantity } from '../data/day-queries';
+import { useEntry, useUpdateFoodEntryQuantity } from '../data/day-queries';
 import { useFood, useQuantityPrefill } from '../data/food-queries';
-import type { FoodPortionView } from '../data/food-reads';
+import type { FoodPortionView, FoodView } from '../data/food-reads';
 import { totalOf, type Macros } from '../domain/macros';
 import {
   baseQuantity,
@@ -59,11 +58,24 @@ interface Common {
 }
 
 type Props =
-  | (Common & { mode: 'add'; date: LocalDate; mealPosition: number; foodId: FoodId })
+  | (Common & {
+      /**
+       * Choosing a quantity for a food about to be added. It WRITES NOTHING:
+       * the add screen collects lines and commits the lot in one transaction
+       * when the meal is confirmed (specs 8.4).
+       */
+      mode: 'collect';
+      foodId: FoodId;
+      onCollect: (quantity: QuantityChoice, food: FoodView) => void;
+    })
   | (Common & { mode: 'edit'; entryId: JournalEntryId });
 
 export function QuantityScreen(props: Props) {
-  return props.mode === 'add' ? <AddQuantity {...props} /> : <EditQuantity {...props} />;
+  return props.mode === 'collect' ? (
+    <CollectQuantity {...props} />
+  ) : (
+    <EditQuantity {...props} />
+  );
 }
 
 /** The caller's own ending, or the panel's — whichever this is inside. */
@@ -72,16 +84,11 @@ function useEnding(onDone?: () => void): () => void {
   return onDone ?? dismiss;
 }
 
-function AddQuantity({
-  date,
-  mealPosition,
+function CollectQuantity({
   foodId,
-  onDone,
-}: Common & { date: LocalDate; mealPosition: number; foodId: FoodId }) {
+  onCollect,
+}: Common & { foodId: FoodId; onCollect: (q: QuantityChoice, food: FoodView) => void }) {
   const prefill = useQuantityPrefill(foodId);
-  const add = useAddFoodEntry();
-  const done = useEnding(onDone);
-
   const loaded = prefill.data ?? null;
 
   return (
@@ -93,9 +100,9 @@ function AddQuantity({
       portions={loaded?.food.portions ?? []}
       initial={loaded?.quantity ?? null}
       action="Ajouter"
-      onSubmit={(quantity) =>
-        add.mutate({ date, mealPosition, foodId, quantity }, { onSuccess: done })
-      }
+      onSubmit={(quantity) => {
+        if (loaded !== null) onCollect(quantity, loaded.food);
+      }}
     />
   );
 }

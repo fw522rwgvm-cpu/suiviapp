@@ -130,57 +130,12 @@ export interface AddFreeEntryInput {
   /** Meals are addressed by position: on a virtual day they have no id yet. */
   mealPosition: number;
   name?: string;
-  /** The values typed in, which are also the macros for 100 units (D5/R2). */
+  /** The values typed in, which are also the macros for 100 (D5/R2). */
   macros: Macros;
-}
-
-/**
- * Logs a free entry, materialising the day in the same transaction.
- *
- * The entry freezes the reference and never the total (D5/R1): quantity 100
- * and the macros for 100 are what is stored, and the total is derived. With
- * quantity at exactly 100 the total is the value typed in, through the same
- * expression as every other row — no special case in any aggregation.
- */
-export function addFreeEntry(db: AppDatabase, input: AddFreeEntryInput): JournalEntryId {
-  return db.transaction((tx) => {
-    const meal = requireMeal(ensureMaterialized(tx, input.date), input.mealPosition);
-    const id = newId<JournalEntryId>();
-    const now = Date.now();
-    const name = (input.name ?? '').trim();
-
-    tx.insert(journalEntry)
-      .values({
-        id,
-        dayMealId: meal.id,
-        date: input.date,
-        parentEntryId: null,
-        position: nextPosition(tx, meal.id),
-        kind: 'free',
-        sourceFoodId: null,
-        sourceRecipeId: null,
-        name: name === '' ? FREE_ENTRY_DEFAULT_NAME : name,
-        brand: null,
-        baseUnit: FREE_ENTRY_UNIT,
-        quantity: FREE_ENTRY_QUANTITY,
-        portionName: null,
-        portionQuantity: null,
-        protein100: input.macros.protein,
-        carbs100: input.macros.carbs,
-        fat100: input.macros.fat,
-        kcal100: input.macros.kcal,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
-
-    return id;
-  });
 }
 
 export interface AddFoodEntryInput {
   date: LocalDate;
-  /** Meals are addressed by position: on a virtual day they have no id yet. */
   mealPosition: number;
   foodId: FoodId;
   /** Resolved to base units by the domain before it ever gets here. */
@@ -188,20 +143,45 @@ export interface AddFoodEntryInput {
 }
 
 /**
- * Logs a food from the personal database, materialising the day in the same
+ * One line about to be written — what the add screen collects before anything
+ * is committed (specs 8.4).
+ */
+export type NewEntry =
+  | { kind: 'food'; foodId: FoodId; quantity: QuantityChoice }
+  | { kind: 'free'; name?: string; macros: Macros };
+
+/**
+ * Logs one or more lines into a meal, materialising the day in the same
  * transaction.
  *
- * THE ENTRY IS A CLOSED CAPSULE FROM THIS MOMENT ON (D5/R1, specs 5.2).
+ * ## Why a list, and why a single transaction
  *
- * Everything the journal will ever need to display or recompute this line is
- * copied in now: the name, the brand, the unit, the macros for 100, and — when
- * a portion was used — its name and the size it had today. The food's row is
- * never consulted again. That is what makes editing without a time limit
- * possible (specs 5.3), and what makes deleting the food harmless.
+ * Specs 8.4 lets a meal be assembled before it is committed — several foods
+ * and free entries chosen in one visit. Writing them one at a time would let a
+ * forced quit land halfway through a meal, and the build context says the
+ * application must tolerate being killed at any moment: the certificate expires
+ * weekly. Half a meal is worse than none, because none is visibly missing and
+ * half is not.
  *
- * source_food_id is written, and it is informative only: no foreign key, so
- * the food can be deleted out from under this row without touching it. Its one
- * job is to answer "what was the last quantity for this food" through
+ * So a basket is one transaction, and the rule that every multi-row operation
+ * is explicitly transactional is met by construction rather than by care.
+ *
+ * Rows go in one at a time inside it. Batching them would meet
+ * SQLITE_MAX_VARIABLE_NUMBER at twenty columns a row — a limit that differs
+ * between SQLite builds, as slice 2 already had to work around — and buys
+ * nothing measurable on a handful of lines.
+ *
+ * ## EVERY ENTRY IS A CLOSED CAPSULE FROM THIS MOMENT ON (D5/R1, specs 5.2)
+ *
+ * Everything the journal will ever need is copied in now: the name, the brand,
+ * the unit, the macros for 100, and — when a portion was used — its name and
+ * the size it had today. The food's row is never consulted again. That is what
+ * makes editing without a time limit possible (specs 5.3), and what makes
+ * deleting the food harmless.
+ *
+ * source_food_id is written, and is informative only: no foreign key, so the
+ * food can be deleted out from under the row without touching it. Its one job
+ * is to answer "what was the last quantity for this food" through
  * ix_entry_source_food — the lever on the 15-second target (specs 8.4, D16).
  *
  * The quantity stored is ALWAYS in base units. The portion columns record how
@@ -209,53 +189,135 @@ export interface AddFoodEntryInput {
  * portions would need a special case in every aggregation, and the clause-free
  * SUM would stop being right.
  */
-export function addFoodEntry(db: AppDatabase, input: AddFoodEntryInput): JournalEntryId {
-  if (!Number.isFinite(input.quantity.baseQuantity) || input.quantity.baseQuantity <= 0) {
-    throw new Error('A logged quantity must be a positive number of base units');
+export function addEntries(
+  db: AppDatabase,
+  input: { date: LocalDate; mealPosition: number; entries: readonly NewEntry[] },
+): JournalEntryId[] {
+  for (const entry of input.entries) {
+    if (
+      entry.kind === 'food' &&
+      (!Number.isFinite(entry.quantity.baseQuantity) || entry.quantity.baseQuantity <= 0)
+    ) {
+      throw new Error('A logged quantity must be a positive number of base units');
+    }
   }
 
+  // Nothing to write, and nothing to materialise either: an empty basket must
+  // not create a day (specs 8.2).
+  if (input.entries.length === 0) return [];
+
   return db.transaction((tx) => {
-    // Read inside the transaction, so a food deleted between the screen
-    // opening and this call is a rollback rather than a half-written entry.
-    const source = readFood(tx, input.foodId);
-    if (source === null) {
-      throw new Error(`No food ${input.foodId} to log`);
-    }
-
     const meal = requireMeal(ensureMaterialized(tx, input.date), input.mealPosition);
-    const id = newId<JournalEntryId>();
     const now = Date.now();
-    const { baseQuantity, portion } = input.quantity;
+    let position = nextPosition(tx, meal.id);
+    const ids: JournalEntryId[] = [];
 
-    tx.insert(journalEntry)
-      .values({
+    for (const entry of input.entries) {
+      const id = newId<JournalEntryId>();
+      ids.push(id);
+
+      const common = {
         id,
         dayMealId: meal.id,
         date: input.date,
         parentEntryId: null,
-        position: nextPosition(tx, meal.id),
-        kind: 'food',
-        sourceFoodId: input.foodId,
+        position: position++,
         sourceRecipeId: null,
-        name: source.name,
-        brand: source.brand,
-        baseUnit: source.baseUnit,
-        quantity: baseQuantity,
-        portionName: portion?.name ?? null,
-        // The size of ONE portion as of today, frozen. Redefining the portion
-        // later must not move what was eaten (specs 5.2).
-        portionQuantity: portion?.quantity ?? null,
-        protein100: source.reference.protein,
-        carbs100: source.reference.carbs,
-        fat100: source.reference.fat,
-        kcal100: source.reference.kcal,
         createdAt: now,
         updatedAt: now,
-      })
-      .run();
+      };
 
-    return id;
+      if (entry.kind === 'free') {
+        const name = (entry.name ?? '').trim();
+        tx.insert(journalEntry)
+          .values({
+            ...common,
+            kind: 'free',
+            sourceFoodId: null,
+            name: name === '' ? FREE_ENTRY_DEFAULT_NAME : name,
+            brand: null,
+            baseUnit: FREE_ENTRY_UNIT,
+            quantity: FREE_ENTRY_QUANTITY,
+            portionName: null,
+            portionQuantity: null,
+            protein100: entry.macros.protein,
+            carbs100: entry.macros.carbs,
+            fat100: entry.macros.fat,
+            kcal100: entry.macros.kcal,
+          })
+          .run();
+        continue;
+      }
+
+      // Read inside the transaction, so a food deleted between the screen
+      // opening and this call rolls the whole basket back rather than leaving
+      // a meal half written.
+      const source = readFood(tx, entry.foodId);
+      if (source === null) {
+        throw new Error(`No food ${entry.foodId} to log`);
+      }
+
+      const { baseQuantity, portion } = entry.quantity;
+
+      tx.insert(journalEntry)
+        .values({
+          ...common,
+          kind: 'food',
+          sourceFoodId: entry.foodId,
+          name: source.name,
+          brand: source.brand,
+          baseUnit: source.baseUnit,
+          quantity: baseQuantity,
+          portionName: portion?.name ?? null,
+          // The size of ONE portion as of today, frozen. Redefining the portion
+          // later must not move what was eaten (specs 5.2).
+          portionQuantity: portion?.quantity ?? null,
+          protein100: source.reference.protein,
+          carbs100: source.reference.carbs,
+          fat100: source.reference.fat,
+          kcal100: source.reference.kcal,
+        })
+        .run();
+    }
+
+    return ids;
   });
+}
+
+function onlyId(ids: readonly JournalEntryId[]): JournalEntryId {
+  const id = ids[0];
+  if (id === undefined) throw new Error('addEntries wrote nothing');
+  return id;
+}
+
+/**
+ * One free entry. A door onto addEntries, kept because most callers — the
+ * generator, the tests, the editing path — log exactly one line.
+ *
+ * The entry freezes the reference and never the total (D5/R1): quantity 100
+ * and the macros for 100 are what is stored, and the total is derived. With
+ * quantity at exactly 100 the total is the value typed in, through the same
+ * expression as every other row.
+ */
+export function addFreeEntry(db: AppDatabase, input: AddFreeEntryInput): JournalEntryId {
+  return onlyId(
+    addEntries(db, {
+      date: input.date,
+      mealPosition: input.mealPosition,
+      entries: [{ kind: 'free', name: input.name, macros: input.macros }],
+    }),
+  );
+}
+
+/** One food, through the same door. */
+export function addFoodEntry(db: AppDatabase, input: AddFoodEntryInput): JournalEntryId {
+  return onlyId(
+    addEntries(db, {
+      date: input.date,
+      mealPosition: input.mealPosition,
+      entries: [{ kind: 'food', foodId: input.foodId, quantity: input.quantity }],
+    }),
+  );
 }
 
 /**

@@ -3,6 +3,7 @@ import { toLocalDate } from '../../src/core/date';
 import type { FoodId, JournalEntryId } from '../../src/core/db/schema';
 import { readDayTotals, readMealEntries } from '../../src/features/nutrition/data/day-reads';
 import {
+  addEntries,
   addFoodEntry,
   updateFoodEntryQuantity,
 } from '../../src/features/nutrition/data/day-writes';
@@ -213,6 +214,122 @@ describe('correcting a logged quantity (specs 5.3)', () => {
     expect(() =>
       updateFoodEntryQuantity(database.db, 'ghost' as JournalEntryId, baseQuantity(10)),
     ).toThrow();
+  });
+});
+
+describe('a basket of entries, written at once (specs 8.4)', () => {
+  it('writes foods and free entries together, in order', () => {
+    const id = aFood();
+
+    const ids = addEntries(database.db, {
+      date: DAY,
+      mealPosition: 0,
+      entries: [
+        { kind: 'food', foodId: id, quantity: portionQuantity(SLICE, 2) },
+        { kind: 'free', name: 'Café', macros: { protein: 0, carbs: 0, fat: 0, kcal: 5 } },
+        { kind: 'food', foodId: id, quantity: baseQuantity(30) },
+      ],
+    });
+
+    expect(ids).toHaveLength(3);
+    const rows = database.raw
+      .prepare('SELECT kind, name, quantity, position FROM journal_entry ORDER BY position')
+      .all() as { kind: string; name: string; quantity: number; position: number }[];
+
+    expect(rows.map((row) => [row.kind, row.name, row.quantity])).toEqual([
+      ['food', 'Pain de mie', 50],
+      ['free', 'Café', 100],
+      ['food', 'Pain de mie', 30],
+    ]);
+    // Positions continue rather than restart: order inside a meal is read from
+    // this column, and three lines landing on 0 would be three lines in an
+    // order nobody chose.
+    expect(rows.map((row) => row.position)).toEqual([0, 1, 2]);
+  });
+
+  it('appends after what the meal already holds', () => {
+    const id = aFood();
+    addFoodEntry(database.db, {
+      date: DAY,
+      mealPosition: 0,
+      foodId: id,
+      quantity: baseQuantity(10),
+    });
+
+    addEntries(database.db, {
+      date: DAY,
+      mealPosition: 0,
+      entries: [{ kind: 'free', macros: { protein: 1, carbs: 1, fat: 1, kcal: 20 } }],
+    });
+
+    const positions = (
+      database.raw
+        .prepare('SELECT position FROM journal_entry ORDER BY position')
+        .all() as { position: number }[]
+    ).map((row) => row.position);
+    expect(positions).toEqual([0, 1]);
+  });
+
+  it('writes the whole basket or none of it', () => {
+    // THE REASON THE BASKET IS ONE TRANSACTION. The certificate expires weekly
+    // and the application can be killed at any moment; half a meal is worse
+    // than none, because none is visibly missing and half is not.
+    const id = aFood();
+
+    expect(() =>
+      addEntries(database.db, {
+        date: DAY,
+        mealPosition: 0,
+        entries: [
+          { kind: 'food', foodId: id, quantity: baseQuantity(50) },
+          { kind: 'food', foodId: 'ghost' as FoodId, quantity: baseQuantity(50) },
+        ],
+      }),
+    ).toThrow();
+
+    expect(countRows(database.raw, 'journal_entry')).toBe(0);
+    // And the day itself is rolled back with them: a materialised day with
+    // nothing in it is data created by consultation (specs 8.2).
+    expect(countRows(database.raw, 'day')).toBe(0);
+  });
+
+  it('refuses the whole basket for one bad quantity, before opening anything', () => {
+    const id = aFood();
+
+    expect(() =>
+      addEntries(database.db, {
+        date: DAY,
+        mealPosition: 0,
+        entries: [
+          { kind: 'food', foodId: id, quantity: baseQuantity(50) },
+          { kind: 'food', foodId: id, quantity: baseQuantity(0) },
+        ],
+      }),
+    ).toThrow();
+
+    expect(countRows(database.raw, 'day')).toBe(0);
+  });
+
+  it('materialises nothing for an empty basket', () => {
+    // Confirming with nothing chosen is not an action on the day, and specs 8.2
+    // forbids anything but an action from creating one.
+    expect(addEntries(database.db, { date: DAY, mealPosition: 0, entries: [] })).toEqual([]);
+    expect(countRows(database.raw, 'day')).toBe(0);
+  });
+
+  it('totals the basket through the same clause-free sum', () => {
+    const id = aFood();
+    addEntries(database.db, {
+      date: DAY,
+      mealPosition: 0,
+      entries: [
+        { kind: 'food', foodId: id, quantity: portionQuantity(SLICE, 2) },
+        { kind: 'free', macros: { protein: 0, carbs: 0, fat: 0, kcal: 5 } },
+      ],
+    });
+
+    // 50 g at 265 kcal/100, plus a 5 kcal free entry.
+    expect(readDayTotals(database.db, DAY).kcal).toBeCloseTo(137.5, 10);
   });
 });
 

@@ -70,10 +70,18 @@ export function FreeEntryScreen({
   date,
   mealPosition,
   entryId,
+  onCollect,
 }: {
   date: LocalDate;
   mealPosition: number | null;
   entryId: JournalEntryId | null;
+  /**
+   * Supplied by the add screen, which collects lines and commits the lot in
+   * one transaction when the meal is confirmed (specs 8.4). When it is here
+   * this screen WRITES NOTHING; without it — the editing route — it saves as
+   * it always did.
+   */
+  onCollect?: (entry: { name: string; macros: Macros }) => void;
 }) {
   const theme = useTheme();
   const dismiss = useDismiss();
@@ -117,6 +125,10 @@ export function FreeEntryScreen({
 
   function save(): void {
     if (macros === null) return;
+    if (onCollect !== undefined) {
+      onCollect({ name: fields.name, macros });
+      return;
+    }
     if (entryId !== null) {
       updateEntry.mutate({ entryId, name: fields.name, macros }, close);
     } else if (mealPosition !== null) {

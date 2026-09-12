@@ -367,6 +367,13 @@ Les onglets non pourvus dans une version donnée sont **présents et affichent u
 
 **d) Saisie libre** — P / G / L / kcal directement, sans création en base. **Accessible en un seul toucher.**
 
+**[v2.3] Un repas s'assemble, puis se valide.** Choisir un aliment ou saisir une entrée libre ajoute une ligne à une **liste temporaire** et ramène à l'écran d'accès rapide ; rien n'est écrit avant « Confirmer ». Un repas de quatre choses est alors quatre choix, et non quatre allers-retours par le Journal.
+
+- L'écran d'accès rapide porte **« Confirmer »** en bas, absent tant que la liste est vide.
+- Un bouton de tête, portant le **nombre de lignes en attente**, ouvre la liste ; chaque ligne s'y retire par une croix.
+- **L'écriture est atomique** : la liste entière part en une transaction. L'application peut être arrêtée à tout moment (§2.2), et un demi-repas est pire qu'aucun — aucun se voit manquer, un demi non.
+- La liste est **abandonnée avec l'écran**. Une intention abandonnée ne se conserve pas : il faudrait sinon expliquer, des jours plus tard, pourquoi un repas que personne n'a validé attend encore.
+
 **Saisie de la quantité :** en unité de base ou via une **portion prédéfinie**, avec bascule sans quitter l'écran.
 
 **[v2.2] Pré-remplissage de la quantité.** L'écran de quantité s'ouvre pré-rempli avec la **dernière quantité consommée pour cet aliment**, valeur sélectionnée et clavier numérique déjà ouvert. Un aliment habituel se logue alors en deux touchers, sans clavier. C'est le levier principal de la cible des 15 secondes (§4).
@@ -721,4 +728,5 @@ une demande qui diverge des specs modifie les specs.
 | 4 | §8.5 | Le marquage favori de la bibliotheque est un bouton **Liquid Glass**, etoile pleine ou vide | Meme materiau que les boutons natifs de l'en-tete de cet ecran |
 | 5 | §7, §8.3, §8.4 | L'ecran d'ajout, l'edition d'une entree et le choix d'une date s'ouvrent en **fenetre par-dessus** le Journal, et non en modale plein ecran. Leur action de sortie est « Annuler », a droite | Aucune de ces trois choses n'est un endroit : elles se font sur la journee. Un ecran opaque dit qu'on l'a quittee |
 | 6 | §8.3 | Une journee atteinte par balayage s'affiche **defilement en haut** | On la lit a nouveau depuis ses chiffres |
-| 7 | §6.1 | Origine alignee sur `perso` \| `off` | Le §6 se declare non normatif sur le modele de donnees ; le schema de l'architecture fait autorite |
+| 7 | §8.4 | Un repas s'assemble dans une **liste temporaire** puis se valide par « Confirmer », en une seule transaction | Quatre choses a loguer ne devraient pas etre quatre allers-retours par le Journal. Et un demi-repas est pire qu'aucun : aucun se voit manquer |
+| 8 | §6.1 | Origine alignee sur `perso` \| `off` | Le §6 se declare non normatif sur le modele de donnees ; le schema de l'architecture fait autorite |
