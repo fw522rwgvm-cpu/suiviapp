@@ -94,19 +94,32 @@ export function EntryRow({
   );
 }
 
+/**
+ * SMALLER THAN A STANDARD LIST ROW, DELIBERATELY.
+ *
+ * A meal holds five or six of these and they are read as a group -- what did
+ * this meal come to -- not one at a time. At the system's list size a meal
+ * stops fitting on a screen, and a list that has to be scrolled to be totalled
+ * is a list that gets totalled wrong.
+ *
+ * The vertical padding comes down with the type. Text that shrinks inside a
+ * box that does not leaves the row looking under-filled, which reads as a
+ * mistake rather than as a density.
+ */
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingHorizontal: 16,
     gap: 12,
   },
-  identity: { flex: 1, gap: 2 },
-  name: { fontSize: 16 },
-  // A shade smaller than the basket's, because it carries two things.
-  detail: { fontSize: 12 },
+  identity: { flex: 1, gap: 1 },
+  name: { fontSize: 14 },
+  // Smaller again than the name, because it carries two things and is read
+  // second -- and never so small that the figures stop being figures.
+  detail: { fontSize: 11 },
   figures: { alignItems: 'flex-end' },
-  kcal: { fontSize: 16, fontWeight: '600', fontVariant: ['tabular-nums'] },
-  warning: { fontSize: 11 },
+  kcal: { fontSize: 14, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  warning: { fontSize: 10 },
 });
