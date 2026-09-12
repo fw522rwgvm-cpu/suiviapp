@@ -277,6 +277,20 @@ Elle porte la directive `'worklet'` et tourne donc sur le fil d'interface.
 Verifie par la methode ci-dessus, pas suppose : dans l'export lisible, elle
 porte `__workletHash`, son `__closure` et son `__initData`.
 
+**Le verre ne se fond pas par l'opacite d'un parent.** Un `GlassView` est un
+`UIVisualEffectView`, et il ne s'attenue pas a travers l'opacite d'une vue
+parente comme une vue ordinaire — la facon dont Apple retire un effet visuel
+est de lui retirer son effet, pas de le faire disparaitre en fondu. Constate
+sur l'appareil : faire se croiser deux boutons de verre entiers ne produisait
+aucune transition visible, deux fois de suite.
+
+Conclusion, valable pour toute transition entre deux etats d'un controle en
+verre : **un seul bouton reste monte, et seul son contenu se croise** —
+symbole et libelle, qui sont des vues ordinaires. Ce que ca ne peut pas cacher
+est la largeur : rond avec un symbole seul, gelule avec un libelle, et ce
+changement-la tombe en une image. La copie qui part est centree sur celle qui
+arrive, pour que le rognage par le bouton soit symetrique.
+
 **Une animation Reanimated s'écrit en UNE seule écriture.** Remettre une
 valeur partagée à zéro puis lancer l'animation dans le même tick ne s'anime
 pas — constaté sur le fondu des boutons d'en-tête, qui restait un changement

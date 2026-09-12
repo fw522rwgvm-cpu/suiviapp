@@ -14,7 +14,6 @@ import { useFavoriteFoods, useFoods, useRecentFoods } from '../data/food-queries
 import type { FoodListItem } from '../data/food-reads';
 import { searchFoods } from '../domain/food-search';
 import { pendingEntryKcal, type PendingEntry } from '../domain/pending-entry';
-import { CrossFade } from '../components/cross-fade';
 import { FoodRow } from '../components/food-row';
 import { PendingEntryRow } from '../components/pending-entry-row';
 import { SwipeToDeleteRow } from '../components/swipe-to-delete-row';
@@ -246,26 +245,30 @@ export function AddEntryScreen({
           changing from 2 to 3 must not cross-fade, or adding a line would
           blink the header every time.
         */
-        <CrossFade id={step === 'list' ? (basket.length === 0 ? 'none' : 'basket') : 'back'}>
-          {step === 'list' ? (
-            basket.length === 0 ? null : (
-              <GlassButton
-                symbol="list.bullet"
-                label={String(basket.length)}
-                onPress={() => setShowBasket(true)}
-                accessibilityLabel={`Voir les ${basket.length} lignes à ajouter`}
-              />
-            )
-          ) : (
-            <GlassButton
-              symbol="chevron.left"
-              onPress={step === 'amend' ? backToBasket : backToList}
-              accessibilityLabel={
-                step === 'amend' ? 'Retour à la liste' : 'Retour aux aliments'
-              }
-            />
-          )}
-        </CrossFade>
+        step === 'list' && basket.length === 0 ? undefined : (
+          <GlassButton
+            // ONE button for both meanings, never remounted: what changes is
+            // its contents, and they cross rather than swap. The glass itself
+            // could not be faded -- see CrossFade for why.
+            fadeKey={step === 'list' ? 'basket' : 'back'}
+            symbol={step === 'list' ? 'list.bullet' : 'chevron.left'}
+            label={step === 'list' ? String(basket.length) : undefined}
+            onPress={
+              step === 'list'
+                ? () => setShowBasket(true)
+                : step === 'amend'
+                  ? backToBasket
+                  : backToList
+            }
+            accessibilityLabel={
+              step === 'list'
+                ? `Voir les ${basket.length} lignes à ajouter`
+                : step === 'amend'
+                  ? 'Retour à la liste'
+                  : 'Retour aux aliments'
+            }
+          />
+        )
       }
       right={<CancelAction />}
     >

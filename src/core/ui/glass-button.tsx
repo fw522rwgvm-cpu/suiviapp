@@ -6,6 +6,7 @@ import {
 import { SymbolView, type SFSymbol } from 'expo-symbols';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '@/core/theme';
+import { CrossFade } from './cross-fade';
 
 /**
  * A button with the Liquid Glass treatment, for controls drawn in JavaScript.
@@ -58,6 +59,7 @@ export function GlassButton({
   accessibilityLabel,
   selected,
   tintColor,
+  fadeKey,
 }: {
   label?: string;
   symbol?: SFSymbol;
@@ -67,6 +69,17 @@ export function GlassButton({
   selected?: boolean;
   /** Overrides the accent, for a symbol whose colour carries meaning. */
   tintColor?: string;
+  /**
+   * For ONE button that carries two meanings in turn: a name for what it means
+   * now, so that a change of meaning fades instead of swapping between frames.
+   *
+   * It is the meaning, not the wording. A count going from 2 to 3 keeps the
+   * same key -- fading there would blink the header on every line added.
+   *
+   * The button itself is never remounted and never faded: the glass would not
+   * fade with it (see CrossFade). Only what is inside crosses.
+   */
+  fadeKey?: string;
 }) {
   const theme = useTheme();
   const glass = canUseGlass();
@@ -76,8 +89,11 @@ export function GlassButton({
   // as a short pill.
   const shape = label === undefined ? styles.round : styles.pill;
 
-  const content = (
-    <>
+  // Its own row, rather than laid out by the shape around it: with a fade the
+  // shape holds a single child, and the symbol and label have to keep their
+  // spacing from something.
+  const inside = (
+    <View style={styles.inside}>
       {symbol === undefined ? null : (
         <SymbolView name={symbol} size={18} tintColor={color} weight="semibold" />
       )}
@@ -86,8 +102,10 @@ export function GlassButton({
           {label}
         </Text>
       )}
-    </>
+    </View>
   );
+
+  const content = fadeKey === undefined ? inside : <CrossFade id={fadeKey}>{inside}</CrossFade>;
 
   return (
     <Pressable
@@ -137,6 +155,7 @@ const base = {
 } as const;
 
 const styles = StyleSheet.create({
+  inside: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   pill: { ...base, paddingHorizontal: 16, paddingVertical: 9 },
   round: { ...base, width: 38, height: 38 },
   fallback: { borderWidth: StyleSheet.hairlineWidth },

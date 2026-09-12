@@ -8,18 +8,34 @@ import Animated, {
 } from 'react-native-reanimated';
 
 /**
- * One control becoming another, rather than being replaced between two frames.
+ * One piece of content becoming another, rather than being replaced between
+ * two frames.
  *
  * A header action that changes meaning -- the basket count becoming a way back
  * -- swaps in a single frame if nothing is done, and a control that changes
- * without moving reads as a glitch rather than as a change of state. Fading
- * one into the other is what says these are two states of one thing.
+ * without moving reads as a glitch rather than as a change of state.
+ *
+ * ## IT FADES WHAT IS INSIDE A GLASS BUTTON, NOT THE BUTTON
+ *
+ * The first attempt cross-faded two whole GlassButtons and did not visibly
+ * fade at all on the device. The material is the reason: Liquid Glass is a
+ * UIVisualEffectView, and a visual effect view does not dim through a parent's
+ * opacity the way an ordinary view does -- Apple's own way of removing one is
+ * to drop its effect, not to fade it.
+ *
+ * So the glass stays. ONE button is mounted for both meanings, and only its
+ * symbol and label cross here, which are ordinary views and fade like any
+ * other. What this cannot hide is the width: the button is round with a symbol
+ * alone and a pill with a label, and that change lands in one frame.
  *
  * TO BE PLAIN ABOUT WHAT THIS IS: iOS 26 morphs its own toolbar items, and
  * React Native exposes none of that for a view drawn in JavaScript -- the
  * header action here is a Pressable around a glass view, not a UIBarButtonItem.
  * This is two opacities crossing. It follows the shape of the system's
  * behaviour without being it, the same reserve the swipe gestures carry.
+ *
+ * Lives in core/ui before its second user, against the project rule, because
+ * the direction of imports leaves nowhere else: GlassButton is what uses it.
  *
  * ## IT NEVER RESETS THE VALUE, AND THAT IS THE WHOLE DESIGN
  *
@@ -36,11 +52,10 @@ import Animated, {
  * ## The outgoing copy is absolute, and the incoming one is not
  *
  * Both in normal flow would put them side by side for the length of the fade,
- * widening the slot and shifting the arriving control sideways as the other
- * goes -- the jitter this exists to remove. So the one arriving sizes the
- * container, and the one leaving is laid over it and takes no space.
+ * widening the slot and shifting the arriving one sideways as the other goes.
+ * So the one arriving sizes the box, and the one leaving is laid over it,
+ * centred on it, taking no space of its own.
  *
- * Moves to core/ui at its second real user, per the project rule.
  */
 
 interface Frame {
@@ -64,9 +79,12 @@ export function CrossFade({
   const shown = useRef<Frame>({ id, node: children });
   const fade = useSharedValue(1);
 
+  // After EVERY render, deliberately. Watching `children` as a dependency
+  // would restart the fade on every render, since it is a fresh element each
+  // time; watching only the id would let the copy go stale, and the count
+  // fading out would be the one from two changes ago. So: run always, and let
+  // the id decide which of the two things to do.
   useEffect(() => {
-    // Deliberately keyed on the id alone. `children` is a fresh element on
-    // every render, so watching it would restart the fade forever.
     if (shown.current.id === id) {
       shown.current = { id, node: children };
       return;
@@ -76,8 +94,7 @@ export function CrossFade({
     shown.current = { id, node: children };
     setLeaving(previous);
     setToward((end) => (end === 1 ? 0 : 1));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  });
 
   useEffect(() => {
     // In its own effect so it runs AFTER the render that flipped `toward`:
@@ -114,7 +131,18 @@ export function CrossFade({
 }
 
 const styles = StyleSheet.create({
-  // Hugs its own content rather than filling the container: the container is
-  // sized by whatever is arriving, which may well be narrower.
-  leaving: { position: 'absolute', left: 0, top: 0 },
+  // Fills the box the arriving content just defined, and CENTRES the outgoing
+  // copy on it. The two are rarely the same width -- a symbol with a number
+  // beside it against a symbol alone -- and the wider one is clipped by the
+  // button around it. Clipped evenly on both sides it reads as a fade;
+  // anchored to one edge it reads as something sliding out of place.
+  leaving: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });
