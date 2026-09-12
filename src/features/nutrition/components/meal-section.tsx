@@ -119,10 +119,25 @@ export function MealSection({
               Rien pour l’instant.
             </Text>
           ) : (
-            entries.data.map((entry) => (
-              <SwipeToDeleteRow key={entry.id} onDelete={() => onDeleteEntry(entry)}>
-                <EntryRow entry={entry} onPress={() => onEditEntry(entry)} />
-              </SwipeToDeleteRow>
+            entries.data.map((entry, index) => (
+              <View key={entry.id}>
+                {/*
+                  Between the rows and never around them: a line above the
+                  first or below the last would box the list in, when the card
+                  already does that. Inset to where the text starts, as a
+                  system list is, so the rows read as one list rather than as
+                  separate things stacked.
+
+                  Outside the swipeable row, not inside it, so it stays put
+                  while a row travels under the finger.
+                */}
+                {index === 0 ? null : (
+                  <View style={[styles.separator, { backgroundColor: theme.colors.border }]} />
+                )}
+                <SwipeToDeleteRow onDelete={() => onDeleteEntry(entry)}>
+                  <EntryRow entry={entry} onPress={() => onEditEntry(entry)} />
+                </SwipeToDeleteRow>
+              </View>
             ))
           )}
         </View>
@@ -151,5 +166,7 @@ const styles = StyleSheet.create({
   // target on its own, so padding here would only push it off the edge.
   add: { paddingHorizontal: 14, paddingVertical: 10 },
   entries: { borderTopWidth: StyleSheet.hairlineWidth },
+  // Aligned with the row text, 16 of padding plus the hairline itself.
+  separator: { height: StyleSheet.hairlineWidth, marginLeft: 16 },
   empty: { fontSize: 14, paddingHorizontal: 18, paddingVertical: 16 },
 });
