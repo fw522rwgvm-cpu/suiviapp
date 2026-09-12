@@ -48,6 +48,16 @@ export function HeaderTextButton({
 }
 
 const styles = StyleSheet.create({
-  button: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  // Padding rather than margin, as on the Journal's header icons: it pulls the
+  // label off the edge AND widens the target, where a margin would only move
+  // it. Applied here rather than at each call site so the three modals that
+  // use this cannot drift apart.
+  button: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
   label: { fontSize: 17 },
 });
