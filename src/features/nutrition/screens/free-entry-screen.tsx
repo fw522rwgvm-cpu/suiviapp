@@ -5,13 +5,14 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import type { LocalDate } from '@/core/date';
 import { formatKcal, parseDecimal } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import { useDismiss } from '@/core/ui/overlay-panel';
+import { FormInput, FormRow, FormSection } from '@/core/ui/form-section';
+import { MacroFields } from '../components/macro-fields';
 import type { JournalEntryId } from '@/core/db/schema';
 import {
   useAddFreeEntry,
@@ -173,55 +174,36 @@ export function FreeEntryScreen({
         keyboardShouldPersistTaps="handled"
         contentInsetAdjustmentBehavior="automatic"
       >
-        <Field
-          label="Nom"
-          placeholder={FREE_ENTRY_DEFAULT_NAME}
-          value={fields.name}
-          onChange={(name) => setFields((current) => ({ ...current, name }))}
-          keyboard="default"
-        />
+        <FormSection caption="Saisie libre">
+          <FormRow label="Nom">
+            <FormInput
+              value={fields.name}
+              onChangeText={(name) => setFields((current) => ({ ...current, name }))}
+              placeholder={FREE_ENTRY_DEFAULT_NAME}
+            />
+          </FormRow>
 
-        <View
-          style={[
-            styles.card,
-            {
-              backgroundColor: theme.colors.surface,
-              borderColor: theme.colors.border,
-              borderRadius: theme.radius.lg,
-              ...theme.shadow,
-            },
-          ]}
-        >
           {/*
-            NO autoFocus. Free entry has four fields and no obvious first one:
-            a label, then P, G, L and calories — and a label that is optional.
-            Putting the keyboard up over a form nobody has read yet hides half
-            of it to save a tap on a screen that needs four.
+            NO autoFocus. Free entry has four figures and no obvious first
+            field — and a name that is optional. Putting the keyboard up over a
+            form nobody has read yet hides half of it to save a tap on a screen
+            that needs four.
 
             The quantity screen is the opposite case and does focus: one field,
-            already filled, where the whole point is to accept or type over it.
+            already filled, where the whole point is to accept it or type over.
           */}
-          <Field
-            label="Protéines (g)"
-            value={fields.protein}
-            onChange={(protein) => setFields((current) => ({ ...current, protein }))}
-          />
-          <Field
-            label="Glucides (g)"
-            value={fields.carbs}
-            onChange={(carbs) => setFields((current) => ({ ...current, carbs }))}
-          />
-          <Field
-            label="Lipides (g)"
-            value={fields.fat}
-            onChange={(fat) => setFields((current) => ({ ...current, fat }))}
-          />
-          <Field
-            label="Calories"
-            value={fields.kcal}
-            onChange={(kcal) => setFields((current) => ({ ...current, kcal }))}
-          />
-        </View>
+          <FormRow>
+            <MacroFields
+              values={{
+                protein: fields.protein,
+                carbs: fields.carbs,
+                fat: fields.fat,
+                kcal: fields.kcal,
+              }}
+              onChange={(key, text) => setFields((current) => ({ ...current, [key]: text }))}
+            />
+          </FormRow>
+        </FormSection>
 
         {warn ? (
           <Text style={[styles.warning, { color: theme.colors.warning }]}>
@@ -261,55 +243,9 @@ export function FreeEntryScreen({
   );
 }
 
-function Field({
-  label,
-  value,
-  onChange,
-  placeholder,
-  keyboard = 'decimal-pad',
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  keyboard?: 'default' | 'decimal-pad';
-}) {
-  const theme = useTheme();
-  return (
-    <View style={styles.field}>
-      <Text style={[styles.label, { color: theme.colors.textMuted }]}>{label}</Text>
-      <TextInput
-        value={value}
-        onChangeText={onChange}
-        placeholder={placeholder}
-        placeholderTextColor={theme.colors.textFaint}
-        keyboardType={keyboard}
-        // Selected on focus, so the habitual gesture is type-over rather than
-        // clear-then-type. Specs 8.4 makes this the lever on the 15 seconds.
-        selectTextOnFocus
-        style={[styles.input, { color: theme.colors.text, borderColor: theme.colors.border }]}
-      />
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   content: { padding: 16, gap: 16, paddingBottom: 56 },
-  card: {
-    borderWidth: StyleSheet.hairlineWidth,
-    padding: 16,
-    gap: 14,
-  },
-  field: { gap: 6 },
-  label: { fontSize: 13 },
-  input: {
-    fontSize: 17,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 10,
-  },
   warning: { fontSize: 13, lineHeight: 18 },
   save: { borderRadius: 18, paddingVertical: 16, alignItems: 'center' },
   saveLabel: { fontSize: 17, fontWeight: '600' },

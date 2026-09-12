@@ -1,7 +1,8 @@
 import { SymbolView } from 'expo-symbols';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text } from 'react-native';
 import { formatQuantity, parseDecimal } from '@/core/format';
 import { useTheme } from '@/core/theme';
+import { FormInput, FormRow, FormSection } from '@/core/ui/form-section';
 import type { PortionDraft } from '../domain/food-draft';
 import { availableNames } from '../domain/portions';
 
@@ -60,35 +61,28 @@ export function PortionEditor({
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={[styles.heading, { color: theme.colors.textMuted }]}>Portions</Text>
-
+    <FormSection caption="Portions">
       {portions.length === 0 ? (
-        <Text style={[styles.empty, { color: theme.colors.textFaint }]}>
-          Aucune portion. Une portion permet de saisir « 2 tranches » plutôt
-          qu’un poids.
-        </Text>
+        <FormRow>
+          <Text style={[styles.empty, { color: theme.colors.textFaint }]}>
+            Aucune portion. Une portion permet de saisir « 2 tranches » plutôt
+            qu’un poids.
+          </Text>
+        </FormRow>
       ) : null}
 
       {portions.map((portion, index) => (
-        <View key={`${portion.name}-${index}`} style={styles.row}>
-          <Text style={[styles.name, { color: theme.colors.text }]}>{portion.name}</Text>
-
-          <TextInput
+        // One portion, one row: its name on the left as the question, what it
+        // weighs on the right as the answer — the shape of every other row in
+        // the application's forms.
+        <FormRow key={`${portion.name}-${index}`} label={portion.name}>
+          <FormInput
             value={portion.quantity === 0 ? '' : String(portion.quantity).replace('.', ',')}
             onChangeText={(text) => setQuantity(index, text)}
             placeholder="0"
-            placeholderTextColor={theme.colors.textFaint}
             keyboardType="decimal-pad"
             selectTextOnFocus
             accessibilityLabel={`Quantité pour une ${portion.name}`}
-            // Filled and borderless, like every other field on this screen:
-            // the system draws no rectangle around a text field, and two
-            // idioms on one page read as two pages.
-            style={[
-              styles.input,
-              { color: theme.colors.text, backgroundColor: theme.colors.background },
-            ]}
           />
           <Text style={[styles.unit, { color: theme.colors.textMuted }]}>{baseUnit}</Text>
 
@@ -100,18 +94,22 @@ export function PortionEditor({
           >
             <SymbolView name="minus.circle" size={20} tintColor={theme.colors.danger} />
           </Pressable>
-        </View>
+        </FormRow>
       ))}
 
       {free.length === 0 ? null : (
-        <Pressable onPress={add} accessibilityRole="button" style={styles.add}>
-          <SymbolView name="plus.circle" size={18} tintColor={theme.colors.accent} />
-          <Text style={[styles.addLabel, { color: theme.colors.accent }]}>
-            Ajouter une portion
-          </Text>
-        </Pressable>
+        // The last row of the group, the way a grouped form offers one more of
+        // something. It leaves when there is no name left to give.
+        <FormRow>
+          <Pressable onPress={add} accessibilityRole="button" style={styles.add}>
+            <SymbolView name="plus.circle" size={18} tintColor={theme.colors.accent} />
+            <Text style={[styles.addLabel, { color: theme.colors.accent }]}>
+              Ajouter une portion
+            </Text>
+          </Pressable>
+        </FormRow>
       )}
-    </View>
+    </FormSection>
   );
 }
 
@@ -121,19 +119,7 @@ export function describePortion(name: string, quantity: number, baseUnit: string
 }
 
 const styles = StyleSheet.create({
-  container: { gap: 10 },
-  heading: { fontSize: 13 },
   empty: { fontSize: 13, lineHeight: 18 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  name: { flex: 1, fontSize: 16 },
-  input: {
-    width: 84,
-    fontSize: 17,
-    textAlign: 'right',
-    paddingVertical: 11,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-  },
   unit: { fontSize: 15, width: 24 },
   add: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
   addLabel: { fontSize: 16 },

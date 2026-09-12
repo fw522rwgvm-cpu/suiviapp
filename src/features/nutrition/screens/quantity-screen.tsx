@@ -22,6 +22,7 @@ import {
   type QuantityChoice,
 } from '../domain/portions';
 import { useDismiss, usePanelHeading } from '@/core/ui/overlay-panel';
+import { FormInput, FormRow, FormSection } from '@/core/ui/form-section';
 import { MacroRow } from '../components/macro-row';
 import { formatPortionCount } from '../components/portion-text';
 
@@ -279,19 +280,9 @@ function QuantityForm({
         keyboardShouldPersistTaps="handled"
         contentInsetAdjustmentBehavior="automatic"
       >
-        <View
-          style={[
-            styles.card,
-            {
-              backgroundColor: theme.colors.surface,
-              borderColor: theme.colors.border,
-              borderRadius: theme.radius.lg,
-              ...theme.shadow,
-            },
-          ]}
-        >
-          <View style={styles.amountRow}>
-            <TextInput
+        <FormSection>
+          <FormRow label="Quantité">
+            <FormInput
               ref={input}
               value={text}
               onChangeText={setText}
@@ -302,43 +293,43 @@ function QuantityForm({
               // the habitual gesture is type-over, not clear-then-type.
               selectTextOnFocus
               accessibilityLabel="Quantité"
-              style={[
-                styles.amount,
-                { color: theme.colors.text, borderColor: theme.colors.border },
-              ]}
             />
             <Text style={[styles.unit, { color: theme.colors.textMuted }]}>
               {chosen === null
                 ? baseUnit
                 : `× ${formatQuantity(chosen.quantity, baseUnit)}`}
             </Text>
-          </View>
+          </FormRow>
 
           {portions.length === 0 ? null : (
-            <View style={styles.segments}>
-              <Segment
-                label={baseUnit}
-                selected={portionName === null}
-                onPress={() => switchTo(null)}
-              />
-              {portions.map((portion) => (
+            <FormRow>
+              <View style={styles.segments}>
                 <Segment
-                  key={portion.id}
-                  label={portion.name}
-                  selected={portionName === portion.name}
-                  onPress={() => switchTo(portion.name)}
+                  label={baseUnit}
+                  selected={portionName === null}
+                  onPress={() => switchTo(null)}
                 />
-              ))}
-            </View>
+                {portions.map((portion) => (
+                  <Segment
+                    key={portion.id}
+                    label={portion.name}
+                    selected={portionName === portion.name}
+                    onPress={() => switchTo(portion.name)}
+                  />
+                ))}
+              </View>
+            </FormRow>
           )}
 
           {choice !== null && chosen !== null ? (
-            <Text style={[styles.equivalent, { color: theme.colors.textMuted }]}>
-              {formatPortionCount(choice.portion?.count ?? 0, chosen.name)} ·{' '}
-              {formatQuantity(choice.baseQuantity, baseUnit)}
-            </Text>
+            <FormRow label="Soit">
+              <Text style={[styles.equivalent, { color: theme.colors.textMuted }]}>
+                {formatPortionCount(choice.portion?.count ?? 0, chosen.name)} ·{' '}
+                {formatQuantity(choice.baseQuantity, baseUnit)}
+              </Text>
+            </FormRow>
           ) : null}
-        </View>
+        </FormSection>
 
         {total === null ? null : (
           <View
@@ -421,17 +412,6 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   content: { padding: 16, gap: 16, paddingBottom: 56 },
   card: { borderWidth: StyleSheet.hairlineWidth, padding: 16, gap: 14 },
-  amountRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  amount: {
-    flex: 1,
-    fontSize: 34,
-    fontWeight: '600',
-    fontVariant: ['tabular-nums'],
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 10,
-  },
   unit: { fontSize: 17 },
   segments: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   segment: {

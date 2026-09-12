@@ -8,12 +8,11 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { formatKcal, parseDecimal } from '@/core/format';
 import { useTheme } from '@/core/theme';
-import type { BaseUnit, FoodId } from '@/core/db/schema';
+import type { FoodId } from '@/core/db/schema';
 import {
   useCreateFood,
   useDeleteFood,
@@ -28,6 +27,9 @@ import {
   type FoodDraft,
 } from '../domain/food-draft';
 import { hasKcalWarning, theoreticalKcal } from '../domain/macros';
+import { FormInput, FormRow, FormSection } from '@/core/ui/form-section';
+import { MacroFields, type MacroKey } from '../components/macro-fields';
+import { UnitToggle } from '../components/unit-toggle';
 import { PortionEditor } from '../components/portion-editor';
 import { foodProblemText } from '../components/food-problem-text';
 
@@ -47,6 +49,11 @@ import { foodProblemText } from '../components/food-problem-text';
  * 10% kcal check (specs 5.1) is shown beside the field rather than gating the
  * button, because a non-blocking warning that blocks is not a warning.
  */
+/** A stored number, written the way the fields accept it back. */
+function show(value: number): string {
+  return value === 0 ? '' : String(value).replace('.', ',');
+}
+
 export function FoodEditorScreen({ foodId }: { foodId: FoodId | null }) {
   const theme = useTheme();
   const router = useRouter();
@@ -135,7 +142,7 @@ export function FoodEditorScreen({ foodId }: { foodId: FoodId | null }) {
     );
   }
 
-  function setMacro(key: 'protein' | 'carbs' | 'fat' | 'kcal', text: string): void {
+  function setMacro(key: MacroKey, text: string): void {
     setDraft((current) => ({
       ...current,
       macros: { ...current.macros, [key]: parseDecimal(text) ?? 0 },
@@ -181,44 +188,38 @@ export function FoodEditorScreen({ foodId }: { foodId: FoodId | null }) {
           keyboardShouldPersistTaps="handled"
           contentInsetAdjustmentBehavior="automatic"
         >
-          <View style={[styles.card, cardStyle(theme)]}>
-            <Labelled label="Nom">
-              <TextInput
+          <FormSection caption="Aliment">
+            <FormRow label="Nom">
+              <FormInput
                 value={draft.name}
                 onChangeText={(name) => setDraft((current) => ({ ...current, name }))}
                 placeholder="Pain de mie"
-                placeholderTextColor={theme.colors.textFaint}
                 autoFocus={foodId === null}
-                style={inputStyle(theme)}
               />
-            </Labelled>
+            </FormRow>
 
-            <Labelled label="Marque (facultatif)">
-              <TextInput
+            <FormRow label="Marque">
+              <FormInput
                 value={draft.brand ?? ''}
                 onChangeText={(brand) => setDraft((current) => ({ ...current, brand }))}
-                placeholder="Sans marque"
-                placeholderTextColor={theme.colors.textFaint}
-                style={inputStyle(theme)}
+                placeholder="Facultatif"
               />
-            </Labelled>
-          </View>
+            </FormRow>
+          </FormSection>
 
-          <View style={[styles.card, cardStyle(theme)]}>
-            {/*
-              THE QUANTITY AND ITS UNIT ARE ONE FIELD, because they are one
-              answer: "per 30 g" is what a label says, and it was being asked
-              as two questions in two cards. The unit is not a property of the
-              food that happens to live elsewhere -- it is what the number
-              beside it means.
+          {/*
+            THE QUANTITY AND ITS UNIT ARE ONE ANSWER: "per 30 g" is what a
+            label says, and it was once asked as two questions in two cards.
+            The unit is not a property of the food that lives elsewhere -- it
+            is what the number beside it means.
 
-              Watertight all the same: no conversion, no density (specs 5.1).
-              Tapping ml does not convert anything; it says what these figures
-              are counted in.
-            */}
-            <Labelled label="Macros pour cette quantité">
+            Watertight all the same: no conversion, no density (specs 5.1).
+            Tapping ml converts nothing; it says what these figures count.
+          */}
+          <FormSection caption="Macros pour cette quantité">
+            <FormRow label="Pour">
               <View style={styles.quantityRow}>
-                <TextInput
+                <FormInput
                   value={draft.refQty === 0 ? '' : String(draft.refQty).replace('.', ',')}
                   onChangeText={(text) =>
                     setDraft((current) => ({ ...current, refQty: parseDecimal(text) ?? 0 }))
@@ -226,95 +227,41 @@ export function FoodEditorScreen({ foodId }: { foodId: FoodId | null }) {
                   keyboardType="decimal-pad"
                   selectTextOnFocus
                   accessibilityLabel="Quantité de référence"
-                  style={[inputStyle(theme), styles.quantityInput]}
                 />
-
-                <View style={styles.segments}>
-                  {(['g', 'ml'] as BaseUnit[]).map((unit) => (
-                    <Pressable
-                      key={unit}
-                      onPress={() => setDraft((current) => ({ ...current, baseUnit: unit }))}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: draft.baseUnit === unit }}
-                      style={[
-                        styles.segment,
-                        {
-                          backgroundColor:
-                            draft.baseUnit === unit
-                              ? theme.colors.accent
-                              : theme.colors.background,
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={{
-                          color:
-                            draft.baseUnit === unit
-                              ? theme.colors.onAccent
-                              : theme.colors.text,
-                          fontSize: 16,
-                        }}
-                      >
-                        {unit}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
+                <UnitToggle
+                  unit={draft.baseUnit}
+                  onChange={(baseUnit) => setDraft((current) => ({ ...current, baseUnit }))}
+                />
               </View>
-            </Labelled>
+            </FormRow>
 
-            {/*
-              The four side by side, in the order they are read everywhere
-              else. Stacked, they made a column of four identical boxes that
-              had to be labelled to be told apart and scrolled to be checked;
-              in a row, the whole answer is one glance and one tab away.
-
-              No coloured dots here, unlike the block that DISPLAYS them: a
-              colour tells four figures apart at a glance, and glancing is not
-              what one does at a form. Here the label is read, then typed into.
-            */}
-            <View style={styles.macroRow}>
-              <MacroField
-                label="Protéines"
-                unit="g"
-                value={draft.macros.protein}
-                onChange={(text) => setMacro('protein', text)}
+            <FormRow>
+              <MacroFields
+                values={{
+                  protein: show(draft.macros.protein),
+                  carbs: show(draft.macros.carbs),
+                  fat: show(draft.macros.fat),
+                  kcal: show(draft.macros.kcal),
+                }}
+                onChange={setMacro}
               />
-              <MacroField
-                label="Glucides"
-                unit="g"
-                value={draft.macros.carbs}
-                onChange={(text) => setMacro('carbs', text)}
-              />
-              <MacroField
-                label="Lipides"
-                unit="g"
-                value={draft.macros.fat}
-                onChange={(text) => setMacro('fat', text)}
-              />
-              <MacroField
-                label="Calories"
-                unit="kcal"
-                value={draft.macros.kcal}
-                onChange={(text) => setMacro('kcal', text)}
-              />
-            </View>
+            </FormRow>
 
             {warn ? (
-              <Text style={[styles.warning, { color: theme.colors.warning }]}>
-                Les macros saisies donnent {formatKcal(theoretical)} kcal, soit plus
-                de 10 % d’écart. La valeur saisie est conservée telle quelle.
-              </Text>
+              <FormRow>
+                <Text style={[styles.warning, { color: theme.colors.warning }]}>
+                  Les macros saisies donnent {formatKcal(theoretical)} kcal, soit plus
+                  de 10 % d’écart. La valeur saisie est conservée telle quelle.
+                </Text>
+              </FormRow>
             ) : null}
-          </View>
+          </FormSection>
 
-          <View style={[styles.card, cardStyle(theme)]}>
-            <PortionEditor
-              portions={draft.portions}
-              baseUnit={draft.baseUnit}
-              onChange={(portions) => setDraft((current) => ({ ...current, portions }))}
-            />
-          </View>
+          <PortionEditor
+            portions={draft.portions}
+            baseUnit={draft.baseUnit}
+            onChange={(portions) => setDraft((current) => ({ ...current, portions }))}
+          />
 
           {problems.length === 0 ? null : (
             <View style={styles.problems}>
@@ -361,146 +308,11 @@ export function FoodEditorScreen({ foodId }: { foodId: FoodId | null }) {
   );
 }
 
-function Labelled({ label, children }: { label: string; children: React.ReactNode }) {
-  const theme = useTheme();
-  return (
-    <View style={styles.field}>
-      <Text style={[styles.label, { color: theme.colors.textMuted }]}>{label}</Text>
-      {children}
-    </View>
-  );
-}
-
-/** One of the four columns: its name above, the box to type in below. */
-function MacroField({
-  label,
-  unit,
-  value,
-  onChange,
-}: {
-  label: string;
-  unit: string;
-  value: number;
-  onChange: (text: string) => void;
-}) {
-  const theme = useTheme();
-  return (
-    <View style={styles.macroField}>
-      <Text
-        style={[styles.macroLabel, { color: theme.colors.textMuted }]}
-        numberOfLines={1}
-        // Four names in a row on a narrow screen: shrinking one is better than
-        // cutting it, since what is cut is the unit at the end.
-        adjustsFontSizeToFit
-      >
-        {label}
-      </Text>
-      <MacroInput value={value} unit={unit} onChange={onChange} />
-    </View>
-  );
-}
-
-/**
- * The box, with its unit inside it rather than in the label above.
- *
- * A unit is part of the value, not part of the question: "Protéines" is what
- * is being asked, "g" is what the answer is counted in. Inside, it also stops
- * the label having to carry a parenthesis on a line four names wide.
- *
- * The field's chrome therefore belongs to the row that holds both, and the
- * text input inside it is bare -- otherwise there would be a box in a box,
- * which is the mistake the header star had just made.
- */
-function MacroInput({
-  value,
-  unit,
-  onChange,
-}: {
-  value: number;
-  unit: string;
-  onChange: (text: string) => void;
-}) {
-  const theme = useTheme();
-  return (
-    <View
-      style={[
-        styles.input,
-        styles.macroBox,
-        { backgroundColor: theme.colors.background },
-      ]}
-    >
-      <TextInput
-        value={value === 0 ? '' : String(value).replace('.', ',')}
-        onChangeText={onChange}
-        placeholder="0"
-        placeholderTextColor={theme.colors.textFaint}
-        keyboardType="decimal-pad"
-        selectTextOnFocus
-        // Right against its unit, the way a figure sits beside one anywhere
-        // else in this application, and the way iOS aligns a value in a form.
-        style={[styles.macroValue, { color: theme.colors.text }]}
-      />
-      <Text style={[styles.macroUnit, { color: theme.colors.textMuted }]}>{unit}</Text>
-    </View>
-  );
-}
-
-function cardStyle(theme: ReturnType<typeof useTheme>) {
-  return [
-    {
-      backgroundColor: theme.colors.surface,
-      borderColor: theme.colors.border,
-      borderRadius: theme.radius.lg,
-    },
-    theme.shadow,
-  ];
-}
-
-/**
- * FILLED, NOT OUTLINED, which is what iOS actually does.
- *
- * A hairline rectangle around a field is a web idiom; the system draws a soft
- * fill and no border at all, and lets the fill say "you can type here". The
- * fill is the PAGE colour on a card: the field then reads as recessed into the
- * card rather than as another box drawn on top of it, and it needs no token of
- * its own to work in the dark, where the page is darker than the card too.
- */
-function inputStyle(theme: ReturnType<typeof useTheme>) {
-  return [styles.input, { color: theme.colors.text, backgroundColor: theme.colors.background }];
-}
-
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   content: { padding: 16, gap: 16, paddingBottom: 56 },
-  card: { borderWidth: StyleSheet.hairlineWidth, padding: 16, gap: 14 },
-  field: { gap: 6 },
-  label: { fontSize: 13 },
   // The number takes the room; the unit takes what it needs.
   quantityRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  quantityInput: { flex: 1 },
-  macroRow: { flexDirection: 'row', gap: 8 },
-  macroField: { flex: 1, gap: 6 },
-  // Centred over the box it names, now that it is a name and not a name with
-  // a unit hanging off it.
-  macroLabel: { fontSize: 12, textAlign: 'center' },
-  // The box is the field; what is inside it must draw nothing of its own.
-  macroBox: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, gap: 3 },
-  macroValue: { flex: 1, fontSize: 17, textAlign: 'right', padding: 0 },
-  macroUnit: { fontSize: 12 },
-  input: {
-    fontSize: 17,
-    paddingVertical: 11,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-  },
-  segments: { flexDirection: 'row', gap: 8 },
-  // The same fill as the fields beside it: outlined pills next to filled
-  // boxes read as two different kinds of control, which they are not.
-  segment: {
-    paddingVertical: 11,
-    paddingHorizontal: 18,
-    borderRadius: 10,
-  },
   warning: { fontSize: 13, lineHeight: 18 },
   problems: { gap: 4 },
   problem: { fontSize: 13, lineHeight: 18 },
