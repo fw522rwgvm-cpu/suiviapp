@@ -1,5 +1,5 @@
 import type { BaseUnit, FoodId } from '@/core/db/schema';
-import { formatQuantity } from '@/core/format';
+import { formatMacro, formatQuantity } from '@/core/format';
 import { formatPortionCount } from '../components/portion-text';
 import { totalOf, type Macros } from './macros';
 import type { QuantityChoice } from './portions';
@@ -34,31 +34,48 @@ export type PendingEntry =
     }
   | { kind: 'free'; name: string; macros: Macros };
 
-/** What this line will contribute. Derived, never stored (D9). */
-export function pendingEntryKcal(entry: PendingEntry): number {
+/**
+ * What this line will actually contribute. Derived, never stored (D9).
+ *
+ * A free entry is 100 units of a virtual food whose macros for 100 are the
+ * values typed in, so its contribution IS those values — the same expression
+ * as everything else, with no special case (D5/R2).
+ */
+export function pendingEntryMacros(entry: PendingEntry): Macros {
   return entry.kind === 'free'
-    ? entry.macros.kcal
-    : totalOf(entry.reference, entry.quantity.baseQuantity).kcal;
+    ? entry.macros
+    : totalOf(entry.reference, entry.quantity.baseQuantity);
+}
+
+export function pendingEntryKcal(entry: PendingEntry): number {
+  return pendingEntryMacros(entry).kcal;
 }
 
 /**
- * How the line reads under its name: "2 tranches · 50 g", or the macros of a
- * free entry — which has no quantity anyone typed, so showing one would be
- * showing the storage form.
+ * How the line reads under its name: the quantity when there is one, then the
+ * three macros.
+ *
+ * The figures are what this line CONTRIBUTES, not what the food is worth for
+ * 100 — a basket is a decision about a meal, and the only numbers worth
+ * showing before a decision are the ones about to be committed.
+ *
+ * A free entry has no quantity anyone typed: it is stored as 100 units of a
+ * virtual food (D5/R2), and showing "100 g" would be showing the storage form.
+ * So it starts straight at the macros. The one presentational special case
+ * free entry costs, as slice 1 already found.
  */
 export function describePendingEntry(entry: PendingEntry): string {
-  if (entry.kind === 'free') {
-    const { protein, carbs, fat } = entry.macros;
-    return `P ${round(protein)} · G ${round(carbs)} · L ${round(fat)}`;
-  }
+  const { protein, carbs, fat } = pendingEntryMacros(entry);
+  const macros = `P ${formatMacro(protein)} · G ${formatMacro(carbs)} · L ${formatMacro(fat)}`;
+
+  if (entry.kind === 'free') return macros;
 
   const { baseQuantity, portion } = entry.quantity;
   const amount = formatQuantity(baseQuantity, entry.baseUnit);
-  return portion === null
-    ? amount
-    : `${formatPortionCount(portion.count, portion.name)} · ${amount}`;
-}
+  const quantity =
+    portion === null
+      ? amount
+      : `${formatPortionCount(portion.count, portion.name)} · ${amount}`;
 
-function round(value: number): string {
-  return String(Math.round(value * 10) / 10).replace('.', ',');
+  return `${quantity} · ${macros}`;
 }

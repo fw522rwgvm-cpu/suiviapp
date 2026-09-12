@@ -29,13 +29,13 @@ export function PendingEntryRow({
         <Text style={[styles.name, { color: theme.colors.text }]} numberOfLines={1}>
           {entry.name}
         </Text>
-        <Text style={[styles.detail, { color: theme.colors.textMuted }]} numberOfLines={1}>
+        <Text style={[styles.detail, { color: theme.colors.textMuted }]} numberOfLines={2}>
           {describePendingEntry(entry)}
         </Text>
       </View>
 
       <Text style={[styles.kcal, { color: theme.colors.text }]}>
-        {formatKcal(pendingEntryKcal(entry))}
+        {formatKcal(pendingEntryKcal(entry))} kcal
       </Text>
 
       <Pressable
