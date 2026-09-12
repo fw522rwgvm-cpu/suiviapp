@@ -1,110 +1,78 @@
-import { StyleSheet, Text, View } from 'react-native';
-import { FormInput } from '@/core/ui/form-section';
+import { StyleSheet, Text } from 'react-native';
+import { FormInput, FormRow } from '@/core/ui/form-section';
 import { useTheme } from '@/core/theme';
 
 /**
- * The four figures, typed side by side: what this food is worth.
+ * The four figures a food is worth, one question per row.
  *
- * Used by the food editor and by free entry, which ask the very same question
- * and must therefore ask it the same way. Four columns rather than four rows
- * because the whole answer then fits in one glance and one run of taps.
+ * Used by the food editor and by free entry, which ask exactly the same thing
+ * and must therefore ask it the same way — two spellings of one question get
+ * answered as if they were two.
  *
- * ## THE ONE PLACE A FIELD KEEPS A BOX OF ITS OWN
+ * A ROW EACH, not a line of four. Four boxes abreast do fit, but they are four
+ * answers crammed into the space of one, and they need boxes of their own to
+ * be told apart — a second container saying what the row already says. A row
+ * gives each its name on the left and its figure on the right: the shape of
+ * every other question in these forms, and the only one that lets a column of
+ * values be read straight down.
  *
- * Everywhere else in a form the row IS the field: a label on one side, a value
- * on the other, nothing drawn around either. That works because there is one
- * value per row and the eye reads a single column of them.
- *
- * Four of them abreast have no such column, and nothing would say where one
- * ends and the next begins, or where to tap. So each keeps a soft fill -- the
- * page colour, the material iOS uses for a field that has to show its own
- * edges, as in a search bar. A deliberate exception, stated so it is not
- * copied into rows that do not need it.
- *
- * No coloured dots, unlike the block that DISPLAYS these figures: colour tells
- * four values apart at a glance, and glancing is not what is done at a form.
- *
- * ## IT SPEAKS IN TEXT, NOT IN NUMBERS
- *
- * Its two callers hold their figures differently -- the editor as numbers on a
- * draft, free entry as the strings that were typed -- and the string is the
- * one that can be shared. A number round-tripped through a field eats the
- * comma the moment it is typed: "1," parses to 1, renders back as "1", and the
- * decimal can never be reached. So the caller keeps whatever form suits it and
- * hands over text.
+ * No coloured dots, unlike the block that DISPLAYS these figures: a colour
+ * tells four values apart at a glance, and glancing is not what is done at a
+ * form. Here the label is read, then typed into.
  */
-
-/** The four, in the order they are read everywhere else in the application. */
-const FIELDS = {
-  protein: { label: 'Protéines', unit: 'g' },
-  carbs: { label: 'Glucides', unit: 'g' },
-  fat: { label: 'Lipides', unit: 'g' },
-  kcal: { label: 'Calories', unit: 'kcal' },
-} as const;
 
 export type MacroKey = 'protein' | 'carbs' | 'fat' | 'kcal';
 
-export function MacroFields({
-  keys,
-  values,
+/**
+ * The four, in the order they are read everywhere else.
+ *
+ * Calories come last and are not a fourth macro: they are what the other three
+ * come to, which is why specs 5.1 checks the one against the others.
+ */
+export const MACRO_FIELDS: readonly { key: MacroKey; label: string; unit: string }[] = [
+  { key: 'protein', label: 'Protéines', unit: 'g' },
+  { key: 'carbs', label: 'Glucides', unit: 'g' },
+  { key: 'fat', label: 'Lipides', unit: 'g' },
+  { key: 'kcal', label: 'Calories', unit: 'kcal' },
+];
+
+/**
+ * One of them, as a row of its own so that a section can rule between them.
+ *
+ * IT SPEAKS IN TEXT, NOT IN NUMBERS. Its two callers hold their figures
+ * differently — the editor as numbers on a draft, free entry as the strings
+ * that were typed — and the string is the one that can be shared. A number
+ * round-tripped through a field eats the comma the moment it is typed: "1,"
+ * parses to 1, renders back as "1", and the decimal can never be reached.
+ */
+export function MacroFieldRow({
+  field,
+  value,
   onChange,
 }: {
-  /** Which of the four to show, in the order they should be read. */
-  keys: readonly MacroKey[];
-  values: Record<MacroKey, string>;
+  field: { key: MacroKey; label: string; unit: string };
+  value: string;
   onChange: (key: MacroKey, text: string) => void;
 }) {
   const theme = useTheme();
 
   return (
-    <View style={styles.row}>
-      {keys.map((key) => {
-        const field = FIELDS[key];
-        return (
-        <View key={key} style={styles.column}>
-          <Text
-            style={[styles.label, { color: theme.colors.textMuted }]}
-            numberOfLines={1}
-            // Four names abreast on a narrow screen: shrinking one reads
-            // better than cutting it.
-            adjustsFontSizeToFit
-          >
-            {field.label}
-          </Text>
-
-          <View style={[styles.box, { backgroundColor: theme.colors.background }]}>
-            <FormInput
-              value={values[key]}
-              onChangeText={(text) => onChange(key, text)}
-              placeholder="0"
-              keyboardType="decimal-pad"
-              selectTextOnFocus
-              accessibilityLabel={`${field.label} (${field.unit})`}
-              style={styles.value}
-            />
-            {/* Part of the value, not of the question: "Protéines" is what is
-                asked, "g" is what the answer is counted in. */}
-            <Text style={[styles.unit, { color: theme.colors.textMuted }]}>{field.unit}</Text>
-          </View>
-        </View>
-        );
-      })}
-    </View>
+    <FormRow label={field.label}>
+      <FormInput
+        value={value}
+        onChangeText={(text) => onChange(field.key, text)}
+        placeholder="0"
+        keyboardType="decimal-pad"
+        selectTextOnFocus
+        accessibilityLabel={`${field.label} (${field.unit})`}
+      />
+      {/* Part of the value, not of the question: "Protéines" is what is asked,
+          "g" is what the answer is counted in. */}
+      <Text style={[styles.unit, { color: theme.colors.textMuted }]}>{field.unit}</Text>
+    </FormRow>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', gap: 8, paddingVertical: 2 },
-  column: { flex: 1, gap: 6 },
-  label: { fontSize: 12, textAlign: 'center' },
-  box: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 8,
-    paddingVertical: 9,
-    borderRadius: 10,
-  },
-  value: { fontSize: 17 },
-  unit: { fontSize: 12 },
+  unit: { fontSize: 17 },
 });

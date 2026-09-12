@@ -22,7 +22,7 @@ import {
   type QuantityChoice,
 } from '../domain/portions';
 import { useDismiss, usePanelHeading } from '@/core/ui/overlay-panel';
-import { FormInput, FormRow, FormSection } from '@/core/ui/form-section';
+import { FormInput, FormNavigation, FormRow, FormSection } from '@/core/ui/form-section';
 import { MacroRow } from '../components/macro-row';
 import { formatPortionCount } from '../components/portion-text';
 
@@ -273,6 +273,7 @@ function QuantityForm({
   }
 
   return (
+    <FormNavigation>
     <KeyboardAvoidingView behavior="padding" style={styles.flex}>
       <ScrollView
         style={{ backgroundColor: theme.colors.background }}
@@ -369,6 +370,7 @@ function QuantityForm({
         </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>
+    </FormNavigation>
   );
 }
 

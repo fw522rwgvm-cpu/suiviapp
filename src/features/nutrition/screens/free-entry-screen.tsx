@@ -11,8 +11,8 @@ import type { LocalDate } from '@/core/date';
 import { formatKcal, parseDecimal } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import { useDismiss } from '@/core/ui/overlay-panel';
-import { FormInput, FormRow, FormSection } from '@/core/ui/form-section';
-import { MacroFields } from '../components/macro-fields';
+import { FormInput, FormNavigation, FormRow, FormSection } from '@/core/ui/form-section';
+import { MACRO_FIELDS, MacroFieldRow, type MacroKey } from '../components/macro-fields';
 import type { JournalEntryId } from '@/core/db/schema';
 import {
   useAddFreeEntry,
@@ -167,6 +167,7 @@ export function FreeEntryScreen({
   }
 
   return (
+    <FormNavigation>
     <KeyboardAvoidingView behavior="padding" style={styles.flex}>
       <ScrollView
         style={{ backgroundColor: theme.colors.background }}
@@ -192,34 +193,17 @@ export function FreeEntryScreen({
             The quantity screen is the opposite case and does focus: one field,
             already filled, where the whole point is to accept it or type over.
           */}
-          <FormRow>
-            <MacroFields
-              keys={['protein', 'carbs', 'fat']}
-              values={{
-                protein: fields.protein,
-                carbs: fields.carbs,
-                fat: fields.fat,
-                kcal: fields.kcal,
-              }}
-              onChange={(key, text) => setFields((current) => ({ ...current, [key]: text }))}
+          {MACRO_FIELDS.map((field) => (
+            <MacroFieldRow
+              key={field.key}
+              field={field}
+              value={fields[field.key]}
+              onChange={(key: MacroKey, text: string) =>
+                setFields((current) => ({ ...current, [key]: text }))
+              }
             />
-          </FormRow>
+          ))}
 
-          {/*
-            Calories on their own row here too. This screen and the food editor
-            ask the very same question, and two spellings of one question get
-            answered as if they were two.
-          */}
-          <FormRow label="Calories">
-            <FormInput
-              value={fields.kcal}
-              onChangeText={(kcal) => setFields((current) => ({ ...current, kcal }))}
-              placeholder="0"
-              keyboardType="decimal-pad"
-              selectTextOnFocus
-            />
-            <Text style={[styles.unit, { color: theme.colors.textMuted }]}>kcal</Text>
-          </FormRow>
         </FormSection>
 
         {warn ? (
@@ -257,11 +241,11 @@ export function FreeEntryScreen({
         )}
       </ScrollView>
     </KeyboardAvoidingView>
+    </FormNavigation>
   );
 }
 
 const styles = StyleSheet.create({
-  unit: { fontSize: 17 },
   flex: { flex: 1 },
   content: { padding: 16, gap: 16, paddingBottom: 56 },
   warning: { fontSize: 13, lineHeight: 18 },

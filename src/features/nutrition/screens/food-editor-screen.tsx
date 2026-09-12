@@ -28,8 +28,8 @@ import {
 } from '../domain/food-draft';
 import { hasKcalWarning, theoreticalKcal } from '../domain/macros';
 import { toCanonical } from '../domain/food-macros';
-import { FormInput, FormRow, FormSection } from '@/core/ui/form-section';
-import { MacroFields, type MacroKey } from '../components/macro-fields';
+import { FormInput, FormNavigation, FormRow, FormSection } from '@/core/ui/form-section';
+import { MACRO_FIELDS, MacroFieldRow, type MacroKey } from '../components/macro-fields';
 import { UnitToggle } from '../components/unit-toggle';
 import { PortionEditor } from '../components/portion-editor';
 import { foodProblemText } from '../components/food-problem-text';
@@ -205,6 +205,7 @@ export function FoodEditorScreen({ foodId }: { foodId: FoodId | null }) {
         }}
       />
 
+      <FormNavigation>
       <KeyboardAvoidingView behavior="padding" style={styles.flex}>
         <ScrollView
           style={{ backgroundColor: theme.colors.background }}
@@ -256,36 +257,14 @@ export function FoodEditorScreen({ foodId }: { foodId: FoodId | null }) {
               />
             </FormRow>
 
-            <FormRow>
-              <MacroFields
-                keys={['protein', 'carbs', 'fat']}
-                values={{
-                  protein: show(draft.macros.protein),
-                  carbs: show(draft.macros.carbs),
-                  fat: show(draft.macros.fat),
-                  kcal: show(draft.macros.kcal),
-                }}
+            {MACRO_FIELDS.map((field) => (
+              <MacroFieldRow
+                key={field.key}
+                field={field}
+                value={show(draft.macros[field.key])}
                 onChange={setMacro}
               />
-            </FormRow>
-
-            {/*
-              Calories on their own row, and not as a fourth column: they are
-              not a fourth macro. They are what the other three come to, which
-              is why specs 5.1 checks one against the others — a figure that
-              can disagree with its neighbours does not belong in a line that
-              reads as one answer.
-            */}
-            <FormRow label="Calories">
-              <FormInput
-                value={show(draft.macros.kcal)}
-                onChangeText={(text) => setMacro('kcal', text)}
-                placeholder="0"
-                keyboardType="decimal-pad"
-                selectTextOnFocus
-              />
-              <Text style={[styles.unit, { color: theme.colors.textMuted }]}>kcal</Text>
-            </FormRow>
+            ))}
 
             {warn ? (
               <FormRow>
@@ -344,6 +323,7 @@ export function FoodEditorScreen({ foodId }: { foodId: FoodId | null }) {
           )}
         </ScrollView>
       </KeyboardAvoidingView>
+      </FormNavigation>
     </>
   );
 }
@@ -352,7 +332,6 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   content: { padding: 16, gap: 16, paddingBottom: 56 },
   // Beside the figure it counts, in the row's own trailing group.
-  unit: { fontSize: 17 },
   warning: { fontSize: 13, lineHeight: 18 },
   problems: { gap: 4 },
   problem: { fontSize: 13, lineHeight: 18 },
