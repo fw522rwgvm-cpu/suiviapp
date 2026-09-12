@@ -865,6 +865,22 @@ bêtas d'iOS 26 n'ont pas l'API et plantent** à la création d'une vue en verre
 Une vérification de version seule leur offrirait un crash. Le repli, lui,
 peint : ce n'est pas du verre.
 
+**Un `InputAccessoryView` ne se partage pas entre plusieurs champs.** Sa
+documentation le presente comme une barre qu'on relie a plusieurs `TextInput`
+par un `nativeID`. C'est faux, et la source de React Native le dit :
+`RCTInputAccessoryComponentView`, en entrant dans la fenetre, cherche **le
+premier** champ portant cet identifiant et lui attribue la barre. Une vue, un
+champ. Une barre partagee par quatre champs s'affiche donc au-dessus d'un seul
+— constate sur l'appareil comme « les chevrons ne s'affichent pas ».
+
+Remede : **une barre par champ**, chacune avec son identifiant, toutes
+dessinant la meme chose ; seul l'etat des chevrons change, selon la place du
+champ dans le formulaire. Et la barre se rend **apres** le champ dans l'arbre,
+la vue native se liant a l'entree dans la fenetre : le champ doit y etre deja.
+
+Corollaire de mise en page : l'accessoire est pose en absolu et se dimensionne
+sur son contenu, donc son contenu doit declarer une hauteur.
+
 **Jamais de `GlassButton` dans un en-tête natif.** Sur iOS 26 la barre pose
 déjà son propre matériau derrière ce qu'on lui donne : un bouton de verre
 dedans, c'est du verre dans du verre, et ça se voit — un bouton dans un bouton.

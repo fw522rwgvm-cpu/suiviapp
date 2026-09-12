@@ -29,16 +29,16 @@ import { ListSeparator } from './list-separator';
  *
  * ## WHAT IS NATIVE HERE, AND WHAT IS NOT
  *
- * `TextInput` IS the native control -- it is a UITextField, and everything it
- * brings comes for free: the keyboard, selection, dictation, autocorrect, the
- * system's own text interactions.
+ * `TextInput` IS the native control -- a UITextField, with the keyboard,
+ * selection, dictation and text interactions that come with it. The accessory
+ * bar above the keyboard is native too: iOS docks it, moves it and takes it
+ * away with the keyboard.
  *
  * The GROUP is not. React Native binds nothing to UITableView, and a grouped
  * inset form is a table view with a style; there is no component, in the
  * framework or in the libraries section 5 allows, that IS one. So this
  * reproduces the idiom with plain views, as the swipe gestures reproduce
- * theirs: a rounded card, rows of a single height, a hairline between them,
- * and a quiet caption above. Said plainly rather than left to be assumed.
+ * theirs. Said plainly rather than left to be assumed.
  *
  * ## Why the field has no box of its own
  *
@@ -53,22 +53,37 @@ import { ListSeparator } from './list-separator';
  * edge, which is the whole reason the idiom exists.
  */
 
+interface FormNav {
+  /** Every field that has signed in, in the order they were mounted. */
+  fields: readonly RefObject<TextInput | null>[];
+  register(entry: RefObject<TextInput | null>): () => void;
+}
+
+/** Absent outside a FormNavigation, where fields simply get no accessory. */
+const FormNavContext = createContext<FormNav | null>(null);
+
 /**
  * Chevrons above the keyboard, to walk a form without reaching for it.
  *
- * ## THIS ONE IS ACTUALLY NATIVE
- *
- * `InputAccessoryView` is a real accessory view: iOS docks it to the top of
- * the keyboard, moves it with the keyboard, and takes it away with it. What is
- * drawn inside is ours -- two chevrons and a way out -- but the bar itself is
- * the system's, unlike the grouped rows below, which only look like theirs.
- *
- * ## Why a form needs it at all
+ * ## Why a form needs them at all
  *
  * Every figure in these forms is typed on a decimal pad, and a decimal pad has
  * no return key -- nothing on it can move to the next field or put it away.
  * Without an accessory, a four-row form means four taps outside the keyboard
  * and four taps back in.
+ *
+ * ## ONE BAR PER FIELD, WHICH IS NOT WHAT THE DOCUMENTATION SUGGESTS
+ *
+ * An InputAccessoryView is presented as something several inputs share through
+ * a nativeID. They cannot, and the reason is in React Native's own source:
+ * RCTInputAccessoryComponentView, on entering the window, looks for THE FIRST
+ * text input carrying that id and gives the bar to that one. One view, one
+ * field. A bar shared by four fields therefore appears above exactly one of
+ * them -- which is what happened, and why this is written the way it is.
+ *
+ * So each field owns its own accessory, with its own id, and they all draw the
+ * same bar. What differs is what the chevrons may do, which depends on where
+ * that field stands in the form.
  *
  * ## How it knows what "next" is
  *
@@ -76,126 +91,23 @@ import { ListSeparator } from './list-separator';
  * written, so the order in the source is the order on screen -- which is the
  * order a form is filled in. Nothing has to number them, and a row added later
  * takes its place by being written in its place.
- *
- * A screen with no fields renders no bar: `count` stays at zero and the
- * accessory is never mounted.
  */
 export function FormNavigation({ children }: { children: ReactNode }) {
-  const theme = useTheme();
-  // useId spells its ids with colons; this one crosses to a native view as a
-  // plain string, and a punctuation-free one has nothing to be tripped over by.
-  const id = `form${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
+  // State, not a ref: a field's position decides what its own bar may do, and
+  // that has to be known while rendering, not only while handling a tap.
+  const [fields, setFields] = useState<readonly RefObject<TextInput | null>[]>([]);
 
-  const fields = useRef<RefObject<TextInput | null>[]>([]);
-  const [count, setCount] = useState(0);
-  const [position, setPosition] = useState(-1);
-
-  const navigation: FormNav = {
-    id,
-    register(entry) {
-      fields.current = [...fields.current, entry];
-      setCount(fields.current.length);
-      return () => {
-        fields.current = fields.current.filter((other) => other !== entry);
-        setCount(fields.current.length);
-      };
-    },
-    focused(entry) {
-      setPosition(fields.current.indexOf(entry));
-    },
-  };
-
-  function move(step: number): void {
-    const next = fields.current[position + step];
-    next?.current?.focus();
-  }
+  const register = useRef((entry: RefObject<TextInput | null>) => {
+    setFields((current) => [...current, entry]);
+    return () => setFields((current) => current.filter((other) => other !== entry));
+  });
 
   return (
-    <FormNavContext.Provider value={navigation}>
+    <FormNavContext.Provider value={{ fields, register: register.current }}>
       {children}
-
-      {count === 0 ? null : (
-        <InputAccessoryView nativeID={id}>
-          <View
-            style={[
-              styles.bar,
-              {
-                backgroundColor: theme.colors.surface,
-                borderTopColor: theme.colors.border,
-              },
-            ]}
-          >
-            <Arrow
-              symbol="chevron.up"
-              label="Champ précédent"
-              disabled={position <= 0}
-              onPress={() => move(-1)}
-            />
-            <Arrow
-              symbol="chevron.down"
-              label="Champ suivant"
-              disabled={position < 0 || position >= count - 1}
-              onPress={() => move(1)}
-            />
-
-            <View style={styles.spacer} />
-
-            <Pressable
-              onPress={() => Keyboard.dismiss()}
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel="Fermer le clavier"
-            >
-              <Text style={[styles.done, { color: theme.colors.accent }]}>OK</Text>
-            </Pressable>
-          </View>
-        </InputAccessoryView>
-      )}
     </FormNavContext.Provider>
   );
 }
-
-function Arrow({
-  symbol,
-  label,
-  disabled,
-  onPress,
-}: {
-  symbol: 'chevron.up' | 'chevron.down';
-  label: string;
-  disabled: boolean;
-  onPress: () => void;
-}) {
-  const theme = useTheme();
-
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      hitSlop={10}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled }}
-      style={styles.arrow}
-    >
-      <SymbolView
-        name={symbol}
-        size={18}
-        tintColor={disabled ? theme.colors.textFaint : theme.colors.accent}
-      />
-    </Pressable>
-  );
-}
-
-interface FormNav {
-  /** Ties every field to the one accessory view this form owns. */
-  id: string;
-  register(entry: RefObject<TextInput | null>): () => void;
-  focused(entry: RefObject<TextInput | null>): void;
-}
-
-/** Absent outside a FormNavigation, where fields simply get no accessory. */
-const FormNavContext = createContext<FormNav | null>(null);
 
 export function FormSection({
   caption,
@@ -249,13 +161,7 @@ export function FormSection({
  * control spanning the row needs -- a segmented control, or a line of figures
  * that belong together.
  */
-export function FormRow({
-  label,
-  children,
-}: {
-  label?: string;
-  children: ReactNode;
-}) {
+export function FormRow({ label, children }: { label?: string; children: ReactNode }) {
   const theme = useTheme();
 
   return (
@@ -274,23 +180,17 @@ export function FormRow({
  * The field inside a row: bare, right-aligned, and drawing nothing.
  *
  * Takes everything TextInput takes, so a caller still chooses its keyboard and
- * its placeholder; it only fixes what must not vary from row to row.
+ * its placeholder; it only fixes what must not vary from row to row, and hangs
+ * this field's own accessory bar under it.
  */
-export function FormInput({
-  style,
-  ref,
-  ...props
-}: TextInputProps & {
-  /**
-   * Plain prop rather than forwardRef: React 19 passes one through on its own,
-   * and the quantity screen needs it to focus and select the pre-filled value,
-   * which is the whole of specs 8.4.
-   */
-  ref?: Ref<TextInput>;
-}) {
+export function FormInput({ style, ref, ...props }: TextInputProps & { ref?: Ref<TextInput> }) {
   const theme = useTheme();
   const navigation = useContext(FormNavContext);
   const own = useRef<TextInput | null>(null);
+
+  // Punctuation-free: this crosses to a native view as a plain string, and
+  // useId spells its own with colons.
+  const accessoryId = `field${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
 
   useEffect(() => {
     // Signing in on mount is what fixes the order: React mounts these in the
@@ -302,21 +202,100 @@ export function FormInput({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const position = navigation === null ? -1 : navigation.fields.indexOf(own);
+
+  function move(step: number): void {
+    navigation?.fields[position + step]?.current?.focus();
+  }
+
   return (
-    <TextInput
-      ref={(instance) => {
-        own.current = instance;
-        // The caller's ref is served as well as ours: the quantity screen
-        // needs one to focus and select the pre-filled value (specs 8.4).
-        if (typeof ref === 'function') ref(instance);
-        else if (ref !== null && ref !== undefined) ref.current = instance;
-      }}
-      inputAccessoryViewID={navigation?.id}
-      onFocus={() => navigation?.focused(own)}
-      placeholderTextColor={theme.colors.textFaint}
-      {...props}
-      style={[styles.input, { color: theme.colors.text }, style]}
-    />
+    <>
+      <TextInput
+        ref={(instance) => {
+          own.current = instance;
+          // The caller's ref is served as well as ours: the quantity screen
+          // needs one to focus and select the pre-filled value (specs 8.4).
+          if (typeof ref === 'function') ref(instance);
+          else if (ref !== null && ref !== undefined) ref.current = instance;
+        }}
+        inputAccessoryViewID={navigation === null ? undefined : accessoryId}
+        placeholderTextColor={theme.colors.textFaint}
+        {...props}
+        style={[styles.input, { color: theme.colors.text }, style]}
+      />
+
+      {/*
+        AFTER the field, deliberately. The native view binds itself on entering
+        the window by looking for a text input carrying its id, so the field
+        has to be in the window already -- which means mounted first.
+      */}
+      {navigation === null || position < 0 ? null : (
+        <InputAccessoryView nativeID={accessoryId}>
+          <View
+            style={[
+              styles.bar,
+              { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border },
+            ]}
+          >
+            <Arrow
+              symbol="chevron.up"
+              label="Champ précédent"
+              disabled={position === 0}
+              onPress={() => move(-1)}
+            />
+            <Arrow
+              symbol="chevron.down"
+              label="Champ suivant"
+              disabled={position === navigation.fields.length - 1}
+              onPress={() => move(1)}
+            />
+
+            <View style={styles.spacer} />
+
+            <Pressable
+              onPress={() => Keyboard.dismiss()}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Fermer le clavier"
+            >
+              <Text style={[styles.done, { color: theme.colors.accent }]}>OK</Text>
+            </Pressable>
+          </View>
+        </InputAccessoryView>
+      )}
+    </>
+  );
+}
+
+function Arrow({
+  symbol,
+  label,
+  disabled,
+  onPress,
+}: {
+  symbol: 'chevron.up' | 'chevron.down';
+  label: string;
+  disabled: boolean;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      hitSlop={10}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled }}
+      style={styles.arrow}
+    >
+      <SymbolView
+        name={symbol}
+        size={18}
+        tintColor={disabled ? theme.colors.textFaint : theme.colors.accent}
+      />
+    </Pressable>
   );
 }
 
@@ -326,7 +305,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 18,
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    // An explicit height: the accessory is laid out absolutely and takes its
+    // size from what is inside it, so something has to say how tall it is.
+    height: 44,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   arrow: { paddingVertical: 4 },
