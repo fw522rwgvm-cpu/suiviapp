@@ -595,6 +595,21 @@ portions qu'il propose aujourd'hui.
 
 ### Trois pièges d'interface, établis par l'échec sur l'appareil
 
+**Sous un en-tête transparent, le haut d'une `ScrollView` n'est pas zéro.**
+`contentInsetAdjustmentBehavior="automatic"` pousse le contenu sous la barre en
+posant `adjustedContentInset`, et la position de repos vaut **moins** cet
+encart. `scrollTo({ y: 0 })` atterrit donc une hauteur de barre trop bas.
+
+Et la valeur ne se lit pas depuis JavaScript : l'événement de défilement
+transporte `contentInset`, que l'ajustement automatique laisse à zéro —
+`RCTScrollView` envoie `scrollView.contentInset`, pas `adjustedContentInset`.
+C'est le navigateur qui la connaît, et `useHeaderHeight()` donne le même nombre,
+zone sûre comprise. Viser `-headerHeight`.
+
+L'autre voie — couper l'ajustement et poser la marge à la main — est pire :
+elle supprime aussi l'encart **du bas**, et le contenu passe sous la barre
+d'onglets.
+
 **Ne jamais échanger le type d'élément d'une page selon son état de
 chargement.** Rendre une `View` en attente puis une `ScrollView` une fois
 chargée fait échanger un type d'élément contre un autre : React démonte le

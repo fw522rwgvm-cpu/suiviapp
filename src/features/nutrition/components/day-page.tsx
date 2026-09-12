@@ -1,3 +1,4 @@
+import { useHeaderHeight } from 'expo-router/build/react-navigation/elements';
 import { useEffect, useRef } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { LocalDate } from '@/core/date';
@@ -50,6 +51,25 @@ export function DayPage({
 }) {
   const theme = useTheme();
   const scroll = useRef<ScrollView>(null);
+  /**
+   * WHERE THE TOP ACTUALLY IS.
+   *
+   * With contentInsetAdjustmentBehavior="automatic" the system pushes the
+   * content below the transparent header by setting adjustedContentInset, and
+   * the resting position is then MINUS that inset — not zero. scrollTo({ y: 0 })
+   * therefore lands a header's height too low, which is what "not quite at the
+   * top" was.
+   *
+   * The value cannot be read back from JavaScript: the scroll event carries
+   * contentInset, which automatic adjustment leaves at zero (RCTScrollView
+   * sends scrollView.contentInset, not adjustedContentInset). The navigator
+   * knows it, though, and that is the same number — safe area plus bar.
+   *
+   * Declaring the padding by hand instead was the other way, and it is worse:
+   * switching the behaviour off would also drop the BOTTOM inset, and the
+   * content would run under the tab bar.
+   */
+  const headerHeight = useHeaderHeight();
   const day = useDay(date);
   const totals = useDayTotals(date);
   const mealTotals = useMealTotals(date);
@@ -88,8 +108,8 @@ export function DayPage({
    */
   useEffect(() => {
     if (!active) return;
-    scroll.current?.scrollTo({ y: 0, animated: false });
-  }, [active]);
+    scroll.current?.scrollTo({ y: -headerHeight, animated: false });
+  }, [active, headerHeight]);
 
   return (
     /**
