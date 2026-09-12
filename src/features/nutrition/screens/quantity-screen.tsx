@@ -21,7 +21,7 @@ import {
   portionQuantity,
   type QuantityChoice,
 } from '../domain/portions';
-import { useDismiss } from '@/core/ui/overlay-panel';
+import { useDismiss, usePanelHeading } from '@/core/ui/overlay-panel';
 import { MacroRow } from '../components/macro-row';
 import { formatPortionCount } from '../components/portion-text';
 
@@ -179,6 +179,11 @@ function QuantityForm({
 }) {
   const theme = useTheme();
 
+  // Named at the top of the window, on the line the actions are on, rather
+  // than as the first thing in the scroll. What is being weighed should not be
+  // something you can scroll away from while you weigh it.
+  usePanelHeading(title, subtitle);
+
   /** The portion in use, or null for base units. */
   const [portionName, setPortionName] = useState<string | null>(null);
   const [text, setText] = useState('');
@@ -274,13 +279,6 @@ function QuantityForm({
         keyboardShouldPersistTaps="handled"
         contentInsetAdjustmentBehavior="automatic"
       >
-        <View style={styles.identity}>
-          <Text style={[styles.title, { color: theme.colors.text }]}>{title}</Text>
-          {subtitle === null ? null : (
-            <Text style={[styles.subtitle, { color: theme.colors.textMuted }]}>{subtitle}</Text>
-          )}
-        </View>
-
         <View
           style={[
             styles.card,
@@ -422,9 +420,6 @@ function show(value: number): string {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   content: { padding: 16, gap: 16, paddingBottom: 56 },
-  identity: { gap: 3, paddingHorizontal: 2 },
-  title: { fontSize: 24, fontWeight: '700', letterSpacing: -0.3 },
-  subtitle: { fontSize: 15 },
   card: { borderWidth: StyleSheet.hairlineWidth, padding: 16, gap: 14 },
   amountRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   amount: {

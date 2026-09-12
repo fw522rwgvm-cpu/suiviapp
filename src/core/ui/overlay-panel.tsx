@@ -1,6 +1,12 @@
 import { useRouter } from 'expo-router';
-import { createContext, useContext, useEffect, type ReactNode } from 'react';
-import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from 'react';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
@@ -55,6 +61,21 @@ import { useTheme } from '@/core/theme';
  * finger happened to land. The top strip is unambiguous — nothing there
  * scrolls — and it is where the hand already goes to dismiss a sheet.
  *
+ * ## THE HEADING COMES UP FROM INSIDE, LIKE THE DISMISSAL GOES DOWN
+ *
+ * What a panel is about is known by the screen in it, not by the route that
+ * opened it: the quantity screen learns the food's name from a query of its
+ * own. So a child announces its heading through a context, exactly as the
+ * closing function is published downward through one.
+ *
+ * The alternative was to have each caller run the same query again to label a
+ * window over a screen already holding the answer — two sources for one name,
+ * free to disagree for a frame.
+ *
+ * It sits on the actions line rather than above it, because that line is the
+ * only place in a panel that is not scrollable content: a title that scrolls
+ * away is a title you have to scroll back for.
+ *
  * Lives in core/ui with three real users on the day it is written — the
  * calendar, the quantity editor and free entry.
  */
@@ -81,6 +102,36 @@ export function useDismiss(): () => void {
   return inPanel ?? (() => router.back());
 }
 
+/** What the panel says it is about. Announced by whatever is inside it. */
+export interface PanelHeading {
+  title: string;
+  subtitle: string | null;
+}
+
+const HeadingContext = createContext<((heading: PanelHeading | null) => void) | null>(null);
+
+/**
+ * Names the panel this is inside, for as long as it is inside it.
+ *
+ * Takes null while the name is still being read, so a window never shows a
+ * title it does not have yet. Withdrawn on the way out, so the next step in
+ * the same panel does not inherit it.
+ *
+ * Outside a panel it does nothing at all, which is what lets the same screen
+ * serve as a step inside the add modal.
+ */
+export function usePanelHeading(title: string | null, subtitle: string | null): void {
+  const announce = useContext(HeadingContext);
+
+  useEffect(() => {
+    if (announce === null) return;
+    announce(title === null || title === '' ? null : { title, subtitle });
+    return () => announce(null);
+    // The pieces, not the object: a fresh object every render would announce
+    // the same name for ever.
+  }, [announce, title, subtitle]);
+}
+
 export function OverlayPanel({
   onDismiss,
   left,
@@ -98,6 +149,9 @@ export function OverlayPanel({
   const theme = useTheme();
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+
+  /** Announced from inside, through the context below. Absent until it is. */
+  const [heading, setHeading] = useState<PanelHeading | null>(null);
 
   // 0 is fully below the screen, 1 is open.
   const progress = useSharedValue(0);
@@ -143,6 +197,7 @@ export function OverlayPanel({
 
   return (
     <DismissContext.Provider value={close}>
+      <HeadingContext.Provider value={setHeading}>
       <View style={{ width, height }}>
         {/* Tapping what is still visible closes, as tapping outside should. */}
         <Pressable style={styles.fill} onPress={close} accessibilityLabel="Fermer">
@@ -176,6 +231,31 @@ export function OverlayPanel({
               {/* A spacer keeps the trailing action trailing when there is no
                   leading one, without a second layout branch. */}
               {left ?? <View />}
+
+              {/*
+                Between the two actions and sharing their line, so the name is
+                read where the eye already is. Two lines, the second quieter:
+                a brand qualifies a name, it does not stand beside it.
+              */}
+              {heading === null ? null : (
+                <View style={styles.heading}>
+                  <Text
+                    style={[styles.title, { color: theme.colors.text }]}
+                    numberOfLines={1}
+                  >
+                    {heading.title}
+                  </Text>
+                  {heading.subtitle === null || heading.subtitle === '' ? null : (
+                    <Text
+                      style={[styles.subtitle, { color: theme.colors.textMuted }]}
+                      numberOfLines={1}
+                    >
+                      {heading.subtitle}
+                    </Text>
+                  )}
+                </View>
+              )}
+
               {right ?? <View />}
             </View>
           </GestureDetector>
@@ -183,6 +263,7 @@ export function OverlayPanel({
           <View style={styles.body}>{children}</View>
         </Animated.View>
       </View>
+      </HeadingContext.Provider>
     </DismissContext.Provider>
   );
 }
@@ -197,6 +278,11 @@ const styles = StyleSheet.create({
     bottom: 0,
     paddingTop: 10,
   },
+  // It takes what the two actions leave, and no more: a long name must push
+  // neither of them off, since one of them is the way out.
+  heading: { flex: 1, gap: 1, paddingHorizontal: 12 },
+  title: { fontSize: 16, fontWeight: '600' },
+  subtitle: { fontSize: 12 },
   actions: {
     flexDirection: 'row',
     justifyContent: 'space-between',

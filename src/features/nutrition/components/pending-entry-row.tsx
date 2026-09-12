@@ -79,20 +79,23 @@ export function PendingEntryRow({ entry }: { entry: PendingEntry }) {
   );
 }
 
+// The same sizes as a journal row, to the point. These two lists hold the
+// same thing a moment apart -- one about to be written, one written -- and a
+// line that changed size on being confirmed would read as a different line.
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingHorizontal: 16,
     gap: 12,
   },
-  identity: { flex: 1, gap: 2 },
+  identity: { flex: 1, gap: 1 },
   // The name may shrink; the quantity never does, or it stops being readable
   // at exactly the moment it matters.
   heading: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
-  name: { flexShrink: 1, fontSize: 16 },
-  quantity: { fontSize: 16 },
-  detail: { fontSize: 13 },
-  kcal: { fontSize: 16, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  name: { flexShrink: 1, fontSize: 14 },
+  quantity: { fontSize: 14 },
+  detail: { fontSize: 11 },
+  kcal: { fontSize: 14, fontWeight: '600', fontVariant: ['tabular-nums'] },
 });
