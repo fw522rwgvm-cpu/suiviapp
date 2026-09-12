@@ -72,11 +72,22 @@ export default function JournalLayout() {
     >
       <Stack.Screen name="index" />
       {/*
-        No header: the calendar screen carries its own two buttons, and the
-        zoom transition presents it as the button grown rather than as a page
-        pushed under a bar.
+        A TRANSPARENT MODAL, not a push: the Journal stays mounted and visible
+        underneath, so choosing a date reads as something opening on top rather
+        than as going somewhere else — which is what it is. A pushed screen is
+        opaque by definition and cannot show anything behind it.
+
+        No header either: the screen carries its own two buttons, and a bar
+        above a floating panel would make it look like a page again.
       */}
-      <Stack.Screen name="calendar" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="calendar"
+        options={{
+          headerShown: false,
+          presentation: 'transparentModal',
+          contentStyle: { backgroundColor: 'transparent' },
+        }}
+      />
     </Stack>
     </RequestedDateProvider>
   );
