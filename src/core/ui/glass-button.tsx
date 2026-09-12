@@ -87,7 +87,14 @@ export function GlassButton({
 
   // A symbol on its own gets equal padding, so it comes out round rather than
   // as a short pill.
-  const shape = label === undefined ? styles.round : styles.pill;
+  //
+  // A button holding TWO meanings gets neither: it takes one fixed size that
+  // both fit in. Letting it size itself would have it jump from round to pill
+  // in a single frame, underneath contents that are taking a fifth of a second
+  // to cross -- and a container that snaps is what the eye reads, not the
+  // fade inside it.
+  const shape =
+    fadeKey !== undefined ? styles.dual : label === undefined ? styles.round : styles.pill;
 
   // Its own row, rather than laid out by the shape around it: with a fade the
   // shape holds a single child, and the symbol and label have to keep their
@@ -158,6 +165,9 @@ const styles = StyleSheet.create({
   inside: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   pill: { ...base, paddingHorizontal: 16, paddingVertical: 9 },
   round: { ...base, width: 38, height: 38 },
+  // Wide enough for the roomiest thing either meaning can hold -- a symbol
+  // with two digits beside it -- at the round button's height.
+  dual: { ...base, width: 56, height: 38 },
   fallback: { borderWidth: StyleSheet.hairlineWidth },
   label: { fontSize: 16, fontWeight: '500' },
 });

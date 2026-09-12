@@ -25,24 +25,32 @@ import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-na
  *
  * ## EACH FADE BELONGS TO A FRESHLY MOUNTED VIEW. THIS IS THE WHOLE DESIGN.
  *
- * Two earlier versions animated a single shared value back and forth across
- * transitions, and neither animated on the device -- once by resetting the
- * value and writing twice in a tick, once by alternating which end meant
- * "arrived" and letting the style worklet close over that piece of React
- * state.
- *
  * What works in this project, everywhere it works, is one exact shape, and
- * OverlayPanel is the reference for it: a shared value created AT ITS STARTING
- * VALUE, ONE write in a mount effect, and a style worklet that closes over
- * nothing but the shared value. Nothing to reset, no state in the worklet, no
- * ordering between writes, and no easing built on the JavaScript side to be
- * carried across to the other runtime.
+ * OverlayPanel and LoadingDots are the references for it: a shared value
+ * created AT ITS STARTING VALUE, ONE write in a mount effect, and a style
+ * worklet that closes over nothing but the shared value. Nothing to reset, no
+ * React state inside the worklet, no ordering between two writes, and no
+ * easing built on the JavaScript side to be carried to the other runtime.
  *
  * So each side of the crossing is its own little component, mounted for the
  * length of one transition and never asked to animate twice. Keyed on the
  * turn, so a change of MEANING mounts a new pair, while a change of wording --
  * the count going from 2 to 3 -- passes straight through without remounting
  * and therefore without a fade, which is what it should do.
+ *
+ * ## THE TURN IS COUNTED DURING RENDER, NOT IN AN EFFECT
+ *
+ * This is what a third failed attempt turned on, and it is invisible until you
+ * count frames. An effect runs AFTER its render has been painted. Count the
+ * turn there and the new content is first painted under the OLD key -- so it
+ * arrives at full opacity, with no fade at all -- and only on the next render
+ * does the pair remount and start crossing. What that looks like is the change
+ * landing instantly and then wobbling, which is worse than no animation.
+ *
+ * Adjusting state during render is React's own answer to this: the update is
+ * applied and the component re-run before anything reaches the screen, so the
+ * arriving view is already mounted at zero in the very first frame that shows
+ * the new content.
  *
  * TO BE PLAIN ABOUT WHAT THIS IS: iOS 26 morphs its own toolbar items, and
  * React Native exposes none of that for a view drawn in JavaScript. This is
@@ -58,6 +66,13 @@ interface Frame {
   node: ReactNode;
 }
 
+interface Crossing {
+  /** Counts changes of meaning, and so gives each pair of fades its identity. */
+  turn: number;
+  id: string;
+  leaving: Frame | null;
+}
+
 export function CrossFade({
   id,
   children,
@@ -68,44 +83,45 @@ export function CrossFade({
   children: ReactNode;
   duration?: number;
 }) {
-  /** Counts transitions, and so gives each pair of fades its own identity. */
-  const [turn, setTurn] = useState(0);
-  const [leaving, setLeaving] = useState<Frame | null>(null);
+  const [crossing, setCrossing] = useState<Crossing>(() => ({ turn: 0, id, leaving: null }));
+
+  /** What was on screen a moment ago, kept fresh for when it has to leave. */
   const shown = useRef<Frame>({ id, node: children });
 
-  // After EVERY render, deliberately. Watching `children` as a dependency
-  // would restart the fade on every render, since it is a fresh element each
-  // time; watching only the id would let the copy go stale, and the count
-  // fading out would be the one from two changes ago. So: run always, and let
-  // the id decide which of the two things to do.
+  if (crossing.id !== id) {
+    // Adjusted DURING render, so the pair below is already mounted and at zero
+    // in the first frame that shows the new content. React re-runs this
+    // component immediately; nothing is painted in between.
+    setCrossing({ turn: crossing.turn + 1, id, leaving: shown.current });
+  }
+
+  // After every render, so the copy that will one day leave is the one that
+  // was really last on screen -- not the one from two changes ago, with a
+  // count that has since moved on.
   useEffect(() => {
-    if (shown.current.id === id) {
-      shown.current = { id, node: children };
-      return;
-    }
-    const previous = shown.current;
     shown.current = { id, node: children };
-    setLeaving(previous);
-    setTurn((count) => count + 1);
   });
 
   useEffect(() => {
-    if (leaving === null) return;
+    if (crossing.leaving === null) return;
     // Dropped once it is invisible. Left mounted it would keep a control that
     // is no longer true in the tree, where a screen reader would still find it.
-    const timer = setTimeout(() => setLeaving(null), duration);
+    const timer = setTimeout(
+      () => setCrossing((current) => ({ ...current, leaving: null })),
+      duration,
+    );
     return () => clearTimeout(timer);
-  }, [leaving, duration]);
+  }, [crossing, duration]);
 
   return (
     <View>
-      <Fade key={turn} to={1} duration={duration}>
+      <Fade key={crossing.turn} to={1} duration={duration}>
         {children}
       </Fade>
 
-      {leaving === null ? null : (
-        <Fade key={`out-${turn}`} to={0} duration={duration} style={styles.leaving}>
-          {leaving.node}
+      {crossing.leaving === null ? null : (
+        <Fade key={`out-${crossing.turn}`} to={0} duration={duration} style={styles.leaving}>
+          {crossing.leaving.node}
         </Fade>
       )}
     </View>

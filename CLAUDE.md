@@ -309,6 +309,21 @@ par côté, monté pour la durée d'une transition et jamais rejoué — on le r
 par un `key` plutôt que de lui demander de repartir en sens inverse. Sans
 easing explicite, `withTiming` applique le sien, sur le fil d'interface.
 
+**Et une animation de montage se decide PENDANT le rendu, pas dans un effet.**
+Un effet tourne apres que son rendu a ete peint. Donc si c'est lui qui change
+le `key` d'une vue qui doit apparaitre en fondu, le nouveau contenu est d'abord
+peint sous l'ancien `key` — a pleine opacite, sans aucun fondu — et ce n'est
+qu'au rendu suivant que la vue se remonte et commence a traverser. Ce que ca
+donne : le changement tombe d'un coup, puis vacille. Ajuster l'etat pendant le
+rendu est la reponse de React a exactement ca : la mise a jour est appliquee et
+le composant rejoue avant que quoi que ce soit n'atteigne l'ecran.
+
+Corollaire d'apparence, appris au meme endroit : **un controle qui porte deux
+sens prend une taille fixe.** Le laisser se dimensionner le fait sauter de rond
+a gelule en une image, sous un contenu qui met un cinquieme de seconde a
+traverser — et c'est le conteneur qui saute que l'oeil lit, pas le fondu a
+l'interieur.
+
 Vérification, pas supposition : l'export lisible doit montrer le worklet du
 style ne fermant que sur la valeur partagée —
 `function crossFadeTsx1(){const{opacity}=this.__closure;...}` — avec son
