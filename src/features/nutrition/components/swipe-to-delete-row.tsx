@@ -25,6 +25,20 @@ import { useTheme } from '@/core/theme';
  * `activeOffsetX` is what makes it coexist with the vertical list and with the
  * day-to-day swipe: the gesture only claims the touch once the movement is
  * clearly horizontal.
+ *
+ * ## Two directions, one component
+ *
+ * The journal swipes LEFT, as specs 8.3 asks. The basket of the add screen
+ * swipes RIGHT, because it sits inside a panel where a leftward drag already
+ * means something else. Rather than a second component that would drift from
+ * this one, the direction is a parameter and the arithmetic is mirrored by a
+ * sign.
+ *
+ * A note on "the native iOS behaviour", since that is what was asked for:
+ * React Native exposes no system swipe-actions control, and the library
+ * alternatives are themselves JavaScript reimplementations. So this is an
+ * emulation either way — and the one already running on the device is the
+ * lower-risk emulation to spread.
  */
 
 const ACTION_WIDTH = 92;
@@ -37,14 +51,20 @@ export function SwipeToDeleteRow({
   children,
   onDelete,
   actionLabel = 'Supprimer',
+  direction = 'left',
 }: {
   children: ReactNode;
   onDelete: () => void;
   actionLabel?: string;
+  /** Which way the row travels. The action is revealed on the other side. */
+  direction?: 'left' | 'right';
 }) {
   const theme = useTheme();
   const [revealed, setRevealed] = useState(false);
   const offset = useRef(new Animated.Value(0)).current;
+  // -1 for a leftward swipe, 1 for a rightward one. Every distance below is
+  // written once, unsigned, and multiplied by this.
+  const way = direction === 'left' ? -1 : 1;
 
   function slideTo(value: number): void {
     Animated.timing(offset, {
@@ -56,7 +76,7 @@ export function SwipeToDeleteRow({
 
   function open(): void {
     setRevealed(true);
-    slideTo(-ACTION_WIDTH);
+    slideTo(way * ACTION_WIDTH);
   }
 
   function close(): void {
@@ -68,22 +88,33 @@ export function SwipeToDeleteRow({
     .runOnJS(true)
     .activeOffsetX([-20, 20])
     .onEnd((event) => {
-      if (event.translationX < -FULL_SWIPE_THRESHOLD) {
+      // Measured along the swipe's own direction, so the three outcomes read
+      // the same whichever way the row travels.
+      const travelled = event.translationX * way;
+
+      if (travelled > FULL_SWIPE_THRESHOLD) {
         onDelete();
         return;
       }
-      if (event.translationX < -REVEAL_THRESHOLD) {
+      if (travelled > REVEAL_THRESHOLD) {
         open();
         return;
       }
-      if (event.translationX > REVEAL_THRESHOLD) {
+      if (travelled < -REVEAL_THRESHOLD) {
         close();
       }
     });
 
   return (
     <View style={styles.container}>
-      <View style={[styles.action, { backgroundColor: theme.colors.danger }]}>
+      <View
+        style={[
+          styles.action,
+          { backgroundColor: theme.colors.danger },
+          // The action waits on the side the row uncovers.
+          { alignItems: direction === 'left' ? 'flex-end' : 'flex-start' },
+        ]}
+      >
         <Pressable
           onPress={onDelete}
           disabled={!revealed}
@@ -126,7 +157,6 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     left: 0,
-    alignItems: 'flex-end',
   },
   actionPress: { width: ACTION_WIDTH, height: '100%', alignItems: 'center', justifyContent: 'center' },
   actionLabel: { fontSize: 14, fontWeight: '600' },

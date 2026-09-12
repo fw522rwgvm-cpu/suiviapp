@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { FoodId } from '../../src/core/db/schema';
 import {
-  describePendingEntry,
+  describePendingEntryMacros,
+  describePendingEntryQuantity,
   pendingEntryKcal,
   pendingEntryMacros,
   type PendingEntry,
@@ -55,27 +56,43 @@ describe('what a line contributes', () => {
   });
 });
 
-describe('the line under the name', () => {
-  it('puts the quantity first, then the three macros', () => {
-    expect(describePendingEntry(BREAD)).toBe(
-      `50${NB}g · P 4,0 · G 23,5 · L 1,5`,
-    );
+describe('the quantity, shown beside the name', () => {
+  it('is the amount in base units when that is how it was typed', () => {
+    expect(describePendingEntryQuantity(BREAD)).toBe(`50${NB}g`);
   });
 
-  it('names the portion when one was used, before the amount', () => {
+  it('names the portion first when one was used', () => {
     expect(
-      describePendingEntry({
+      describePendingEntryQuantity({
         ...BREAD,
         quantity: portionQuantity({ name: 'tranche', quantity: 25 }, 2),
       }),
-    ).toBe(`2${NB}tranches · 50${NB}g · P 4,0 · G 23,5 · L 1,5`);
+    ).toBe(`2${NB}tranches · 50${NB}g`);
   });
 
-  it('starts a free entry at the macros, with no quantity at all', () => {
-    // It has none anyone typed: "100 g" would be the storage form, which is
-    // the one concession free entry costs (slice 1 found the same).
+  it('is absent for a free entry', () => {
+    // It has none anyone typed: "100 g" would be the storage form, which is the
+    // one concession free entry costs (slice 1 found the same). Null rather
+    // than an empty string, so the row leaves the slot out instead of
+    // rendering a gap.
     expect(
-      describePendingEntry({
+      describePendingEntryQuantity({
+        kind: 'free',
+        name: 'Café',
+        macros: { protein: 0.5, carbs: 1, fat: 0, kcal: 8 },
+      }),
+    ).toBeNull();
+  });
+});
+
+describe('the macros, shown under the name', () => {
+  it('states what the line contributes, not what the food is worth', () => {
+    expect(describePendingEntryMacros(BREAD)).toBe('P 4,0 · G 23,5 · L 1,5');
+  });
+
+  it('takes a free entry at face value', () => {
+    expect(
+      describePendingEntryMacros({
         kind: 'free',
         name: 'Café',
         macros: { protein: 0.5, carbs: 1, fat: 0, kcal: 8 },
@@ -83,9 +100,9 @@ describe('the line under the name', () => {
     ).toBe('P 0,5 · G 1,0 · L 0,0');
   });
 
-  it('rounds macros to one decimal, as specs 5.1 asks', () => {
+  it('rounds to one decimal, as specs 5.1 asks', () => {
     expect(
-      describePendingEntry({
+      describePendingEntryMacros({
         ...BREAD,
         reference: { protein: 8.26, carbs: 47, fat: 3, kcal: 265 },
         quantity: baseQuantity(33),

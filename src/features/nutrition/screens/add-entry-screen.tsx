@@ -7,6 +7,7 @@ import { formatKcal } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import { GlassButton } from '@/core/ui/glass-button';
 import { OverlayPanel, useDismiss } from '@/core/ui/overlay-panel';
+import { SwipeBack } from '@/core/ui/swipe-back';
 import type { FoodId } from '@/core/db/schema';
 import { useAddEntries } from '../data/day-queries';
 import { useFavoriteFoods, useFoods, useRecentFoods } from '../data/food-queries';
@@ -15,6 +16,7 @@ import { searchFoods } from '../domain/food-search';
 import { pendingEntryKcal, type PendingEntry } from '../domain/pending-entry';
 import { FoodRow } from '../components/food-row';
 import { PendingEntryRow } from '../components/pending-entry-row';
+import { SwipeToDeleteRow } from '../components/swipe-to-delete-row';
 import { SearchField } from '../components/search-field';
 import { FreeEntryScreen } from './free-entry-screen';
 import { QuantityScreen } from './quantity-screen';
@@ -125,43 +127,53 @@ export function AddEntryScreen({
             />
           )
         ) : (
-          <GlassButton symbol="chevron.left" label="Aliments" onPress={backToList} />
+          <GlassButton
+            symbol="chevron.left"
+            onPress={backToList}
+            accessibilityLabel="Retour aux aliments"
+          />
         )
       }
       right={<CancelAction />}
     >
       {step === 'free' && mealPosition !== null ? (
-        <FreeEntryScreen
-          date={date}
-          mealPosition={mealPosition}
-          entryId={null}
-          onCollect={(entry) =>
-            collect({ kind: 'free', name: entry.name.trim(), macros: entry.macros })
-          }
-        />
+        <SwipeBack onBack={backToList}>
+          <FreeEntryScreen
+            date={date}
+            mealPosition={mealPosition}
+            entryId={null}
+            onCollect={(entry) =>
+              collect({ kind: 'free', name: entry.name.trim(), macros: entry.macros })
+            }
+          />
+        </SwipeBack>
       ) : step === 'quantity' && chosen !== null ? (
-        <QuantityScreen
-          mode="collect"
-          foodId={chosen}
-          onCollect={(quantity, food) =>
-            collect({
-              kind: 'food',
-              foodId: food.id,
-              name: food.name,
-              brand: food.brand,
-              baseUnit: food.baseUnit,
-              reference: food.reference,
-              quantity,
-            })
-          }
-        />
+        <SwipeBack onBack={backToList}>
+          <QuantityScreen
+            mode="collect"
+            foodId={chosen}
+            onCollect={(quantity, food) =>
+              collect({
+                kind: 'food',
+                foodId: food.id,
+                name: food.name,
+                brand: food.brand,
+                baseUnit: food.baseUnit,
+                reference: food.reference,
+                quantity,
+              })
+            }
+          />
+        </SwipeBack>
       ) : step === 'basket' ? (
-        <Basket
-          entries={basket}
-          onRemove={(index) =>
-            setBasket((current) => current.filter((_, at) => at !== index))
-          }
-        />
+        <SwipeBack onBack={backToList}>
+          <Basket
+            entries={basket}
+            onRemove={(index) =>
+              setBasket((current) => current.filter((_, at) => at !== index))
+            }
+          />
+        </SwipeBack>
       ) : (
         <View style={styles.fill}>
           <ScrollView
@@ -337,7 +349,18 @@ function Basket({
             {index === 0 ? null : (
               <View style={[styles.separator, { backgroundColor: theme.colors.border }]} />
             )}
-            <PendingEntryRow entry={entry} onRemove={() => onRemove(index)} />
+            {/*
+              Swiped RIGHT to remove, where the Journal swipes left: inside a
+              panel a leftward drag already means something else, and the same
+              component serves both — the direction is a parameter.
+            */}
+            <SwipeToDeleteRow
+              direction="right"
+              actionLabel="Retirer"
+              onDelete={() => onRemove(index)}
+            >
+              <PendingEntryRow entry={entry} />
+            </SwipeToDeleteRow>
           </View>
         ))}
       </View>

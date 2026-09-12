@@ -52,30 +52,32 @@ export function pendingEntryKcal(entry: PendingEntry): number {
 }
 
 /**
- * How the line reads under its name: the quantity when there is one, then the
- * three macros.
- *
- * The figures are what this line CONTRIBUTES, not what the food is worth for
- * 100 — a basket is a decision about a meal, and the only numbers worth
- * showing before a decision are the ones about to be committed.
+ * The quantity, as the line shows it beside the name. Null for a free entry.
  *
  * A free entry has no quantity anyone typed: it is stored as 100 units of a
  * virtual food (D5/R2), and showing "100 g" would be showing the storage form.
- * So it starts straight at the macros. The one presentational special case
- * free entry costs, as slice 1 already found.
+ * Null rather than an empty string, so the caller leaves the slot out entirely
+ * rather than rendering a gap.
  */
-export function describePendingEntry(entry: PendingEntry): string {
-  const { protein, carbs, fat } = pendingEntryMacros(entry);
-  const macros = `P ${formatMacro(protein)} · G ${formatMacro(carbs)} · L ${formatMacro(fat)}`;
-
-  if (entry.kind === 'free') return macros;
+export function describePendingEntryQuantity(entry: PendingEntry): string | null {
+  if (entry.kind === 'free') return null;
 
   const { baseQuantity, portion } = entry.quantity;
   const amount = formatQuantity(baseQuantity, entry.baseUnit);
-  const quantity =
-    portion === null
-      ? amount
-      : `${formatPortionCount(portion.count, portion.name)} · ${amount}`;
+  return portion === null
+    ? amount
+    : `${formatPortionCount(portion.count, portion.name)} · ${amount}`;
+}
 
-  return `${quantity} · ${macros}`;
+/**
+ * The three macros, as the line shows them under the name.
+ *
+ * These are what the line CONTRIBUTES, not what the food is worth for 100 — a
+ * basket is a decision about a meal, and the only figures worth showing before
+ * a decision are the ones about to be committed. Showing the per-100 values
+ * would be plausible, wrong, and invisible.
+ */
+export function describePendingEntryMacros(entry: PendingEntry): string {
+  const { protein, carbs, fat } = pendingEntryMacros(entry);
+  return `P ${formatMacro(protein)} · G ${formatMacro(carbs)} · L ${formatMacro(fat)}`;
 }
