@@ -6,10 +6,10 @@ import type { Macros } from '../domain/macros';
 /**
  * The four figures of a quantity, side by side: what this much of it is worth.
  *
- * Name above with its colour worn as a dot, value below. Four columns rather
- * than a sentence, because these are read by comparison -- is there more
- * protein here than fat -- and a sentence has to be parsed before it can be
- * compared. The dot is what carries the colour: a coloured NUMBER is a number
+ * Name above with its colour worn as a dot, value with its unit below. Four
+ * columns rather than a sentence, because these are read by comparison -- is
+ * there more protein here than fat -- and a sentence has to be parsed before
+ * it can be compared. The dot is what carries the colour: a coloured NUMBER is a number
  * you have to decide the meaning of, and a coloured label is a label competing
  * with the figure it introduces.
  *
@@ -49,10 +49,24 @@ export function MacroRow({ total }: { total: Macros }) {
             </Text>
           </View>
 
-          <Text style={[styles.value, { color: theme.colors.text }]} numberOfLines={1}>
+          <Text
+            style={[styles.value, { color: theme.colors.text }]}
+            numberOfLines={1}
+            // Every value carries its unit, so "kcal" makes this the widest of
+            // the four columns. It shrinks rather than being cut: a figure a
+            // point smaller is still read, and a truncated one is not.
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
+          >
+            {/*
+              The space before each unit is non-breaking, and spelled out rather
+              than typed. It was typed here at first, and invisible: this project
+              has already lost time twice to one an editor had quietly turned
+              into an ordinary space, which nothing shows and no reading catches.
+            */}
             {part.key === 'kcal'
-              ? formatKcal(total.kcal)
-              : `${formatMacro(total[part.key])} g`}
+              ? `${formatKcal(total.kcal)}\u00A0kcal`
+              : `${formatMacro(total[part.key])}\u00A0g`}
           </Text>
         </View>
       ))}
