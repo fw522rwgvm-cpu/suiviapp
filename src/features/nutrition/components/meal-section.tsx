@@ -66,6 +66,17 @@ export function MealSection({
           style={styles.headerPress}
         >
           {/*
+            The chevron leads, because it is what the whole row does: it says
+            "this opens" before you have read what opens. Trailing, it read as
+            an afterthought on a row whose main target is the name.
+          */}
+          <SymbolView
+            name={open ? 'chevron.down' : 'chevron.right'}
+            size={13}
+            tintColor={theme.colors.textFaint}
+          />
+
+          {/*
             Name above, figure below, rather than both on one line. It gives
             the meal name room to be a real name — slice 5 lets templates call
             a meal whatever they like — and puts the kcal where the eye already
@@ -81,15 +92,15 @@ export function MealSection({
                 : `${formatKcal(consumedKcal)} / ${formatKcal(targetKcal)} kcal`}
             </Text>
           </View>
-
-          <SymbolView
-            name={open ? 'chevron.up' : 'chevron.down'}
-            size={13}
-            tintColor={theme.colors.textFaint}
-          />
         </Pressable>
 
-        {/* Reachable whether the meal is open or not (specs 8.3). */}
+        {/*
+          Reachable whether the meal is open or not (specs 8.3), and sized to
+          be the obvious thing to hit: roughly three quarters of the row's
+          height. Logging a meal is the action the whole application exists
+          for (specs 4), and D16 says the 15-second target is met by removing
+          gestures — a target you have to aim at is a gesture in itself.
+        */}
         <Pressable
           onPress={onAdd}
           accessibilityRole="button"
@@ -97,7 +108,7 @@ export function MealSection({
           hitSlop={10}
           style={styles.add}
         >
-          <SymbolView name="plus.circle.fill" size={28} tintColor={theme.colors.accent} />
+          <SymbolView name="plus.circle.fill" size={54} tintColor={theme.colors.accent} />
         </Pressable>
       </View>
 
@@ -136,7 +147,9 @@ const styles = StyleSheet.create({
   identity: { flex: 1, gap: 3 },
   name: { fontSize: 17, fontWeight: '600' },
   total: { fontSize: 14, fontVariant: ['tabular-nums'] },
-  add: { paddingHorizontal: 16, paddingVertical: 16 },
+  // Tighter than the row's own padding: the glyph is large enough to carry the
+  // target on its own, so padding here would only push it off the edge.
+  add: { paddingHorizontal: 14, paddingVertical: 10 },
   entries: { borderTopWidth: StyleSheet.hairlineWidth },
   empty: { fontSize: 14, paddingHorizontal: 18, paddingVertical: 16 },
 });
