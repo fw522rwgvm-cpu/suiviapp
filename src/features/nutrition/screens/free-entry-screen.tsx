@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Pressable,
   ScrollView,
@@ -138,14 +137,13 @@ export function FreeEntryScreen({
 
   function remove(): void {
     if (entryId === null) return;
-    Alert.alert('Supprimer cette entrée ?', undefined, [
-      { text: 'Annuler', style: 'cancel' },
-      {
-        text: 'Supprimer',
-        style: 'destructive',
-        onPress: () => deleteEntry.mutate(entryId, close),
-      },
-    ]);
+    // No confirmation. Getting here means opening the entry and pressing a
+    // button that says what it does: the deliberate act has already happened,
+    // and asking again about an answered question is how a dialog becomes
+    // something to dismiss without reading. Specs 5.3 reserves a warning for
+    // the one deletion that really destroys something, and it is not this one
+    // -- what a journal entry holds, it holds alone.
+    deleteEntry.mutate(entryId, close);
   }
 
   return (

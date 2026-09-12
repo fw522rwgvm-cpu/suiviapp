@@ -186,14 +186,16 @@ export function JournalScreen() {
     });
   }
 
-  function confirmDeleteEntry(entry: JournalEntryView): void {
+  function removeEntry(entry: JournalEntryView): void {
     // No deletion is ever blocked (specs 5.3), and past entries stay intact.
-    // The confirmation is here because a swipe is easy to make by accident,
-    // not because the application has an opinion about deleting.
-    Alert.alert(`Supprimer « ${entry.name} » ?`, undefined, [
-      { text: 'Annuler', style: 'cancel' },
-      { text: 'Supprimer', style: 'destructive', onPress: () => deleteEntry.mutate(entry.id) },
-    ]);
+    //
+    // NO CONFIRMATION, BECAUSE THE GESTURE IS ALREADY THE CONFIRMATION. One
+    // was asked for here while a single swipe deleted -- easy to make by
+    // accident, and irreversible. Removing now takes two gestures with the
+    // button named and fully visible between them (specs 8.3), so an alert
+    // would ask a second time about something already answered, and add a
+    // dialog to the path of an action D16 wants to take seconds.
+    deleteEntry.mutate(entry.id);
   }
 
   function promptAddMeal(pageDate: LocalDate): void {
@@ -234,7 +236,7 @@ export function JournalScreen() {
     width,
     onAdd: openAdd,
     onEditEntry: openEdit,
-    onDeleteEntry: confirmDeleteEntry,
+    onDeleteEntry: removeEntry,
     onMealActions: promptMealActions,
     onAddMeal: promptAddMeal,
   };

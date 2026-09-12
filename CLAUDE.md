@@ -264,6 +264,15 @@ rangee ouverte mais revenue vers sa position fermee est quelqu'un qui se
 ravise, pas qui confirme — d'ou la condition « plus loin que la ou il a
 commence ».
 
+Corollaire applique : **plus aucune confirmation pour retirer une entree du
+journal**, ni au balayage ni au bouton de l'ecran d'edition. Elle etait la
+parce qu'un balayage unique supprimait ; deux gestes, avec le bouton nomme et
+entierement visible entre les deux, repondent deja a la question. Le §5.3
+reserve d'ailleurs l'avertissement a la seule suppression qui detruise
+vraiment quelque chose — celle d'un exercice — et la suppression d'un aliment
+de la bibliotheque garde la sienne parce qu'elle **apprend** quelque chose :
+les entrees deja enregistrees ne changent pas.
+
 Elle porte la directive `'worklet'` et tourne donc sur le fil d'interface.
 Verifie par la methode ci-dessus, pas suppose : dans l'export lisible, elle
 porte `__workletHash`, son `__closure` et son `__initData`.
