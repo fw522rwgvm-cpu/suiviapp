@@ -610,6 +610,13 @@ L'autre voie — couper l'ajustement et poser la marge à la main — est pire :
 elle supprime aussi l'encart **du bas**, et le contenu passe sous la barre
 d'onglets.
 
+**Et viser la bonne valeur ne suffit pas : `scrollTo` la rogne.**
+`RCTScrollView` borne la cible avec `contentInset` — l'explicite, laissé à zéro
+par l'ajustement automatique — donc toute cible négative devient silencieusement
+zéro, c'est-à-dire exactement une hauteur de barre trop bas. **`scrollToOverflowEnabled`**
+désactive ce bornage. Sans cette prop, viser `-headerHeight` ne change
+strictement rien, et l'écran a l'air de ne pas répondre.
+
 **Ne jamais échanger le type d'élément d'une page selon son état de
 chargement.** Rendre une `View` en attente puis une `ScrollView` une fois
 chargée fait échanger un type d'élément contre un autre : React démonte le

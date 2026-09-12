@@ -68,6 +68,12 @@ export function DayPage({
    * Declaring the padding by hand instead was the other way, and it is worse:
    * switching the behaviour off would also drop the BOTTOM inset, and the
    * content would run under the tab bar.
+   *
+   * AND THE TARGET HAS TO BE ALLOWED THROUGH. RCTScrollView clamps scrollTo
+   * against contentInset — the explicit one, which automatic adjustment leaves
+   * at zero — so every negative target silently became 0, which is precisely
+   * one header below the top. scrollToOverflowEnabled turns that clamping off,
+   * and it is the whole reason the previous two attempts changed nothing.
    */
   const headerHeight = useHeaderHeight();
   const day = useDay(date);
@@ -139,6 +145,8 @@ export function DayPage({
         style={styles.fill}
         contentContainerStyle={styles.content}
         contentInsetAdjustmentBehavior="automatic"
+        // Without this, scrollTo cannot reach above zero — see the note above.
+        scrollToOverflowEnabled
         scrollEnabled={!showDots}
       >
         <RemainingBanner consumed={totals.data ?? ZERO_MACROS} target={dayTargets(meals)} />
