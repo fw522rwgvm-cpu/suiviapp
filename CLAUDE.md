@@ -291,19 +291,28 @@ est la largeur : rond avec un symbole seul, gelule avec un libelle, et ce
 changement-la tombe en une image. La copie qui part est centree sur celle qui
 arrive, pour que le rognage par le bouton soit symetrique.
 
-**Une animation Reanimated s'écrit en UNE seule écriture.** Remettre une
-valeur partagée à zéro puis lancer l'animation dans le même tick ne s'anime
-pas — constaté sur le fondu des boutons d'en-tête, qui restait un changement
-brusque. Toutes les animations qui marchent dans ce dépôt écrivent une fois
-(voir `OverlayPanel`). Le remède n'est pas un `withSequence` de plus : c'est de
-n'avoir rien à remettre à zéro. La valeur se repose à une extrémité et voyage
-vers l'autre a chaque changement, en alternant — et quelle extrémité veut dire
-« arrivé » alterne avec elle. Rien a perdre, aucun ordre entre deux écritures
-à tenir.
+**Une animation Reanimated a UNE forme qui marche ici, et il faut la copier
+telle quelle.** Elle est dans `OverlayPanel` : une valeur partagée créée **à sa
+valeur de départ**, **une seule écriture** dans un effet de montage, et un
+worklet de style qui ne ferme sur **rien d'autre que la valeur partagée**.
 
-Corollaire d'ordonnancement : si un style lit l'extrémité visée, l'écriture va
-dans son **propre** effet, après le rendu qui l'a changée. Dans le meme effet,
-la première image se jouerait à l'envers.
+Trois tentatives de fondu ont échoué avant de s'y ranger, et chacune s'écartait
+d'un de ces trois points : remettre la valeur à zéro puis animer dans le même
+tick ; faire alterner la valeur entre ses deux extrémités en laissant le
+worklet de style fermer sur l'état React qui dit quelle extrémité veut dire
+« arrivé » ; et construire l'easing côté JavaScript, qui doit alors traverser
+vers l'autre runtime. Aucune des trois ne s'animait sur l'appareil.
+
+Conséquence de conception : **une animation appartient à une vue fraîchement
+montée.** Une transition entre deux états se fait donc avec un petit composant
+par côté, monté pour la durée d'une transition et jamais rejoué — on le remonte
+par un `key` plutôt que de lui demander de repartir en sens inverse. Sans
+easing explicite, `withTiming` applique le sien, sur le fil d'interface.
+
+Vérification, pas supposition : l'export lisible doit montrer le worklet du
+style ne fermant que sur la valeur partagée —
+`function crossFadeTsx1(){const{opacity}=this.__closure;...}` — avec son
+`__workletHash`.
 
 **Un composant qui anime une sortie doit avoir une identité par étape.**
 `SwipeBack` emmène la couche qui part jusqu'au bord de l'écran **puis**
