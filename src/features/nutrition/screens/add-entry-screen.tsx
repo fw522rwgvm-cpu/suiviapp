@@ -14,6 +14,7 @@ import { useFavoriteFoods, useFoods, useRecentFoods } from '../data/food-queries
 import type { FoodListItem } from '../data/food-reads';
 import { searchFoods } from '../domain/food-search';
 import { pendingEntryKcal, type PendingEntry } from '../domain/pending-entry';
+import { CrossFade } from '../components/cross-fade';
 import { FoodRow } from '../components/food-row';
 import { PendingEntryRow } from '../components/pending-entry-row';
 import { SwipeToDeleteRow } from '../components/swipe-to-delete-row';
@@ -236,33 +237,40 @@ export function AddEntryScreen({
         panel and starting again.
       */
       left={
-        step === 'list' ? (
-          basket.length === 0 ? undefined : (
+        /*
+          One slot, two meanings, and they fade into each other rather than
+          swapping between frames — the count and the way back are two states
+          of the same control, and an instant substitution reads as a glitch.
+
+          The identity is what the button MEANS, not what it says: the count
+          changing from 2 to 3 must not cross-fade, or adding a line would
+          blink the header every time.
+        */
+        <CrossFade id={step === 'list' ? (basket.length === 0 ? 'none' : 'basket') : 'back'}>
+          {step === 'list' ? (
+            basket.length === 0 ? null : (
+              <GlassButton
+                symbol="list.bullet"
+                label={String(basket.length)}
+                onPress={() => setShowBasket(true)}
+                accessibilityLabel={`Voir les ${basket.length} lignes à ajouter`}
+              />
+            )
+          ) : (
             <GlassButton
-              symbol="list.bullet"
-              label={String(basket.length)}
-              onPress={() => setShowBasket(true)}
-              accessibilityLabel={`Voir les ${basket.length} lignes à ajouter`}
+              symbol="chevron.left"
+              onPress={step === 'amend' ? backToBasket : backToList}
+              accessibilityLabel={
+                step === 'amend' ? 'Retour à la liste' : 'Retour aux aliments'
+              }
             />
-          )
-        ) : step === 'amend' ? (
-          <GlassButton
-            symbol="chevron.left"
-            onPress={backToBasket}
-            accessibilityLabel="Retour à la liste"
-          />
-        ) : (
-          <GlassButton
-            symbol="chevron.left"
-            onPress={backToList}
-            accessibilityLabel="Retour aux aliments"
-          />
-        )
+          )}
+        </CrossFade>
       }
       right={<CancelAction />}
     >
       {editing !== undefined && amending !== null ? (
-        <SwipeBack onBack={backToBasket} behind={basketList}>
+        <SwipeBack key={step} onBack={backToBasket} behind={basketList}>
           {editing.kind === 'food' ? (
             <QuantityScreen
               mode="collect"
@@ -297,7 +305,7 @@ export function AddEntryScreen({
           )}
         </SwipeBack>
       ) : step === 'free' && mealPosition !== null ? (
-        <SwipeBack onBack={backToList} behind={picker}>
+        <SwipeBack key={step} onBack={backToList} behind={picker}>
           <FreeEntryScreen
             date={date}
             mealPosition={mealPosition}
@@ -308,7 +316,7 @@ export function AddEntryScreen({
           />
         </SwipeBack>
       ) : step === 'quantity' && chosen !== null ? (
-        <SwipeBack onBack={backToList} behind={picker}>
+        <SwipeBack key={step} onBack={backToList} behind={picker}>
           <QuantityScreen
             mode="collect"
             foodId={chosen}
@@ -326,7 +334,7 @@ export function AddEntryScreen({
           />
         </SwipeBack>
       ) : step === 'basket' ? (
-        <SwipeBack onBack={backToList} behind={picker}>
+        <SwipeBack key={step} onBack={backToList} behind={picker}>
           {basketList}
         </SwipeBack>
       ) : (

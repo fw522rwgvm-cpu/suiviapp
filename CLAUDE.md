@@ -277,6 +277,21 @@ Elle porte la directive `'worklet'` et tourne donc sur le fil d'interface.
 Verifie par la methode ci-dessus, pas suppose : dans l'export lisible, elle
 porte `__workletHash`, son `__closure` et son `__initData`.
 
+**Un composant qui anime une sortie doit avoir une identité par étape.**
+`SwipeBack` emmène la couche qui part jusqu'au bord de l'écran **puis**
+prévient : au moment où l'appelant échange son contenu, le glissement vaut
+encore une largeur d'écran. Si l'étape suivante rend un `SwipeBack` à la même
+position dans le même parent, React met à jour l'instance au lieu d'en monter
+une neuve, la valeur partagée survit, et l'étape qui arrive naît poussée hors
+de l'écran — ce qu'on voit alors est la couche de derrière.
+
+Le bug s'est lu comme une mauvaise destination : revenir d'une correction de
+ligne tombait sur la liste d'aliments. Il n'en était rien, le panier était là,
+une largeur d'écran plus loin. Remettre la valeur à zéro après l'appel n'est
+pas le remède — elle atteindrait l'écran une image avant que React ne commite
+le nouveau contenu, et ferait clignoter l'étape qu'on vient de quitter. Un
+`key` fait de la remise à zéro et de l'échange un seul commit.
+
 **Une ombre déborde du côté où on ne la veut pas.** `shadowRadius` diffuse sur
 les quatre côtés quel que soit `shadowOffset` : l'ombre de bord d'attaque d'une
 couche qui glisse remonte donc au-dessus d'elle, et sous un en-tête transparent

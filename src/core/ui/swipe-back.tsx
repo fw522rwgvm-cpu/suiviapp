@@ -42,6 +42,23 @@ import { useTheme } from '@/core/theme';
  * is not a view controller. This follows its shape and its proportions; it is
  * a reconstruction, not the system's.
  *
+ * ## GIVE IT A KEY PER STEP. THIS IS NOT OPTIONAL.
+ *
+ * The exit animation carries the leaving layer all the way off screen and only
+ * THEN reports, so at the moment the caller swaps its content the drag is
+ * still at full width. If the next step renders a SwipeBack at the same
+ * position in the same parent, React updates this one instead of mounting a
+ * new one -- the shared value survives, and the arriving step is born pushed
+ * off screen with the layer behind it fully revealed in its place.
+ *
+ * It cost a bug that read as a wrong destination: going back from correcting a
+ * basket line landed on the food list. It had not; the basket was there, one
+ * screen-width to the right, and what showed was the layer behind it.
+ *
+ * Resetting after the call is not the fix -- the value would reach the screen
+ * a frame before React commits the new content, flashing the step just left.
+ * A key makes the reset and the swap the same commit.
+ *
  * ## Why it starts at the edge
  *
  * `activeOffsetX` alone would claim any rightward drag, and these steps
