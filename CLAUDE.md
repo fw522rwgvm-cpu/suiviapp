@@ -225,6 +225,43 @@ Conséquence : un geste qui suit le doigt tourne sur le fil d'interface.
 Le faire depuis le fil JS saccade dès que React travaille — c'est-à-dire
 exactement au moment intéressant.
 
+**L'implémentation de référence est dans `node_modules`, et elle tranche.**
+`ReanimatedSwipeable` de gesture-handler est le balayage de rangée que tout le
+monde utilise, il est livré avec une dépendance déjà présente, et il se lit.
+Trois de ses choix ne se devinent pas, et les trois ont été trouvés après coup,
+en cherchant pourquoi une rangée répondait à droite et pas à gauche :
+
+- **Aucun veto vertical.** Poser `failOffsetY` paraît évidemment prudent et ne
+  l'est pas. Un pouce qui balaie vers la gauche pivote depuis la base de la
+  main : plus il part de la gauche, plus son arc monte dans les premiers
+  millimètres. Le veto gagnait alors la course contre le seuil horizontal — à
+  gauche seulement, jamais près du pouce. Un glissement vertical se laisse à la
+  `ScrollView`, qui le réclame de toute façon la première.
+- **Dix points pour réclamer le toucher, pas vingt.** C'est la différence entre
+  une rangée qui répond et une rangée sur laquelle il faut insister.
+- **Le `Pan` appartient au conteneur, qui ne bouge pas** ; seul le `Tap` va sur
+  la couche translatée. Attacher le `Pan` à ce qui se déplace met la vue du
+  reconnaisseur en mouvement sous le doigt.
+
+Et un choix qui, lui, ne doit **pas** être copié : la référence active dans les
+deux sens parce qu'elle porte des actions des deux côtés. Ici une seule, et
+réclamer le glissement vers la droite volerait le geste de retour — qui part
+précisément de ces rangées. Sens unique tant que la rangée est fermée.
+
+Dernier point de la même famille : **un `Tap` armé seulement à l'ouverture**
+plutôt qu'un `Pressable`. Mélanger le système de responder de React Native et
+les gestes dans le même sous-arbre est un piège documenté, et les rangées du
+Journal sont pressables — un tap toujours actif les rendrait inertes.
+
+**Une ombre déborde du côté où on ne la veut pas.** `shadowRadius` diffuse sur
+les quatre côtés quel que soit `shadowOffset` : l'ombre de bord d'attaque d'une
+couche qui glisse remonte donc au-dessus d'elle, et sous un en-tête transparent
+elle se lit comme une salissure en travers des boutons. La rogner n'est pas
+possible non plus — une ombre est dessinée **hors** des limites de la vue, donc
+tout parent en `overflow: hidden` la prend entière. Le remède est un filet
+d'un point : c'est une vue, elle a quatre bords, et elle voyage avec ce qu'elle
+sépare.
+
 ## Direction iOS 26
 Demande explicite : utiliser les outils natifs d'iOS 26, Liquid Glass compris.
 

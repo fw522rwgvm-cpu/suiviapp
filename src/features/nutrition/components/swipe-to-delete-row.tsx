@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useState } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -16,30 +17,44 @@ import { useTheme } from '@/core/theme';
  * ## How close this gets to the system, and where it stops
  *
  * The Files app uses UISwipeActionsConfiguration on a UITableView. React
- * Native binds nothing to it — there is no component, in the framework or in
+ * Native binds nothing to it -- there is no component, in the framework or in
  * the libraries section 5 allows, that IS that control; the ones that look
  * like it are JavaScript reimplementations too. Matching it exactly would mean
  * a native module and every list in the application rebuilt on a collection
  * view, which is a native dependency and a rewrite.
  *
- * So this reproduces its behaviour rather than being it, and the behaviour is
- * four things — all of which were missing before, which is why it did not look
- * the same:
+ * So this reproduces its behaviour rather than being it: the row follows the
+ * finger, the action is exactly the strip uncovered, past the resting width
+ * the row resists and keeps a third of the movement, and pulled far enough it
+ * commits on its own and carries on out rather than bouncing back first.
+ * Release is a spring, not a timing, because the system's is.
  *
- *  1. THE ROW FOLLOWS THE FINGER. Slice 1 deliberately avoided this: the
- *     Reanimated worklets plugin was unproven then, and a toolchain failure is
- *     only diagnosable through a fifteen-minute build. The plugin has been
- *     confirmed since, and the day carousel already follows the finger. This
- *     was the largest difference — a row that decides on release feels like a
- *     button being pressed, not like a sheet being pulled.
- *  2. The action is exactly the strip uncovered, so the red grows out of the
- *     edge with the drag instead of waiting there at full size behind.
- *  3. Past the resting width the row resists, keeping a third of the movement.
- *  4. Pulled far enough it commits on its own, and the row carries on out
- *     rather than bouncing back first.
+ * ## THE GESTURE'S SHAPE IS THE REFERENCE IMPLEMENTATION'S, NOT AN INVENTION
  *
- * Release is a spring, not a timing. The system's is, and the difference is
- * legible even when nobody can say why.
+ * A first version was hard to start from the left or the middle of a row while
+ * working from the right. Three things were wrong with it, and all three are
+ * settled by reading `ReanimatedSwipeable` in gesture-handler itself rather
+ * than by guessing -- it is the closest thing to a reference, it ships in a
+ * dependency already present, and it is what lives inside other people's
+ * lists:
+ *
+ *  1. NO VERTICAL VETO. The first version failed the gesture past 16 points of
+ *     vertical travel. A thumb swiping leftward pivots from the base of the
+ *     hand, so the further left it starts the more its arc rises in the first
+ *     millimetres -- the veto won the race against the horizontal threshold
+ *     exactly where the row was found unresponsive, and near the thumb, on the
+ *     right, it never fired. The reference sets no vertical veto at all: a
+ *     vertical drag is left to the scroll view, which claims it first anyway.
+ *  2. TEN POINTS, NOT TWENTY. Half the travel to start, which is the
+ *     difference between a row that answers and one that has to be insisted on.
+ *  3. THE PAN BELONGS TO THE CONTAINER, WHICH DOES NOT MOVE. Attaching it to
+ *     the layer being translated puts the recognizer's own view under the
+ *     finger and in motion. The reference puts the pan on the still container
+ *     and only the tap on the moving layer.
+ *
+ * The tap is a gesture too, not a Pressable: it is armed ONLY while the row is
+ * open, so it closes an open row without swallowing a press on a row at rest
+ * -- the Journal's rows are pressable, this component's second user.
  */
 
 /** Where the row rests when open, and how wide the action reads. */
@@ -52,8 +67,11 @@ const FULL_SWIPE = 200;
 const FLICK_VELOCITY = 800;
 /** How much of the drag survives past the resting position. */
 const RESISTANCE = 1 / 3;
+/** Horizontal travel that claims the touch. The reference's own figure. */
+const ACTIVATE = 10;
 
 const SPRING = { damping: 20, stiffness: 260, mass: 0.6 } as const;
+const EXIT = { duration: 180 } as const;
 
 export function SwipeToDeleteRow({
   children,
@@ -70,14 +88,25 @@ export function SwipeToDeleteRow({
   // Negative, always: 0 closed, -ACTION_WIDTH open, -width gone.
   const offset = useSharedValue(0);
   const start = useSharedValue(0);
+  // Mirrored in React state because it arms the tap and closes the content to
+  // touches -- neither of which a shared value can do.
+  const [open, setOpen] = useState(false);
 
   const pan = Gesture.Pan()
-    // Only claims the touch once the movement is clearly horizontal, and gives
-    // up if it started as a vertical scroll. That is what lets it coexist with
-    // the list, the day carousel, and the edge gesture that goes back.
-    .activeOffsetX([-20, 20])
-    .failOffsetY([-16, 16])
-    .onBegin(() => {
+    // Ten points of horizontal travel claims the touch, and nothing vertical
+    // is vetoed: a vertical drag belongs to the scroll view, which recognises
+    // it long before this reaches its threshold.
+    //
+    // LEFTWARD ONLY WHILE THE ROW IS CLOSED. The reference implementation takes
+    // both directions because it has actions on both sides; this one has an
+    // action on one side, and claiming a rightward drag would steal the back
+    // gesture -- which starts on these very rows, the basket being nothing but
+    // rows. Open, the row takes the rightward drag back, since closing itself
+    // is then what that drag means.
+    .activeOffsetX(open ? [-ACTIVATE, ACTIVATE] : -ACTIVATE)
+    // Captured at activation rather than at touch-down: a spring may still be
+    // running between the two, and its value then is not where the row rests.
+    .onStart(() => {
       start.value = offset.value;
     })
     .onUpdate((event) => {
@@ -87,7 +116,7 @@ export function SwipeToDeleteRow({
         offset.value = 0;
         return;
       }
-      // Past the resting width the row still moves, but grudgingly — what
+      // Past the resting width the row still moves, but grudgingly -- what
       // follows is a decision, and it should feel like one.
       offset.value =
         raw < -ACTION_WIDTH ? -ACTION_WIDTH + (raw + ACTION_WIDTH) * RESISTANCE : raw;
@@ -99,13 +128,25 @@ export function SwipeToDeleteRow({
         // Carries on out rather than bouncing back first: the row leaving IS
         // the confirmation, and one that returns before vanishing reads as a
         // mistake being corrected.
-        offset.value = withTiming(-width, { duration: 180 }, (finished) => {
+        offset.value = withTiming(-width, EXIT, (finished) => {
           if (finished === true) runOnJS(onDelete)();
         });
         return;
       }
 
-      offset.value = withSpring(travelled > OPEN_THRESHOLD ? -ACTION_WIDTH : 0, SPRING);
+      const opening = travelled > OPEN_THRESHOLD;
+      offset.value = withSpring(opening ? -ACTION_WIDTH : 0, SPRING);
+      runOnJS(setOpen)(opening);
+    });
+
+  // Armed only while the row is open, so a row at rest passes taps through to
+  // whatever it contains.
+  const tap = Gesture.Tap()
+    .enabled(open)
+    .shouldCancelWhenOutside(true)
+    .onStart(() => {
+      offset.value = withSpring(0, SPRING);
+      runOnJS(setOpen)(false);
     });
 
   const rowStyle = useAnimatedStyle(() => ({
@@ -115,45 +156,45 @@ export function SwipeToDeleteRow({
   // Exactly the strip uncovered, so the red grows from the edge with the drag.
   const actionStyle = useAnimatedStyle(() => ({ width: Math.max(0, -offset.value) }));
 
-  function close(): void {
-    offset.value = withSpring(0, SPRING);
-  }
-
   function remove(): void {
-    offset.value = withTiming(-width, { duration: 180 }, (finished) => {
+    offset.value = withTiming(-width, EXIT, (finished) => {
       if (finished === true) runOnJS(onDelete)();
     });
   }
 
   return (
-    <View style={styles.container}>
-      <Animated.View
-        style={[styles.action, { backgroundColor: theme.colors.danger }, actionStyle]}
-      >
-        <Pressable
-          onPress={remove}
-          style={styles.actionPress}
-          accessibilityRole="button"
-          accessibilityLabel={actionLabel}
+    <GestureDetector gesture={pan}>
+      <View style={styles.container}>
+        <Animated.View
+          style={[styles.action, { backgroundColor: theme.colors.danger }, actionStyle]}
         >
-          <Text
-            style={[styles.actionLabel, { color: theme.colors.onAccent }]}
-            numberOfLines={1}
+          <Pressable
+            onPress={remove}
+            style={styles.actionPress}
+            accessibilityRole="button"
+            accessibilityLabel={actionLabel}
           >
-            {actionLabel}
-          </Text>
-        </Pressable>
-      </Animated.View>
-
-      <GestureDetector gesture={pan}>
-        <Animated.View style={[{ backgroundColor: theme.colors.surface }, rowStyle]}>
-          {/* Tapping an open row closes it rather than triggering the row. */}
-          <Pressable onPress={close} accessibilityLabel="Annuler la suppression">
-            <View pointerEvents="box-none">{children}</View>
+            <Text
+              style={[styles.actionLabel, { color: theme.colors.onAccent }]}
+              numberOfLines={1}
+            >
+              {actionLabel}
+            </Text>
           </Pressable>
         </Animated.View>
-      </GestureDetector>
-    </View>
+
+        <GestureDetector gesture={tap}>
+          <Animated.View
+            // Open, the layer itself takes the touch: a press meant for the row
+            // would otherwise act on a row the finger cannot fully see.
+            pointerEvents={open ? 'box-only' : 'auto'}
+            style={[{ backgroundColor: theme.colors.surface }, rowStyle]}
+          >
+            {children}
+          </Animated.View>
+        </GestureDetector>
+      </View>
+    </GestureDetector>
   );
 }
 

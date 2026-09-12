@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { StyleSheet, useWindowDimensions } from 'react-native';
+import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
@@ -128,10 +128,15 @@ export function SwipeBack({
             // Opaque, or the layer underneath shows through the one on top and
             // the parallax reads as two lists at once.
             { backgroundColor: theme.colors.background },
-            styles.leaving,
             leavingStyle,
           ]}
         >
+          {/*
+            The separation between the two layers, at rest one point off the
+            left of the screen and so invisible until the layer moves. It
+            travels with what it separates, which is the whole trick.
+          */}
+          <View style={[styles.edge, { backgroundColor: theme.colors.border }]} />
           {children}
         </Animated.View>
       </GestureDetector>
@@ -142,12 +147,24 @@ export function SwipeBack({
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   layer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
-  // The edge shadow iOS draws down the leading side of the screen that is
-  // leaving. It is what separates the two layers while both are on screen.
-  leaving: {
-    shadowColor: '#000000',
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    shadowOffset: { width: -3, height: 0 },
+  // This was a shadow, as iOS draws one down the leading side of a screen that
+  // is leaving. It is a hairline now.
+  //
+  // THE BLUR SPILLED THE WAY IT WAS NOT WANTED. shadowRadius spreads on all
+  // four sides whatever the offset, so a shadow meant for the leading edge
+  // also rose above the top of the layer -- and this layer begins just under a
+  // transparent header, so it read as a smudge across the back and cancel
+  // buttons. Clipping it was not available either: a shadow is drawn OUTSIDE
+  // the view's own bounds, so a parent with overflow hidden takes all of it
+  // and not only the part that spills.
+  //
+  // A hairline cannot spill: it is a view, with four edges, exactly as tall as
+  // what it separates.
+  edge: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: -StyleSheet.hairlineWidth,
+    width: StyleSheet.hairlineWidth,
   },
 });
