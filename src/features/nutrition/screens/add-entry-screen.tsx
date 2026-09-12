@@ -106,76 +106,15 @@ export function AddEntryScreen({
         ? 'quantity'
         : 'list';
 
-  return (
-    <OverlayPanel
-      onDismiss={() => router.back()}
-      /*
-        On the list, the leading action opens the basket and its label is how
-        many lines are waiting. Inside a step it becomes the way back — both
-        steps are STATE, so the navigator gives them no back button of their
-        own, and without one choosing the wrong food would mean closing the
-        panel and starting again.
-      */
-      left={
-        step === 'list' ? (
-          basket.length === 0 ? undefined : (
-            <GlassButton
-              symbol="list.bullet"
-              label={String(basket.length)}
-              onPress={() => setShowBasket(true)}
-              accessibilityLabel={`Voir les ${basket.length} lignes à ajouter`}
-            />
-          )
-        ) : (
-          <GlassButton
-            symbol="chevron.left"
-            onPress={backToList}
-            accessibilityLabel="Retour aux aliments"
-          />
-        )
-      }
-      right={<CancelAction />}
-    >
-      {step === 'free' && mealPosition !== null ? (
-        <SwipeBack onBack={backToList}>
-          <FreeEntryScreen
-            date={date}
-            mealPosition={mealPosition}
-            entryId={null}
-            onCollect={(entry) =>
-              collect({ kind: 'free', name: entry.name.trim(), macros: entry.macros })
-            }
-          />
-        </SwipeBack>
-      ) : step === 'quantity' && chosen !== null ? (
-        <SwipeBack onBack={backToList}>
-          <QuantityScreen
-            mode="collect"
-            foodId={chosen}
-            onCollect={(quantity, food) =>
-              collect({
-                kind: 'food',
-                foodId: food.id,
-                name: food.name,
-                brand: food.brand,
-                baseUnit: food.baseUnit,
-                reference: food.reference,
-                quantity,
-              })
-            }
-          />
-        </SwipeBack>
-      ) : step === 'basket' ? (
-        <SwipeBack onBack={backToList}>
-          <Basket
-            entries={basket}
-            onRemove={(index) =>
-              setBasket((current) => current.filter((_, at) => at !== index))
-            }
-          />
-        </SwipeBack>
-      ) : (
-        <View style={styles.fill}>
+  /**
+   * The screen shown by default (specs 8.4a), built once and used twice:
+   * on its own, and as what the back gesture reveals underneath a step.
+   * Two renders of the same element rather than two branches that could
+   * drift — and its queries are cached, so the second costs nothing.
+   */
+  const picker = (
+    <View style={styles.fill}>
+
           <ScrollView
             style={styles.fill}
             contentContainerStyle={styles.content}
@@ -238,7 +177,79 @@ export function AddEntryScreen({
           </ScrollView>
 
           <Confirm date={date} mealPosition={mealPosition} basket={basket} />
-        </View>
+    </View>
+  );
+
+  return (
+    <OverlayPanel
+      onDismiss={() => router.back()}
+      /*
+        On the list, the leading action opens the basket and its label is how
+        many lines are waiting. Inside a step it becomes the way back — both
+        steps are STATE, so the navigator gives them no back button of their
+        own, and without one choosing the wrong food would mean closing the
+        panel and starting again.
+      */
+      left={
+        step === 'list' ? (
+          basket.length === 0 ? undefined : (
+            <GlassButton
+              symbol="list.bullet"
+              label={String(basket.length)}
+              onPress={() => setShowBasket(true)}
+              accessibilityLabel={`Voir les ${basket.length} lignes à ajouter`}
+            />
+          )
+        ) : (
+          <GlassButton
+            symbol="chevron.left"
+            onPress={backToList}
+            accessibilityLabel="Retour aux aliments"
+          />
+        )
+      }
+      right={<CancelAction />}
+    >
+      {step === 'free' && mealPosition !== null ? (
+        <SwipeBack onBack={backToList} behind={picker}>
+          <FreeEntryScreen
+            date={date}
+            mealPosition={mealPosition}
+            entryId={null}
+            onCollect={(entry) =>
+              collect({ kind: 'free', name: entry.name.trim(), macros: entry.macros })
+            }
+          />
+        </SwipeBack>
+      ) : step === 'quantity' && chosen !== null ? (
+        <SwipeBack onBack={backToList} behind={picker}>
+          <QuantityScreen
+            mode="collect"
+            foodId={chosen}
+            onCollect={(quantity, food) =>
+              collect({
+                kind: 'food',
+                foodId: food.id,
+                name: food.name,
+                brand: food.brand,
+                baseUnit: food.baseUnit,
+                reference: food.reference,
+                quantity,
+              })
+            }
+          />
+        </SwipeBack>
+      ) : step === 'basket' ? (
+        <SwipeBack onBack={backToList} behind={picker}>
+          <Basket
+            entries={basket}
+            onRemove={(index) =>
+              setBasket((current) => current.filter((_, at) => at !== index))
+            }
+          />
+        </SwipeBack>
+      ) : (
+        picker
       )}
     </OverlayPanel>
   );
@@ -350,15 +361,12 @@ function Basket({
               <View style={[styles.separator, { backgroundColor: theme.colors.border }]} />
             )}
             {/*
-              Swiped RIGHT to remove, where the Journal swipes left: inside a
-              panel a leftward drag already means something else, and the same
-              component serves both — the direction is a parameter.
+              Swiped LEFT, the same way the Journal deletes an entry and the
+              same way Files deletes a file. One gesture for "take this away",
+              wherever it is — and it cannot be confused with the back gesture,
+              which travels the other way and only from the edge.
             */}
-            <SwipeToDeleteRow
-              direction="right"
-              actionLabel="Retirer"
-              onDelete={() => onRemove(index)}
-            >
+            <SwipeToDeleteRow actionLabel="Retirer" onDelete={() => onRemove(index)}>
               <PendingEntryRow entry={entry} />
             </SwipeToDeleteRow>
           </View>

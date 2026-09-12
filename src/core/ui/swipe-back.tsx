@@ -7,6 +7,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
+import { useTheme } from '@/core/theme';
 
 /**
  * Drag from the left edge to go back, for a step that is not a route.
@@ -21,11 +22,25 @@ import Animated, {
  * presentation. The cost of that choice is exactly this: no gesture comes with
  * it, so the gesture is written.
  *
- * To be plain about it, since the system's behaviour is what was asked for:
- * React Native exposes no way to borrow UIKit's own interactive pop for a view
- * that is not a view controller. This follows its shape — start at the edge,
- * follow the finger, commit past a third of the screen or on a flick — but it
- * is a reconstruction, not the system's.
+ * ## BOTH LAYERS MOVE, WHICH IS THE WHOLE EFFECT
+ *
+ * A top view sliding off to reveal nothing reads as a card being thrown away.
+ * What iOS does — in Settings, in Files, everywhere — is move two screens at
+ * once: the one leaving travels the full width under the finger, and the one
+ * arriving comes from about a third of the screen back, at a third of the
+ * speed. The eye reads that as one surface sliding off another, and it is what
+ * makes the destination feel like it was there all along rather than being
+ * built on release.
+ *
+ * So the caller hands over what is BEHIND as well, and it is mounted the whole
+ * time. That costs a second render of the list while a step is open — cheap,
+ * since its queries are cached — and buys a gesture that shows where it is
+ * going while it goes there.
+ *
+ * To be plain, since the system's behaviour is what was asked for: React
+ * Native exposes no way to borrow UIKit's own interactive pop for a view that
+ * is not a view controller. This follows its shape and its proportions; it is
+ * a reconstruction, not the system's.
  *
  * ## Why it starts at the edge
  *
@@ -41,15 +56,27 @@ const EDGE_WIDTH = 28;
 /** Past a third of the screen, the intent is not in doubt. */
 const COMMIT_FRACTION = 1 / 3;
 const FLICK_VELOCITY = 600;
+/** How far back the arriving layer starts, as a share of the width. iOS: ~30%. */
+const PARALLAX = 0.3;
 
-export function SwipeBack({ onBack, children }: { onBack: () => void; children: ReactNode }) {
+export function SwipeBack({
+  onBack,
+  behind,
+  children,
+}: {
+  onBack: () => void;
+  /** What the gesture reveals. Mounted throughout, so it can move with it. */
+  behind: ReactNode;
+  children: ReactNode;
+}) {
+  const theme = useTheme();
   const { width } = useWindowDimensions();
   const drag = useSharedValue(0);
 
   const pan = Gesture.Pan()
     .activeOffsetX(12)
     // Leftward movement is not a back gesture, and claiming it would fight the
-    // day carousel behind and the rows that swipe inside.
+    // rows that swipe left to delete inside.
     .failOffsetX(-12)
     .onBegin((event) => {
       // Anything that does not start at the edge is somebody else's gesture.
@@ -75,17 +102,52 @@ export function SwipeBack({ onBack, children }: { onBack: () => void; children: 
       drag.value = withTiming(0, { duration: 180 });
     });
 
-  const style = useAnimatedStyle(() => ({
+  const leavingStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: Math.max(0, drag.value) }],
   }));
 
+  const arrivingStyle = useAnimatedStyle(() => {
+    const progress = Math.min(1, Math.max(0, drag.value) / width);
+    return { transform: [{ translateX: -PARALLAX * width * (1 - progress) }] };
+  });
+
   return (
-    <GestureDetector gesture={pan}>
-      <Animated.View style={[styles.fill, style]}>{children}</Animated.View>
-    </GestureDetector>
+    <Animated.View style={styles.fill}>
+      {/*
+        Inert while it is behind: a tap landing on a half-revealed list would
+        act on something the finger cannot fully see.
+      */}
+      <Animated.View style={[styles.layer, arrivingStyle]} pointerEvents="none">
+        {behind}
+      </Animated.View>
+
+      <GestureDetector gesture={pan}>
+        <Animated.View
+          style={[
+            styles.layer,
+            // Opaque, or the layer underneath shows through the one on top and
+            // the parallax reads as two lists at once.
+            { backgroundColor: theme.colors.background },
+            styles.leaving,
+            leavingStyle,
+          ]}
+        >
+          {children}
+        </Animated.View>
+      </GestureDetector>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  layer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  // The edge shadow iOS draws down the leading side of the screen that is
+  // leaving. It is what separates the two layers while both are on screen.
+  leaving: {
+    shadowColor: '#000000',
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: -3, height: 0 },
+  },
 });

@@ -593,6 +593,26 @@ capsule fermée (D5/R1) : corriger « 60 g et non 50 » ne doit pas adopter au
 passage des macros éditées depuis. L'aliment n'est consulté que pour les
 portions qu'il propose aujourd'hui.
 
+**Un retour par glissement, c'est DEUX couches qui bougent.** Une vue du dessus
+qui part en révélant du vide se lit comme une carte qu'on jette. Ce que fait
+iOS — Réglages, Fichiers, partout — déplace deux écrans à la fois : celui qui
+part traverse toute la largeur sous le doigt, celui qui arrive vient d'environ
+un tiers en arrière, à un tiers de la vitesse. L'œil y lit une surface qui
+glisse sur une autre, et c'est ce qui fait que la destination semble avoir
+toujours été là plutôt que d'être construite au relâchement.
+
+`core/ui/swipe-back.tsx` prend donc aussi **ce qu'il y a derrière**, monté en
+permanence. Et il part du **bord** : sinon il réclamerait n'importe quel
+glissement vers la droite, alors que ces étapes contiennent une liste qui
+défile, des lignes qui se balaient et un clavier.
+
+**Réserve, pour ce geste comme pour le balayage de suppression : React Native
+n'expose rien de natif ici.** Ni contrôle système d'actions de balayage, ni
+moyen d'emprunter le retour interactif d'UIKit pour une vue qui n'est pas un
+contrôleur — et les bibliothèques disponibles sont elles-mêmes des
+réimplémentations JavaScript. Ce sont des reconstructions qui en suivent la
+forme et les proportions. Le dire plutôt que de le laisser croire.
+
 ### Trois pièges d'interface, établis par l'échec sur l'appareil
 
 **Sous un en-tête transparent, le haut d'une `ScrollView` n'est pas zéro.**
