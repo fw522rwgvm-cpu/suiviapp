@@ -5,6 +5,7 @@ import {
   describePendingEntryQuantity,
   pendingEntryKcal,
   pendingEntryMacros,
+  wasNameTruncated,
   type PendingEntry,
 } from '../../src/features/nutrition/domain/pending-entry';
 import { baseQuantity, portionQuantity } from '../../src/features/nutrition/domain/portions';
@@ -61,13 +62,16 @@ describe('the quantity, shown beside the name', () => {
     expect(describePendingEntryQuantity(BREAD)).toBe(`50${NB}g`);
   });
 
-  it('names the portion first when one was used', () => {
+  it('says ONLY the portion when one was used', () => {
+    // "2 tranches" is what was decided; "50 g" is what it came to. Both at once
+    // is the same fact said twice, in a slot with room for one — and the grams
+    // stay where they earn their place, on the journal row.
     expect(
       describePendingEntryQuantity({
         ...BREAD,
         quantity: portionQuantity({ name: 'tranche', quantity: 25 }, 2),
       }),
-    ).toBe(`2${NB}tranches · 50${NB}g`);
+    ).toBe(`2${NB}tranches`);
   });
 
   it('is absent for a free entry', () => {
@@ -108,5 +112,46 @@ describe('the macros, shown under the name', () => {
         quantity: baseQuantity(33),
       }),
     ).toContain('P 2,7');
+  });
+});
+
+describe('whether the name had to be cut', () => {
+  // The row drops the quantity when it was, so this decides whether a quantity
+  // is shown at all. It reads a line the platform laid out, and what iOS puts
+  // in that line cannot be verified from here -- hence the shape of these
+  // cases: one "yes" it must recognise, and several unknowns it must not
+  // mistake for one.
+  const NAME = 'Yaourt nature sucre bio';
+
+  it('says yes to the visible prefix plus the ellipsis the platform appends', () => {
+    expect(wasNameTruncated('Yaourt nature su\u2026', NAME)).toBe(true);
+  });
+
+  it('says yes to a bare prefix, for a platform that appends nothing', () => {
+    expect(wasNameTruncated('Yaourt nature su', NAME)).toBe(true);
+  });
+
+  it('says no when the whole name fitted', () => {
+    expect(wasNameTruncated(NAME, NAME)).toBe(false);
+    // Some platforms report the full string whatever numberOfLines says. That
+    // is indistinguishable from fitting, so it reads as fitting: the quantity
+    // stays, which is the behaviour without this rule at all.
+  });
+
+  it('ignores a line it does not recognise rather than guessing', () => {
+    // Fails open. A rule that hid the quantity whenever it was unsure would
+    // hide it on every row the day a platform reported something else.
+    expect(wasNameTruncated('something else entirely', NAME)).toBe(false);
+    expect(wasNameTruncated('', '')).toBe(false);
+  });
+
+  it('does not eat a full stop the name really ends with', () => {
+    // Only the ellipsis character is stripped. Trimming trailing dots would
+    // turn every name ending in one into a permanent false positive.
+    expect(wasNameTruncated('Lait 1,5% M.G.', 'Lait 1,5% M.G.')).toBe(false);
+  });
+
+  it('is not fooled by the padding around a laid-out line', () => {
+    expect(wasNameTruncated(` ${NAME} `, NAME)).toBe(false);
   });
 });

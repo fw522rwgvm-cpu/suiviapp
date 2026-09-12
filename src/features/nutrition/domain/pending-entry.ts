@@ -54,6 +54,11 @@ export function pendingEntryKcal(entry: PendingEntry): number {
 /**
  * The quantity, as the line shows it beside the name. Null for a free entry.
  *
+ * WHEN A PORTION WAS USED, ONLY THE PORTION IS SHOWN. "2 tranches" is what was
+ * decided; "50 g" is what it came to, and the two together are the same fact
+ * said twice in a place that has room for one. The grams stay where they are
+ * needed — the journal row, where an entry has to be readable against a total.
+ *
  * A free entry has no quantity anyone typed: it is stored as 100 units of a
  * virtual food (D5/R2), and showing "100 g" would be showing the storage form.
  * Null rather than an empty string, so the caller leaves the slot out entirely
@@ -63,10 +68,9 @@ export function describePendingEntryQuantity(entry: PendingEntry): string | null
   if (entry.kind === 'free') return null;
 
   const { baseQuantity, portion } = entry.quantity;
-  const amount = formatQuantity(baseQuantity, entry.baseUnit);
   return portion === null
-    ? amount
-    : `${formatPortionCount(portion.count, portion.name)} · ${amount}`;
+    ? formatQuantity(baseQuantity, entry.baseUnit)
+    : formatPortionCount(portion.count, portion.name);
 }
 
 /**
@@ -80,4 +84,30 @@ export function describePendingEntryQuantity(entry: PendingEntry): string | null
 export function describePendingEntryMacros(entry: PendingEntry): string {
   const { protein, carbs, fat } = pendingEntryMacros(entry);
   return `P ${formatMacro(protein)} · G ${formatMacro(carbs)} · L ${formatMacro(fat)}`;
+}
+
+/**
+ * Did the platform have to cut the name to fit it on its line?
+ *
+ * Asked because the row drops the quantity rather than let either of the two be
+ * ellipsised: half a food name identifies nothing, and "2 tra..." is worse than
+ * silence. It is answered from the line the text actually laid out, since any
+ * count of characters is a guess about a font.
+ *
+ * IT FAILS OPEN, AND THAT IS THE POINT. What iOS puts in a truncated line's
+ * text is not something this project can verify without the device: it may be
+ * the visible prefix, that prefix plus an ellipsis, or -- on some platforms --
+ * the whole string regardless. So the only answer of "yes" is the one that is
+ * unambiguous: what was shown is a SHORTER PREFIX of the name. Anything else
+ * unrecognised leaves the quantity in place, which is the behaviour of the day
+ * this was written. A rule that hid the quantity whenever it was unsure would
+ * hide it always, on every row, the first time a platform reported differently.
+ */
+export function wasNameTruncated(shownLine: string, name: string): boolean {
+  // The ellipsis the platform appends is not part of what fitted. Only the one
+  // character is stripped: a name may legitimately end in a full stop, and
+  // eating it would turn every such name into a false positive.
+  const shown = shownLine.trim().replace(/\u2026+$/u, '');
+  const full = name.trim();
+  return shown.length < full.length && full.startsWith(shown);
 }

@@ -1,148 +1,156 @@
-import { useRef, useState, type ReactNode } from 'react';
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import type { ReactNode } from 'react';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { useTheme } from '@/core/theme';
 
 /**
- * Swipe left to delete (specs 8.3).
+ * Swipe left to delete (specs 8.3), and to take a line out of the basket.
  *
- * Written by hand: D10 rules out component libraries precisely because the
- * screens that matter here — the progress ring, the RIR row, swipe to delete,
- * the session banner — are all bespoke, and a library brings none of them.
+ * ## How close this gets to the system, and where it stops
  *
- * Two deliberate implementation choices, both about not being able to compile
- * locally:
+ * The Files app uses UISwipeActionsConfiguration on a UITableView. React
+ * Native binds nothing to it — there is no component, in the framework or in
+ * the libraries section 5 allows, that IS that control; the ones that look
+ * like it are JavaScript reimplementations too. Matching it exactly would mean
+ * a native module and every list in the application rebuilt on a collection
+ * view, which is a native dependency and a rewrite.
  *
- *  - the gesture runs on the JS thread (`runOnJS`). Gesture Handler otherwise
- *    workletises its callbacks, which pulls in the Reanimated worklets plugin
- *    and a Babel step. Section 5 allows Reanimated, but a toolchain failure
- *    there is only diagnosable through a build, and this component does not
- *    need frame-perfect tracking.
- *  - the row does not follow the finger. The gesture decides between three
- *    outcomes on release, and a plain Animated timing on the native driver
- *    moves the row. Core React Native, no plugin, nothing to configure.
+ * So this reproduces its behaviour rather than being it, and the behaviour is
+ * four things — all of which were missing before, which is why it did not look
+ * the same:
  *
- * `activeOffsetX` is what makes it coexist with the vertical list and with the
- * day-to-day swipe: the gesture only claims the touch once the movement is
- * clearly horizontal.
+ *  1. THE ROW FOLLOWS THE FINGER. Slice 1 deliberately avoided this: the
+ *     Reanimated worklets plugin was unproven then, and a toolchain failure is
+ *     only diagnosable through a fifteen-minute build. The plugin has been
+ *     confirmed since, and the day carousel already follows the finger. This
+ *     was the largest difference — a row that decides on release feels like a
+ *     button being pressed, not like a sheet being pulled.
+ *  2. The action is exactly the strip uncovered, so the red grows out of the
+ *     edge with the drag instead of waiting there at full size behind.
+ *  3. Past the resting width the row resists, keeping a third of the movement.
+ *  4. Pulled far enough it commits on its own, and the row carries on out
+ *     rather than bouncing back first.
  *
- * ## Two directions, one component
- *
- * The journal swipes LEFT, as specs 8.3 asks. The basket of the add screen
- * swipes RIGHT, because it sits inside a panel where a leftward drag already
- * means something else. Rather than a second component that would drift from
- * this one, the direction is a parameter and the arithmetic is mirrored by a
- * sign.
- *
- * A note on "the native iOS behaviour", since that is what was asked for:
- * React Native exposes no system swipe-actions control, and the library
- * alternatives are themselves JavaScript reimplementations. So this is an
- * emulation either way — and the one already running on the device is the
- * lower-risk emulation to spread.
+ * Release is a spring, not a timing. The system's is, and the difference is
+ * legible even when nobody can say why.
  */
 
-const ACTION_WIDTH = 92;
-/** Past this, the row opens and waits for a tap. */
-const REVEAL_THRESHOLD = 40;
-/** Past this, the swipe was unambiguous: delete straight away. */
-const FULL_SWIPE_THRESHOLD = 160;
+/** Where the row rests when open, and how wide the action reads. */
+const ACTION_WIDTH = 96;
+/** Past this, releasing opens rather than closes. */
+const OPEN_THRESHOLD = ACTION_WIDTH / 2;
+/** Past this, the swipe was unambiguous: run the action. */
+const FULL_SWIPE = 200;
+/** A flick counts even when short: points per second. */
+const FLICK_VELOCITY = 800;
+/** How much of the drag survives past the resting position. */
+const RESISTANCE = 1 / 3;
+
+const SPRING = { damping: 20, stiffness: 260, mass: 0.6 } as const;
 
 export function SwipeToDeleteRow({
   children,
   onDelete,
   actionLabel = 'Supprimer',
-  direction = 'left',
 }: {
   children: ReactNode;
   onDelete: () => void;
   actionLabel?: string;
-  /** Which way the row travels. The action is revealed on the other side. */
-  direction?: 'left' | 'right';
 }) {
   const theme = useTheme();
-  const [revealed, setRevealed] = useState(false);
-  const offset = useRef(new Animated.Value(0)).current;
-  // -1 for a leftward swipe, 1 for a rightward one. Every distance below is
-  // written once, unsigned, and multiplied by this.
-  const way = direction === 'left' ? -1 : 1;
+  const { width } = useWindowDimensions();
 
-  function slideTo(value: number): void {
-    Animated.timing(offset, {
-      toValue: value,
-      duration: 160,
-      useNativeDriver: true,
-    }).start();
-  }
-
-  function open(): void {
-    setRevealed(true);
-    slideTo(way * ACTION_WIDTH);
-  }
-
-  function close(): void {
-    setRevealed(false);
-    slideTo(0);
-  }
+  // Negative, always: 0 closed, -ACTION_WIDTH open, -width gone.
+  const offset = useSharedValue(0);
+  const start = useSharedValue(0);
 
   const pan = Gesture.Pan()
-    .runOnJS(true)
+    // Only claims the touch once the movement is clearly horizontal, and gives
+    // up if it started as a vertical scroll. That is what lets it coexist with
+    // the list, the day carousel, and the edge gesture that goes back.
     .activeOffsetX([-20, 20])
+    .failOffsetY([-16, 16])
+    .onBegin(() => {
+      start.value = offset.value;
+    })
+    .onUpdate((event) => {
+      const raw = start.value + event.translationX;
+      if (raw > 0) {
+        // Closed and pulled the other way: nothing to reveal on that side.
+        offset.value = 0;
+        return;
+      }
+      // Past the resting width the row still moves, but grudgingly — what
+      // follows is a decision, and it should feel like one.
+      offset.value =
+        raw < -ACTION_WIDTH ? -ACTION_WIDTH + (raw + ACTION_WIDTH) * RESISTANCE : raw;
+    })
     .onEnd((event) => {
-      // Measured along the swipe's own direction, so the three outcomes read
-      // the same whichever way the row travels.
-      const travelled = event.translationX * way;
+      const travelled = -offset.value;
 
-      if (travelled > FULL_SWIPE_THRESHOLD) {
-        onDelete();
+      if (travelled > FULL_SWIPE || event.velocityX < -FLICK_VELOCITY) {
+        // Carries on out rather than bouncing back first: the row leaving IS
+        // the confirmation, and one that returns before vanishing reads as a
+        // mistake being corrected.
+        offset.value = withTiming(-width, { duration: 180 }, (finished) => {
+          if (finished === true) runOnJS(onDelete)();
+        });
         return;
       }
-      if (travelled > REVEAL_THRESHOLD) {
-        open();
-        return;
-      }
-      if (travelled < -REVEAL_THRESHOLD) {
-        close();
-      }
+
+      offset.value = withSpring(travelled > OPEN_THRESHOLD ? -ACTION_WIDTH : 0, SPRING);
     });
+
+  const rowStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: offset.value }],
+  }));
+
+  // Exactly the strip uncovered, so the red grows from the edge with the drag.
+  const actionStyle = useAnimatedStyle(() => ({ width: Math.max(0, -offset.value) }));
+
+  function close(): void {
+    offset.value = withSpring(0, SPRING);
+  }
+
+  function remove(): void {
+    offset.value = withTiming(-width, { duration: 180 }, (finished) => {
+      if (finished === true) runOnJS(onDelete)();
+    });
+  }
 
   return (
     <View style={styles.container}>
-      <View
-        style={[
-          styles.action,
-          { backgroundColor: theme.colors.danger },
-          // The action waits on the side the row uncovers.
-          { alignItems: direction === 'left' ? 'flex-end' : 'flex-start' },
-        ]}
+      <Animated.View
+        style={[styles.action, { backgroundColor: theme.colors.danger }, actionStyle]}
       >
         <Pressable
-          onPress={onDelete}
-          disabled={!revealed}
+          onPress={remove}
           style={styles.actionPress}
           accessibilityRole="button"
           accessibilityLabel={actionLabel}
         >
-          <Text style={[styles.actionLabel, { color: theme.colors.onAccent }]}>
+          <Text
+            style={[styles.actionLabel, { color: theme.colors.onAccent }]}
+            numberOfLines={1}
+          >
             {actionLabel}
           </Text>
         </Pressable>
-      </View>
+      </Animated.View>
 
       <GestureDetector gesture={pan}>
-        <Animated.View
-          style={[
-            { backgroundColor: theme.colors.surface },
-            { transform: [{ translateX: offset }] },
-          ]}
-        >
+        <Animated.View style={[{ backgroundColor: theme.colors.surface }, rowStyle]}>
           {/* Tapping an open row closes it rather than triggering the row. */}
-          {revealed ? (
-            <Pressable onPress={close} accessibilityLabel="Annuler la suppression">
-              <View pointerEvents="none">{children}</View>
-            </Pressable>
-          ) : (
-            children
-          )}
+          <Pressable onPress={close} accessibilityLabel="Annuler la suppression">
+            <View pointerEvents="box-none">{children}</View>
+          </Pressable>
         </Animated.View>
       </GestureDetector>
     </View>
@@ -156,8 +164,17 @@ const styles = StyleSheet.create({
     top: 0,
     right: 0,
     bottom: 0,
-    left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    // The label is laid out at the resting width and clipped as the strip
+    // narrows, so it slides in from the edge instead of shrinking.
+    overflow: 'hidden',
   },
-  actionPress: { width: ACTION_WIDTH, height: '100%', alignItems: 'center', justifyContent: 'center' },
+  actionPress: {
+    width: ACTION_WIDTH,
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   actionLabel: { fontSize: 14, fontWeight: '600' },
 });
