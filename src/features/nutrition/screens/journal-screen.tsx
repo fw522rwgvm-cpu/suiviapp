@@ -320,5 +320,12 @@ export function JournalScreen() {
 
 const styles = StyleSheet.create({
   strip: { flex: 1, flexDirection: 'row' },
-  headerGroup: { flexDirection: 'row', alignItems: 'center', gap: 20 },
+  // Padding rather than margin: it widens the touch target at the same time as
+  // it pulls the icons off the edge, where a margin would only move them.
+  headerGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 20,
+    paddingHorizontal: 8,
+  },
 });

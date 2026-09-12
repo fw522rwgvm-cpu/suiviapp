@@ -57,10 +57,10 @@ Tranches 0, 1 et 2 livrées et vérifiées sur l'iPhone. **Tranche 3 (base
 d'aliments personnelle) écrite, typée, testée et bundlée — rien de son
 interface n'a encore tourné sur l'appareil.**
 
-**Attention, base de départ.** La tranche 2 vit sur `tranche-2-export`, poussée
-sur `origin`, **jamais fusionnée sur `main`** au 12/09/2026 : `main` est resté
-au merge de la tranche 1. `tranche-3-food` part donc de `tranche-2-export` et
-non de `main`. À fusionner dans l'ordre.
+**Base de départ, résolue.** La tranche 2 a été fusionnée sur `main` le
+12/09/2026 (PR #3). `tranche-3-food` partait de `tranche-2-export` et contient
+donc déjà tout ce que `main` porte : une PR vers `main` se fusionne sans
+conflit.
 
 **Le filet existe.** Depuis le 12/09/2026, l'aller-retour export / import est
 vérifié de bout en bout sur l'appareil : export depuis la quotidienne, sortie
