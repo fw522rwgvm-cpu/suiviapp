@@ -49,7 +49,19 @@ export interface ColorTokens {
    * Deliberately NOT the accent: the accent means "you can touch this". A
    * quantity of protein is not touchable, and borrowing the interactive colour
    * for it makes both meanings weaker.
+   *
+   * FOUR HUES, AS FAR APART AS FOUR CAN BE, once the accent and the
+   * destructive red are excluded: orange for carbs, teal for protein, violet
+   * for fat, and magenta for calories. Calories came last and took what was
+   * left, which is also the only choice that survives being looked at -- a
+   * blue would sit on top of the teal, an amber on top of the orange, and a
+   * red would be read as something having gone wrong.
+   *
+   * In the spirit of the app the design was asked to follow, not sampled from
+   * it: one flat, distinct hue per nutrient, worn as a small filled dot beside
+   * a name rather than as a fill behind it.
    */
+  macroKcal: string;
   macroProtein: string;
   macroCarbs: string;
   macroFat: string;
@@ -68,6 +80,7 @@ const light: ColorTokens = {
   onAccent: '#ffffff',
   warning: '#8a5a00',
   danger: '#a8291f',
+  macroKcal: '#b5307a',
   macroProtein: '#2f7d8c',
   macroCarbs: '#d98324',
   macroFat: '#8a5cc4',
@@ -86,6 +99,7 @@ const dark: ColorTokens = {
   danger: '#e8796e',
   // Lifted, not the same hex: a colour that reads on white disappears on near
   // black, and the point of giving each macro a colour is that it be readable.
+  macroKcal: '#ec6fb5',
   macroProtein: '#5cc4d4',
   macroCarbs: '#f0a94c',
   macroFat: '#b18ce0',

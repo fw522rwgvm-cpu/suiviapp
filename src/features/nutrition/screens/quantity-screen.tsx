@@ -8,7 +8,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { formatKcal, formatMacro, formatQuantity, parseDecimal } from '@/core/format';
+import { formatQuantity, parseDecimal } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import type { FoodId, JournalEntryId } from '@/core/db/schema';
 import { useEntry, useUpdateFoodEntryQuantity } from '../data/day-queries';
@@ -22,6 +22,7 @@ import {
   type QuantityChoice,
 } from '../domain/portions';
 import { useDismiss } from '@/core/ui/overlay-panel';
+import { MacroRow } from '../components/macro-row';
 import { formatPortionCount } from '../components/portion-text';
 
 /**
@@ -353,13 +354,7 @@ function QuantityForm({
               },
             ]}
           >
-            <Text style={[styles.kcal, { color: theme.colors.text }]}>
-              {formatKcal(total.kcal)} kcal
-            </Text>
-            <Text style={[styles.macros, { color: theme.colors.textMuted }]}>
-              P {formatMacro(total.protein)} · G {formatMacro(total.carbs)} · L{' '}
-              {formatMacro(total.fat)}
-            </Text>
+            <MacroRow total={total} />
           </View>
         )}
 
@@ -451,8 +446,6 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   equivalent: { fontSize: 13 },
-  kcal: { fontSize: 28, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  macros: { fontSize: 14 },
   save: { borderRadius: 18, paddingVertical: 16, alignItems: 'center' },
   saveLabel: { fontSize: 17, fontWeight: '600' },
 });

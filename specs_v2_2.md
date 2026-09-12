@@ -741,6 +741,8 @@ une demande qui diverge des specs modifie les specs.
 
 | 14 | §8.3 | Une entree du Journal affiche **quantite et macros** sur sa ligne grise, et ses calories **avec l'unite** | Le §8.3 ne disait pas ce que porte une entree. Les macros y manquaient : une ligne loguee repond a deux questions, combien et ce que ca coute. Et un nombre nu au milieu de grammes se calcule au lieu de se lire |
 
+| 15 | §8.3, §8.4 | **Une couleur par nutriment, calories comprises**, portee en petit cercle plein a cote du nom. Sur l'ecran de quantite, les quatre s'affichent en une rangee : nom au-dessus, valeur en dessous | Quatre teintes aussi eloignees que quatre peuvent l'etre une fois l'accent et le rouge destructif exclus. Les quatre chiffres se lisent par comparaison, et une phrase doit etre analysee avant d'etre comparee. La bannière de restant (§8.3.1) et l'anneau de la tranche 7 porteront les memes |
+
 **Reserve sur les gestes 9 et 11, enoncee une fois pour toutes.** Les deux
 reproduisent un comportement d'UIKit sans etre ce comportement. React Native
 n'expose ni `UISwipeActionsConfiguration` ni le retour interactif d'un
