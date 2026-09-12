@@ -370,7 +370,8 @@ Les onglets non pourvus dans une version donnée sont **présents et affichent u
 **[v2.3] Un repas s'assemble, puis se valide.** Choisir un aliment ou saisir une entrée libre ajoute une ligne à une **liste temporaire** et ramène à l'écran d'accès rapide ; rien n'est écrit avant « Confirmer ». Un repas de quatre choses est alors quatre choix, et non quatre allers-retours par le Journal.
 
 - L'écran d'accès rapide porte **« Confirmer »** en bas, absent tant que la liste est vide.
-- Un bouton de tête, portant le **nombre de lignes en attente**, ouvre la liste ; chaque ligne s'y retire par une croix.
+- Un bouton de tête, portant le **nombre de lignes en attente**, ouvre la liste ; une ligne s'en retire par un **balayage vers la gauche**, comme une entrée du Journal (§8.3) et comme un fichier dans l'app Fichiers.
+- Une ligne dit ce qu'elle apporte : **nom et quantité** sur une ligne, les trois macros dessous, les kcal à droite. La quantité est le **nom de la portion** quand une portion a été choisie — « 2 tranches » est ce qui a été décidé, « 50 g » ce à quoi cela revient, et les deux ensemble disent le même fait deux fois. Si le nom ne tient pas à côté, **c'est la quantité qui disparaît** : une moitié de nom n'identifie rien.
 - **L'écriture est atomique** : la liste entière part en une transaction. L'application peut être arrêtée à tout moment (§2.2), et un demi-repas est pire qu'aucun — aucun se voit manquer, un demi non.
 - La liste est **abandonnée avec l'écran**. Une intention abandonnée ne se conserve pas : il faudrait sinon expliquer, des jours plus tard, pourquoi un repas que personne n'a validé attend encore.
 
@@ -730,3 +731,16 @@ une demande qui diverge des specs modifie les specs.
 | 6 | §8.3 | Une journee atteinte par balayage s'affiche **defilement en haut** | On la lit a nouveau depuis ses chiffres |
 | 7 | §8.4 | Un repas s'assemble dans une **liste temporaire** puis se valide par « Confirmer », en une seule transaction | Quatre choses a loguer ne devraient pas etre quatre allers-retours par le Journal. Et un demi-repas est pire qu'aucun : aucun se voit manquer |
 | 8 | §6.1 | Origine alignee sur `perso` \| `off` | Le §6 se declare non normatif sur le modele de donnees ; le schema de l'architecture fait autorite |
+| 9 | §8.3, §8.4 | Le **balayage vers la gauche** remplace la croix pour retirer une ligne de la liste temporaire, et il **suit le doigt** dans les deux listes | Une croix sur chaque ligne est une cible permanente pour une action rare. Et une rangee qui ne decide qu'au relachement se lit comme un bouton, pas comme une feuille qu'on tire. Reserve : reconstruction du comportement d'UIKit, pas le controle lui-meme (voir ci-dessous) |
+| 10 | §8.4 | Une ligne en attente porte **nom, quantite, macros et kcal** ; la quantite est le **nom de la portion** s'il y en a une, et **s'efface** si le nom devait etre tronque | La portion est la decision, les grammes son resultat : les deux disent le meme fait dans un espace prevu pour un. Les grammes restent sur la ligne du Journal, ou une entree se lit face a un total |
+| 11 | §8.4 | Un retour aux etapes internes de l'ajout (quantite, saisie libre, liste) se fait par **glissement depuis le bord gauche**, les deux couches se deplacant ensemble ; le bouton de retour ne porte qu'un chevron | Ces etapes sont un etat et non des routes (D16 : 0,2 s), donc aucun geste systeme ne vient avec elles. Meme reserve qu'en 9 |
+
+**Reserve sur les gestes 9 et 11, enoncee une fois pour toutes.** Les deux
+reproduisent un comportement d'UIKit sans etre ce comportement. React Native
+n'expose ni `UISwipeActionsConfiguration` ni le retour interactif d'un
+`UINavigationController` pour une vue qui n'est pas un controleur ; les egaler
+exactement demanderait un module natif et toutes les listes reconstruites sur
+une collection view. Ce qui est copie est la forme et les proportions : suivi
+du doigt, resistance passee la position de repos, sortie complete au-dela d'un
+seuil, ressort au relachement, parallaxe d'un tiers sur la couche qui arrive.
+L'ecart restant est un ecart de rendu, non de comportement, et il est assume.
