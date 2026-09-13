@@ -12,6 +12,7 @@ import {
 import type { LocalDate } from '@/core/date';
 import type { EntityId } from '@/core/id';
 import type { DayTemplateId } from './planning';
+import type { RecipeId } from './recipes';
 
 /**
  * Foods, days, meals and journal entries (schema 2.2 and 2.3).
@@ -415,7 +416,28 @@ export const journalEntry = sqliteTable(
      * That is the specification, not a gap.
      */
     sourceFoodId: text('source_food_id').$type<FoodId>(),
-    sourceRecipeId: text('source_recipe_id'),
+    /**
+     * The recipe a grouped block came from (specs 8.6), marked in slice 6 —
+     * again a TypeScript change with no SQL in it, exactly as source_food_id
+     * was marked in slice 3 and template_id_snapshot in slice 5.
+     *
+     * NO FOREIGN KEY, and the same three reasons apply, the last one settling
+     * it as before:
+     *
+     *  - ON DELETE CASCADE would destroy history, where specs 5.3 requires
+     *    that deleting a recipe leave past entries intact;
+     *  - ON DELETE RESTRICT would block the deletion, where specs 5.3 says no
+     *    deletion is ever blocked;
+     *  - it is impossible anyway. This column shipped in 0001, three slices
+     *    before its first user, and SQLite has no ALTER TABLE ADD CONSTRAINT.
+     *
+     * Consequence, accepted: a grouped block survives the deletion of the
+     * recipe it came from, keeping every figure it froze. That is specs 5.2 —
+     * an entry is a closed capsule — and the block's children carry the macros
+     * in any case (D5/R2), so nothing about it needs the recipe to still
+     * exist.
+     */
+    sourceRecipeId: text('source_recipe_id').$type<RecipeId>(),
     name: text('name').notNull(),
     brand: text('brand'),
     baseUnit: text('base_unit').$type<BaseUnit>(),

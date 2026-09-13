@@ -4,6 +4,7 @@ import {
   applyAllMigrations,
   applyMigrationsAfter,
   applyMigrationsUpTo,
+  applyOneMigration,
   columnNames,
   indexOfTag,
   openEmptyDatabase,
@@ -44,7 +45,10 @@ describe('migration 0004 — what it creates', () => {
     applyMigrationsUpTo(db, indexOfTag(PLANNING_MIGRATION) - 1);
     const before = new Set(tableNames(db));
 
-    applyMigrationsAfter(db, indexOfTag(PLANNING_MIGRATION) - 1);
+    // This migration alone, not "everything after it": the unbounded form
+    // starts counting the next migration's tables the day one is written, and
+    // 0005 is the day it did.
+    applyOneMigration(db, PLANNING_MIGRATION);
     const added = tableNames(db).filter((name) => !before.has(name));
 
     expect(added).toEqual([

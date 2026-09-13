@@ -10,6 +10,9 @@ import {
   type DayTemplateMealId,
   type FoodId,
   type JournalEntryId,
+  type RecipeId,
+  type RecipeIngredientId,
+  type RecipeStepId,
 } from '../../src/core/db/schema';
 import { buildDatabase } from '../../src/features/backup/domain/build-database';
 import type { BinarySchema } from '../../src/features/backup/domain/envelope';
@@ -166,6 +169,8 @@ function fillEveryColumn(raw: Database.Database): void {
   const foodId = newId<FoodId>();
   const plainFoodId = newId<FoodId>();
   const templateId = newId<DayTemplateId>();
+  const recipeId = newId<RecipeId>();
+  const weighedRecipeId = newId<RecipeId>();
 
   raw.prepare("INSERT INTO setting (key, value) VALUES ('theme', 'dark')").run();
 
@@ -262,6 +267,68 @@ function fillEveryColumn(raw: Database.Database): void {
         'target_carbs, target_fat, target_kcal) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     )
     .run(mealId, '2026-03-04', 0, 'Déjeuner', 40.5, 60.25, 15.125, 620.5);
+
+  // THE RECIPE BLOCK, crossed the same way the foods above are: what one row
+  // leaves null another fills, so no column can be dropped without one of them
+  // noticing.
+  const insertRecipe = raw.prepare(
+    'INSERT INTO recipe (id, name, prep_minutes, yield_type, yield_value, ' +
+      'is_favorite, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+  );
+  // Yields in portions, a favourite, with a stated preparation time.
+  insertRecipe.run(
+    recipeId, 'Curry de pois chiches', 45, 'portions', 4,
+    1, 1_789_000_000_030, 1_789_000_000_031,
+  );
+  // Yields in grams, not a favourite, no preparation time — so both ends of
+  // ck_recipe_yield_type are pinned and a narrowed constraint could not
+  // survive a round trip unnoticed.
+  insertRecipe.run(
+    weighedRecipeId, 'Sauce tomate', null, 'weight', 850.5,
+    0, 1_789_000_000_032, 1_789_000_000_033,
+  );
+
+  const insertTag = raw.prepare('INSERT INTO recipe_tag (recipe_id, tag) VALUES (?, ?)');
+  // Two tags on one recipe and one on the other: the composite primary key is
+  // per recipe, and an importer that widened it to a global unique on `tag`
+  // would fail exactly here.
+  insertTag.run(recipeId, 'végétarien');
+  insertTag.run(recipeId, 'batch cooking');
+  insertTag.run(weighedRecipeId, 'végétarien');
+
+  const insertStep = raw.prepare(
+    'INSERT INTO recipe_step (id, recipe_id, position, text) VALUES (?, ?, ?, ?)',
+  );
+  // position 1 as well as 0, for the reason the portions above use both.
+  insertStep.run(newId<RecipeStepId>(), recipeId, 0, 'Faire revenir l’oignon.');
+  insertStep.run(newId<RecipeStepId>(), recipeId, 1, 'Ajouter les pois chiches et mijoter.');
+
+  const insertIngredient = raw.prepare(
+    'INSERT INTO recipe_ingredient (id, recipe_id, position, food_id, quantity, unit, ' +
+      'frozen_name, frozen_base_unit, frozen_protein_100, frozen_carbs_100, ' +
+      'frozen_fat_100, frozen_kcal_100, frozen_at) ' +
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  );
+  // A LIVE line: the link is set and every freeze column is null, which is the
+  // whole normal life of a row (D5/R3).
+  insertIngredient.run(
+    newId<RecipeIngredientId>(), recipeId, 0, foodId, 180.25, 'g',
+    null, null, null, null, null, null, null,
+  );
+  // A FROZEN line, which is the only thing that can fill the other seven
+  // columns: the food it came from was deleted, so the link is broken and the
+  // capsule carries everything. Without it, seven columns of this table would
+  // be columns with no test — the exact hole slice 2 found with `brand`.
+  insertIngredient.run(
+    newId<RecipeIngredientId>(), recipeId, 1, null, 42.75, 'ml',
+    'Crème de coco', 'ml', 2.125, 3.25, 21.5, 212.75, 1_789_000_000_034,
+  );
+  // A second recipe's ingredient, so the cascade has more than one parent to
+  // be wrong about.
+  insertIngredient.run(
+    newId<RecipeIngredientId>(), weighedRecipeId, 0, plainFoodId, 500.5, 'ml',
+    null, null, null, null, null, null, null,
+  );
 
   const insertEntry = raw.prepare(
     'INSERT INTO journal_entry (id, day_meal_id, date, parent_entry_id, position, ' +
