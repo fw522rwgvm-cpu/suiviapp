@@ -278,7 +278,11 @@ describe('slicing the migration journal', () => {
   });
 
   it('names what is left to apply after the rows are in', () => {
-    expect(tagsAfter(bundle, 0)).toEqual(['0001_journal', '0002_food']);
+    expect(tagsAfter(bundle, 0)).toEqual([
+      '0001_journal',
+      '0002_food',
+      '0003_barcode_off_cache',
+    ]);
     // An archive from this binary has nothing left, which is the ordinary case.
     expect(tagsAfter(bundle, bundle.journal.entries.length - 1)).toEqual([]);
   });

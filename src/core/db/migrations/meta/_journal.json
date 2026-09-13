@@ -22,6 +22,13 @@
       "when": 1789157908220,
       "tag": "0002_food",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1789261777961,
+      "tag": "0003_barcode_off_cache",
+      "breakpoints": true
     }
   ]
 }

@@ -92,11 +92,20 @@ describe('table catalog', () => {
     expect(PORTION_NAMES).toContain('cuillère à soupe');
   });
 
-  it('names the Open Food Facts cache as excluded before it exists', () => {
-    // D7 and specs 5.4 exclude it because it is rebuildable. Deciding now is
-    // what keeps slice 4 from having to rediscover the reasoning.
+  it('excludes the Open Food Facts cache, now that the table actually exists', () => {
+    // D7 and specs 5.4 exclude it because it is rebuildable. The decision was
+    // taken in slice 2, before the table existed, so that slice 4 would not
+    // have to rediscover the reasoning — and it did not.
     expect(EXCLUDED_TABLES.map((exclusion) => exclusion.name)).toContain('off_cache');
     expect(isExcluded('off_cache')).toBe(true);
+
+    // THE ASSERTION THAT KEEPS THE ONE ABOVE HONEST. Until 0003 the exclusion
+    // was true of nothing: "classifies every table" passed because off_cache
+    // was not in the schema at all, not because it was excluded. Naming it in
+    // the schema list is what makes the exclusion load-bearing, and what would
+    // fail if someone deleted the table and left the exclusion behind.
+    expect(allSchemaTableNames()).toContain('off_cache');
+    expect(exportedTables().map((table) => table.name)).not.toContain('off_cache');
   });
 
   it('derives column names from the schema, in SQL spelling', () => {

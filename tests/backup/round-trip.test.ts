@@ -167,21 +167,30 @@ function fillEveryColumn(raw: Database.Database): void {
   raw.prepare("INSERT INTO setting (key, value) VALUES ('theme', 'dark')").run();
 
   const insertFood = raw.prepare(
-    'INSERT INTO food (id, name, brand, source, base_unit, protein_100, carbs_100, ' +
-      'fat_100, kcal_100, display_ref_qty, is_favorite, created_at, updated_at) ' +
-      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    'INSERT INTO food (id, name, brand, barcode, source, base_unit, protein_100, ' +
+      'carbs_100, fat_100, kcal_100, display_ref_qty, is_favorite, created_at, ' +
+      'updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
   );
   // Every column distinguishable and NON-NULL: a brand, a favourite flag at 1
   // rather than its default, and a reference quantity that is not 100. A
   // column left at its default is a column a dropped-column bug survives.
+  //
+  // This one has a brand and NO barcode, which is what a personal food looks
+  // like: it is a thing rather than a product.
   insertFood.run(
-    foodId, 'Pain de mie complet', 'Sans marque', 'perso', 'g',
+    foodId, 'Pain de mie complet', 'Sans marque', null, 'perso', 'g',
     8.25, 47.5, 3.125, 265.5, 30, 1, 1_789_000_000_010, 1_789_000_000_011,
   );
   // A second food in millilitres, not a favourite, with no brand — so the
-  // comparison sees both sides of every flag rather than one.
+  // comparison sees both sides of every flag rather than one. It carries the
+  // barcode, crossed the other way from the brand so that neither column can
+  // be dropped without one row noticing.
+  //
+  // A STRING, not a number: an EAN can begin with a zero, and a barcode parsed
+  // as a number loses it silently — the kind of defect that survives a round
+  // trip because both sides agree on the wrong value.
   insertFood.run(
-    plainFoodId, 'Lait demi-écrémé', null, 'off', 'ml',
+    plainFoodId, 'Lait demi-écrémé', null, '3033710065967', 'off', 'ml',
     3.2, 4.8, 1.55, 46.5, 100, 0, 1_789_000_000_012, 1_789_000_000_013,
   );
 

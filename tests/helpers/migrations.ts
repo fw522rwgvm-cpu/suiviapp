@@ -81,6 +81,20 @@ export function applyMigrationsUpTo(db: Database.Database, index: number): strin
   return applied;
 }
 
+/**
+ * The journal position of a tag, so a test can name the migration it is about
+ * instead of counting.
+ *
+ * A literal index would be right until the day a migration is inserted before
+ * it, and then wrong everywhere at once — silently, since every index would
+ * still resolve to a migration that exists.
+ */
+export function indexOfTag(tag: string): number {
+  const index = readJournal().findIndex((entry) => entry.tag === tag);
+  if (index === -1) throw new Error(`No migration tagged ${tag} in the journal.`);
+  return index;
+}
+
 /** Applies everything after `index`, over a database that already holds rows. */
 export function applyMigrationsAfter(db: Database.Database, index: number): string[] {
   const applied: string[] = [];

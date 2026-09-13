@@ -2,12 +2,31 @@ import type Database from 'better-sqlite3';
 import { describe, expect, it } from 'vitest';
 import {
   applyAllMigrations,
-  applyMigrationsAfter,
+  applyMigration,
   applyMigrationsUpTo,
   columnNames,
+  indexOfTag,
   openEmptyDatabase,
+  readMigrationSql,
   tableNames,
 } from '../helpers/migrations';
+
+/**
+ * 0002 is what this file is about, so the inventory assertions replay UP TO
+ * 0002 rather than replaying everything.
+ *
+ * They used to replay everything, which meant the same thing only for as long
+ * as 0002 was the last migration. The day 0003 added `barcode` and `off_cache`
+ * — both of them deferred, by name, in the comments below — four of these
+ * turned red at once. Recut this way they say something stronger and permanent:
+ * this is what the frozen migration produces, whatever is layered on later.
+ * What 0003 adds is asserted in replay-off.test.ts.
+ *
+ * The behavioural assertions — CHECK constraints, the cascade, the missing
+ * foreign key — keep replaying everything, because they are about the database
+ * the application actually runs against.
+ */
+const FOOD_MIGRATION = '0002_food';
 
 /**
  * The food tables of schema 2.2, replayed in Node (D6/G4).
@@ -47,13 +66,15 @@ describe('food schema', () => {
   it('creates the two tables of section 2.2 that slice 3 uses, and only those', () => {
     const db = openEmptyDatabase();
     try {
-      applyAllMigrations(db);
+      applyMigrationsUpTo(db, indexOfTag(FOOD_MIGRATION));
       const tables = tableNames(db);
       expect(tables).toContain('food');
       expect(tables).toContain('food_portion');
 
       // Recipes are slice 6, the Open Food Facts cache slice 4. Their absence
-      // is the point: no layer built "for later" (section 7).
+      // is the point: no layer built "for later" (section 7). off_cache
+      // arrived in 0003 and is asserted there; what is asserted HERE is that
+      // 0002 never carried it.
       expect(tables).not.toContain('recipe');
       expect(tables).not.toContain('recipe_ingredient');
       expect(tables).not.toContain('off_cache');
@@ -65,12 +86,14 @@ describe('food schema', () => {
   it('carries exactly the columns slice 3 decided on', () => {
     const db = openEmptyDatabase();
     try {
-      applyAllMigrations(db);
+      applyMigrationsUpTo(db, indexOfTag(FOOD_MIGRATION));
 
-      // `barcode` is deliberately ABSENT. The rule that produced this list:
-      // 0002 carries what cannot be added later — NOT NULL columns and CHECK
-      // constraints — and defers what can. A nullable, unconstrained column
-      // with no user before the scan of slice 4 can arrive by ALTER TABLE.
+      // `barcode` is deliberately ABSENT, and this assertion is the record of
+      // that decision holding. The rule that produced this list: 0002 carries
+      // what cannot be added later — NOT NULL columns and CHECK constraints —
+      // and defers what can. A nullable, unconstrained column with no user
+      // before the scan of slice 4 can arrive by ALTER TABLE, and in 0003 it
+      // did: one statement, on a table full of real data, nothing rebuilt.
       expect(columnNames(db, 'food')).toEqual([
         'base_unit',
         'brand',
@@ -102,7 +125,8 @@ describe('food schema', () => {
   it('indexes what section 2.2 asks to be indexed', () => {
     const db = openEmptyDatabase();
     try {
-      applyAllMigrations(db);
+      applyMigrationsUpTo(db, indexOfTag(FOOD_MIGRATION));
+      // ux_food_barcode is deferred with its column, and lands in 0003.
       expect(indexNames(db, 'food')).toEqual(['ix_food_name']);
       expect(indexNames(db, 'food_portion')).toEqual(['ux_portion_food_name']);
     } finally {
@@ -401,7 +425,9 @@ describe('food schema', () => {
                  20, 30, 10, 330)`,
       ).run();
 
-      expect(applyMigrationsAfter(db, 1)).toEqual(['0002_food']);
+      // 0002 ALONE, named rather than "everything after 0001": that spelling
+      // meant the same thing only while 0002 was last, and 0003 broke it.
+      applyMigration(db, readMigrationSql(FOOD_MIGRATION));
 
       const kept = db.prepare("SELECT value FROM setting WHERE key = 'theme'").get() as {
         value: string;

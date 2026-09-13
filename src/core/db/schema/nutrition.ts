@@ -73,13 +73,14 @@ export type FoodSource = 'perso' | 'off';
  * be added later, and defers what can. SQLite does ALTER TABLE ADD COLUMN for
  * a nullable column or one with a default, and CREATE/DROP INDEX freely; it
  * cannot add a CHECK or a foreign key without rebuilding the table. So `source`
- * is here despite having no user before slice 4 — it is NOT NULL and carries a
- * CHECK, so it could not arrive later — while `barcode` and its partial unique
- * index are NOT, being nullable, unconstrained, and unused until the scan of
- * slice 4.
+ * shipped in 0002 despite having no user before slice 4 — it is NOT NULL and
+ * carries a CHECK, so it could not arrive later — while `barcode` and its
+ * partial unique index waited for 0003 and the scan that uses them.
  *
- * Corollary worth knowing: the indexes below are the one part of this
- * migration that is not irreversible.
+ * THE DEFERRAL PAID OFF EXACTLY AS PREDICTED: 0003 is one ALTER TABLE and one
+ * CREATE INDEX, on a table holding real data, with nothing rebuilt and nothing
+ * rewritten. Corollary worth keeping: the indexes below are the one part of
+ * this table that is not irreversible.
  *
  * NO CHECK ON THE MACROS, and that is a refusal rather than an omission. Specs
  * 8.5 requires Open Food Facts values to be treated as unreliable and shown
@@ -97,6 +98,26 @@ export const food = sqliteTable(
     id: text('id').$type<FoodId>().primaryKey(),
     name: text('name').notNull(),
     brand: text('brand'),
+    /**
+     * The product's barcode, when it has one (specs 6.1, slice 4).
+     *
+     * DEFERRED FROM 0002 ON PURPOSE, and 0003 is where the reasoning pays
+     * off: a migration carries what cannot be added later and defers what
+     * can. Nullable and unconstrained, so ALTER TABLE ADD COLUMN was always
+     * going to be enough -- unlike `source`, which is NOT NULL with a CHECK
+     * and therefore had to ship three slices before its first user.
+     *
+     * Null for the vast majority of personal foods, which are things rather
+     * than products: an apple has no barcode, and neither does a portion of
+     * rice weighed out of a bag.
+     *
+     * NO CHECK, for the reason that governs the whole of this table: a
+     * barcode is an external identifier with no closed set to constrain, and
+     * slice 4 copies every logged Open Food Facts product in here
+     * automatically. A constraint on this path would turn a markable oddity
+     * into a failed INSERT, which specs 8.5 forbids in as many words.
+     */
+    barcode: text('barcode'),
     source: text('source').$type<FoodSource>().notNull(),
     baseUnit: text('base_unit').$type<BaseUnit>().notNull(),
     protein100: real('protein_100').notNull(),
@@ -156,6 +177,34 @@ export const food = sqliteTable(
      * which D9 would forbid.
      */
     index('ix_food_name').on(sql`${table.name} COLLATE NOCASE`),
+    /**
+     * One food per barcode, which is what makes the deduplication of specs 8.5
+     * something the database guarantees rather than something a screen
+     * remembers to do.
+     *
+     * > Corollary, compulsory: the unified search DEDUPLICATES BY BARCODE.
+     *
+     * PARTIAL, and the WHERE clause is documentation rather than mechanism.
+     * SQLite already treats NULLs as distinct in a unique index, so every
+     * barcode-less food would coexist either way; the clause says the
+     * intention out loud and keeps the index to the rows that have one.
+     *
+     * WHAT THIS REINTRODUCES, AND HOW IT IS ANSWERED. Slice 3 refused every
+     * CHECK on the macros so that the automatic copy could never fail on an
+     * INSERT. A unique index reopens exactly that door: two Open Food Facts
+     * products can share an EAN — reused codes, regional variants — and the
+     * same product logged twice would collide with itself. The answer is not
+     * to drop the index, which is the only thing making "one food per
+     * barcode" true; it is that the copy path reads by barcode and updates,
+     * inside its transaction, rather than blindly inserting. See
+     * upsertOffFood in food-writes.ts.
+     *
+     * Indexes are the one part of a migration that is not irreversible, so
+     * this can be dropped later without rebuilding anything.
+     */
+    uniqueIndex('ux_food_barcode')
+      .on(table.barcode)
+      .where(sql`${table.barcode} IS NOT NULL`),
     check('ck_food_source', sql`${table.source} IN ('perso', 'off')`),
     check('ck_food_base_unit', sql`${table.baseUnit} IN ('g', 'ml')`),
     /** A boolean can never widen, so constraining it costs nothing, ever. */

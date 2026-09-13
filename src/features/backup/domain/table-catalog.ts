@@ -137,7 +137,8 @@ export const EXCLUDED_TABLES: readonly TableExclusion[] = [
     name: 'off_cache',
     reason:
       'Open Food Facts cache, entirely rebuildable from the network ' +
-      '(D7, specs 5.4). Arrives with slice 4.',
+      '(D7, specs 5.4). Declared here in slice 2, before the table existed; ' +
+      'the table landed in 0003 and the decision held without being retaken.',
   },
 ];
 
