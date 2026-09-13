@@ -55,6 +55,25 @@ export function formatMacro(value: number): string {
   return formatFixed(roundMacro(value), 1);
 }
 
+/**
+ * "48" — grams of a macro, rounded to the nearest whole.
+ *
+ * A DIVERGENCE FROM SPECS 5.1, which asks for one decimal on protein, carbs
+ * and fat, taken on request and only for the TOTALS of a day or a meal.
+ *
+ * The reasoning it rests on: a tenth of a gram is a real distinction on one
+ * food, where it is what was measured. On a sum of a dozen entries it is
+ * arithmetic noise wearing the clothes of precision — and it is read beside a
+ * target that was itself typed as a round number. An individual entry keeps
+ * its decimal, because there the figure IS the measurement.
+ *
+ * Internal calculation stays in full precision either way (specs 5.1); this is
+ * a rounding at the point of display, like every other function here.
+ */
+export function formatMacroWhole(value: number): string {
+  return formatFixed(Math.round(value), 0);
+}
+
 /** "2 450" — calories, whole, grouped in threes. */
 export function formatKcal(value: number): string {
   return formatFixed(roundKcal(value), 0);

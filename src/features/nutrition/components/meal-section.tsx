@@ -1,14 +1,14 @@
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { formatKcal, formatMacro } from '@/core/format';
+import { formatKcal, formatMacroWhole } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import { useMealEntries } from '../data/day-queries';
 import type { JournalEntryView } from '../data/day-reads';
 import type { DayMealView } from '../domain/day-plan';
 import { progressRatio, targetStanding, ZERO_MACROS, type Macros } from '../domain/macros';
 import { EntryRow } from './entry-row';
-import { mealSymbol } from './meal-symbol';
+import { mealColor, mealSymbol } from './meal-symbol';
 import { ProgressRing } from './progress-ring';
 import { SwipeToDeleteRow } from './swipe-to-delete-row';
 import { ListSeparator } from '@/core/ui/list-separator';
@@ -113,7 +113,7 @@ export function MealSection({
               <SymbolView
                 name={mealSymbol(meal.name)}
                 size={20}
-                tintColor={theme.colors.textMuted}
+                tintColor={mealColor(meal.name, theme.colors)}
               />
             </View>
           ) : (
@@ -124,17 +124,22 @@ export function MealSection({
               color={ringColor}
             >
               {/*
-                THE ICON KEEPS ITS OWN COLOUR AND NEVER TAKES THE RING'S.
-                It says WHICH meal this is; the ring says how that meal is
-                going. Tinting the glyph with the ring made one fact colour the
-                other, so a snack turning amber looked like a different snack —
-                and it also meant the icon moved between three colours while the
-                identical icon on a meal with no target stayed grey.
+                THE ICON KEEPS ITS OWN COLOUR AND NEVER TAKES THE RING'S, and
+                that colour is the one belonging to what it depicts — a dawn
+                sky, midday, night, a carrot.
+
+                The glyph says WHICH meal this is; the ring says how that meal
+                is going. Tinting the glyph with the ring made one fact colour
+                the other, so a snack turning amber looked like a different
+                snack — and it also meant the icon moved between three colours
+                while the identical icon on a meal with no target stayed grey.
+                It is now the same colour in both states, which is what makes
+                the two read as one thing with and without a goal.
               */}
               <SymbolView
                 name={mealSymbol(meal.name)}
                 size={16}
-                tintColor={theme.colors.textMuted}
+                tintColor={mealColor(meal.name, theme.colors)}
               />
             </ProgressRing>
           )}
@@ -293,7 +298,7 @@ function MacroBar({
   return (
     <View style={styles.macroColumn}>
       <Text style={[styles.macroText, { color: theme.colors.textMuted }]} numberOfLines={1}>
-        {`${label} ${formatMacro(consumed)} / ${formatMacro(target)} g`}
+        {`${label} ${formatMacroWhole(consumed)} / ${formatMacroWhole(target)} g`}
       </Text>
       <View style={[styles.macroTrack, { backgroundColor: theme.colors.border }]}>
         <View

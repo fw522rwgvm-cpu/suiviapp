@@ -7,6 +7,7 @@ import {
   formatKcal,
   formatLongDate,
   formatMacro,
+  formatMacroWhole,
   formatQuantity,
   parseDecimal,
   weekdayName,
@@ -156,5 +157,37 @@ describe('formatDayTitle', () => {
   it('adds the year as soon as it differs, so an old entry is never ambiguous', () => {
     expect(formatDayTitle(toLocalDate('2025-12-31'), today)).toBe('mercredi 31 décembre 2025');
     expect(formatDayTitle(toLocalDate('2027-01-04'), today)).toBe('lundi 4 janvier 2027');
+  });
+});
+
+describe('formatMacroWhole', () => {
+  it('rounds to the nearest whole gram', () => {
+    expect(formatMacroWhole(47.4)).toBe('47');
+    expect(formatMacroWhole(47.5)).toBe('48');
+    expect(formatMacroWhole(47.6)).toBe('48');
+  });
+
+  it('never shows a decimal, however small the fraction', () => {
+    // The divergence from specs 5.1, taken on request and only for the totals
+    // of a day or a meal: a tenth of a gram is a measurement on one food and
+    // arithmetic noise on a sum of a dozen.
+    expect(formatMacroWhole(0.4)).toBe('0');
+    expect(formatMacroWhole(0.5)).toBe('1');
+  });
+
+  it('groups thousands like the calories do', () => {
+    expect(formatMacroWhole(1234)).toBe(`1${' '}234`);
+  });
+
+  it('collapses a negative zero rather than printing one', () => {
+    expect(formatMacroWhole(-0.2)).toBe('0');
+  });
+
+  it('leaves the per-entry formatter alone, which still carries its decimal', () => {
+    // An individual entry keeps one decimal because there the figure IS the
+    // measurement. Asserted side by side so the two cannot be merged by
+    // accident.
+    expect(formatMacro(47.5)).toBe('47,5');
+    expect(formatMacroWhole(47.5)).toBe('48');
   });
 });

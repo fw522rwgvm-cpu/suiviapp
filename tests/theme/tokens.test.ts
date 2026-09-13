@@ -197,3 +197,50 @@ describe('the destructive colour stays readable', () => {
     }
   });
 });
+
+describe('the four meal colours', () => {
+  const MEAL_KEYS = ['mealBreakfast', 'mealLunch', 'mealDinner', 'mealSnack'] as const;
+
+  it('gives each meal a colour of its own', () => {
+    // "Different and coherent with what the icon depicts" was the requirement.
+    // Coherence cannot be asserted; distinctness can, and it is the half that
+    // silently breaks when a palette is edited.
+    for (const scheme of ['light', 'dark'] as const) {
+      const used = MEAL_KEYS.map((key) => colors[scheme][key]);
+      expect(new Set(used).size).toBe(MEAL_KEYS.length);
+    }
+  });
+
+  it('clears the 3:1 a graphical object needs, on its own surface', () => {
+    // A glyph is a graphical object, not text: WCAG asks 3:1 of it rather than
+    // the 4.5:1 that governs a sentence. Below that the icon stops being
+    // readable as a shape, which is the only thing it is there to be.
+    for (const scheme of ['light', 'dark'] as const) {
+      for (const key of MEAL_KEYS) {
+        expect(
+          contrast(colors[scheme][key], colors[scheme].surface),
+          `${scheme}.${key}`,
+        ).toBeGreaterThanOrEqual(3);
+      }
+    }
+  });
+
+  it('keeps night the one cool colour of the four', () => {
+    // Dinner is the only meal whose glyph is not warm, and the palette says so:
+    // it is the blue among three warm hues, which is what makes it findable in
+    // a column of meals without reading the shape.
+    for (const scheme of ['light', 'dark'] as const) {
+      expect(isCool(colors[scheme].mealDinner), scheme).toBe(true);
+      expect(isCool(colors[scheme].mealBreakfast), scheme).toBe(false);
+      expect(isCool(colors[scheme].mealLunch), scheme).toBe(false);
+      expect(isCool(colors[scheme].mealSnack), scheme).toBe(false);
+    }
+  });
+});
+
+/** Blue channel dominant: enough to tell a night colour from a daylight one. */
+function isCool(hex: string): boolean {
+  const red = parseInt(hex.slice(1, 3), 16);
+  const blue = parseInt(hex.slice(5, 7), 16);
+  return blue > red;
+}

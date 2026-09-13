@@ -2,7 +2,7 @@ import { SymbolView } from 'expo-symbols';
 import { Stack, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActionSheetIOS, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { formatKcal, formatMacro } from '@/core/format';
+import { formatKcal, formatMacroWhole } from '@/core/format';
 import type { DayTemplateId } from '@/core/db/schema';
 import { useTheme } from '@/core/theme';
 import { FormInput, FormNavigation, FormRow, FormSection } from '@/core/ui/form-section';
@@ -169,8 +169,8 @@ export function TemplateEditorScreen({ templateId }: { templateId: DayTemplateId
               {formatKcal(total.kcal)} kcal
             </Text>
             <Text style={[styles.totalMacros, { color: theme.colors.textMuted }]}>
-              {`${formatMacro(total.protein)} g P · ${formatMacro(total.carbs)} g G · ` +
-                `${formatMacro(total.fat)} g L`}
+              {`${formatMacroWhole(total.protein)} g P · ${formatMacroWhole(total.carbs)} g G · ` +
+                `${formatMacroWhole(total.fat)} g L`}
             </Text>
             <Text style={[styles.totalNote, { color: theme.colors.textFaint }]}>
               Somme des repas, jamais saisie.

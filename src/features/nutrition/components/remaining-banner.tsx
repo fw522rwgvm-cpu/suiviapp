@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { formatKcal, formatMacro } from '@/core/format';
+import { formatKcal, formatMacroWhole } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import { progressRatio, remainingMacros, targetStanding, type Macros } from '../domain/macros';
 import { ProgressRing } from './progress-ring';
@@ -190,8 +190,8 @@ function MacroColumnView({ column }: { column: MacroColumn }) {
 
       <Text style={[styles.columnValue, { color: theme.colors.text }]} numberOfLines={1}>
         {column.target === null
-          ? `${formatMacro(column.consumed)} g`
-          : `${formatMacro(column.consumed)} / ${formatMacro(column.target)} g`}
+          ? `${formatMacroWhole(column.consumed)} g`
+          : `${formatMacroWhole(column.consumed)} / ${formatMacroWhole(column.target)} g`}
       </Text>
     </View>
   );

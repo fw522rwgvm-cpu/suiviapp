@@ -78,6 +78,26 @@ export interface ColorTokens {
   macroProtein: string;
   macroCarbs: string;
   macroFat: string;
+
+  /**
+   * One colour per meal, chosen to agree with WHAT ITS ICON DEPICTS rather
+   * than to fill out a palette: a dawn sky, midday sun, night, a carrot.
+   *
+   * They are allowed to sit near the macro hues, and that is not an oversight.
+   * A meal is identified by the SHAPE of its glyph and a macro bar by the
+   * label written on it, so neither is ever decoded by colour — which is what
+   * would make a shared hue family cost something. Being coherent with the
+   * thing drawn was the requirement; being unlike the other three meals is the
+   * rest of it, and a test pins both.
+   *
+   * Each clears 3:1 against its own surface — the WCAG threshold for a
+   * graphical object, which is what a glyph is, rather than the 4.5:1 that
+   * governs text.
+   */
+  mealBreakfast: string;
+  mealLunch: string;
+  mealDinner: string;
+  mealSnack: string;
 }
 
 const light: ColorTokens = {
@@ -111,6 +131,14 @@ const light: ColorTokens = {
   macroProtein: '#2f7d8c',
   macroCarbs: '#d98324',
   macroFat: '#8a5cc4',
+  /** The rose of a sky at dawn, not the orange of the sun that is still rising. */
+  mealBreakfast: '#d14d72',
+  /** Midday gold, darkened until it clears its threshold on white. */
+  mealLunch: '#a8780a',
+  /** Night: the one cool colour of the four, which is what sets it apart. */
+  mealDinner: '#4c5fc0',
+  /** A carrot, and nothing else this colour needs to mean. */
+  mealSnack: '#cc5a0a',
 };
 
 const dark: ColorTokens = {
@@ -141,6 +169,12 @@ const dark: ColorTokens = {
   macroProtein: '#5cc4d4',
   macroCarbs: '#f0a94c',
   macroFat: '#b18ce0',
+  // Lifted like the macros: a colour that reads on white disappears on near
+  // black, and a glyph nobody can make out is a glyph with no colour at all.
+  mealBreakfast: '#f2839f',
+  mealLunch: '#f2c14e',
+  mealDinner: '#93a5f5',
+  mealSnack: '#ff9b45',
 };
 
 export const colors: Record<ColorScheme, ColorTokens> = { light, dark };
