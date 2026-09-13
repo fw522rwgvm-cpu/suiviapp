@@ -1258,6 +1258,30 @@ a porté. Un ajout direct au journal aurait réclamé une confirmation ; une lig
 au panier n'en réclame aucune. C'est la même propriété qui rend le geste rapide
 et qui le rend rattrapable.
 
+**Le rouge destructif est le seul jeton dont la lisibilité est fixée par un
+test, parce qu'il sert à deux choses incompatibles** : il remplit le bouton
+« Retirer » sous un libellé clair, et il écrit du texte sur une carte — le
+bouton « Supprimer » de l'éditeur, chaque problème de validation. L'éclaircir
+pour l'un dégrade l'autre, et l'échec est invisible à qui fait le changement :
+**un rouge difficile à lire a toujours l'air rouge.**
+
+D'où le choix par l'arithmétique plutôt qu'à l'œil. `#ff3b30`, le systemRed
+d'iOS en clair, n'atteint que 3,55:1 sur blanc : Apple l'applique à des
+libellés, ce projet l'appliquerait aussi à des phrases. Le clair est donc
+`#e02d1f` — le rouge le plus vif qui franchisse 4,5:1 (il fait 4,60). Le sombre
+est `#ff453a`, le systemRed d'iOS **exactement**, l'arithmétique jouant dans
+l'autre sens sur un fond quasi noir : 5,10:1 en texte, 5,62:1 sous le libellé
+d'un bouton plein.
+
+Et le test garde **les deux directions**, vérifié par mutation : il rougit sur
+les anciennes valeurs (trop ternes) comme sur systemRed en clair (contraste
+insuffisant). La mesure de « vif » est la saturation et la valeur HSV, jamais
+la luminance — première tentative et mauvais instrument : la formule pondère le
+vert à 0,72, donc un rouge saturé a une luminance basse par construction. La
+brique `#a8291f` était saturée mais sombre (valeur 0,66), le saumon `#e8796e`
+clair mais délavé (saturation 0,53), ce qui le faisait lire comme un contrôle
+désactivé.
+
 **Le clavier est revenu sur l'écran de quantité, et c'est une réserve qui se
 dépense.** La tranche 3 l'avait retiré pour rendre les fractions de portion
 possibles, en écrivant le prix : « taper 137 g demande de faire tourner une

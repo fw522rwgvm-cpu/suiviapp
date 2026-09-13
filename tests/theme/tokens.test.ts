@@ -117,3 +117,83 @@ describe('token completeness', () => {
     expect(themeFor('light').shadow.shadowOpacity).toBeGreaterThan(0);
   });
 });
+
+/**
+ * Relative luminance and contrast, WCAG 2.1.
+ *
+ * Twelve lines rather than a dependency: this is the whole of the formula, it
+ * has not changed since 2008, and section 5 is not widened for arithmetic.
+ */
+function luminance(hex: string): number {
+  const channels = [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16) / 255);
+  const linear = channels.map((value) =>
+    value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4,
+  );
+  return 0.2126 * linear[0]! + 0.7152 * linear[1]! + 0.0722 * linear[2]!;
+}
+
+/** HSV saturation and value: how vivid a colour is, which luminance is not. */
+function channels(hex: string): number[] {
+  return [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16) / 255);
+}
+
+function value(hex: string): number {
+  return Math.max(...channels(hex));
+}
+
+function saturation(hex: string): number {
+  const parts = channels(hex);
+  const top = Math.max(...parts);
+  return top === 0 ? 0 : (top - Math.min(...parts)) / top;
+}
+
+function contrast(a: string, b: string): number {
+  const first = luminance(a);
+  const second = luminance(b);
+  return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05);
+}
+
+describe('the destructive colour stays readable', () => {
+  /**
+   * WHY THIS ONE IS PINNED, when no other colour is.
+   *
+   * `danger` is the one token used in two incompatible ways: as a FILL under
+   * the label of the swipe action, and as TEXT on a card — the food editor's
+   * delete button, and every validation problem. Brightening it for one use
+   * degrades the other, and the failure is invisible to whoever makes the
+   * change: a red that is hard to read still looks red.
+   *
+   * 4.5:1 is the WCAG AA threshold for normal text, which is what these are.
+   * iOS systemRed in light mode (#ff3b30) reaches 3.55:1 and is therefore not
+   * usable here, however well it would suit a button on its own — the reason
+   * that decision is recorded rather than left to be rediscovered.
+   */
+  it('clears AA as text on its own surface, in both themes', () => {
+    expect(contrast(colors.light.danger, colors.light.surface)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(colors.dark.danger, colors.dark.surface)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('clears AA under the label of a filled button, in both themes', () => {
+    // The swipe action paints `danger` and writes `onAccent` on it.
+    expect(contrast(colors.light.onAccent, colors.light.danger)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(colors.dark.onAccent, colors.dark.danger)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('is VIVID rather than merely safe, which is the point of it', () => {
+    /**
+     * Guards the other direction, and not with luminance — which was the first
+     * attempt and was simply the wrong instrument: a saturated red has a low
+     * relative luminance by construction (the formula weights green at 0,72),
+     * so comparing it to a pale grey says nothing about how vivid it looks.
+     *
+     * Saturation and value are what "punchy" means. Both predecessors fail
+     * this, each in its own way: the light brick #a8291f was saturated but
+     * dark (value 0,66), and the dark salmon #e8796e was bright but washed out
+     * (saturation 0,53) — which is why it read as a disabled control.
+     */
+    for (const danger of [colors.light.danger, colors.dark.danger]) {
+      expect(saturation(danger)).toBeGreaterThanOrEqual(0.7);
+      expect(value(danger)).toBeGreaterThanOrEqual(0.85);
+    }
+  });
+});

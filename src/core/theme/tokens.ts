@@ -92,7 +92,21 @@ const light: ColorTokens = {
   accent: '#3b5bdb',
   onAccent: '#ffffff',
   warning: '#8a5a00',
-  danger: '#a8291f',
+  /**
+   * Destructive, and deliberately bright.
+   *
+   * It was a brick red — safe, and so muted that "Supprimer" read as one more
+   * label. Brightened on request, with the ceiling set by arithmetic rather
+   * than by taste: this colour is used BOTH as a fill under a white label and
+   * as text on a white card (a validation problem, the delete button of the
+   * food editor), so it has to clear 4.5:1 against white in both directions.
+   *
+   * iOS systemRed (#ff3b30) is brighter still and reaches only 3.55:1, which
+   * is why the system's own red is not used here: Apple applies it to labels
+   * this application also uses for sentences. This is the brightest red that
+   * clears the bar — 4.60:1, pinned by a test.
+   */
+  danger: '#e02d1f',
   macroKcal: '#b5307a',
   macroProtein: '#2f7d8c',
   macroCarbs: '#d98324',
@@ -109,7 +123,18 @@ const dark: ColorTokens = {
   accent: '#8ea8ff',
   onAccent: '#0f0f11',
   warning: '#e0a942',
-  danger: '#e8796e',
+  /**
+   * iOS systemRed for dark mode, exactly.
+   *
+   * On a near-black ground the arithmetic runs the other way — a bright red
+   * gains contrast rather than losing it — so the system's own value clears
+   * the bar comfortably (5.10:1 as text, 5.62:1 under the dark label of a
+   * filled button) and there is no reason to invent a different one.
+   *
+   * The previous salmon was washed out: desaturated enough to read as a
+   * disabled control rather than as a destructive one.
+   */
+  danger: '#ff453a',
   // Lifted, not the same hex: a colour that reads on white disappears on near
   // black, and the point of giving each macro a colour is that it be readable.
   macroKcal: '#ec6fb5',
