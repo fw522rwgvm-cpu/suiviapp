@@ -29,9 +29,13 @@ import { SQLiteTable, type SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import {
   day,
   dayMeal,
+  dayTemplate,
+  dayTemplateMeal,
   food,
   foodPortion,
   journalEntry,
+  planningOverride,
+  planningWeekday,
   setting,
   PORTION_NAMES,
 } from '@/core/db/schema';
@@ -116,6 +120,20 @@ export interface TableExclusion {
  */
 const EXPORT_ORDER: readonly { table: SQLiteTable; introducedIn: string }[] = [
   { table: setting, introducedIn: '0000_initial_setting' },
+  /**
+   * The planning block sits here, between the settings and the reference data,
+   * so the order reads top-down as configuration, then reference data, then
+   * journal. day_template leads it because the other three reference it.
+   *
+   * The order is documentation rather than mechanism during the fill —
+   * foreign keys are switched off for it, since journal_entry references
+   * itself and no ordering of rows could satisfy that. It becomes mechanism
+   * again at barrier 3, where foreign_key_check runs with them back on.
+   */
+  { table: dayTemplate, introducedIn: '0004_templates_planning' },
+  { table: dayTemplateMeal, introducedIn: '0004_templates_planning' },
+  { table: planningWeekday, introducedIn: '0004_templates_planning' },
+  { table: planningOverride, introducedIn: '0004_templates_planning' },
   { table: food, introducedIn: '0002_food' },
   { table: foodPortion, introducedIn: '0002_food' },
   { table: day, introducedIn: '0001_journal' },
@@ -176,8 +194,37 @@ const VALUE_RULES: Record<string, Record<string, ValueRule>> = {
      */
     name: { rule: 'one_of', allowed: PORTION_NAMES },
   },
+  day_template: {
+    id: { rule: 'entity_id' },
+    created_at: { rule: 'epoch_ms' },
+    updated_at: { rule: 'epoch_ms' },
+  },
+  day_template_meal: {
+    id: { rule: 'entity_id' },
+    template_id: { rule: 'entity_id' },
+  },
+  /**
+   * weekday carries NO rule, and that is the CHECK doing its job rather than
+   * an omission. The one_of rule takes strings, and this column is an integer;
+   * ck_planning_weekday constrains it in SQL instead, which it can afford to
+   * because a week will never have an eighth day.
+   */
+  planning_weekday: {
+    template_id: { rule: 'entity_id' },
+  },
+  planning_override: {
+    date: { rule: 'civil_date' },
+    template_id: { rule: 'entity_id' },
+  },
   day: {
     date: { rule: 'civil_date' },
+    /**
+     * Declarable only now that DayTemplateId exists, and strictly stronger
+     * than before. It stays a rule rather than becoming a foreign key: the
+     * column is informative, without a live link, so that deleting a template
+     * leaves every materialised day intact (specs 5.2, 8.1).
+     */
+    template_id_snapshot: { rule: 'entity_id' },
     materialized_at: { rule: 'epoch_ms' },
   },
   day_meal: {
