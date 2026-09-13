@@ -1909,22 +1909,27 @@ tranches plus tard.**
 Ce qui reste intouché : un nom, une entrée, et tout repas que le modèle ne
 nomme pas — celui-là garde tout et ne perd que ses chiffres.
 
-**Une transition native et une animation maison ne peuvent pas partager une
-fenêtre.** Le calendrier sortait du bouton par la transition zoom d'iOS et se
-refermait vers le bas — parce qu'`OverlayPanel` repliait sa fenêtre **puis**
-appelait `router.back()`. Au moment où la navigation partait, il ne restait
-rien à l'écran que le natif puisse rétrécir vers le bouton.
+**`Link.AppleZoom` a été essayé pour le calendrier, puis retiré — et le motif
+vaut pour tout usage futur.** La transition d'Apple **recule l'écran
+présentateur** pendant que la feuille est levée, et `LinkZoomTransitionSource`
+n'expose que `identifier`, `alignment` et `animateAspectRatioChange` : rien qui
+l'en empêche. Vérifié dans l'API, pas supposé. Le Journal rétréci derrière, avec
+la fenêtre blanche au-dessus et en dessous, coûtait plus que l'ancrage au bouton
+ne rapportait.
 
-La règle qui en sort : **l'écran atteint par `Link.AppleZoom` n'anime rien de
-lui-même**, et sa route ne pose aucun `animation` — contrairement à toutes les
-autres fenêtres, qui le mettent à `'none'` précisément parce qu'`OverlayPanel`
-les lève. Les deux conventions sont opposées et vivent côte à côte ; le
-commentaire de chaque route dit laquelle s'applique.
+**Trois choses apprises en chemin, toutes payées cher.** Une transition native
+et une animation maison ne peuvent pas partager une fenêtre : `OverlayPanel`
+repliait sa fenêtre *puis* appelait `router.back()`, si bien qu'au départ de la
+navigation il ne restait rien à rétrécir vers le bouton. Un voile est incompatible
+avec le zoom : c'est l'écran *tout entier* qui sort du bouton, assombrissement
+compris. Et **passer de la modale au push ne supprime pas le recul** — je l'ai
+cru, essayé, et ça a coûté le geste au passage : le renvoi interactif d'une pile
+native est le balayage horizontal, donc un glissement vers le bas n'a rien à
+suivre.
 
-**Et pas de voile sous une transition zoom.** C'est l'écran présenté *tout
-entier* qui sort du bouton, assombrissement compris : un petit carré sombre
-gonflant depuis l'en-tête. Un écran transparent portant une seule carte fait
-sortir la carte seule du contrôle, ce à quoi la transition sert.
+**La fenêtre n'a aucun fond posé**, d'où le blanc. `backgroundColor` dans
+`app.config.ts` ou `expo-system-ui` le corrigeraient, les deux nativement, donc
+au prix d'un cycle CI. Non fait : sans zoom, plus rien ne découvre la fenêtre.
 
 ## Points ouverts après la tranche 5
 - ~~**Vérification iPhone en attente.**~~ **Faite pour l'essentiel** : la
