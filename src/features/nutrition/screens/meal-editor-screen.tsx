@@ -1,13 +1,12 @@
-import { SymbolView } from 'expo-symbols';
+import { Picker } from '@react-native-picker/picker';
 import { useEffect, useState } from 'react';
-import { ActionSheetIOS, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { LocalDate } from '@/core/date';
 import { useTheme } from '@/core/theme';
 import { FormInput, FormNavigation, FormRow, FormSection } from '@/core/ui/form-section';
 import { useDismiss, usePanelHeading } from '@/core/ui/overlay-panel';
 import { useAddMeal, useDay, useUpdateMealTargets } from '../data/day-queries';
 import { MACRO_FIELDS } from '../components/macro-fields';
-import { mealSymbol } from '../components/meal-symbol';
 import { availableKinds, canUseKind, isMealKind, type MealKind } from '../domain/meal-kinds';
 import {
   emptyTemplateMealDraft,
@@ -25,13 +24,18 @@ import {
  * follows: browsing is a push, adding is a modal. Correcting a meal's goals is
  * done ON the day, which stays visible behind the panel.
  *
- * ## THE NAME IS A CHOICE BETWEEN FOUR, NOT A FIELD
+ * ## THE NAME IS A CHOICE BETWEEN FOUR, ON A REAL UIPickerView
  *
- * What used to be Alert.prompt and free text is now an action sheet over the
- * kinds that are still available — and the list is short precisely because a
- * day may hold only one breakfast, one lunch and one dinner. Offering a kind
- * the day already has and then refusing it at the write would be asking a
- * question whose answer is already known.
+ * `Picker` on iOS IS a UIPickerView — the same native control the quantity
+ * screen turns, already in section 5 and already in the installed binary, so
+ * it costs no rebuild. It sits inline and shows every choice at once, which an
+ * action sheet does not: a sheet is a decision you take and dismiss, a picker
+ * is a value the form holds and you can change your mind about while the four
+ * target fields are still in front of you.
+ *
+ * The list is short precisely because a day may hold only one breakfast, one
+ * lunch and one dinner. Offering a kind the day already has and then refusing
+ * it at the write would be asking a question whose answer is already known.
  *
  * Editing an EXISTING meal does not offer the kind at all. Changing what a
  * meal is, once it holds entries, is a different act from setting its goals,
@@ -104,19 +108,6 @@ export function MealEditorScreen({
   const partial = targets === undefined;
   const canSave = !partial && (mealPosition !== null || kind !== null);
 
-  function chooseKind(): void {
-    if (offered.length === 0) return;
-
-    const options = [...offered, 'Annuler'];
-    ActionSheetIOS.showActionSheetWithOptions(
-      { title: 'Repas', options, cancelButtonIndex: options.length - 1 },
-      (index) => {
-        const picked = offered[index];
-        if (picked !== undefined) setKind(picked);
-      },
-    );
-  }
-
   function save(): void {
     if (!canSave || targets === undefined) return;
 
@@ -149,25 +140,25 @@ export function MealEditorScreen({
       >
         {mealPosition === null ? (
           <FormSection caption="Repas">
-            <FormRow label="Type">
-              <Pressable onPress={chooseKind} accessibilityRole="button" style={styles.kind}>
-                {kind === null ? null : (
-                  <SymbolView
-                    name={mealSymbol(kind)}
-                    size={16}
-                    tintColor={theme.colors.textMuted}
-                  />
-                )}
-                <Text style={[styles.kindLabel, { color: theme.colors.text }]}>
-                  {kind ?? 'Choisir'}
-                </Text>
-                <SymbolView
-                  name="chevron.up.chevron.down"
-                  size={11}
-                  tintColor={theme.colors.textFaint}
-                />
-              </Pressable>
+            {/*
+              The row gives up its side padding: a UIPickerView CUTS a label
+              that does not fit rather than shrinking it, and the row's own
+              insets are what would make it cut. The same reason the quantity
+              wheels are flush.
+            */}
+            <FormRow flush>
+              <Picker
+                selectedValue={kind ?? offered[0]}
+                onValueChange={(value) => setKind(value)}
+                itemStyle={{ color: theme.colors.text, fontSize: 20 }}
+                style={styles.picker}
+              >
+                {offered.map((option) => (
+                  <Picker.Item key={option} label={option} value={option} />
+                ))}
+              </Picker>
             </FormRow>
+
           </FormSection>
         ) : null}
 
@@ -229,8 +220,8 @@ function fieldOf(value: number | undefined): string {
 
 const styles = StyleSheet.create({
   container: { padding: 16, paddingBottom: 32, gap: 16 },
-  kind: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  kindLabel: { fontSize: 17 },
+  // A single column, so it needs far less height than the quantity's three.
+  picker: { flex: 1, height: 150 },
   unit: { fontSize: 15 },
   note: { fontSize: 12, lineHeight: 17, marginHorizontal: 4 },
   save: { borderRadius: 12, paddingVertical: 14, alignItems: 'center' },

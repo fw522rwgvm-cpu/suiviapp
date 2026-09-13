@@ -29,7 +29,7 @@ import { ProgressRing } from './progress-ring';
  * is drawn with views, and slice 7 rewrites it behind the same props when svg
  * lands for the charts. See progress-ring.tsx.
  *
- * THE RING IS THE ONE THING HERE THAT TURNS RED, past 10% over target. The
+ * THE GAUGE IS THE ONE THING HERE THAT TURNS RED, past 10% over target. The
  * three macro bars never do, whatever they are filled to: going over on
  * carbohydrates is not a failure the way going over on the day is, and a row
  * of red bars would say it was. Calories are the number specs 8.3 makes
@@ -115,10 +115,21 @@ export function RemainingBanner({
         accessible
         accessibilityLabel={`${formatKcal(Math.abs(headlineValue))} ${headlineLabel}`}
       >
+        {/*
+          A THREE-QUARTER GAUGE, not a closed ring: sweep 270 from 225°, which
+          is a 90° gap centred on six o'clock. An open shape has two ends, and
+          ends are what say which way the thing fills — a closed circle at 95%
+          and one at 5% differ only by where the seam is.
+
+          The gap also buys the figure its width back: the number sits in the
+          widest part of the shape rather than between two arcs.
+        */}
         <ProgressRing
           progress={progressRatio(consumed.kcal, target?.kcal ?? null)}
-          size={168}
+          size={186}
           thickness={14}
+          sweep={270}
+          startAngle={225}
           color={
             standing === 'far_over'
               ? theme.colors.danger

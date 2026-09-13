@@ -123,7 +123,19 @@ export function MealSection({
               thickness={4}
               color={ringColor}
             >
-              <SymbolView name={mealSymbol(meal.name)} size={16} tintColor={ringColor} />
+              {/*
+                THE ICON KEEPS ITS OWN COLOUR AND NEVER TAKES THE RING'S.
+                It says WHICH meal this is; the ring says how that meal is
+                going. Tinting the glyph with the ring made one fact colour the
+                other, so a snack turning amber looked like a different snack —
+                and it also meant the icon moved between three colours while the
+                identical icon on a meal with no target stayed grey.
+              */}
+              <SymbolView
+                name={mealSymbol(meal.name)}
+                size={16}
+                tintColor={theme.colors.textMuted}
+              />
             </ProgressRing>
           )}
 

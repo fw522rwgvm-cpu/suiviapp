@@ -82,44 +82,125 @@ describe('targetStanding', () => {
 });
 
 /**
- * The ring's geometry, restated as arithmetic.
+ * The gauge's geometry, restated as arithmetic.
  *
- * progress-ring.tsx turns a ratio into two rotations, and the reasoning is the
- * one thing about it that is not obvious. Reproduced here so a change to the
- * formula has to be deliberate: the component itself cannot be rendered from
- * Node, but the numbers it computes can be.
+ * progress-ring.tsx turns a ratio into an arc angle, two rotations and two cap
+ * positions, and none of that is obvious. Reproduced here so a change to the
+ * formulae has to be deliberate: the component cannot be rendered from Node,
+ * but every number it computes can be.
  */
-function rotations(progress: number): { right: number; left: number } {
+function arcAngle(progress: number, sweep = 360): number {
   const clamped = Math.min(1, Math.max(0, progress));
-  const angle = clamped * 360;
+  return Math.min(360, Math.max(0, sweep)) * clamped;
+}
+
+function rotations(angle: number): { right: number; left: number } {
   return {
     right: Math.min(angle, 180) - 135,
     left: Math.max(angle - 180, 0) + 45,
   };
 }
 
-describe('the ring geometry', () => {
-  it('hides both arcs when empty', () => {
+/** Where a round end lands, clockwise from twelve, on the arc's centre line. */
+function capCentre(
+  angle: number,
+  size: number,
+  thickness: number,
+): { x: number; y: number } {
+  const radius = (size - thickness) / 2;
+  const radians = (angle * Math.PI) / 180;
+  return {
+    x: size / 2 + radius * Math.sin(radians),
+    y: size / 2 - radius * Math.cos(radians),
+  };
+}
+
+describe('the arc angle', () => {
+  it('spans the whole turn on a closed ring', () => {
+    expect(arcAngle(1)).toBe(360);
+    expect(arcAngle(0.5)).toBe(180);
+  });
+
+  it('spans only the gauge on a three-quarter one', () => {
+    // The day's banner: 270 degrees of arc, so full means 270 and not 360.
+    expect(arcAngle(1, 270)).toBe(270);
+    expect(arcAngle(0.5, 270)).toBe(135);
+  });
+
+  it('stops at full rather than winding round a second time', () => {
+    expect(arcAngle(2.5, 270)).toBe(arcAngle(1, 270));
+  });
+
+  it('is nothing at zero, which is what leaves the gauge empty', () => {
+    expect(arcAngle(0, 270)).toBe(0);
+  });
+});
+
+describe('the two rotations', () => {
+  it('hides both arcs when there is no angle', () => {
     // At rest the right half-ring sits over the LEFT half of the circle, where
     // its mask clips it away, and the left one sits over the right half. So
     // nothing is painted rather than a sliver being painted.
     expect(rotations(0)).toEqual({ right: -135, left: 45 });
   });
 
-  it('puts the first arc at twelve o’clock as it fills the right half', () => {
-    // A quarter turn: the right arc has advanced 90°, the left has not moved.
-    expect(rotations(0.25)).toEqual({ right: -45, left: 45 });
+  it('advances the first arc alone through the right half', () => {
+    expect(rotations(90)).toEqual({ right: -45, left: 45 });
   });
 
   it('hands over at the half, with the right arc complete', () => {
-    expect(rotations(0.5)).toEqual({ right: 45, left: 45 });
+    expect(rotations(180)).toEqual({ right: 45, left: 45 });
   });
 
-  it('closes the circle at full, both arcs covering their own half', () => {
-    expect(rotations(1)).toEqual({ right: 45, left: 225 });
+  it('closes the circle at a whole turn', () => {
+    expect(rotations(360)).toEqual({ right: 45, left: 225 });
   });
 
-  it('stops at full rather than winding round a second time', () => {
-    expect(rotations(2.5)).toEqual(rotations(1));
+  it('leaves the left arc short on a three-quarter gauge', () => {
+    // 270 degrees: the right half is full and the left carries the other 90.
+    expect(rotations(270)).toEqual({ right: 45, left: 135 });
+  });
+});
+
+describe('the rounded ends', () => {
+  const SIZE = 100;
+  const THICKNESS = 10;
+  // The centre line of a 10-point stroke on a 100-point circle.
+  const RADIUS = 45;
+
+  it('puts the opening end at twelve o’clock', () => {
+    const centre = capCentre(0, SIZE, THICKNESS);
+    expect(centre.x).toBeCloseTo(50, 6);
+    expect(centre.y).toBeCloseTo(50 - RADIUS, 6);
+  });
+
+  it('runs clockwise, not anticlockwise', () => {
+    // The trap the negated cosine exists for: the screen's y axis points down,
+    // so a quarter turn has to land on the RIGHT and level with the centre.
+    const centre = capCentre(90, SIZE, THICKNESS);
+    expect(centre.x).toBeCloseTo(50 + RADIUS, 6);
+    expect(centre.y).toBeCloseTo(50, 6);
+  });
+
+  it('reaches six o’clock at a half turn', () => {
+    const centre = capCentre(180, SIZE, THICKNESS);
+    expect(centre.x).toBeCloseTo(50, 6);
+    expect(centre.y).toBeCloseTo(50 + RADIUS, 6);
+  });
+
+  it('sits on the stroke’s centre line, which is what makes it a cap', () => {
+    // Its diameter is the thickness and its centre is at the stroke's radius,
+    // so it IS the round cap rather than something shaped like one. Checked at
+    // an angle no axis passes through.
+    const centre = capCentre(37, SIZE, THICKNESS);
+    const distance = Math.hypot(centre.x - 50, centre.y - 50);
+    expect(distance).toBeCloseTo(RADIUS, 6);
+  });
+
+  it('closes back onto its own start after a whole turn', () => {
+    const start = capCentre(0, SIZE, THICKNESS);
+    const end = capCentre(360, SIZE, THICKNESS);
+    expect(end.x).toBeCloseTo(start.x, 6);
+    expect(end.y).toBeCloseTo(start.y, 6);
   });
 });
