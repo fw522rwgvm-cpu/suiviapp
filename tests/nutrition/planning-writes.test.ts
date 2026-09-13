@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { toLocalDate, weekday } from '../../src/core/date';
 import { setting, type DayTemplateId } from '../../src/core/db/schema';
 import { newId } from '../../src/core/id';
-import { readDay } from '../../src/features/nutrition/data/day-reads';
+import { readDay, readMealEntries } from '../../src/features/nutrition/data/day-reads';
 import {
   addFreeEntry,
   deleteMeal,
@@ -500,13 +500,24 @@ describe('applying the planning targets to a day already materialised', () => {
     applyPlanTargetsToDay(fixture.db, TUESDAY);
 
     const view = readDay(fixture.db, TUESDAY);
-    expect(view.meals[0]?.name).toBe('Collation');
-    // The template's snack carries no target, so neither does this meal. Under
-    // the old position matching it would have taken the breakfast's 535.
-    expect(view.meals[0]?.targets).toBeNull();
-    // And the breakfast the day no longer had comes back, appended.
-    expect(view.meals.at(-1)?.name).toBe('Petit-déjeuner');
-    expect(view.meals.at(-1)?.targets).toEqual({ protein: 40, carbs: 60, fat: 15, kcal: 535 });
+
+    // The day now runs in the template's order, with the second snack — which
+    // the template has no room for — trailing behind.
+    expect(view.meals.map((meal) => meal.name)).toEqual([
+      'Petit-déjeuner',
+      'Déjeuner',
+      'Collation',
+      'Dîner',
+      'Collation',
+    ]);
+
+    // The renamed meal kept its name and took the SNACK's targets, which this
+    // template leaves empty. Under the old position matching it would have
+    // taken the breakfast's 535.
+    const snack = view.meals.find((meal) => meal.name === 'Collation');
+    expect(snack?.targets).toBeNull();
+    // And the breakfast the day no longer had comes back, in its own place.
+    expect(view.meals[0]?.targets).toEqual({ protein: 40, carbs: 60, fat: 15, kcal: 535 });
     expect(countRows(fixture.raw, 'journal_entry')).toBe(1);
     // And the snapshot now names the template whose numbers the day carries.
     const row = fixture.raw
@@ -710,8 +721,8 @@ describe('saying which template one day follows', () => {
 
   it('never renames a meal, and adds only what the plan names and the day lacks', () => {
     // Turning the breakfast into a snack leaves the day without a breakfast,
-    // so applying a template that has one brings it back — appended, and
-    // without touching the meal that took its place.
+    // so applying a template that has one brings it back — in the template's
+    // own order, and without touching the meal that took its place.
     updateMeal(fixture.db, {
       date: TUESDAY,
       mealPosition: 0,
@@ -723,14 +734,18 @@ describe('saying which template one day follows', () => {
     setDayTemplate(fixture.db, { date: TUESDAY, templateId: training });
 
     const view = readDay(fixture.db, TUESDAY);
-    expect(view.meals[0]?.name).toBe('Collation');
     expect(view.meals.map((meal) => meal.name)).toEqual([
-      'Collation',
+      'Petit-déjeuner',
       'Déjeuner',
+      'Collation',
       'Dîner',
       'Collation',
-      'Petit-déjeuner',
     ]);
+    // Two snacks now, so the derived labels number them — and the numbering is
+    // read off the day, which has just been reordered underneath it.
+    expect(view.meals.filter((meal) => meal.name === 'Collation').map((m) => m.label)).toEqual(
+      ['Collation 1', 'Collation 2'],
+    );
   });
 
   it('goes back to the planning when handed nothing', () => {
@@ -801,10 +816,11 @@ describe('a meal deleted from the day, then a template applied', () => {
     expect(view.meals.find((meal) => meal.name === 'Collation')?.targets).toBeNull();
   });
 
-  it('appends the restored meal rather than renumbering the others', () => {
-    // Positions are what every write addresses a meal by, so slotting one into
-    // the middle would renumber rows nobody asked to touch. The dinner comes
-    // back last; that is the price, and it is paid once.
+  it('puts the restored meal in its place in the template, not at the end', () => {
+    // The day is reordered to the template's order as it is applied, so the
+    // dinner comes back BETWEEN the lunch and the snack rather than trailing
+    // them. Renumbering is safe because entries hang off day_meal.id and never
+    // off its position.
     deleteMeal(fixture.db, { date: TUESDAY, mealPosition: 2 });
 
     const training = trainingTemplate();
@@ -816,6 +832,43 @@ describe('a meal deleted from the day, then a template applied', () => {
       'Collation',
       'Dîner',
     ]);
+  });
+
+  it('reorders a day whose meals were never in the template order', () => {
+    // Nothing missing and nothing extra — only the sequence is wrong, and the
+    // template is what decides it.
+    const evening = createTemplate(fixture.db, {
+      name: 'Soir d’abord',
+      meals: [
+        { name: 'Dîner', targets: { protein: 1, carbs: 1, fat: 1, kcal: 17 } },
+        { name: 'Déjeuner', targets: { protein: 2, carbs: 2, fat: 2, kcal: 34 } },
+        { name: 'Petit-déjeuner', targets: { protein: 3, carbs: 3, fat: 3, kcal: 51 } },
+      ],
+    });
+    addFreeEntry(fixture.db, {
+      date: TUESDAY,
+      mealPosition: 0,
+      macros: { protein: 9, carbs: 9, fat: 9, kcal: 153 },
+    });
+
+    setDayTemplate(fixture.db, { date: TUESDAY, templateId: evening });
+
+    const view = readDay(fixture.db, TUESDAY);
+    expect(view.meals.map((meal) => meal.name)).toEqual([
+      'Dîner',
+      'Déjeuner',
+      'Petit-déjeuner',
+      // The snack is not in this template, so it keeps everything but its
+      // numbers and trails the three the template named.
+      'Collation',
+    ]);
+    expect(view.meals[2]?.targets?.kcal).toBe(51);
+    expect(view.meals[3]?.targets).toBeNull();
+
+    // The entry went into the breakfast and is still in the breakfast, which
+    // has just moved from first to third.
+    const breakfast = view.meals.find((meal) => meal.name === 'Petit-déjeuner');
+    expect(readMealEntries(fixture.db, breakfast!.id!)).toHaveLength(1);
   });
 
   it('keeps the entries of the meals that were still there', () => {

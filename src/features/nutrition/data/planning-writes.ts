@@ -251,16 +251,17 @@ export function setDefaultTemplate(db: AppDatabase, templateId: DayTemplateId | 
  *
  * ## WHAT IT TOUCHES, AND WHAT IT REFUSES TO TOUCH
  *
- * The four target columns, matched BY NAME — and the meals of the plan the day
- * no longer has, which come back.
+ * The four target columns, matched BY NAME; the meals of the plan the day no
+ * longer has, which come back; and the ORDER, which becomes the plan's.
  *
  * What it still refuses to touch: a name, an entry, and any meal of the day the
  * plan does not mention. Deleting one to match the template would destroy data,
  * and renaming one would overwrite a choice. A meal the plan has nothing for
- * keeps everything and loses only its numbers.
+ * keeps everything, loses only its numbers, and trails behind the ones the plan
+ * named.
  *
- * So the day ends up carrying the plan's targets and no remnant of an earlier
- * set, with nothing of the user's own thrown away.
+ * So the day ends up shaped like the template and carrying its targets, with
+ * nothing of the user's own thrown away.
  */
 export function applyPlanTargetsToDay(db: AppDatabase, date: LocalDate): void {
   db.transaction((tx) => applyPlanTargets(tx, date));
@@ -308,69 +309,89 @@ function applyPlanTargets(tx: AppDatabase, date: LocalDate): void {
       plan.meals.map((meal) => meal.name),
     );
 
-    for (const { day: at, plan: planAt } of match.pairs) {
+    /**
+     * ONE PASS, IN THE PLAN'S ORDER, and it renumbers as it goes.
+     *
+     * Applying a template now orders the day the way the template orders it:
+     * every meal the plan names takes its place in the plan's sequence, and
+     * anything the plan does not name trails behind in the order it already
+     * had.
+     *
+     * RENUMBERING IS SAFE HERE FOR A REASON WORTH NAMING. Entries hang off
+     * day_meal.id and never off its position, so nothing logged moves. And
+     * day_meal deliberately carries NO unique index on (date, position) —
+     * noted as an inequality of rigour back in slice 1 — which is what lets
+     * these rows pass through duplicate positions mid-transaction instead of
+     * needing a temporary slot to shuffle through. food_portion, which does
+     * have such an index, had to be replaced wholesale for exactly that reason.
+     *
+     * The one thing it costs: a screen holding a mealPosition from before the
+     * write now points at a different meal. Only the modal does, it is the same
+     * user doing one thing at a time, and the change bus refetches underneath
+     * it the moment this commits.
+     */
+    const dayByPlan = new Map(match.pairs.map((pair) => [pair.plan, pair.day]));
+    let position = 0;
+
+    plan.meals.forEach((planned, planAt) => {
+      const at = dayByPlan.get(planAt);
+
+      if (at === undefined) {
+        /**
+         * A MEAL OF THE PLAN THE DAY NO LONGER HAS COMES BACK.
+         *
+         * Deleting the dinner and then applying a template that has one used
+         * to leave the day without it: the operation set targets and never
+         * added a row, so a template could not put back what a day had
+         * dropped.
+         */
+        tx.insert(dayMeal)
+          .values({
+            id: newId<DayMealId>(),
+            date,
+            position: position++,
+            name: planned.name,
+            targetProtein: planned.targets?.protein ?? null,
+            targetCarbs: planned.targets?.carbs ?? null,
+            targetFat: planned.targets?.fat ?? null,
+            targetKcal: planned.targets?.kcal ?? null,
+          })
+          .run();
+        return;
+      }
+
       const meal = meals[at];
-      const targets = plan.meals[planAt]?.targets ?? null;
-      if (meal === undefined) continue;
+      if (meal === undefined) return;
 
       tx.update(dayMeal)
         .set({
-          targetProtein: targets?.protein ?? null,
-          targetCarbs: targets?.carbs ?? null,
-          targetFat: targets?.fat ?? null,
-          targetKcal: targets?.kcal ?? null,
+          position: position++,
+          targetProtein: planned.targets?.protein ?? null,
+          targetCarbs: planned.targets?.carbs ?? null,
+          targetFat: planned.targets?.fat ?? null,
+          targetKcal: planned.targets?.kcal ?? null,
         })
         .where(eq(dayMeal.id, meal.id))
         .run();
-    }
+    });
 
-    // A meal the plan has nothing for keeps its name, its entries and its
-    // place, and loses only its numbers: applying a set of targets means the
-    // day carries that set and no remnant of an earlier one.
+    // A meal the plan has nothing for keeps its name and its entries and
+    // loses only its numbers: applying a set of targets means the day carries
+    // that set and no remnant of an earlier one. It trails the plan's meals,
+    // in the order it already had.
     for (const at of match.unclaimed) {
       const meal = meals[at];
       if (meal === undefined) continue;
 
       tx.update(dayMeal)
         .set({
+          position: position++,
           targetProtein: null,
           targetCarbs: null,
           targetFat: null,
           targetKcal: null,
         })
         .where(eq(dayMeal.id, meal.id))
-        .run();
-    }
-
-    /**
-     * A MEAL OF THE PLAN THE DAY NO LONGER HAS COMES BACK.
-     *
-     * Deleting the dinner and then applying a template that has one used to
-     * leave the day without it — the operation set targets and never added a
-     * row, so the template could not put back what the day had dropped.
-     *
-     * APPENDED, not inserted in the plan's order. Positions are what every
-     * write addresses a meal by, so slotting one into the middle would mean
-     * renumbering rows the user never asked to touch. A restored dinner
-     * therefore arrives last; that is the price, and it is paid once.
-     */
-    let position = meals.reduce((highest, meal) => Math.max(highest, meal.position), -1) + 1;
-
-    for (const at of match.missing) {
-      const planned = plan.meals[at];
-      if (planned === undefined) continue;
-
-      tx.insert(dayMeal)
-        .values({
-          id: newId<DayMealId>(),
-          date,
-          position: position++,
-          name: planned.name,
-          targetProtein: planned.targets?.protein ?? null,
-          targetCarbs: planned.targets?.carbs ?? null,
-          targetFat: planned.targets?.fat ?? null,
-          targetKcal: planned.targets?.kcal ?? null,
-        })
         .run();
     }
 
