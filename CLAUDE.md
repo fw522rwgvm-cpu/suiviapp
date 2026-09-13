@@ -1640,6 +1640,38 @@ les choix à la fois : une feuille est une décision qu'on prend et qu'on congé
 une molette est une valeur sur laquelle on peut revenir pendant que les quatre
 champs d'objectif sont encore devant soi.
 
+**La couleur voyage avec le glyphe, dans le même module.** Séparées, le soleil
+pourrait finir bleu le jour où quelqu'un ajoute une cinquième sorte ou réordonne
+une palette — et tout l'intérêt de la couleur est qu'elle s'accorde avec ce qui
+est dessiné. **Quelle** couleur est un jeton de thème, parce qu'elle doit
+différer entre clair et sombre ; **quel** jeton est l'affaire de
+`meal-symbol.ts`, parce que ça dépend de ce que le glyphe représente.
+
+Les quatre voisinent délibérément les teintes des macros, et ça ne coûte rien :
+un repas s'identifie par la **forme** de son glyphe et une barre de macro par
+l'**étiquette** écrite dessus, donc ni l'un ni l'autre n'est jamais décodé par
+la couleur. Ce qui aurait coûté quelque chose, c'est une couleur qui contredit
+l'image.
+
+**Le seuil d'un glyphe est 3:1, pas 4,5:1.** WCAG sépare le texte des objets
+graphiques, et une icône est le second. Le midi a été assombri de `#c08a00` à
+`#a8780a` pour avoir de la marge — il était à 3,05.
+
+**Une roue est le bon contrôle pour une quantité, le mauvais pour quatre mots.**
+Le `UIPickerView` a été essayé pour le nom du repas puis ressorti : la valeur
+d'une quantité est continue et tourner **est** le réglage, alors que quatre mots
+fixes se touchent. Elle coûtait un défilement pour atteindre ce qui pouvait être
+un toucher, et mangeait cent cinquante points d'un panneau dont les quatre
+champs d'objectif sont tout le propos.
+
+**Un dixième de gramme est une mesure sur un aliment et du bruit sur une
+somme.** Les macros d'une journée et d'un repas s'affichent à l'entier ;
+une entrée individuelle garde sa décimale, parce que là le chiffre **est** la
+mesure. Divergence assumée avec le §5.1, consignée en `specs §14.6`. Le calcul
+interne reste en pleine précision : c'est un arrondi au point d'affichage, comme
+tous les autres de `core/format`. Un test pose `formatMacro` et
+`formatMacroWhole` côte à côte pour qu'on ne les fusionne pas par mégarde.
+
 ## Points ouverts après la tranche 5
 - ~~**Vérification iPhone en attente.**~~ **Faite pour l'essentiel** : la
   tranche 5 a tourné sur l'appareil et a rendu six retours d'interface, tous
@@ -1662,6 +1694,14 @@ champs d'objectif sont encore devant soi.
 - **`carrot.fill` et les trois symboles météo ne sont pas vérifiés sur
   l'appareil.** Ce sont des SF Symbols standards et l'application vise iOS 18,
   mais un nom de symbole absent rend un carré vide, pas une erreur.
+- **La police de l'application n'a pas changé**, et c'est le seul point d'une
+  demande qui n'a pas été livré. Deux choses manquent, et aucune ne se devine :
+  **quelle** police Yazio utilise — je ne le sais pas de source sûre et je ne
+  vais pas l'affirmer — et **le fichier de fonte**, avec la licence qui va avec,
+  une police de marque étant commerciale la plupart du temps. `expo-font` 57 est
+  dans l'arbre (transitivement, via `expo`) mais n'est pas au §5 : l'y ajouter
+  est une décision à prendre, pas un détail. Ce qui débloque : un nom, et soit
+  les fichiers, soit un équivalent Google Fonts.
 - **Un repas nommé librement avant la règle reste tel quel, et c'est voulu**
   (§5.2). Conséquence à connaître : sa fiche ne propose que les types encore
   libres, donc un tel repas ne peut pas être « corrigé » vers un type déjà pris
