@@ -1878,10 +1878,20 @@ un dîner par journée : « le dîner de la journée » est une question à une 
 réponse. Les collations, la seule sorte qui se répète, sont appariées dans
 l'ordre et le reste est rendu — manquantes d'un côté, non réclamées de l'autre.
 
-**Un repas du modèle que la journée n'a plus revient, ajouté en fin.** Pas
-inséré à sa place : les positions sont ce par quoi chaque écriture désigne un
-repas, donc le glisser au milieu demanderait de renuméroter des lignes que
-personne n'a touchées. Un dîner restauré arrive donc en dernier.
+**Un repas du modèle que la journée n'a plus revient, à sa place dans le
+modèle.** Appliquer un modèle réordonne la journée : chaque repas qu'il nomme
+prend sa place dans sa séquence, et ce qu'il ne nomme pas suit derrière dans
+l'ordre qu'il avait déjà.
+
+**Renuméroter est sûr, et pour deux raisons qui ne se devinent pas.** Les
+entrées pendent de `day_meal.id` et **jamais** de sa position, donc rien de
+logué ne bouge quand les rangs changent. Et `day_meal` ne porte délibérément
+aucun index unique sur `(date, position)` — noté comme une rigueur inégale du
+§2.3 dès la tranche 1 — ce qui laisse ces lignes traverser des positions en
+double au milieu de la transaction au lieu d'exiger un emplacement temporaire
+pour permuter. `food_portion`, qui porte un tel index, avait dû être remplacée
+en bloc pour exactement ce motif. **Une absence de contrainte qui paie quatre
+tranches plus tard.**
 
 Ce qui reste intouché : un nom, une entrée, et tout repas que le modèle ne
 nomme pas — celui-là garde tout et ne perd que ses chiffres.
