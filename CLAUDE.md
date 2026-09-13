@@ -1718,29 +1718,48 @@ soit une vingtaine de points au-dessus du bord sur une boîte de 186. La bande
 vide se lisait comme un espace entre le chiffre et les barres ; elle est reprise
 par une marge négative, avec l'arithmétique écrite à côté du nombre.
 
-**Une couleur de marque n'est pas une couleur de thème tant qu'elle n'a pas
-passé le contraste des deux surfaces.** `#08daa9` mesure **1,81:1 sur blanc** —
-sous le 4,5:1 d'une étiquette *et* sous le 3:1 d'une forme dessinée. En thème
-clair ce serait une jauge qu'on ne voit pas et un bouton qu'on ne lit pas. Elle
-est donc posée telle quelle sur la surface sombre, où elle atteint 9,60:1, et
-assombrie à teinte égale — `#058063`, 4,91:1 dans les deux sens — pour le clair.
-C'est l'inverse exact de ce que les couleurs de macro faisaient déjà dans
-l'autre direction.
+**Le mint est `#08daa9` dans les deux thèmes, et ce qu'il coûte est mesuré, pas
+caché.** La variante assombrie a été essayée et refusée à vue : elle se lisait
+comme une autre couleur, plus terne, et non comme la même adaptée. Prix : **1,81:1
+sur blanc**, sous le 4,5:1 d'une étiquette et sous le 3:1 d'une forme dessinée.
+En thème clair, tout ce qui porte l'accent est donc pâle. Sur le sombre il
+atteint 9,60:1.
 
-**Le commentaire de l'accent avait déjà payé ce conflit une fois.** Il disait :
-« It was a green before, and the green was the problem: it sat next to the teal
-of protein. » Le mint le ramène. La réponse est l'autre moitié de l'échange —
-**l'accent a libéré le bleu, la protéine l'a pris**. Les deux sont maintenant un
-vert et un bleu au lieu de deux verts, et le motif que l'ancienne note donnait
-pour éviter le vert ne s'applique plus. Sans ça, la barre de protéines et
-l'anneau du repas se seraient confondus sur la carte où ils se touchent.
+**Le test enregistre la mesure au lieu d'asséner un seuil que la palette ne
+tient plus.** Supprimer l'assertion aurait effacé la connaissance ; la garder
+aurait fait échouer la CI sur une chose déjà décidée. Elle vérifie donc la
+valeur exacte et nomme la sortie : **si ça gêne à l'usage, la réponse n'est pas
+un vert plus sombre — c'est une surface plus sombre derrière lui.**
 
-**Les calories portent l'accent lui-même, et c'est la seule macro qui en a le
-droit.** Elles sont ce que la jauge dessine et ce que le §8.3 rend lisible sans
-interaction : une seule couleur sur la jauge, la pastille et le chiffre dit
-qu'elles sont une seule chose. Le test de distinction des macros ne les couvrait
-déjà pas ; une assertion fixe désormais l'égalité pour que personne ne la
-« corrige » plus tard.
+**Changer une couleur de marque casse ce qui empruntait son jeton.** Deux cas,
+et aucun n'était visible avant de mesurer :
+
+- `onAccent` a dû passer au quasi-noir (blanc sur mint : 1,81:1). Or le bouton
+  de suppression peignait `danger` et écrivait `onAccent` dessus — le noir sur
+  le rouge tombe à 4,16:1. D'où un jeton **`onDanger`** propre : deux fonds
+  différents ne prennent plus la même étiquette.
+- Le **réticule du scanner** empruntait `onAccent` parce qu'il se trouvait être
+  blanc. Il est dessiné sur un flux caméra, pas sur une surface que
+  l'application peint : il serait devenu quasi noir sur l'étagère sombre où se
+  trouve justement un code-barres. Règle qui en sort : **ce qui est posé sur du
+  contenu que l'application ne peint pas ne prend pas un jeton de thème.**
+
+**Le chiffre des calories reste dans la couleur du texte, quel que soit
+l'état.** C'est la seule chose que le §8.3 exige lisible sans aucune
+interaction, et un nombre rouge sur une carte se lit comme une erreur avant de
+se lire comme une quantité. L'anneau autour dit déjà l'état, là où un état a sa
+place.
+
+**Quatre aliments plutôt que quatre moments.** Le lever, le midi et la nuit
+séparaient proprement les trois repas fixes mais laissaient la collation seule à
+n'être pas un moment — une intruse parmi ses propres sœurs. Café, couverts,
+verre de vin, carotte : chacun se reconnaît sans être déduit, et aucun n'est
+l'exception. Coût connu et assumé : une fourchette dit « un repas » en général
+plutôt que « déjeuner » en particulier.
+
+Le vin est tenu à l'écart du rouge destructif **par la saturation et non par la
+teinte** — ce sont les deux seuls rouges d'une carte de repas, et l'un des deux
+veut dire « ça supprime ».
 
 ## Points ouverts après la tranche 5
 - ~~**Vérification iPhone en attente.**~~ **Faite pour l'essentiel** : la
@@ -1761,15 +1780,15 @@ déjà pas ; une assertion fixe désormais l'égalité pour que personne ne la
   numéro se dérive de la journée entière, que cette liste ne charge pas — elle
   lit un repas par ligne. « Collation · 15 septembre » reste sans ambiguïté ;
   à rouvrir si deux collations du même jour s'y côtoient et se confondent.
-- **Le mint n'a été vu dans aucun des deux thèmes.** Les contrastes sont
-  calculés et testés, mais deux valeurs différentes pour une même couleur de
-  marque est précisément le genre de chose qui se juge à l'œil : le clair peut
-  paraître terne à côté du sombre. Si c'est le cas, la sortie n'est pas
-  d'éclaircir `#058063` — ce serait retomber sous le seuil — mais d'assombrir
-  la surface derrière la jauge.
-- **`carrot.fill` et les trois symboles météo ne sont pas vérifiés sur
-  l'appareil.** Ce sont des SF Symbols standards et l'application vise iOS 18,
-  mais un nom de symbole absent rend un carré vide, pas une erreur.
+- **Le thème clair porte un accent à 1,81:1, et c'est une décision prise en
+  connaissance de cause.** Chevrons, « Enregistrer », le glyphe du bouton
+  d'ajout et la jauge y sont pâles. Rien ne casse ; tout est moins lisible. La
+  sortie, si ça gêne, est une surface plus sombre derrière l'accent — jamais un
+  vert plus sombre, qui est précisément ce qui a été refusé.
+- **`carrot.fill`, `cup.and.saucer.fill`, `fork.knife` et `wineglass.fill` ne
+  sont pas vérifiés sur l'appareil.** Tous sont des SF Symbols standards sous
+  iOS 17, mais un nom absent rend un carré vide, pas une erreur.
+
 - ~~**La police de l'application n'a pas changé.**~~ **Nunito est en place**
   (Regular, SemiBold, Bold), sous licence OFL, chargée à l'exécution.
 - **Nunito n'a jamais été vue à l'écran.** Les trois fichiers sont dans le
