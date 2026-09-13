@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  KCAL_DISCREPANCY_THRESHOLD,
+  KCAL_OVERSHOOT_KCAL,
   progressRatio,
   targetStanding,
 } from '../../src/features/nutrition/domain/macros';
@@ -53,25 +55,41 @@ describe('targetStanding', () => {
     expect(targetStanding(2000, 0)).toBeNull();
   });
 
-  it('is under below the target', () => {
+  it('is under below the target, and still under AT it', () => {
+    // THE BOUNDARY THAT MATTERS. The gauge fills here, and it fills in the
+    // accent: a full ring means "there is nothing left", which is the goal met
+    // rather than missed. Colouring it red at this exact point put the alarm
+    // on the instant of success.
     expect(targetStanding(1999, 2000)).toBe('under');
-    expect(targetStanding(0, 2000)).toBe('under');
+    expect(targetStanding(2000, 2000)).toBe('under');
   });
 
-  it('is reached at exactly the target, where the gauge closes', () => {
-    // THE BOUNDARY THAT DEFINES THE RULE. The arc fills at exactly the target,
-    // so the colour has to change at the same instant the shape does — a full
-    // ring in the accent colour would be the one state the drawing cannot
-    // tell apart from the next one.
-    expect(targetStanding(2000, 2000)).toBe('reached');
+  it('goes amber the moment it passes, by however little', () => {
+    expect(targetStanding(2001, 2000)).toBe('over');
   });
 
-  it('stays reached however far past it goes', () => {
-    // There is no third state any more: the amber band between the target and
-    // ten per cent past it had nowhere left to live once the ring turned red
-    // on filling.
-    expect(targetStanding(2001, 2000)).toBe('reached');
-    expect(targetStanding(4000, 2000)).toBe('reached');
+  it('stays amber to the edge of the margin, and turns red past it', () => {
+    // Fifty kilocalories, inclusive: at exactly the margin it is still amber.
+    expect(targetStanding(2050, 2000)).toBe('over');
+    expect(targetStanding(2051, 2000)).toBe('far_over');
+  });
+
+  it('uses the SAME margin whatever the target, which a percentage would not', () => {
+    // The reason it is absolute: ten per cent would grant a 2 600 kcal
+    // training day 260 kcal of slack and a 1 400 kcal rest day only 140 —
+    // most slack exactly where the target is hardest to hold to.
+    expect(targetStanding(1450, 1400)).toBe('over');
+    expect(targetStanding(1451, 1400)).toBe('far_over');
+    expect(targetStanding(2650, 2600)).toBe('over');
+    expect(targetStanding(2651, 2600)).toBe('far_over');
+  });
+
+  it('keeps its margin separate from the kcal discrepancy of specs 5.1', () => {
+    // Two unrelated questions. One asks whether a food's stated calories agree
+    // with 4P + 4C + 9F; this one asks whether you ate more than you meant to.
+    // They share nothing, not even a unit — one is a ratio, this is kilocalories.
+    expect(KCAL_OVERSHOOT_KCAL).toBe(50);
+    expect(KCAL_DISCREPANCY_THRESHOLD).toBe(0.1);
   });
 });
 

@@ -1527,12 +1527,12 @@ tranche 7 le réécrit sur svg sans qu'un appelant bouge. La géométrie est
 reproduite en test — le composant ne se rend pas depuis Node, mais les deux
 rotations qu'il calcule, si.
 
-~~**Deux seuils de 10 % qui n'ont rien à voir.**~~ **Un seul désormais.**
-`KCAL_OVERSHOOT_THRESHOLD` a été supprimé : la règle est passée à « une jauge
-pleine est rouge », et la bande ambre entre l'objectif et 10 % au-delà n'avait
-plus où vivre. `KCAL_DISCREPANCY_THRESHOLD`, qui vérifie la cohérence interne
-d'un aliment (§5.1), reste — et le fait d'avoir refusé de les confondre est ce
-qui a permis d'en retirer un sans toucher l'autre.
+**Les deux seuils n'ont désormais même plus la même unité, et c'est mieux.**
+`KCAL_DISCREPANCY_THRESHOLD` reste un ratio — il vérifie qu'une valeur calorique
+déclarée s'accorde avec `4P + 4G + 9L` (§5.1). `KCAL_OVERSHOOT_KCAL` est
+maintenant **50 kcal**, un nombre de kilocalories. Avoir refusé de les confondre
+en une constante quand ils partageaient le nombre 10 est exactement ce qui a
+permis de changer l'un — de 10 % à 50 kcal — sans toucher l'autre.
 
 **Les calories sont le seul chiffre qui a le droit d'élever la voix.** Anneau
 rouge dès qu'il est plein ; les trois barres de macros ne rougissent jamais,
@@ -1776,12 +1776,18 @@ jusqu'à l'écran. La modale lit la journée elle-même et décide là quels typ
 sont libres — un paramètre de moins à faire traverser trois composants pour
 répondre à une question que le destinataire pouvait poser lui-même.
 
-**Une jauge pleine est rouge, et la couleur change au moment où la forme se
-ferme.** Un événement, dit deux fois, des deux façons dont un anneau peut dire
-quoi que ce soit. Conséquence à connaître : l'anneau vire au rouge à **100 %
-pile**, c'est-à-dire à l'objectif *atteint* et non manqué. Ça se lit « il ne
-reste rien ». Si un jour ça se lit comme une erreur, le changement est une
-comparaison — rouge juste *après* l'objectif plutôt qu'à l'objectif.
+**L'anneau se ferme dans la couleur de l'accent, et le rouge attend.** Une jauge
+pleine veut dire « il ne reste rien », ce qui est l'objectif *atteint* et non
+manqué : le rouge y a été posé un temps, et il mettait la couleur d'alarme sur
+l'instant de la réussite. Trois états désormais — accent jusqu'à l'objectif,
+ambre tant que le dépassement tient dans la marge, rouge au-delà.
+
+**La marge est de 50 kcal, absolue, et pas un pourcentage.** La différence n'est
+pas cosmétique : 10 % accorde 260 kcal de tolérance à une journée
+d'entraînement à 2 600 et seulement 140 à une journée de repos à 1 400. Le mou
+qu'un pourcentage donne est maximal exactement là où l'objectif est le plus dur
+à tenir, ce qui est à l'envers. Cinquante kilocalories, c'est un biscuit,
+n'importe quel jour.
 
 **Deux cercles sur une rangée doivent faire la même taille, ou ils cessent
 d'être une paire.** L'anneau du repas et le bouton d'ajout sont aux deux bouts

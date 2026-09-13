@@ -145,26 +145,33 @@ export function progressRatio(consumed: number, target: number | null): number {
 }
 
 /**
- * Whether a calorie target has been reached (specs 8.3).
+ * How far past a calorie target a day or a meal has gone (specs 8.3).
  *
- * ## TWO STATES, WHERE THERE WERE THREE
+ * ## AN ABSOLUTE MARGIN, NOT A PERCENTAGE
  *
- * There used to be an amber band between the target and ten per cent past it,
- * and a separate threshold to draw it. It is gone, superseded: the rule is now
- * that A FULL GAUGE IS RED. Since the arc fills at exactly the target, the
- * amber band had nowhere left to live — it would have been a colour for a ring
- * that already looked identical to the one beside it.
+ * Fifty kilocalories, the same on every target. It replaced ten per cent, and
+ * the difference is not cosmetic: a percentage means a 2 600 kcal training day
+ * tolerates 260 kcal of overshoot while a 1 400 kcal rest day tolerates 140.
+ * The slack a percentage grants is largest exactly where the target is hardest
+ * to hold to, which is backwards. Fifty kilocalories is a biscuit, on any day.
  *
- * Worth stating plainly: the ring therefore turns red at exactly 100%, which
- * is the target being MET rather than missed. Read as "there is nothing left",
- * which is what a full gauge means. If it ever reads as an error instead, the
- * change is one comparison — red just PAST the target rather than at it.
+ * ## RED STARTS PAST THE TARGET, NOT AT IT
+ *
+ * The gauge fills at the target, and for a moment it was red there too. That
+ * put the alarm colour on the instant the goal is MET rather than missed — a
+ * full ring means "there is nothing left", which is success. So the arc closes
+ * in the accent, goes amber while the overshoot is within the margin, and only
+ * turns red once it is genuinely past.
  */
 
+/** The margin past a calorie target before the gauge calls it a problem. */
+export const KCAL_OVERSHOOT_KCAL = 50;
+
 /** Null when there is no target: nothing to stand against (specs 8.1). */
-export type TargetStanding = 'under' | 'reached';
+export type TargetStanding = 'under' | 'over' | 'far_over';
 
 export function targetStanding(consumed: number, target: number | null): TargetStanding | null {
   if (target === null || !Number.isFinite(target) || target <= 0) return null;
-  return consumed >= target ? 'reached' : 'under';
+  if (consumed <= target) return 'under';
+  return consumed > target + KCAL_OVERSHOOT_KCAL ? 'far_over' : 'over';
 }

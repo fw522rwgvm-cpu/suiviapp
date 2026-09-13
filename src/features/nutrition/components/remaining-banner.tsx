@@ -30,7 +30,7 @@ import { ProgressRing } from './progress-ring';
  * is drawn with views, and slice 7 rewrites it behind the same props when svg
  * lands for the charts. See progress-ring.tsx.
  *
- * THE GAUGE IS THE ONE THING HERE THAT TURNS RED, the moment it fills. The
+ * THE GAUGE IS THE ONE THING HERE THAT TURNS RED, past the margin. The
  * three macro bars never do, whatever they are filled to: going over on
  * carbohydrates is not a failure the way going over on the day is, and a row
  * of red bars would say it was. Calories are the number specs 8.3 makes
@@ -84,11 +84,12 @@ export function RemainingBanner({
         : 'kcal au-dessus';
 
   /**
-   * Two states, decided in the domain (D9): under the target, or at it.
+   * Three states, decided in the domain (D9): under the target, past it, and
+   * past it by more than fifty kilocalories.
    *
-   * A FULL GAUGE IS RED. The arc fills at exactly the target, so the colour
-   * changes at the same instant the shape closes — one event, said twice, in
-   * the two ways a ring can say anything.
+   * THE ARC CLOSES IN THE ACCENT. A full gauge means "there is nothing left",
+   * which is the goal met rather than missed, so the alarm colour waits: amber
+   * while the overshoot is within the margin, red once it is genuinely past.
    *
    * THE ARC CARRIES IT; THE FIGURE DOES NOT. The number stays in the text
    * colour whatever the standing, because it is the one thing specs 8.3
@@ -135,7 +136,13 @@ export function RemainingBanner({
           thickness={14}
           sweep={270}
           startAngle={225}
-          color={standing === 'reached' ? theme.colors.danger : theme.colors.accent}
+          color={
+            standing === 'far_over'
+              ? theme.colors.danger
+              : standing === 'over'
+                ? theme.colors.warning
+                : theme.colors.accent
+          }
         >
           <Text style={[styles.figure, { color: theme.colors.text }]}>
             {formatKcal(Math.abs(headlineValue))}
