@@ -290,15 +290,24 @@ export function JournalScreen() {
                     accessibilityLabel="Choisir une date"
                   >
                     {/*
-                      Both header icons are the FILLED DISC variant, and they
-                      have to match: `calendar` has no `.fill` of its own —
-                      only `.circle.fill` — so pairing a filled disc with a
-                      plain filled glyph would have made one icon read as a
-                      button and the other as a label.
+                      A DATE, NOT A CALENDAR, AND THAT IS A CONSTRAINT RATHER
+                      THAN A CHOICE.
+                      
+                      SF Symbols has no filled calendar. `calendar` exists only
+                      as an outline, and every fill it offers is a `.circle.fill`
+                      — the glyph inside an opaque disc, which is a different
+                      thing from the glyph itself being solid. `31.square.fill`
+                      is the one date metaphor in the set that is genuinely
+                      filled, and it is Apple's own: a numbered square is what
+                      the Calendar app shows on the home screen.
+                      
+                      Verified rather than assumed: sf-symbols-typescript types
+                      the name as a union of every real symbol, so a made-up one
+                      fails the typecheck instead of rendering an empty box.
                     */}
                     <SymbolView
-                      name="calendar.circle.fill"
-                      size={24}
+                      name="31.square.fill"
+                      size={22}
                       tintColor={theme.colors.accent}
                     />
                   </Pressable>
@@ -313,8 +322,8 @@ export function JournalScreen() {
                 accessibilityLabel="Bibliothèque"
               >
                 <SymbolView
-                  name="books.vertical.circle.fill"
-                  size={24}
+                  name="books.vertical.fill"
+                  size={22}
                   tintColor={theme.colors.accent}
                 />
               </Pressable>

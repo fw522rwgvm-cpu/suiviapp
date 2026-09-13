@@ -1,4 +1,9 @@
-import { NUNITO_BOLD, NUNITO_REGULAR, NUNITO_SEMIBOLD } from './font';
+import {
+  NUNITO_BOLD,
+  NUNITO_EXTRABOLD,
+  NUNITO_REGULAR,
+  NUNITO_SEMIBOLD,
+} from './font';
 
 /**
  * The font files themselves, kept apart from the mapping that names them.
@@ -15,4 +20,5 @@ export const NUNITO_FONTS: Record<string, number> = {
   [NUNITO_REGULAR]: require('../../../assets/fonts/Nunito-Regular.ttf') as number,
   [NUNITO_SEMIBOLD]: require('../../../assets/fonts/Nunito-SemiBold.ttf') as number,
   [NUNITO_BOLD]: require('../../../assets/fonts/Nunito-Bold.ttf') as number,
+  [NUNITO_EXTRABOLD]: require('../../../assets/fonts/Nunito-ExtraBold.ttf') as number,
 };

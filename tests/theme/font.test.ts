@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   fontFamilyFor,
   NUNITO_BOLD,
+  NUNITO_EXTRABOLD,
   NUNITO_REGULAR,
   NUNITO_SEMIBOLD,
 } from '../../src/core/theme/font';
@@ -25,11 +26,15 @@ describe('fontFamilyFor', () => {
     expect(fontFamilyFor(undefined, false)).toBeUndefined();
   });
 
-  it('maps the four weights the application actually uses', () => {
+  it('maps the weights the application actually uses', () => {
     expect(fontFamilyFor('400', true)).toBe(NUNITO_REGULAR);
     expect(fontFamilyFor('500', true)).toBe(NUNITO_SEMIBOLD);
     expect(fontFamilyFor('600', true)).toBe(NUNITO_SEMIBOLD);
     expect(fontFamilyFor('700', true)).toBe(NUNITO_BOLD);
+    // 800 is bundled for one thing: the day's name in the Journal header.
+    // Against a Bold file iOS would synthesise the extra weight instead of
+    // using a heavier one, which is why the fourth face exists at all.
+    expect(fontFamilyFor('800', true)).toBe(NUNITO_EXTRABOLD);
   });
 
   it('treats an unstated weight as regular', () => {
@@ -45,7 +50,7 @@ describe('fontFamilyFor', () => {
     // React Native accepts both, and a style copied from anywhere may carry
     // either.
     expect(fontFamilyFor(600, true)).toBe(NUNITO_SEMIBOLD);
-    expect(fontFamilyFor(900, true)).toBe(NUNITO_BOLD);
+    expect(fontFamilyFor(900, true)).toBe(NUNITO_EXTRABOLD);
     expect(fontFamilyFor(100, true)).toBe(NUNITO_REGULAR);
   });
 
@@ -54,8 +59,8 @@ describe('fontFamilyFor', () => {
     // somewhere deliberate. A missing face is how you get synthetic type.
     expect(fontFamilyFor('100', true)).toBe(NUNITO_REGULAR);
     expect(fontFamilyFor('300', true)).toBe(NUNITO_REGULAR);
-    expect(fontFamilyFor('800', true)).toBe(NUNITO_BOLD);
-    expect(fontFamilyFor('900', true)).toBe(NUNITO_BOLD);
+    expect(fontFamilyFor('800', true)).toBe(NUNITO_EXTRABOLD);
+    expect(fontFamilyFor('900', true)).toBe(NUNITO_EXTRABOLD);
   });
 
   it('rounds a weight the type forbids but a flattened style can still carry', () => {
@@ -72,7 +77,7 @@ describe('fontFamilyFor', () => {
   });
 
   it('never returns a family it has no file for', () => {
-    const shipped = new Set([NUNITO_REGULAR, NUNITO_SEMIBOLD, NUNITO_BOLD]);
+    const shipped = new Set([NUNITO_REGULAR, NUNITO_SEMIBOLD, NUNITO_BOLD, NUNITO_EXTRABOLD]);
     const weights = ['100', '400', '500', '600', '700', '900', 'bold', 'normal'] as const;
 
     for (const weight of weights) {

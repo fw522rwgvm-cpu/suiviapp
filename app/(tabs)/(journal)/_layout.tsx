@@ -1,6 +1,6 @@
 import { isLiquidGlassAvailable } from 'expo-glass-effect';
 import { Stack } from 'expo-router';
-import { useTheme } from '@/core/theme';
+import { fontFamilyFor, useTheme } from '@/core/theme';
 import { RequestedDateProvider } from '@/features/nutrition/hooks/requested-date';
 
 /**
@@ -61,11 +61,27 @@ export default function JournalLayout() {
         headerTransparent: true,
         headerShadowVisible: false,
         headerTintColor: theme.colors.accent,
-        // A touch larger than the system default, and bold rather than its
-        // semibold: it is the one word on the bar that says where you are, it
-        // sits beside two icons rather than centred so it has the room, and it
-        // now heads a page whose own section titles are bold too.
-        headerTitleStyle: { color: theme.colors.text, fontSize: 20, fontWeight: '700' },
+        /**
+         * THE TITLE WAS THE ONE PIECE OF TEXT STILL IN THE SYSTEM FACE.
+         *
+         * core/ui/text cannot reach it: the bar is a UINavigationBar and the
+         * title is painted by UIKit, not rendered as a Text in the tree. Its
+         * font comes from headerTitleStyle or from nowhere — and with nothing
+         * set it came from nowhere, so the date sat in San Francisco above a
+         * page entirely in Nunito.
+         *
+         * Extra-bold rather than bold: it is the one word on the bar that says
+         * where you are, it sits beside two icons rather than centred so it has
+         * the room, and it now heads a page whose own section titles are bold.
+         * Asking for 800 is what makes the fourth face worth bundling — against
+         * a Bold file iOS would synthesise the extra weight instead.
+         */
+        headerTitleStyle: {
+          color: theme.colors.text,
+          fontSize: 20,
+          fontWeight: '800',
+          fontFamily: fontFamilyFor('800', theme.fontsLoaded),
+        },
         ...(glass
           ? { scrollEdgeEffects: { top: 'soft' as const } }
           : { headerBlurEffect: 'systemChromeMaterial' as const }),

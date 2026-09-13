@@ -12,8 +12,8 @@ import type { TextStyle } from 'react-native';
  * looks wrong beside real type and is worse at small sizes, which is most of
  * this application.
  *
- * So three static instances are bundled and the weight picks the file. That is
- * also why nothing here maps a weight it has no face for: 500 and 600 both get
+ * So static instances are bundled and the weight picks the file. That is also
+ * why nothing here maps a weight it has no face for: 500 and 600 both get
  * SemiBold, because rounding to a face that exists is the whole point.
  *
  * ## SIL OPEN FONT LICENSE 1.1
@@ -42,6 +42,14 @@ import type { TextStyle } from 'react-native';
 export const NUNITO_REGULAR = 'Nunito-Regular';
 export const NUNITO_SEMIBOLD = 'Nunito-SemiBold';
 export const NUNITO_BOLD = 'Nunito-Bold';
+/**
+ * Bundled for ONE thing: the day's name in the Journal header.
+ *
+ * Bold was already the heaviest face here, so "bolder still" had nowhere to go
+ * — a fourth file was the only honest answer, since asking iOS for 800 against
+ * a Bold face gets a synthesised weight rather than a heavier one.
+ */
+export const NUNITO_EXTRABOLD = 'Nunito-ExtraBold';
 
 /**
  * The face for a requested weight, or undefined while the fonts are not there.
@@ -62,6 +70,7 @@ export function fontFamilyFor(
   const numeric = typeof weight === 'number' ? weight : Number(weight);
   if (!Number.isFinite(numeric)) return NUNITO_REGULAR;
 
+  if (numeric >= 800) return NUNITO_EXTRABOLD;
   if (numeric >= 700) return NUNITO_BOLD;
   if (numeric >= 500) return NUNITO_SEMIBOLD;
   return NUNITO_REGULAR;

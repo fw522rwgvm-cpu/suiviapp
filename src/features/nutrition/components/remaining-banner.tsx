@@ -76,12 +76,20 @@ export function RemainingBanner({
   ];
 
   const headlineValue = remaining === null ? consumed.kcal : remaining.kcal;
+  /**
+   * "en trop" rather than "au-dessus".
+   *
+   * Above what? The phrase needed the target to be in the sentence to mean
+   * anything, and the target is not in the sentence — the figure above it is
+   * the overshoot itself. "En trop" says what the number IS, which is the only
+   * thing the banner has room to say.
+   */
   const headlineLabel =
     remaining === null
       ? 'kcal consommées'
       : remaining.kcal >= 0
         ? 'kcal restantes'
-        : 'kcal au-dessus';
+        : 'kcal en trop';
 
   /**
    * Two states, decided in the domain (D9): within the margin, or past it.
