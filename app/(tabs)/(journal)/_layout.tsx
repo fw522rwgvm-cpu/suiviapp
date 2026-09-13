@@ -89,29 +89,40 @@ export default function JournalLayout() {
     >
       <Stack.Screen name="index" />
       {/*
-        A TRANSPARENT MODAL, not a push: the Journal stays mounted and visible
-        underneath, so choosing a date reads as something opening on top rather
-        than as going somewhere else — which is what it is. A pushed screen is
-        opaque by definition and cannot show anything behind it.
+        A PUSH, AND IT USED TO BE A TRANSPARENT MODAL.
+        
+        The transparency existed to show the Journal behind a floating panel.
+        Once the calendar became a full-width sheet running to the bottom edge,
+        it covered everything anyway — so the presentation was buying nothing
+        and charging for it: a modal is presented ON THE WINDOW, iOS scales the
+        presenting screen back behind it, and what showed in the strips above
+        and below was the window itself, white. The dim backdrop had been
+        hiding that for as long as OverlayPanel drew one.
 
-        No header either: the screen carries its own two buttons, and a bar
-        above a floating panel would make it look like a page again.
+        Pushed, the screen belongs to this stack: nothing is presented over the
+        window, nothing scales, and no window shows through.
 
-        AND NO `animation` OVERRIDE, UNLIKE EVERY OTHER WINDOW IN THIS
-        APPLICATION. The others set it to 'none' because OverlayPanel raises
-        and folds them itself. This one is reached through Link.AppleZoom, so
-        the NATIVE transition owns both directions — it grows the screen out of
-        the header button and shrinks it back into it, with an interactive
-        dismissal along the way. Silencing the animation here, or letting the
-        screen animate itself, is what made it leave downwards while it had
-        arrived from the header.
+        `gestureEnabled` is what makes the drag dismiss it. Under Link.AppleZoom
+        the native interactive dismissal follows the finger back into the button
+        rather than sliding the screen away — and expo-router reads this very
+        flag to decide whether to allow it, so leaving it to a default would be
+        leaving the gesture to one.
+
+        NO `animation` OVERRIDE, UNLIKE EVERY OTHER WINDOW IN THIS APPLICATION.
+        The others set it to 'none' because OverlayPanel raises and folds them
+        itself. This one is reached through Link.AppleZoom, so the NATIVE
+        transition owns both directions — it grows the screen out of the header
+        button and shrinks it back into it. Silencing the animation here, or
+        letting the screen animate itself, is what made it leave downwards while
+        it had arrived from the header.
+
+        No header: the screen carries its own two buttons.
       */}
       <Stack.Screen
         name="calendar"
         options={{
           headerShown: false,
-          presentation: 'transparentModal',
-          contentStyle: { backgroundColor: 'transparent' },
+          gestureEnabled: true,
         }}
       />
     </Stack>
