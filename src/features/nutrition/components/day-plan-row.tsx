@@ -90,16 +90,17 @@ export function DayPlanRow({
     );
   }
 
-  // A materialised day with targets: a statement, not a control. Silent when
-  // it was frozen without a template, which is every day before 0004 — there
-  // is nothing to say, and the row below says what can be done about it.
-  if (materialized && hasTargets) {
-    return templateName === null ? null : (
-      <Text style={[styles.statement, { color: theme.colors.textFaint }]}>
-        {`Journée créée avec « ${templateName} ». Modifier le modèle ne la change plus.`}
-      </Text>
-    );
-  }
+  /**
+   * A materialised day with targets says nothing at all.
+   *
+   * It used to carry a line naming the template it was frozen from — the one
+   * thing on screen that answered "I edited my template, why has my Thursday
+   * not changed". Removed on request, and the consequence is worth keeping
+   * written down rather than rediscovered: that question now has no answer in
+   * the interface. Specs 8.2 still makes the behaviour correct; nothing tells
+   * the user so.
+   */
+  if (materialized && hasTargets) return null;
 
   if (materialized) {
     if (prescribed === null) return null;
@@ -171,7 +172,6 @@ const styles = StyleSheet.create({
   },
   rowLabel: { fontSize: 13 },
   rowValue: { fontSize: 13, flex: 1, fontWeight: '600' },
-  statement: { fontSize: 12, lineHeight: 17, paddingHorizontal: 4 },
   action: {
     flexDirection: 'row',
     alignItems: 'center',

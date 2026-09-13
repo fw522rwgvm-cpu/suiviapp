@@ -145,33 +145,33 @@ export function progressRatio(consumed: number, target: number | null): number {
 }
 
 /**
- * How far past a calorie target a day or a meal has gone (specs 8.3).
+ * Whether a calorie total has passed its margin (specs 8.3).
  *
- * ## AN ABSOLUTE MARGIN, NOT A PERCENTAGE
+ * ## ONE THRESHOLD, TWO STATES, AND NO COLOUR FOR "FULL"
  *
- * Fifty kilocalories, the same on every target. It replaced ten per cent, and
- * the difference is not cosmetic: a percentage means a 2 600 kcal training day
- * tolerates 260 kcal of overshoot while a 1 400 kcal rest day tolerates 140.
- * The slack a percentage grants is largest exactly where the target is hardest
- * to hold to, which is backwards. Fifty kilocalories is a biscuit, on any day.
+ * A full gauge is not an event. Reaching the target means there is nothing
+ * left, which is the goal MET — so the arc closes in the ordinary colour and
+ * keeps it while the overshoot is still small. Only past the margin does
+ * anything change. An amber band between the two was tried and taken out: it
+ * put a warning on the moment of success and then a second one just after,
+ * so the first thing the user saw when they hit their target was a colour
+ * telling them off.
  *
- * ## RED STARTS PAST THE TARGET, NOT AT IT
+ * ## THE MARGIN IS ABSOLUTE, NOT A PERCENTAGE
  *
- * The gauge fills at the target, and for a moment it was red there too. That
- * put the alarm colour on the instant the goal is MET rather than missed — a
- * full ring means "there is nothing left", which is success. So the arc closes
- * in the accent, goes amber while the overshoot is within the margin, and only
- * turns red once it is genuinely past.
+ * Fifty kilocalories, the same on every target. Ten per cent would grant a
+ * 2 600 kcal training day 260 kcal of slack and a 1 400 kcal rest day only
+ * 140 — most slack exactly where the target is hardest to hold to, which is
+ * backwards. Fifty kilocalories is a biscuit, on any day.
  */
 
 /** The margin past a calorie target before the gauge calls it a problem. */
 export const KCAL_OVERSHOOT_KCAL = 50;
 
 /** Null when there is no target: nothing to stand against (specs 8.1). */
-export type TargetStanding = 'under' | 'over' | 'far_over';
+export type TargetStanding = 'within' | 'beyond';
 
 export function targetStanding(consumed: number, target: number | null): TargetStanding | null {
   if (target === null || !Number.isFinite(target) || target <= 0) return null;
-  if (consumed <= target) return 'under';
-  return consumed > target + KCAL_OVERSHOOT_KCAL ? 'far_over' : 'over';
+  return consumed > target + KCAL_OVERSHOOT_KCAL ? 'beyond' : 'within';
 }

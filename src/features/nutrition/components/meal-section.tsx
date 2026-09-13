@@ -64,12 +64,7 @@ export function MealSection({
    * denominator are three bars that cannot be read.
    */
   const standing = targetStanding(consumedKcal, targetKcal);
-  const ringColor =
-    standing === 'far_over'
-      ? theme.colors.danger
-      : standing === 'over'
-        ? theme.colors.warning
-        : theme.colors.accent;
+  const ringColor = standing === 'beyond' ? theme.colors.danger : theme.colors.accent;
 
   return (
     <View
@@ -104,7 +99,7 @@ export function MealSection({
 
           {/*
             Same rule as the day's ring, because it answers the same question
-            one level down: amber past the target, red past the margin. It
+            one level down: the ordinary colour until the margin is passed. It
             carries the icon rather than a figure — the kcal are
             written out an inch to its right, and repeating them would be
             saying one fact twice.

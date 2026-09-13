@@ -84,12 +84,12 @@ export function RemainingBanner({
         : 'kcal au-dessus';
 
   /**
-   * Three states, decided in the domain (D9): under the target, past it, and
-   * past it by more than fifty kilocalories.
+   * Two states, decided in the domain (D9): within the margin, or past it.
    *
-   * THE ARC CLOSES IN THE ACCENT. A full gauge means "there is nothing left",
-   * which is the goal met rather than missed, so the alarm colour waits: amber
-   * while the overshoot is within the margin, red once it is genuinely past.
+   * A FULL GAUGE KEEPS THE ORDINARY COLOUR. Reaching the target means there is
+   * nothing left, which is the goal met rather than missed, so the arc closes
+   * in the accent and stays there while the overshoot is still small. Only
+   * past fifty kilocalories does it turn red.
    *
    * THE ARC CARRIES IT; THE FIGURE DOES NOT. The number stays in the text
    * colour whatever the standing, because it is the one thing specs 8.3
@@ -136,13 +136,7 @@ export function RemainingBanner({
           thickness={14}
           sweep={270}
           startAngle={225}
-          color={
-            standing === 'far_over'
-              ? theme.colors.danger
-              : standing === 'over'
-                ? theme.colors.warning
-                : theme.colors.accent
-          }
+          color={standing === 'beyond' ? theme.colors.danger : theme.colors.accent}
         >
           <Text style={[styles.figure, { color: theme.colors.text }]}>
             {formatKcal(Math.abs(headlineValue))}

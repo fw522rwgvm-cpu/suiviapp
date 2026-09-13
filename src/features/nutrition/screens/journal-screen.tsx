@@ -289,7 +289,18 @@ export function JournalScreen() {
                     accessibilityRole="button"
                     accessibilityLabel="Choisir une date"
                   >
-                    <SymbolView name="calendar" size={20} tintColor={theme.colors.accent} />
+                    {/*
+                      Both header icons are the FILLED DISC variant, and they
+                      have to match: `calendar` has no `.fill` of its own —
+                      only `.circle.fill` — so pairing a filled disc with a
+                      plain filled glyph would have made one icon read as a
+                      button and the other as a label.
+                    */}
+                    <SymbolView
+                      name="calendar.circle.fill"
+                      size={24}
+                      tintColor={theme.colors.accent}
+                    />
                   </Pressable>
                 </Link.AppleZoom>
               </Link>
@@ -301,7 +312,11 @@ export function JournalScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Bibliothèque"
               >
-                <SymbolView name="books.vertical" size={20} tintColor={theme.colors.accent} />
+                <SymbolView
+                  name="books.vertical.circle.fill"
+                  size={24}
+                  tintColor={theme.colors.accent}
+                />
               </Pressable>
             </View>
           ),

@@ -61,10 +61,11 @@ export default function JournalLayout() {
         headerTransparent: true,
         headerShadowVisible: false,
         headerTintColor: theme.colors.accent,
-        // A touch larger than the system default: it is the one word on the
-        // bar that carries meaning, and it sits beside two icons rather than
-        // centred, so it has the room.
-        headerTitleStyle: { color: theme.colors.text, fontSize: 20 },
+        // A touch larger than the system default, and bold rather than its
+        // semibold: it is the one word on the bar that says where you are, it
+        // sits beside two icons rather than centred so it has the room, and it
+        // now heads a page whose own section titles are bold too.
+        headerTitleStyle: { color: theme.colors.text, fontSize: 20, fontWeight: '700' },
         ...(glass
           ? { scrollEdgeEffects: { top: 'soft' as const } }
           : { headerBlurEffect: 'systemChromeMaterial' as const }),
