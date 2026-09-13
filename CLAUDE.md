@@ -53,8 +53,16 @@ L'application doit tolérer un arrêt forcé à tout moment sans perte.
 ---
 
 ## État du projet
-Tranches 0 à 4 livrées. **La tranche 4 est vérifiée sur l'iPhone, scan
-compris** (13/09/2026) : le code-barres se lit, le produit arrive avec ses
+Tranches 0 à 5 livrées. **La tranche 5 n'a pas encore tourné sur l'appareil** :
+code complet, typé, 671 tests verts sous les trois fuseaux, bundle produit —
+mais rien de son interface n'a été touché sur l'iPhone. À lire comme tel.
+
+**Elle ne demande aucun cycle CI.** Aucune dépendance native n'entre, donc tout
+se vérifie par Metro sur le binaire dev existant — l'inverse exact de la
+tranche 4, où le scan imposait de reconstruire.
+
+Tranches 0 à 4 livrées avant elle. **La tranche 4 est vérifiée sur l'iPhone,
+scan compris** (13/09/2026) : le code-barres se lit, le produit arrive avec ses
 macros, et la recherche sans accent est confirmée à l'usage.
 
 L'appareil a fait remonter trois choses que rien d'autre n'aurait trouvées —
@@ -97,7 +105,8 @@ qu'un export réel existe, la version 1 doit rester lisible : sinon l'archive
 est morte, et l'export est l'unique filet du projet.
 
 **Le schéma est gelé. Ajout seul désormais (D6/G2).** La migration initiale
-n'a jamais été dégelée : `0001_journal` a été ajoutée à côté, puis `0002_food`.
+n'a jamais été dégelée : `0001_journal` a été ajoutée à côté, puis `0002_food`,
+`0003_barcode_off_cache` et `0004_templates_planning`.
 Réécrire `0000` aurait changé son horodatage, fait voir une migration en
 attente à l'installation quotidienne, qui aurait tenté de recréer `setting` et
 échoué au démarrage. Le dégel servait à corriger `0000` ; `0000` n'avait rien à
@@ -1386,6 +1395,157 @@ au système, le contenu est à nous.** Un `GlassButton` dans un en-tête natif e
 du verre dans du verre ; une étoile dans une rangée de liste est du contenu et
 doit porter son propre matériau.
 
+## Ce que la tranche 5 a établi
+
+**Tout l'irréversible tient dans `0004`, et ça se réduit à trois lignes** :
+deux clés étrangères et une `CHECK`. SQLite n'a pas d'`ALTER TABLE ADD
+CONSTRAINT`, donc ce qui n'y entrait pas n'y entrerait jamais. Le reste de la
+tranche — tables, colonnes, index, écrans — se corrige à volonté.
+
+**L'asymétrie qui décide des clés étrangères était déjà écrite au §2.3, par
+quelqu'un d'autre.** `day.template_id_snapshot` y est déclaré « informatif,
+sans lien vivant » et ne porte aucune clé, parce qu'un cascade y détruirait
+l'historique. `planning_weekday` est l'inverse : de la **configuration
+vivante**, où une ligne désignant un modèle disparu ne s'affiche pas et ne se
+résout pas. La supprimer n'est pas une perte, c'est la seule sémantique
+cohérente. `RESTRICT` était exclu par le §5.3 ; `CASCADE` ne bloque rien non
+plus, donc la règle est tenue et non contournée.
+
+Ce qui a décidé contre « aucune clé » : **l'import perdrait une barrière.**
+`foreign_key_check` est la barrière 3 de la tranche 2, et sans clé déclarée
+elle ne distinguerait plus une archive saine d'une archive dont le planning
+pointe dans le vide.
+
+**« Une journée matérialisée n'est pas affectée rétroactivement » n'est pas une
+règle appliquée quelque part : c'est une requête qu'on ne fait pas.** `readDay`
+branche — matérialisée, elle lit ses propres `day_meal` ; virtuelle, elle
+résout le planning. Une journée future préparée à l'avance est couverte par la
+même phrase **sans cas particulier** : elle tient parce qu'elle est
+matérialisée, pas parce qu'elle est dans le futur.
+
+**La résolution se fait DANS la transaction de matérialisation**, sur la ligne
+qui précède le figeage. Plus tôt — dans l'écran, ou dans une lecture faite
+avant de décider d'écrire — un modèle édité entre les deux produirait une
+journée dont les repas viennent d'une version et dont `template_name_snapshot`
+en nomme une autre.
+
+**Le pointeur par défaut est le seul de l'application qu'aucune contrainte ne
+peut protéger**, `setting` étant une table clé/valeur en TEXT. Il est traité
+des deux côtés, et ce ne sont pas deux fois la même chose : `deleteTemplate`
+l'efface dans la même transaction — **la règle** — et `readDefaultTemplateId`
+vérifie que le modèle existe encore — **la garantie**. Seule la seconde survit
+à une archive écrite par un autre binaire ou à une ligne réparée à la main.
+Trois tests couvrent le pointeur qui pend, la valeur qui n'est pas un
+identifiant, et la récurrence qui répond quand même.
+
+**La conversion `1 = lundi` n'a rien coûté : elle existait depuis la tranche
+0.** `core/date.weekday()` rend l'ISO 1..7 par arithmétique entière sur le
+numéro de jour, et `tests/date/local-date.test.ts` porte littéralement
+`it('keeps the weekday numbering the planning table expects')`, avec
+`planning_weekday` nommée en commentaire. La tranche 0 avait écrit le test de
+la table de la tranche 5. **Rien de neuf n'est sensible au fuseau** — le
+planning est indexé par date civile et par jour ISO, tous deux tirés d'une
+chaîne : il n'y a pas un seul instant dans ces modules.
+
+**Le repli en code a survécu, exactement comme `day-plan.ts` l'avait écrit.**
+« No template applies » est devenu « le planning ne désigne rien », qui est
+l'état d'une base neuve **et** de toute base dont le dernier modèle vient
+d'être supprimé. Aucune graine n'a été posée en migration : elle ne livrerait
+pas d'objectif, ne permettrait pas de retirer le repli, et une migration porte
+ce qui ne peut pas être ajouté plus tard.
+
+**Le bandeau serait resté muet le jour même où les modèles arrivent.**
+Aujourd'hui est matérialisée dès le petit-déjeuner logué, et une journée
+matérialisée ne consulte jamais le planning. D'où `applyPlanTargetsToDay`, acte
+**explicite** : le §8.2 fait de l'action de l'utilisateur l'acte qui définit
+une journée, et rien ici ne se déclenche seul. Le repli refusé était de faire
+retomber une journée sans objectif sur le planning **à la lecture** — éditer un
+modèle bougerait alors le bandeau de journées vieilles de trois mois.
+
+Elle ne touche que les quatre colonnes d'objectif, **appariées par position**.
+Jamais un nom, jamais le nombre de repas, jamais une entrée : une journée porte
+des repas que l'utilisateur a pu renommer et qui contiennent des lignes. D'où
+le libellé « appliquer les **objectifs** de X » — la promesse est exactement ce
+qui se passe.
+
+**Le Journal doit dire d'où viennent ses repas, sinon rien ne l'explique.**
+Une journée matérialisée énonce son snapshot sans être touchable, et c'est la
+seule chose à l'écran qui réponde à « j'ai modifié mon modèle, pourquoi mon
+jeudi n'a pas bougé ». Le §8.2 rend ce comportement correct ; il ne l'explique
+à personne.
+
+**Un dossier réel, pas un groupe entre parenthèses.** `(journal)` porte des
+parenthèses parce que le Journal **doit rester** la route index du groupe
+d'onglets. Les Réglages ne sont pas cet index : un `(settings)/index.tsx`
+aurait réclamé « / » une seconde fois, à côté de celui du Journal. Écrit en
+groupe d'abord, corrigé avant le commit — **le bundle ne l'aurait pas
+attrapé**, c'est le genre d'ambiguïté qui se paie sur l'appareil.
+
+**Les repas d'un modèle sont remplacés en bloc**, pour le motif établi en
+tranche 3 sur les portions : la machinerie d'une réconciliation ligne à ligne
+servirait des identifiants que **rien ne référence**. Une journée copie le nom
+et les objectifs dans ses propres lignes ; aucune colonne ne pointe vers
+`day_template_meal.id`.
+
+**Un repas récent rejoue les choix, pas les chiffres figés.** La capsule d'une
+vieille entrée est ce qui a été mangé *alors* ; ajouter un repas aujourd'hui
+est un ajout d'aujourd'hui, donc chaque ligne repasse par son aliment et fige
+ce qu'il dit maintenant. Le cas qui tranche : le §8.5 fait de la correction d'un
+produit copié « le mécanisme principal de compensation de la qualité inégale de
+la source » — rejouer la capsule réimporterait en silence l'erreur qu'on vient
+de corriger, sur le chemin construit pour répéter une habitude.
+
+La **quantité**, elle, reste figée : même arbitrage que le pré-remplissage de
+la tranche 3, la taille de portion figée gagne. Trois lignes repartent malgré
+tout de leur capsule, chacune pour son motif — une saisie libre n'a aucun
+aliment à relire, un aliment supprimé ne se lit pas (et le §5.3 déclare cette
+suppression gratuite), et un aliment dont l'**unité de base** a changé
+apparierait des macros pour 100 ml avec une quantité comptée en grammes. Ce
+dernier est un chiffre faux et parfaitement plausible : le seul genre qui
+compte.
+
+**Aucune dépendance n'est entrée.** Le choix d'un modèle passe par
+`ActionSheetIOS`, un vrai `UIAlertController` du cœur de React Native — la
+direction iOS 26 appliquée telle qu'écrite, le chrome appartient au système.
+
+## Points ouverts après la tranche 5
+- **Vérification iPhone en attente**, et c'est le point le plus important de
+  cette liste. Rien de l'interface de la tranche 5 n'a tourné sur l'appareil.
+  Aucun cycle CI n'est nécessaire : Metro sur le binaire dev suffit.
+- **Le parcours à vérifier en premier**, parce qu'il est le critère de sortie :
+  créer « Jour d'entraînement » avec quatre repas et leurs objectifs, l'affecter
+  au mardi, surcharger une date depuis le Journal, et lire un vrai restant sur
+  une journée jamais touchée **et** sur une journée déjà loguée.
+- **`ActionSheetIOS` n'a jamais tourné dans ce projet.** C'est du natif de base
+  et il n'y a pas de raison qu'il échoue, mais aucun test Node ne le touche et
+  c'est le seul contrôle système que la tranche introduit.
+- **Un modèle sans repas est permis et mène à une journée sans repas.** Cohérent
+  — le §8.3 laisse déjà vider une journée matérialisée de tous ses repas — mais
+  l'écran n'offre alors rien à quoi ajouter. L'échappatoire existe (« Ajouter un
+  repas » matérialise et crée), elle n'est simplement pas signalée.
+- **Le taux d'adhérence de la tranche 7 devra exclure les journées sans
+  objectif**, comme il exclut déjà celles sans entrée. Toute journée
+  matérialisée avant `0004` est dans ce cas, définitivement, sauf action
+  explicite de l'utilisateur.
+- **`readDayPlan` fait trois lectures là où deux suffiraient** quand la
+  surcharge répond : les trois candidats sont lus avant d'appeler la fonction
+  pure, pour que la règle de préséance vive à un seul endroit au lieu d'être
+  réécrite en chaîne de retours anticipés. Deux lectures sur clé primaire de
+  plus, sur une base locale synchrone. Non mesuré, parce qu'il n'y a rien à
+  mesurer.
+- **`useDay` accroche le Journal à `off_suspended_until`.** `setting` est dans
+  sa liste de tables pour le pointeur par défaut, et le limiteur y écrit à
+  chaque 429 : scanner en magasin invalidera le Journal. Coût réel, le rejeu de
+  quelques lectures sur index. Nommé plutôt que découvert.
+- **Le générateur de jeu de démonstration ne crée aucun modèle.** Il produit des
+  journées matérialisées sans objectif, donc le bandeau reste muet dessus. À
+  rouvrir si la tranche 7 a besoin de données avec objectifs pour éprouver
+  l'adhérence.
+- **Deux piles natives déclarent les mêmes options d'en-tête**, celle du Journal
+  et celle des Réglages. C'est le deuxième utilisateur, donc la règle du
+  deuxième utilisateur est atteinte de justesse — mais le partage ferait un
+  composant de quatre lignes d'options. Laissé tel quel ; le troisième tranchera.
+
 ## Points ouverts après la tranche 4
 - ~~**Vérification iPhone en attente.**~~ **Faite, scan compris.** Reste non
   exercé ce qui demande de provoquer une panne : hors ligne, réponse illisible,
@@ -1465,8 +1625,8 @@ doit porter son propre matériau.
   type TypeScript et le tableau `one_of` du catalogue. `PORTION_NAMES` montre
   la forme correcte — données d'abord, type dérivé. Non corrigé : ce serait
   toucher du code livré sans autre motif que la cohérence.
-- **Hors périmètre, décidé** : les repas récents du §8.4a (le §7 cadre la
-  tranche 3 sur les aliments ; ils iront en tranche 5, où un repas a un sens),
+- ~~**Hors périmètre, décidé** : les repas récents du §8.4a.~~ **Livrés en
+  tranche 5**, où un repas a effectivement un sens. Restent hors périmètre :
   ~~le seuil « au-delà de 900 kcal pour 100 g »~~ **livré en tranche 4**, et
   ~~`barcode` avec son index unique partiel~~ **livrés par `0003`, en un ALTER
   TABLE et un CREATE INDEX — le report a tenu exactement ce qu'il promettait.**
