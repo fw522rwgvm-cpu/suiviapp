@@ -53,14 +53,21 @@ L'application doit tolérer un arrêt forcé à tout moment sans perte.
 ---
 
 ## État du projet
-Tranches 0 à 4 livrées. **L'interface de la tranche 4 a commencé à tourner sur
-l'appareil** et y a déjà fait remonter deux défauts que rien n'aurait trouvés
-autrement — un balayage qui déclenchait le press de sa rangée, et des molettes
-qui tournaient en s'ouvrant. Les deux sont corrigés ; voir « Deux défauts
-trouvés sur l'appareil ».
+Tranches 0 à 4 livrées. **La tranche 4 est vérifiée sur l'iPhone, scan
+compris** (13/09/2026) : le code-barres se lit, le produit arrive avec ses
+macros, et la recherche sans accent est confirmée à l'usage.
 
-**Le scan, lui, n'a pas encore pu tourner** : `expo-camera` est native et
-attend un build.
+L'appareil a fait remonter trois choses que rien d'autre n'aurait trouvées —
+un balayage qui déclenchait le press de sa rangée (le Journal l'avait aussi),
+des molettes qui tournaient en s'ouvrant, et la réserve de la tranche 3 sur le
+clavier, qui s'est avérée fondée. Les trois sont traitées.
+
+**Ce qui n'a pas été exercé, et qu'il faut lire comme tel** : les chemins
+dégradés du client Open Food Facts — hors ligne, réponse illisible, quota 429 —
+et la bascule vers le formulaire pré-rempli sur un produit incomplet. Ils sont
+testés en Node contre un `fetch` injecté, ce qui fixe la *taxonomie* des
+réponses et non qu'Open Food Facts les produise encore. Le premier qui se
+présentera en usage sera le premier à être vu.
 
 **L'aller-retour export / import avec `food` et `food_portion` est vérifié**
 (13/09/2026). Le filet tient avec les tables de la tranche 3 dedans.
@@ -1380,9 +1387,9 @@ du verre dans du verre ; une étoile dans une rangée de liste est du contenu et
 doit porter son propre matériau.
 
 ## Points ouverts après la tranche 4
-- **Vérification iPhone entièrement en attente.** Le code est complet, typé,
-  testé et bundlé ; rien de l'interface n'a tourné sur l'appareil. Et le scan
-  ne le peut pas avant un build : `expo-camera` est native.
+- ~~**Vérification iPhone en attente.**~~ **Faite, scan compris.** Reste non
+  exercé ce qui demande de provoquer une panne : hors ligne, réponse illisible,
+  429, et la bascule vers le formulaire pré-rempli.
 - **Ce qu'aucun test ne couvre, par construction** : l'API réelle. Le client est
   exercé contre un `fetch` injecté, donc ce qui est vérifié est la *taxonomie*
   des réponses, pas qu'Open Food Facts les produise encore. Les sept constats
@@ -1439,14 +1446,17 @@ doit porter son propre matériau.
   100 ml. Une étiquette donnant ses valeurs pour 30 g se convertit à la main.
   `display_ref_qty` reste en base et vaut 100, donc le champ peut revenir sans
   migration.
-- **Hypothèse signalée** : `String.prototype.normalize` sur Hermes. Sonde
-  écrite, repli écrit, les deux testés en Node. **La tranche 4 a rendu la
-  question observable** — Réglages dev, section « Recherche sans accent » — et a
-  corrigé la sonde au passage : elle demandait `typeof`, ce qui ne voit qu'une
-  des trois façons d'échouer (absente, inerte, ou levant). Elle appelle
-  désormais la fonction dans un `try`. Le témoin décisif est « Phở » : la table
-  de repli ne le connaît pas, donc lire « pho » prouve que le moteur
-  décompose. Reste à le regarder sur l'appareil.
+- ~~**Hypothèse signalée** : `String.prototype.normalize` sur Hermes.~~
+  **Levée : la recherche sans accent est vérifiée sur l'appareil (13/09/2026).**
+  La tranche 4 avait rendu la question observable — Réglages dev, section
+  « Recherche sans accent » — et corrigé la sonde au passage : elle demandait
+  `typeof`, ce qui ne voit qu'une des trois façons d'échouer (absente, inerte,
+  ou levant). Elle appelle désormais la fonction dans un `try`.
+  **Le diagnostic reste en place**, et c'est délibéré : il dit lequel des deux
+  chemins s'exécute, ce qu'aucun test ne peut dire depuis Node. Le témoin
+  décisif est « Phở » — la table de repli ne le connaît pas, donc lire « pho »
+  prouve que le moteur décompose. À relire à chaque montée de SDK, le pliage
+  hors du français en dépendant entièrement.
 - ~~Depuis l'écran d'ajout, « Saisie libre » fait un `router.replace ».~~
   **Résolu.** C'est une étape en place, comme celle de la quantité : le retour
   revient à la liste d'aliments et le parcours « ajouter quelque chose » tient
