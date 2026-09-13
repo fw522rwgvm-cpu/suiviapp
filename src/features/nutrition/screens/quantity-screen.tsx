@@ -7,6 +7,7 @@ import { useEntry, useUpdateFoodEntryQuantity } from '../data/day-queries';
 import { useFood, useQuantityPrefill } from '../data/food-queries';
 import type { FoodPortionView, FoodView } from '../data/food-reads';
 import { totalOf, type Macros } from '../domain/macros';
+import { macrosOf, type CompleteOffProduct } from '../off/off-product';
 import {
   baseQuantity,
   choiceOf,
@@ -76,13 +77,68 @@ type Props =
       amending?: QuantityChoice;
       onCollect: (quantity: QuantityChoice, food: FoodView) => void;
     })
+  | (Common & {
+      /**
+       * A quantity for an Open Food Facts product that is NOT in the library.
+       *
+       * IT MAKES NO QUERY AT ALL, and cannot: there is no id to query with.
+       * Everything the form needs travels on the product — which is also what
+       * makes this the fastest of the three modes, with nothing to wait for
+       * between the tap and the wheels.
+       *
+       * No portions either. A product that has never been saved has no named
+       * portions, and inventing one would be inventing data. They become
+       * available the moment it is copied, which is at "Confirmer".
+       *
+       * And no pre-fill: a product never eaten has no last quantity. The chain
+       * of specs 8.4 ends at 100, which is exactly where the wheels open.
+       */
+      mode: 'collectOff';
+      product: CompleteOffProduct;
+      amending?: QuantityChoice;
+      onCollect: (quantity: QuantityChoice) => void;
+    })
   | (Common & { mode: 'edit'; entryId: JournalEntryId });
 
 export function QuantityScreen(props: Props) {
-  return props.mode === 'collect' ? (
-    <CollectQuantity {...props} />
-  ) : (
-    <EditQuantity {...props} />
+  switch (props.mode) {
+    case 'collect':
+      return <CollectQuantity {...props} />;
+    case 'collectOff':
+      return <CollectOffQuantity {...props} />;
+    case 'edit':
+      return <EditQuantity {...props} />;
+  }
+}
+
+/**
+ * The same form, fed straight from a remote product.
+ *
+ * Grams, always: Open Food Facts publishes per 100 g for everything it holds,
+ * liquids included, and reading that as millilitres would apply a density of 1
+ * where specs 5.1 allows none. A user who wants millilitres corrects the food
+ * once it has been copied, which is the free correctability of specs 8.5.
+ */
+function CollectOffQuantity({
+  product,
+  amending,
+  onCollect,
+}: Common & {
+  product: CompleteOffProduct;
+  amending?: QuantityChoice;
+  onCollect: (quantity: QuantityChoice) => void;
+}) {
+  return (
+    <QuantityForm
+      title={product.name}
+      subtitle={product.brand}
+      baseUnit="g"
+      reference={macrosOf(product)}
+      portions={[]}
+      initial={amending ?? null}
+      action={amending === undefined ? 'Ajouter' : 'Enregistrer'}
+      onSubmit={onCollect}
+    />
   );
 }
 

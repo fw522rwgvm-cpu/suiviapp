@@ -6,6 +6,7 @@ import type { PendingEntry } from '../domain/pending-entry';
 import {
   describePendingEntryMacros,
   describePendingEntryQuantity,
+  pendingEntryName,
   pendingEntryKcal,
   wasNameTruncated,
 } from '../domain/pending-entry';
@@ -42,11 +43,14 @@ export function PendingEntryRow({ entry }: { entry: PendingEntry }) {
   const theme = useTheme();
   const [crowded, setCrowded] = useState(false);
   const quantity = crowded ? null : describePendingEntryQuantity(entry);
+  // Asked rather than read off the line: a product from Open Food Facts has no
+  // row of its own yet, so its name lives on the product it carries.
+  const name = pendingEntryName(entry);
 
   function measure(event: { nativeEvent: TextLayoutEventData }): void {
     if (crowded) return;
     const line = event.nativeEvent.lines[0];
-    if (line !== undefined && wasNameTruncated(line.text, entry.name)) setCrowded(true);
+    if (line !== undefined && wasNameTruncated(line.text, name)) setCrowded(true);
   }
 
   return (
@@ -58,7 +62,7 @@ export function PendingEntryRow({ entry }: { entry: PendingEntry }) {
             numberOfLines={1}
             onTextLayout={measure}
           >
-            {entry.name}
+            {name}
           </Text>
           {quantity === null ? null : (
             <Text style={[styles.quantity, { color: theme.colors.textMuted }]}>

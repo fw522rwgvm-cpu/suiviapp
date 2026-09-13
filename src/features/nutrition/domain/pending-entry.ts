@@ -1,6 +1,7 @@
 import type { BaseUnit, FoodId } from '@/core/db/schema';
 import { formatQuantity } from '@/core/format';
 import { formatPortionCount } from '../components/portion-text';
+import { macrosOf, type CompleteOffProduct } from '../off/off-product';
 import { describeMacros, totalOf, type Macros } from './macros';
 import type { QuantityChoice } from './portions';
 
@@ -32,7 +33,20 @@ export type PendingEntry =
       reference: Macros;
       quantity: QuantityChoice;
     }
-  | { kind: 'free'; name: string; macros: Macros };
+  | { kind: 'free'; name: string; macros: Macros }
+  /**
+   * A product chosen from Open Food Facts that is NOT in the library yet.
+   *
+   * IT CARRIES NO FoodId BECAUSE THERE IS NONE. Nothing has been written: the
+   * copy of specs 8.5 happens at "Confirmer", inside the transaction that
+   * writes the entries, so that a product chosen and then abandoned leaves
+   * nothing behind. That is the cost of the decision, and this third case is
+   * most of it.
+   *
+   * The display fields are derived from the product rather than copied beside
+   * it — one statement of the name, not two that can drift.
+   */
+  | { kind: 'off'; product: CompleteOffProduct; quantity: QuantityChoice };
 
 /**
  * What this line will actually contribute. Derived, never stored (D9).
@@ -42,9 +56,29 @@ export type PendingEntry =
  * as everything else, with no special case (D5/R2).
  */
 export function pendingEntryMacros(entry: PendingEntry): Macros {
-  return entry.kind === 'free'
-    ? entry.macros
-    : totalOf(entry.reference, entry.quantity.baseQuantity);
+  if (entry.kind === 'free') return entry.macros;
+
+  return totalOf(referenceOf(entry), entry.quantity.baseQuantity);
+}
+
+/** The macros for 100, whichever side of the library the line comes from. */
+function referenceOf(entry: PendingEntry & { kind: 'food' | 'off' }): Macros {
+  return entry.kind === 'food' ? entry.reference : macrosOf(entry.product);
+}
+
+/**
+ * What the line calls itself.
+ *
+ * Derived for a remote product rather than stored alongside it, so the basket
+ * and the row that will be written cannot disagree about the name.
+ */
+export function pendingEntryName(entry: PendingEntry): string {
+  return entry.kind === 'off' ? entry.product.name : entry.name;
+}
+
+export function pendingEntryBrand(entry: PendingEntry): string | null {
+  if (entry.kind === 'free') return null;
+  return entry.kind === 'off' ? entry.product.brand : entry.brand;
 }
 
 export function pendingEntryKcal(entry: PendingEntry): number {
@@ -68,8 +102,13 @@ export function describePendingEntryQuantity(entry: PendingEntry): string | null
   if (entry.kind === 'free') return null;
 
   const { baseQuantity, portion } = entry.quantity;
+  // Grams for a remote product, always: Open Food Facts publishes per 100 g
+  // for everything it holds, and reading that as millilitres would be a
+  // density of 1 where specs 5.1 allows none.
+  const unit: BaseUnit = entry.kind === 'off' ? 'g' : entry.baseUnit;
+
   return portion === null
-    ? formatQuantity(baseQuantity, entry.baseUnit)
+    ? formatQuantity(baseQuantity, unit)
     : formatPortionCount(portion.count, portion.name);
 }
 

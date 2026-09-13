@@ -9,20 +9,31 @@ import { useTheme } from '@/core/theme';
  * personal results "instantly, on every keystroke", and the whole food list is
  * already in one cached query, so a keystroke costs an array filter (D16).
  *
- * The debounce that specs 8.4b DOES require arrives in slice 4, and only for
- * the remote half: Open Food Facts explicitly forbids search-as-you-type and
- * rate-limits to ten searches a minute. That is why remote results are fetched
- * on an explicit action and appear below these, rather than being folded into
- * the same field.
+ * THE REMOTE HALF NEVER SHARES THAT RHYTHM, and slice 4 resolved it with a
+ * submit rather than the debounce this comment used to anticipate. Open Food
+ * Facts prohibits search-as-you-type outright and allows ten searches a minute
+ * per IP address; a debounce would be a way of searching as you type slowly,
+ * which meets the limit without meeting the prohibition. So the field reports
+ * a submit, and remote results appear below the personal ones.
  */
 export function SearchField({
   value,
   onChange,
+  onSubmit,
   placeholder = 'Rechercher un aliment',
   autoFocus = false,
 }: {
   value: string;
   onChange: (value: string) => void;
+  /**
+   * The explicit trigger of specs 8.4b, when the caller has a remote search to
+   * fire. Omitted in the library, which has nothing remote to ask.
+   *
+   * The keyboard's own search key carries it, so the gesture costs no control
+   * on screen — and it is a submit rather than a timer, because what Open Food
+   * Facts prohibits is searching as you type, not searching often.
+   */
+  onSubmit?: () => void;
   placeholder?: string;
   autoFocus?: boolean;
 }) {
@@ -45,6 +56,10 @@ export function SearchField({
         autoCorrect={false}
         autoCapitalize="none"
         returnKeyType="search"
+        onSubmitEditing={onSubmit}
+        // The keyboard stays up: the results appear underneath, and a second
+        // term is the likeliest next action.
+        blurOnSubmit={false}
         clearButtonMode="never"
         style={[styles.input, { color: theme.colors.text }]}
       />

@@ -13,8 +13,19 @@ import { useAddEntries } from '../data/day-queries';
 import { useFavoriteFoods, useFoods, useRecentFoods } from '../data/food-queries';
 import type { FoodListItem } from '../data/food-reads';
 import { searchFoods } from '../domain/food-search';
-import { pendingEntryKcal, type PendingEntry } from '../domain/pending-entry';
+import {
+  pendingEntryKcal,
+  pendingEntryName,
+  type PendingEntry,
+} from '../domain/pending-entry';
 import { FoodRow } from '../components/food-row';
+import { OffResultRow } from '../components/off-result-row';
+import { OffNoticeBanner, type OffNotice } from '../components/off-notice';
+import { dedupeRemote, libraryBarcodes } from '../off/off-dedupe';
+import { useOffLookup, useOffSearch } from '../off/off-queries';
+import type { OffOutcome } from '../off/off-client';
+import type { LookupResult } from '../off/off-lookup';
+import { isCompleteProduct, type CompleteOffProduct, type OffProduct } from '../off/off-product';
 import { PendingEntryRow } from '../components/pending-entry-row';
 import { SwipeToDeleteRow } from '../components/swipe-to-delete-row';
 import { SearchField } from '../components/search-field';
@@ -73,6 +84,25 @@ export function AddEntryScreen({
   const router = useRouter();
 
   const [term, setTerm] = useState('');
+  /**
+   * The term a remote search was ASKED FOR, which is never the one being typed.
+   *
+   * Specs 8.4b and D11 forbid search-as-you-type outright: Open Food Facts
+   * allows ten searches a minute per IP address and says so in as many words.
+   * Two pieces of state rather than a debounce, because a debounce is a way of
+   * searching as you type slowly and the prohibition is about intent, not
+   * about frequency.
+   */
+  const [submitted, setSubmitted] = useState<string | null>(null);
+  /**
+   * The barcode of a remote result the user tapped, being looked up.
+   *
+   * A result row is not enough to build a food from: observed on 13/09/2026, a
+   * search hit can carry only kilojoules where the product endpoint supplies
+   * kcal. So choosing one costs a lookup — which is also the call D11 caches
+   * durably, and the one the scan will share.
+   */
+  const [picked, setPicked] = useState<string | null>(null);
   const [chosen, setChosen] = useState<FoodId | null>(null);
   const [freeEntry, setFreeEntry] = useState(false);
   const [showBasket, setShowBasket] = useState(false);
@@ -86,6 +116,8 @@ export function AddEntryScreen({
   const foods = useFoods();
   const favorites = useFavoriteFoods();
   const recents = useRecentFoods();
+  const remote = useOffSearch(submitted);
+  const lookup = useOffLookup(picked);
 
   const searching = term.trim() !== '';
   const results = useMemo(
@@ -93,8 +125,32 @@ export function AddEntryScreen({
     [foods.data, term, searching],
   );
 
+  /**
+   * Remote results, minus everything the library already represents.
+   *
+   * The deduplication of specs 8.5 is by BARCODE and it HIDES rather than
+   * merges: the personal row is already first, and it is the corrected one.
+   * Re-offering the uncorrected remote version on every search would re-offer
+   * exactly what the user replaced.
+   */
+  const remoteResults = useMemo(() => {
+    const outcome = remote.data;
+    if (outcome === undefined || outcome.status !== 'ok') return [];
+    return dedupeRemote(outcome.value, libraryBarcodes(foods.data ?? []));
+  }, [remote.data, foods.data]);
+
+  /**
+   * What to say about the network, if anything.
+   *
+   * A failure of EITHER remote call feeds it, because the banner belongs to
+   * the window rather than to the search field: a scan is a lookup and can
+   * fail without anything having been typed.
+   */
+  const notice = noticeFor(remote.data, lookup.data);
+
   function backToList(): void {
     setChosen(null);
+    setPicked(null);
     setFreeEntry(false);
     setShowBasket(false);
     setAmending(null);
@@ -127,6 +183,19 @@ export function AddEntryScreen({
   // away underneath, which a swipe on the list behind can do.
   const editing = amending === null ? undefined : basket[amending];
 
+  /**
+   * The product a tapped remote row resolved to, once complete.
+   *
+   * Incomplete is NOT an error and not a dead end: specs 8.5 diverts it to a
+   * pre-filled form. That detour arrives with the next step of this slice; for
+   * now an incomplete product simply does not open the wheels, which is the
+   * honest half of the behaviour rather than a wrong one.
+   */
+  const pickedProduct: CompleteOffProduct | null =
+    lookup.data?.status === 'found' && isCompleteProduct(lookup.data.product)
+      ? lookup.data.product
+      : null;
+
   const step =
     editing !== undefined
       ? 'amend'
@@ -136,7 +205,9 @@ export function AddEntryScreen({
           ? 'free'
           : chosen !== null
             ? 'quantity'
-            : 'list';
+            : pickedProduct !== null
+              ? 'offQuantity'
+              : 'list';
 
   /**
    * The screen shown by default (specs 8.4a), built once and used twice:
@@ -153,7 +224,18 @@ export function AddEntryScreen({
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
           >
-            <SearchField value={term} onChange={setTerm} />
+            <SearchField
+              value={term}
+              onChange={setTerm}
+              /*
+                Submitting the field IS the explicit trigger specs 8.4b asks
+                for. The search key on the keyboard already says "rechercher",
+                so the gesture exists without adding a control to the screen.
+              */
+              onSubmit={() => setSubmitted(term.trim() === '' ? null : term.trim())}
+            />
+
+            {notice === null ? null : <OffNoticeBanner notice={notice} now={Date.now()} />}
 
             {/*
               One tap, from the screen shown by default (specs 8.4d). It stays
@@ -194,12 +276,29 @@ export function AddEntryScreen({
             ) : null}
 
             {searching ? (
-              <Section
-                title="Mes aliments"
-                foods={results}
-                onPick={setChosen}
-                emptyText={`Aucun résultat pour « ${term.trim()} ».`}
-              />
+              <>
+                <Section
+                  title="Mes aliments"
+                  foods={results}
+                  onPick={setChosen}
+                  emptyText={`Aucun résultat pour « ${term.trim()} ».`}
+                />
+
+                {/*
+                  BELOW the personal results, never folded into them: specs
+                  8.4b puts personal results first and visually distinguished,
+                  and D11 explains why they cannot share a rhythm — the local
+                  list answers every keystroke, the remote one only on submit.
+                */}
+                <RemoteSection
+                  term={term}
+                  submitted={submitted}
+                  products={remoteResults}
+                  loading={remote.isFetching || lookup.isFetching}
+                  onSubmit={() => setSubmitted(term.trim() === '' ? null : term.trim())}
+                  onPick={(product) => setPicked(product.barcode)}
+                />
+              </>
             ) : (
               <>
                 <Section title="Favoris" foods={favorites.data ?? []} onPick={setChosen} />
@@ -292,6 +391,21 @@ export function AddEntryScreen({
                 })
               }
             />
+          ) : editing.kind === 'off' ? (
+            /*
+              A remote line is corrected on its own quantity, exactly like a
+              personal one. It never goes back to the network to do it: the
+              product it carries is what is about to be written, and re-asking
+              could answer differently a second later.
+            */
+            <QuantityScreen
+              mode="collectOff"
+              product={editing.product}
+              amending={editing.quantity}
+              onCollect={(quantity) =>
+                amend(amending, { kind: 'off', product: editing.product, quantity })
+              }
+            />
           ) : (
             <FreeEntryScreen
               date={date}
@@ -316,6 +430,16 @@ export function AddEntryScreen({
             entryId={null}
             onCollect={(entry) =>
               collect({ kind: 'free', name: entry.name.trim(), macros: entry.macros })
+            }
+          />
+        </SwipeBack>
+      ) : step === 'offQuantity' && pickedProduct !== null ? (
+        <SwipeBack key={step} onBack={backToList} behind={picker}>
+          <QuantityScreen
+            mode="collectOff"
+            product={pickedProduct}
+            onCollect={(quantity) =>
+              collect({ kind: 'off', product: pickedProduct, quantity })
             }
           />
         </SwipeBack>
@@ -391,15 +515,29 @@ function Confirm({
             {
               date,
               mealPosition,
-              entries: basket.map((entry) =>
-                entry.kind === 'free'
-                  ? { kind: 'free' as const, name: entry.name, macros: entry.macros }
-                  : {
-                      kind: 'food' as const,
-                      foodId: entry.foodId,
-                      quantity: entry.quantity,
-                    },
-              ),
+              entries: basket.map((entry) => {
+                if (entry.kind === 'free') {
+                  return { kind: 'free' as const, name: entry.name, macros: entry.macros };
+                }
+                if (entry.kind === 'off') {
+                  /*
+                    THE COPY OF SPECS 8.5 HAPPENS FROM HERE, and only from
+                    here: the product travels to the write layer, which copies
+                    it into the library in the same transaction as the entry.
+                    Nothing was written while it sat in the basket.
+                  */
+                  return {
+                    kind: 'off' as const,
+                    product: entry.product,
+                    quantity: entry.quantity,
+                  };
+                }
+                return {
+                  kind: 'food' as const,
+                  foodId: entry.foodId,
+                  quantity: entry.quantity,
+                };
+              }),
             },
             { onSuccess: dismiss },
           )
@@ -451,7 +589,7 @@ function Basket({
         ]}
       >
         {entries.map((entry, index) => (
-          <View key={`${entry.kind}-${index}-${entry.name}`}>
+          <View key={`${entry.kind}-${index}-${pendingEntryName(entry)}`}>
             {index === 0 ? null : (
               <ListSeparator />
             )}
@@ -475,7 +613,7 @@ function Basket({
               <Pressable
                 onPress={() => onEdit(index)}
                 accessibilityRole="button"
-                accessibilityLabel={`Modifier ${entry.name}`}
+                accessibilityLabel={`Modifier ${pendingEntryName(entry)}`}
               >
                 <PendingEntryRow entry={entry} />
               </Pressable>
@@ -527,6 +665,146 @@ function Section({
               )}
               {/* One tap. The next one is "Ajouter" (specs 8.4, D16). */}
               <FoodRow food={food} onPress={() => onPick(food.id)} />
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
+/**
+ * Which notice, if any, the window should carry.
+ *
+ * Reads BOTH remote calls, because the banner belongs to the window rather
+ * than to the search field: a scan is a lookup and can fail without anything
+ * having been typed.
+ *
+ * A lookup that FOUND something still reports its degradation — the figures
+ * came from a cache because the network could not be reached — which is
+ * exactly the "silent fallback to local with a discreet banner" of D11.
+ */
+function noticeFor(
+  search: OffOutcome<OffProduct[]> | undefined,
+  lookup: LookupResult | undefined,
+): OffNotice | null {
+  if (lookup !== undefined) {
+    if (lookup.status === 'unavailable') {
+      return lookup.reason === 'throttled'
+        ? { kind: 'throttled', retryAtMs: lookup.retryAtMs ?? Date.now() }
+        : { kind: lookup.reason };
+    }
+    if (lookup.status === 'found' && lookup.degraded !== null) {
+      // Shown even though there IS an answer: a figure from a five-week-old
+      // cache is worth having and worth labelling.
+      return lookup.degraded === 'throttled'
+        ? { kind: 'throttled', retryAtMs: Date.now() }
+        : { kind: lookup.degraded };
+    }
+  }
+
+  if (search !== undefined && search.status !== 'ok') {
+    switch (search.status) {
+      case 'offline':
+        return { kind: 'offline' };
+      case 'badResponse':
+        return { kind: 'badResponse' };
+      case 'throttled':
+        /*
+          THE DISTINCTION D11 DRAWS, arriving intact at the one place it is
+          visible. Only a refusal from the SERVER gets the loud message; our
+          own preventive window is discreet, because nobody did anything wrong
+          and there is nothing for them to decide.
+        */
+        return search.source === 'server'
+          ? { kind: 'throttled', retryAtMs: search.retryAtMs }
+          : null;
+      case 'notFound':
+        return null;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * The Open Food Facts half of the unified search (specs 8.4b).
+ *
+ * It exists as a section even before anything is asked for, and that is the
+ * point: the invitation is what makes the trigger explicit. A screen that
+ * searched by itself would be faster to use and would breach the one rule Open
+ * Food Facts states outright.
+ */
+function RemoteSection({
+  term,
+  submitted,
+  products,
+  loading,
+  onSubmit,
+  onPick,
+}: {
+  term: string;
+  submitted: string | null;
+  products: readonly OffProduct[];
+  loading: boolean;
+  onSubmit: () => void;
+  onPick: (product: OffProduct) => void;
+}) {
+  const theme = useTheme();
+  const asked = submitted !== null && submitted === term.trim();
+
+  return (
+    <View style={styles.section}>
+      <Text style={[styles.sectionTitle, { color: theme.colors.textMuted }]}>
+        Open Food Facts
+      </Text>
+
+      {!asked ? (
+        /*
+          The explicit trigger, as a row rather than a button in a corner: it
+          sits exactly where the results will appear, so the thing tapped and
+          the thing that changes are the same place.
+        */
+        <Pressable
+          onPress={onSubmit}
+          accessibilityRole="button"
+          style={[
+            styles.freeEntry,
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+              borderRadius: theme.radius.lg,
+            },
+            theme.shadow,
+          ]}
+        >
+          <SymbolView name="magnifyingglass" size={16} tintColor={theme.colors.accent} />
+          <Text style={[styles.freeEntryLabel, { color: theme.colors.accent }]}>
+            Chercher « {term.trim()} » en ligne
+          </Text>
+        </Pressable>
+      ) : loading ? (
+        <Text style={[styles.empty, { color: theme.colors.textMuted }]}>Recherche…</Text>
+      ) : products.length === 0 ? (
+        <Text style={[styles.empty, { color: theme.colors.textMuted }]}>
+          Aucun produit trouvé.
+        </Text>
+      ) : (
+        <View
+          style={[
+            styles.list,
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+              borderRadius: theme.radius.lg,
+            },
+            theme.shadow,
+          ]}
+        >
+          {products.map((product, index) => (
+            <View key={product.barcode}>
+              {index === 0 ? null : <ListSeparator />}
+              <OffResultRow product={product} onPress={() => onPick(product)} />
             </View>
           ))}
         </View>
