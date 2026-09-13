@@ -7,13 +7,13 @@ import {
   readMealEntries,
 } from '../../src/features/nutrition/data/day-reads';
 import { addEntries, addFoodEntry } from '../../src/features/nutrition/data/day-writes';
-import { createFood } from '../../src/features/nutrition/data/food-writes';
+import { createFood, deleteFood } from '../../src/features/nutrition/data/food-writes';
 import {
   readLastEntryForFood,
   readRecentFoods,
 } from '../../src/features/nutrition/data/food-reads';
 import { readRecipe } from '../../src/features/nutrition/data/recipe-reads';
-import { createRecipe } from '../../src/features/nutrition/data/recipe-writes';
+import { createRecipe, deleteRecipe } from '../../src/features/nutrition/data/recipe-writes';
 import { emptyFoodDraft, type FoodDraft } from '../../src/features/nutrition/domain/food-draft';
 import { emptyRecipeDraft } from '../../src/features/nutrition/domain/recipe-draft';
 import {
@@ -332,5 +332,77 @@ describe('the pre-fill leak an ingredient line would have caused', () => {
     // all — and falls back to its reference quantity, as a food never eaten
     // always has.
     expect(readLastEntryForFood(database.db, creamId)).toBeNull();
+  });
+});
+
+describe('the whole journey, as the slice was asked for', () => {
+  it('survives the deletion of a food the recipe uses', () => {
+    // THE EXIT CRITERION, end to end and in order:
+    //
+    //   create a recipe yielded in portions, log it choosing a quantity,
+    //   adjust one ingredient FOR THAT OCCASION ONLY, see a grouped block
+    //   whose total is right, find the saved recipe unchanged — then delete a
+    //   food it uses and find the block still showing a correct total.
+    //
+    // The last clause is the one nothing else asserts, and it is where two
+    // independent freezes have to hold at once: D5/R1 froze the block's lines
+    // when they were logged, and D5/R3 freezes the recipe's ingredient line
+    // when the food goes. Neither may move the other.
+    const { recipeId, creamId } = buildRecipe();
+
+    const adjusted = occurrence(recipeId, 2);
+    adjusted.lines[1] = { ...adjusted.lines[1]!, quantity: 10 };
+    addEntries(database.db, { date: DATE, mealPosition: 0, entries: [adjusted] });
+
+    const blockBefore = readMealEntries(database.db, firstMeal())[0];
+    const dayBefore = readDayTotals(database.db, DATE);
+    const recipeBefore = readRecipe(database.db, recipeId);
+
+    // A grouped block whose total is the adjustment, not the recipe.
+    expect(blockBefore?.children).toHaveLength(2);
+    expect(blockBefore?.total?.kcal).toBeCloseTo(200 * 2.64 + 10 * 2, 9);
+
+    // The saved recipe has not moved.
+    expect(recipeBefore?.ingredients[1]?.quantity).toBe(100);
+
+    deleteFood(database.db, creamId);
+
+    const blockAfter = readMealEntries(database.db, firstMeal())[0];
+    const recipeAfter = readRecipe(database.db, recipeId);
+
+    // The journal did not move by a bit: its lines froze their own reference
+    // and never consult a food again (D5/R1).
+    expect(readDayTotals(database.db, DATE)).toEqual(dayBefore);
+    expect(blockAfter?.total?.kcal).toBeCloseTo(blockBefore?.total?.kcal ?? 0, 12);
+    expect(blockAfter?.children[1]?.name).toBe('Crème de coco');
+
+    // And the recipe did not move either — its line is frozen rather than
+    // gone, so it keeps every figure it had (specs 5.3, D5/R3).
+    expect(recipeAfter?.total.kcal).toBeCloseTo(recipeBefore?.total.kcal ?? 0, 12);
+    expect(recipeAfter?.ingredients[1]?.frozen).toBe(true);
+    expect(recipeAfter?.ingredients[1]?.quantity).toBe(100);
+  });
+
+  it('keeps the block readable when the recipe itself is deleted', () => {
+    // source_recipe_id carries no foreign key, so nothing cascades into
+    // history. The block keeps its name, its lines and its total; only the
+    // link to something still in the library is gone.
+    const { recipeId } = buildRecipe();
+    addEntries(database.db, {
+      date: DATE,
+      mealPosition: 0,
+      entries: [occurrence(recipeId, 2)],
+    });
+    const before = readDayTotals(database.db, DATE);
+
+    deleteRecipe(database.db, recipeId);
+
+    const block = readMealEntries(database.db, firstMeal())[0];
+    expect(readDayTotals(database.db, DATE)).toEqual(before);
+    expect(block?.name).toBe('Curry de pois chiches');
+    expect(block?.children).toHaveLength(2);
+    // Still pointing at it, informatively: the column is what ties the entry
+    // to what it was, and erasing it would be the one thing that loses.
+    expect(block?.sourceRecipeId).toBe(recipeId);
   });
 });
