@@ -1909,6 +1909,23 @@ tranches plus tard.**
 Ce qui reste intouché : un nom, une entrée, et tout repas que le modèle ne
 nomme pas — celui-là garde tout et ne perd que ses chiffres.
 
+**Une transition native et une animation maison ne peuvent pas partager une
+fenêtre.** Le calendrier sortait du bouton par la transition zoom d'iOS et se
+refermait vers le bas — parce qu'`OverlayPanel` repliait sa fenêtre **puis**
+appelait `router.back()`. Au moment où la navigation partait, il ne restait
+rien à l'écran que le natif puisse rétrécir vers le bouton.
+
+La règle qui en sort : **l'écran atteint par `Link.AppleZoom` n'anime rien de
+lui-même**, et sa route ne pose aucun `animation` — contrairement à toutes les
+autres fenêtres, qui le mettent à `'none'` précisément parce qu'`OverlayPanel`
+les lève. Les deux conventions sont opposées et vivent côte à côte ; le
+commentaire de chaque route dit laquelle s'applique.
+
+**Et pas de voile sous une transition zoom.** C'est l'écran présenté *tout
+entier* qui sort du bouton, assombrissement compris : un petit carré sombre
+gonflant depuis l'en-tête. Un écran transparent portant une seule carte fait
+sortir la carte seule du contrôle, ce à quoi la transition sert.
+
 ## Points ouverts après la tranche 5
 - ~~**Vérification iPhone en attente.**~~ **Faite pour l'essentiel** : la
   tranche 5 a tourné sur l'appareil et a rendu six retours d'interface, tous
