@@ -51,6 +51,18 @@ export function weekdayName(date: LocalDate): string {
   return WEEKDAYS[weekday(date) - 1] ?? '';
 }
 
+/**
+ * The name of an ISO weekday, 1 being Monday — for the planning, which is keyed
+ * by the number and has no date to hand.
+ *
+ * Exported rather than letting the screen carry its own seven words: a second
+ * list is a list free to diverge, and the one that would drift is the one
+ * beside planning_weekday. Capitalised by the caller if it heads a row.
+ */
+export function weekdayNameOf(isoWeekday: number): string {
+  return WEEKDAYS[isoWeekday - 1] ?? '';
+}
+
 export function monthName(date: LocalDate): string {
   return MONTHS[localDateParts(date).month - 1] ?? '';
 }
