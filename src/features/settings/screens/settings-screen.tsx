@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useStartupReport } from '@/core/db/database-gate';
 import { useTheme } from '@/core/theme';
 import { DataSection } from '@/features/backup/components/data-section';
+import { SearchDiagnosticSection } from '../components/search-diagnostic-section';
 import { SeedSection } from '../components/seed-section';
 import { ListSeparator } from '@/core/ui/list-separator';
 
@@ -60,6 +61,7 @@ export function SettingsScreen() {
       </View>
 
       {/* Renders nothing on the daily installation (D15). */}
+      <SearchDiagnosticSection />
       <SeedSection />
     </ScrollView>
   );

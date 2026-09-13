@@ -24,7 +24,9 @@
  * and nothing else does. That is the fallback D16 describes, switched on to a
  * measurement rather than to a hunch.
  *
- * EVERY NON-ASCII CHARACTER IN THIS FILE IS WRITTEN AS AN ESCAPE, on purpose.
+ * EVERY NON-ASCII CHARACTER IN THE FOLD TABLES IS WRITTEN AS AN ESCAPE, on
+ * purpose. (The prose keeps its punctuation: a mangled em dash in a comment
+ * costs nothing, where a mangled letter in a table costs the fold.)
  * A fold table is the one place where a character mangled in transit — by an
  * editor, a terminal, a patch — produces code that still compiles, still runs,
  * and silently folds nothing. Escapes cannot be mangled into something that
@@ -32,19 +34,61 @@
  */
 
 /**
- * Whether the engine can decompose accented characters itself.
+ * What String.prototype.normalize actually does on this engine.
  *
- * Hermes is not Node. String.prototype.normalize needs Unicode normalisation
- * tables, which an embedded engine may reasonably leave out, and this code
- * cannot be run on the device from here to find out. The probe costs one
- * boolean and the table below covers French, which is the whole of V1; the
- * full range matters from slice 4, when Open Food Facts' worldwide scope
- * arrives.
+ * HERMES IS NOT NODE, and the difference cannot be observed from a development
+ * machine. Unicode normalisation needs decomposition tables, which an embedded
+ * engine may reasonably leave out. The table below covers French, which is the
+ * whole of V1; the full range starts to matter in slice 4, when Open Food
+ * Facts brings a worldwide catalogue.
  *
- * Written as a probe rather than a guess so that being wrong degrades the
- * search instead of throwing on the critical path.
+ * THE PROBE CALLS THE FUNCTION RATHER THAN ASKING WHETHER IT EXISTS, because
+ * three failures are possible and only one of them is "absent":
+ *
+ *  - absent:   typeof is not 'function';
+ *  - inert:    present, returns its input unchanged, decomposes nothing;
+ *  - throwing: present, raises when called.
+ *
+ * A typeof check sees the first and misses the other two. The third is the
+ * dangerous one: it would leave CAN_NORMALIZE true and make foldForSearch
+ * throw on every keystroke of the critical path. Calling it once, inside a
+ * try, turns a search that could crash into a search that degrades.
+ *
+ * The witness is e-acute, whose NFD form is two code points. One character is
+ * enough: an engine that decomposes this one carries the tables.
  */
-const CAN_NORMALIZE = typeof String.prototype.normalize === 'function';
+export interface NormalizeSupport {
+  /** Whether the function exists at all. */
+  present: boolean;
+  /** Whether calling it decomposes. False if absent, inert or throwing. */
+  decomposes: boolean;
+  /** What the call threw, if it threw. Null otherwise. */
+  failure: string | null;
+}
+
+export function probeNormalize(): NormalizeSupport {
+  if (typeof String.prototype.normalize !== 'function') {
+    return { present: false, decomposes: false, failure: null };
+  }
+
+  try {
+    return {
+      present: true,
+      // e-acute decomposes into e + combining acute accent: two code units.
+      decomposes: '\u00e9'.normalize('NFD').length === 2,
+      failure: null,
+    };
+  } catch (error) {
+    return {
+      present: true,
+      decomposes: false,
+      failure: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/** Settled once, at module load: the engine does not change underneath us. */
+const CAN_NORMALIZE = probeNormalize().decomposes;
 
 /**
  * Two aligned strings rather than a map literal, so a test can assert they are
@@ -54,26 +98,26 @@ const CAN_NORMALIZE = typeof String.prototype.normalize === 'function';
  * n-tilde, o-grave .. o-tilde, u-grave .. u-diaeresis, y-acute, y-diaeresis.
  */
 const ACCENTED =
-  'àâäáãå' +
-  'ç' +
-  'èéêë' +
-  'ìíîï' +
-  'ñ' +
-  'òóôöõ' +
-  'ùúûü' +
-  'ýÿ';
+  '\u00e0\u00e2\u00e4\u00e1\u00e3\u00e5' +
+  '\u00e7' +
+  '\u00e8\u00e9\u00ea\u00eb' +
+  '\u00ec\u00ed\u00ee\u00ef' +
+  '\u00f1' +
+  '\u00f2\u00f3\u00f4\u00f6\u00f5' +
+  '\u00f9\u00fa\u00fb\u00fc' +
+  '\u00fd\u00ff';
 
 const PLAIN = 'aaaaaa' + 'c' + 'eeee' + 'iiii' + 'n' + 'ooooo' + 'uuuu' + 'yy';
 
 /** The ligatures, the one case a single replacement letter cannot answer. */
 const LIGATURES: readonly (readonly [string, string])[] = [
-  ['æ', 'ae'],
-  ['œ', 'oe'],
-  ['ß', 'ss'],
+  ['\u00e6', 'ae'],  // U+00E6
+  ['\u0153', 'oe'],  // U+0153
+  ['\u00df', 'ss'],  // U+00DF
 ];
 
 /** Combining Diacritical Marks: the block NFD decomposes an accent into. */
-const COMBINING_MARKS = /[̀-ͯ]/g;
+const COMBINING_MARKS = /[\u0300-\u036f]/g;
 
 function foldByTable(lowered: string): string {
   let out = '';
@@ -177,4 +221,38 @@ export function searchFoods<T extends SearchableFood>(
         foldForSearch(a.food.name).localeCompare(foldForSearch(b.food.name)),
     )
     .map((entry) => entry.food);
+}
+
+/**
+ * What the fold is actually doing on this engine, for the development
+ * diagnostic on the settings screen.
+ *
+ * IT EXISTS BECAUSE THE ANSWER CANNOT BE REACHED ANY OTHER WAY. Node always
+ * takes the normalize branch, so the branch that will run on the phone is
+ * never the one the suite exercises. And a behavioural check on the device --
+ * "does creme find Creme" -- passes either way, because the table runs AFTER
+ * NFD and covers the whole of French on its own. The two witnesses below are
+ * chosen to separate the branches rather than to confirm both at once.
+ */
+export interface FoldDiagnostic extends NormalizeSupport {
+  /**
+   * French witness. Folds on BOTH paths, the table knowing e-grave and
+   * i-circumflex, so a wrong answer here means the fold is broken outright.
+   */
+  french: string;
+  /**
+   * Beyond-French witness: Vietnamese pho, a real Open Food Facts product
+   * name. Its o carries a horn AND a hook above, neither of which the table
+   * knows, so it folds to 'pho' only when the engine decomposes. THIS is the
+   * line that says which branch ran.
+   */
+  beyondFrench: string;
+}
+
+export function describeFoldSupport(): FoldDiagnostic {
+  return {
+    ...probeNormalize(),
+    french: foldForSearch('Cr\u00e8me fra\u00eeche'),
+    beyondFrench: foldForSearch('Ph\u1edf'),
+  };
 }
