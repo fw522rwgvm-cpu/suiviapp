@@ -1820,6 +1820,30 @@ les icônes d'en-tête « pleines » obligeait à choisir : apparier un disque p
 et un glyphe plein ordinaire aurait fait lire une icône comme un bouton et
 l'autre comme une étiquette. Les deux sont passées au disque.
 
+**Un titre de barre native n'est pas atteint par un composant `Text`.** La barre
+est une `UINavigationBar` et son titre est peint par UIKit, pas rendu dans
+l'arbre React : `core/ui/text.tsx` ne le voit jamais. Sa police vient de
+`headerTitleStyle` ou de nulle part — et rien n'étant posé, la date est restée
+en San Francisco au-dessus d'une page entièrement en Nunito, sans que rien ne
+le signale. **À vérifier pour tout texte peint par le système** : titres de
+`Stack`, `Alert`, `ActionSheetIOS`, molettes.
+
+**Une quatrième fonte pour une seule ligne, et c'est justifié.** Bold était la
+plus lourde embarquée, donc « encore plus gras » n'avait nulle part où aller :
+demander 800 contre un fichier Bold fait **synthétiser** le surplus à iOS au
+lieu d'utiliser une graisse plus lourde. `Nunito-ExtraBold` existe pour le nom
+de la journée et rien d'autre.
+
+**SF Symbols n'a pas de calendrier rempli.** `calendar` n'existe qu'au trait, et
+tous ses remplissages sont des `.circle.fill` — le glyphe dans un disque opaque,
+ce qui n'est pas le glyphe lui-même plein. `31.square.fill` est la seule
+métaphore de date réellement pleine du jeu, et c'est celle d'Apple.
+
+**Et les noms de symboles sont vérifiables ici, ce que j'ignorais.**
+`sf-symbols-typescript` type `SFSymbol` comme l'union de tous les symboles
+réels : un nom inventé échoue au `tsc` au lieu de rendre un carré vide sur
+l'appareil. Le point ouvert qui disait le contraire tombe.
+
 ## Points ouverts après la tranche 5
 - ~~**Vérification iPhone en attente.**~~ **Faite pour l'essentiel** : la
   tranche 5 a tourné sur l'appareil et a rendu six retours d'interface, tous
@@ -1849,9 +1873,10 @@ l'autre comme une étiquette. Les deux sont passées au disque.
   d'ajout et la jauge y sont pâles. Rien ne casse ; tout est moins lisible. La
   sortie, si ça gêne, est une surface plus sombre derrière l'accent — jamais un
   vert plus sombre, qui est précisément ce qui a été refusé.
-- **`carrot.fill`, `cup.and.saucer.fill`, `fork.knife` et `wineglass.fill` ne
-  sont pas vérifiés sur l'appareil.** Tous sont des SF Symbols standards sous
-  iOS 17, mais un nom absent rend un carré vide, pas une erreur.
+- ~~**Les noms de SF Symbols ne sont pas vérifiés.**~~ **Ils le sont** : le type
+  `SFSymbol` est l'union de tous les symboles réels, donc `tsc` refuse un nom
+  qui n'existe pas. Reste non vérifié le **rendu** — qu'un symbole présent dans
+  le jeu soit disponible sur la version d'iOS de l'appareil.
 
 - ~~**La police de l'application n'a pas changé.**~~ **Nunito est en place**
   (Regular, SemiBold, Bold), sous licence OFL, chargée à l'exécution.
