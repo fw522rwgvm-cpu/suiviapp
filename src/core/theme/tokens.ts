@@ -69,11 +69,16 @@ export interface ColorTokens {
    * record the measurement instead of asserting a threshold the palette no
    * longer meets, so the number is visible rather than lost.
    *
-   * `onAccent` is the one thing that had to move with it, and it is not a
-   * compromise on the colour: white on this mint is 1.81:1, near-black on it
-   * is 10.43:1. Every filled button writes onAccent, so leaving it white would
-   * have made the save buttons unreadable while changing nothing about the
-   * green itself.
+   * `onAccent` IS WHITE, ASKED FOR AFTER SEEING IT. Near-black on this mint
+   * measures 8.98:1 and white measures 2.13:1, so the readable choice was the
+   * dark one — and it was tried, and it read as a black label on a bright
+   * button rather than as a filled control. White it is, at the same 2.13:1
+   * the accent already carries against white elsewhere: the compromise is one
+   * compromise, consistently, rather than two different ones.
+   *
+   * The same value in both themes, because THE FILL IS THE SAME HEX IN BOTH.
+   * A button that is one colour cannot carry two different labels depending on
+   * a setting that does not change it.
    */
   accent: string;
   /** Text drawn on top of accent. */
@@ -156,7 +161,7 @@ const light: ColorTokens = {
   textMuted: '#65656d',
   textFaint: '#9a9aa3',
   accent: '#08c99c',
-  onAccent: '#0f0f11',
+  onAccent: '#ffffff',
   onDanger: '#ffffff',
   warning: '#8a5a00',
   /**
@@ -196,7 +201,7 @@ const dark: ColorTokens = {
   textMuted: '#a0a0a9',
   textFaint: '#6b6b74',
   accent: '#08c99c',
-  onAccent: '#0f0f11',
+  onAccent: '#ffffff',
   onDanger: '#0f0f11',
   warning: '#e0a942',
   /**

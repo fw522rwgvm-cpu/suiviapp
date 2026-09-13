@@ -64,12 +64,7 @@ export function MealSection({
    * denominator are three bars that cannot be read.
    */
   const standing = targetStanding(consumedKcal, targetKcal);
-  const ringColor =
-    standing === 'far_over'
-      ? theme.colors.danger
-      : standing === 'over'
-        ? theme.colors.warning
-        : theme.colors.accent;
+  const ringColor = standing === 'reached' ? theme.colors.danger : theme.colors.accent;
 
   return (
     <View
@@ -104,8 +99,8 @@ export function MealSection({
 
           {/*
             Same rule as the day's ring, because it answers the same question
-            one level down: the theme's red past 10% over, amber for the first
-            slip. It carries the icon rather than a figure — the kcal are
+            one level down: red the moment it fills. It carries the icon rather
+            than a figure — the kcal are
             written out an inch to its right, and repeating them would be
             saying one fact twice.
           */}
@@ -113,15 +108,15 @@ export function MealSection({
             <View style={styles.iconAlone}>
               <SymbolView
                 name={mealSymbol(meal.name)}
-                size={20}
+                size={26}
                 tintColor={mealColor(meal.name, theme.colors)}
               />
             </View>
           ) : (
             <ProgressRing
               progress={progressRatio(consumedKcal, targetKcal)}
-              size={34}
-              thickness={4}
+              size={MEAL_RING_SIZE}
+              thickness={5}
               color={ringColor}
             >
               {/*
@@ -139,7 +134,7 @@ export function MealSection({
               */}
               <SymbolView
                 name={mealSymbol(meal.name)}
-                size={16}
+                size={22}
                 tintColor={mealColor(meal.name, theme.colors)}
               />
             </ProgressRing>
@@ -177,7 +172,11 @@ export function MealSection({
           hitSlop={10}
           style={styles.add}
         >
-          <SymbolView name="plus.circle.fill" size={54} tintColor={theme.colors.accent} />
+          <SymbolView
+            name="plus.circle.fill"
+            size={MEAL_RING_SIZE}
+            tintColor={theme.colors.accent}
+          />
         </Pressable>
       </View>
 
@@ -237,6 +236,18 @@ export function MealSection({
     </View>
   );
 }
+
+/**
+ * The ring and the add button are the same size, and that is the point.
+ *
+ * They are the two circles on the row, one at each end, and the eye reads a
+ * pair before it reads either. At 34 against 54 they were a small thing and a
+ * big thing that happened to both be round; matched, the row has two poles
+ * rather than a button and an ornament.
+ *
+ * One constant, used by both, so they cannot drift apart in a later edit.
+ */
+const MEAL_RING_SIZE = 54;
 
 /** The three that have bars. Calories are the ring, not a fourth bar. */
 const MACRO_BARS: readonly {
@@ -345,9 +356,14 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
     marginTop: -6,
   },
-  // The same 34 points the ring occupies, so a day mixing meals with and
-  // without a target keeps one column of names rather than two.
-  iconAlone: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
+  // The same box the ring occupies, so a day mixing meals with and without a
+  // target keeps one column of names rather than two.
+  iconAlone: {
+    width: MEAL_RING_SIZE,
+    height: MEAL_RING_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   macroColumn: { flex: 1, gap: 4 },
   macroText: { fontSize: 11, fontVariant: ['tabular-nums'] },
   macroTrack: { height: 4, borderRadius: 2, overflow: 'hidden' },

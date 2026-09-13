@@ -145,22 +145,26 @@ export function progressRatio(consumed: number, target: number | null): number {
 }
 
 /**
- * How far past a calorie target a day or a meal has gone (specs 8.3).
+ * Whether a calorie target has been reached (specs 8.3).
  *
- * ITS OWN THRESHOLD, deliberately NOT KCAL_DISCREPANCY_THRESHOLD. That one is
- * the §5.1 check of a source's stated calories against 4P + 4C + 9F — a
- * statement about one food's own coherence. This one is about eating more than
- * you meant to. Two unrelated questions that happen to share the number 10, and
- * folding them into one constant would tie a display rule to a nutrition rule
- * for ever.
+ * ## TWO STATES, WHERE THERE WERE THREE
+ *
+ * There used to be an amber band between the target and ten per cent past it,
+ * and a separate threshold to draw it. It is gone, superseded: the rule is now
+ * that A FULL GAUGE IS RED. Since the arc fills at exactly the target, the
+ * amber band had nowhere left to live — it would have been a colour for a ring
+ * that already looked identical to the one beside it.
+ *
+ * Worth stating plainly: the ring therefore turns red at exactly 100%, which
+ * is the target being MET rather than missed. Read as "there is nothing left",
+ * which is what a full gauge means. If it ever reads as an error instead, the
+ * change is one comparison — red just PAST the target rather than at it.
  */
-export const KCAL_OVERSHOOT_THRESHOLD = 0.1;
 
 /** Null when there is no target: nothing to stand against (specs 8.1). */
-export type TargetStanding = 'under' | 'over' | 'far_over';
+export type TargetStanding = 'under' | 'reached';
 
 export function targetStanding(consumed: number, target: number | null): TargetStanding | null {
   if (target === null || !Number.isFinite(target) || target <= 0) return null;
-  if (consumed <= target) return 'under';
-  return consumed > target * (1 + KCAL_OVERSHOOT_THRESHOLD) ? 'far_over' : 'over';
+  return consumed >= target ? 'reached' : 'under';
 }

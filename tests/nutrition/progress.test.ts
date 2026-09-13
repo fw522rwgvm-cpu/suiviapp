@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  KCAL_OVERSHOOT_THRESHOLD,
   progressRatio,
   targetStanding,
 } from '../../src/features/nutrition/domain/macros';
@@ -54,30 +53,25 @@ describe('targetStanding', () => {
     expect(targetStanding(2000, 0)).toBeNull();
   });
 
-  it('is under at and below the target', () => {
+  it('is under below the target', () => {
     expect(targetStanding(1999, 2000)).toBe('under');
-    // Exactly on target is not over. The boundary matters: it is the state the
-    // user is aiming at, and it must not flash amber on arrival.
-    expect(targetStanding(2000, 2000)).toBe('under');
+    expect(targetStanding(0, 2000)).toBe('under');
   });
 
-  it('is over by a little between the target and ten per cent past it', () => {
-    expect(targetStanding(2001, 2000)).toBe('over');
-    expect(targetStanding(2200, 2000)).toBe('over');
+  it('is reached at exactly the target, where the gauge closes', () => {
+    // THE BOUNDARY THAT DEFINES THE RULE. The arc fills at exactly the target,
+    // so the colour has to change at the same instant the shape does — a full
+    // ring in the accent colour would be the one state the drawing cannot
+    // tell apart from the next one.
+    expect(targetStanding(2000, 2000)).toBe('reached');
   });
 
-  it('turns to the red state only beyond ten per cent', () => {
-    // Exactly 10% over is still 'over': the request was "more than 10%".
-    expect(targetStanding(2200, 2000)).toBe('over');
-    expect(targetStanding(2201, 2000)).toBe('far_over');
-    expect(targetStanding(4000, 2000)).toBe('far_over');
-  });
-
-  it('keeps its threshold separate from the kcal discrepancy of specs 5.1', () => {
-    // Two unrelated questions that happen to share the number 10. Folding them
-    // into one constant would tie a display rule to a nutrition rule for ever,
-    // and this assertion is what makes that decision visible if either moves.
-    expect(KCAL_OVERSHOOT_THRESHOLD).toBe(0.1);
+  it('stays reached however far past it goes', () => {
+    // There is no third state any more: the amber band between the target and
+    // ten per cent past it had nowhere left to live once the ring turned red
+    // on filling.
+    expect(targetStanding(2001, 2000)).toBe('reached');
+    expect(targetStanding(4000, 2000)).toBe('reached');
   });
 });
 

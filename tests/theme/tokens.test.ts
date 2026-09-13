@@ -274,12 +274,27 @@ describe('the accent, now that it is the mint', () => {
     expect(measured).toBeCloseTo(2.13, 2);
   });
 
-  it('keeps a filled button readable, which the colour did not decide', () => {
-    // White on this mint is 1.81:1; near-black on it is 10.43:1. Every save
-    // button writes onAccent on an accent fill, so this had to move with the
-    // green without being a compromise on it.
-    expect(contrast(colors.light.onAccent, colors.light.accent)).toBeGreaterThanOrEqual(4.5);
-    expect(contrast(colors.dark.onAccent, colors.dark.accent)).toBeGreaterThanOrEqual(4.5);
+  it('writes white on a mint button, in both themes, because the fill is one hex', () => {
+    // A button that is one colour cannot carry two different labels depending
+    // on a setting that does not change it.
+    expect(colors.light.onAccent).toBe('#ffffff');
+    expect(colors.dark.onAccent).toBe('#ffffff');
+  });
+
+  /**
+   * ANOTHER MEASUREMENT RATHER THAN A THRESHOLD, for the same reason as the
+   * accent above: near-black on this mint reaches 8.98:1 and was tried, and it
+   * read as a black label on a bright button rather than as a filled control.
+   * White was asked for after seeing it.
+   *
+   * What this guards is that the compromise stays ONE compromise: the label on
+   * the accent is no worse than the accent on a white card.
+   */
+  it('records what a white label costs on the mint', () => {
+    const onButton = contrast(colors.light.onAccent, colors.light.accent);
+
+    expect(onButton).toBeCloseTo(2.13, 2);
+    expect(onButton).toBeCloseTo(contrast(colors.light.accent, colors.light.surface), 2);
   });
 
   it('gives calories the accent itself, which is deliberate', () => {
