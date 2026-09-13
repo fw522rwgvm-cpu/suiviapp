@@ -161,8 +161,25 @@ rien : chaque écran affiche les chiffres d'hier, sans le dire.
 - npm perd les dépendances optionnelles quand l'arbre bouge (npm/cli#4828),
   typiquement après un `expo install`. Les liaisons rolldown disparaissent
   **du lockfile**, et les tests échouent sur « Cannot find native binding ».
-  Remède : `rm -rf node_modules package-lock.json && npm install --ignore-scripts`,
-  puis vérifier que le lockfile porte bien les quinze liaisons.
+  Remède : `rm -rf node_modules package-lock.json && npm install --ignore-scripts`.
+
+  **Ça mord silencieusement, et ça se vérifie mal.** Tombé dessus en tranche 3
+  après l'ajout du picker : la suite locale restait verte — `node_modules` était
+  correct, seul le lockfile était amputé — et la CI a échoué sur `npm ci` avec
+  quinze « Missing: @rolldown/binding-… from lock file ».
+
+  Et le contrôle évident est faux. Compter `grep -c rolldown package-lock.json`
+  ou chercher les noms des liaisons trouve les **déclarations** de `rolldown`,
+  qui sont toujours là. Ce qui manque, ce sont les **entrées de paquet**. Le
+  seul comptage qui veuille dire quelque chose :
+
+  ```
+  grep -c '"node_modules/@rolldown/binding-' package-lock.json   # doit valoir 15
+  ```
+
+  Et la seule vérification qui vaille est celle que fait la CI :
+  `rm -rf node_modules && npm ci --ignore-scripts`. `npm test` ne la remplace
+  pas — il ne lit jamais le lockfile.
 - Un dépôt fraîchement cloné n'a pas de `node_modules` : `npm ci --ignore-scripts`.
 - **`ulid` lève une exception sur l'appareil si on le laisse choisir son
   générateur.** Il cherche `crypto.getRandomValues` sur l'objet global et
