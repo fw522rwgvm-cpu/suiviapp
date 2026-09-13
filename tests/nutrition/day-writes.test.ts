@@ -278,20 +278,59 @@ describe('editing and deleting', () => {
 });
 
 describe('meals of a day', () => {
-  it('renames a meal, materialising the day on the way', () => {
-    renameMeal(fixture.db, { date: DATE, mealPosition: 3, name: 'Collation du soir' });
+  it('changes which of the four a meal is, materialising the day on the way', () => {
+    // The fallback day is one of each, so the only move available is turning a
+    // singular meal into a snack: everything else is already taken.
+    renameMeal(fixture.db, { date: DATE, mealPosition: 0, name: 'Collation' });
 
     expect(countRows(fixture.raw, 'day')).toBe(1);
-    expect(readDay(fixture.db, DATE).meals[3]?.name).toBe('Collation du soir');
+    expect(readDay(fixture.db, DATE).meals[0]?.name).toBe('Collation');
   });
 
-  it('appends a meal after the last position', () => {
-    addMeal(fixture.db, { date: DATE, name: 'Pré-entraînement' });
+  it('refuses a name outside the four', () => {
+    // The rule lives at the write boundary rather than in a CHECK: day_meal has
+    // been frozen since 0001, and a closed display vocabulary is the weaker
+    // thing to constrain in SQL anyway (see domain/meal-kinds.ts).
+    expect(() =>
+      renameMeal(fixture.db, { date: DATE, mealPosition: 3, name: 'Collation du soir' }),
+    ).toThrow();
+    expect(() => addMeal(fixture.db, { date: DATE, name: 'Pré-entraînement' })).toThrow();
+  });
+
+  it('refuses a second breakfast, lunch or dinner on the same day', () => {
+    expect(() => addMeal(fixture.db, { date: DATE, name: 'Déjeuner' })).toThrow();
+    // And the day is unchanged: the throw rolls the transaction back.
+    expect(readDay(fixture.db, DATE).meals).toHaveLength(DEFAULT_MEAL_NAMES.length);
+  });
+
+  it('appends a snack after the last position, as many times as asked', () => {
+    addMeal(fixture.db, { date: DATE, name: 'Collation' });
 
     const meals = readDay(fixture.db, DATE).meals;
     expect(meals).toHaveLength(DEFAULT_MEAL_NAMES.length + 1);
-    expect(meals.at(-1)?.name).toBe('Pré-entraînement');
+    expect(meals.at(-1)?.name).toBe('Collation');
     expect(meals.at(-1)?.position).toBe(DEFAULT_MEAL_NAMES.length);
+
+    // Two snacks now, so both are numbered — derived from the day, never
+    // stored. The stored name stays 'Collation' on both.
+    expect(meals.filter((meal) => meal.name === 'Collation').map((meal) => meal.label)).toEqual(
+      ['Collation 1', 'Collation 2'],
+    );
+  });
+
+  it('carries targets on a meal added to a day that has a plan', () => {
+    addMeal(fixture.db, {
+      date: DATE,
+      name: 'Collation',
+      targets: { protein: 10, carbs: 20, fat: 5, kcal: 165 },
+    });
+
+    expect(readDay(fixture.db, DATE).meals.at(-1)?.targets).toEqual({
+      protein: 10,
+      carbs: 20,
+      fat: 5,
+      kcal: 165,
+    });
   });
 
   it('takes a meal down with everything logged in it', () => {

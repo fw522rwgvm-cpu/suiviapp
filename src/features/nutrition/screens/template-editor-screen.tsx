@@ -1,7 +1,7 @@
 import { SymbolView } from 'expo-symbols';
 import { Stack, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActionSheetIOS, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { formatKcal, formatMacro } from '@/core/format';
 import type { DayTemplateId } from '@/core/db/schema';
 import { useTheme } from '@/core/theme';
@@ -10,7 +10,10 @@ import { ListSeparator } from '@/core/ui/list-separator';
 import { useCreateTemplate, useTemplate, useUpdateTemplate } from '../data/planning-queries';
 import { DEFAULT_MEAL_NAMES } from '../domain/day-plan';
 import { MACRO_FIELDS } from '../components/macro-fields';
+import { mealSymbol } from '../components/meal-symbol';
+import { canUseKind, MEAL_KINDS } from '../domain/meal-kinds';
 import {
+  DEFAULT_NEW_MEAL_NAME,
   draftOfTemplate,
   draftTargetsTotal,
   emptyTemplateDraft,
@@ -72,10 +75,15 @@ export function TemplateEditorScreen({ templateId }: { templateId: DayTemplateId
     }));
   }
 
+  /**
+   * A snack, because it is the only kind a template can always take one more
+   * of. Starting a new row on an empty name would offer a form that cannot be
+   * saved until it has been touched.
+   */
   function addMeal(): void {
     setDraft((current) => ({
       ...current,
-      meals: [...current.meals, emptyTemplateMealDraft()],
+      meals: [...current.meals, emptyTemplateMealDraft(DEFAULT_NEW_MEAL_NAME)],
     }));
   }
 
@@ -174,8 +182,21 @@ export function TemplateEditorScreen({ templateId }: { templateId: DayTemplateId
               key={index}
               meal={meal}
               index={index}
+              // Every kind the template does not already hold, plus this row's
+              // own: a day may hold one breakfast, one lunch and one dinner.
+              kinds={MEAL_KINDS.filter((kind) =>
+                canUseKind(
+                  draft.meals.map((entry) => entry.name.trim()),
+                  index,
+                  kind,
+                ),
+              )}
               partial={problems.some(
                 (problem) => problem.code === 'target_partial' && problem.index === index,
+              )}
+              duplicated={problems.some(
+                (problem) =>
+                  problem.code === 'meal_name_duplicated' && problem.index === index,
               )}
               onChange={(change) => editMeal(index, change)}
               onRemove={() => removeMeal(index)}
@@ -220,18 +241,35 @@ export function TemplateEditorScreen({ templateId }: { templateId: DayTemplateId
 function MealCard({
   meal,
   index,
+  kinds,
   partial,
+  duplicated,
   onChange,
   onRemove,
 }: {
   meal: TemplateMealDraft;
   index: number;
+  /** The kinds this row may take, this one's own included. */
+  kinds: readonly string[];
   /** Some figures filled and some not: all four or none (specs 8.1). */
   partial: boolean;
+  /** A singular kind used twice — only reachable on a template written before. */
+  duplicated: boolean;
   onChange: (change: Partial<TemplateMealDraft>) => void;
   onRemove: () => void;
 }) {
   const theme = useTheme();
+
+  function chooseKind(): void {
+    const options = [...kinds, 'Annuler'];
+    ActionSheetIOS.showActionSheetWithOptions(
+      { title: 'Repas', options, cancelButtonIndex: options.length - 1 },
+      (chosen) => {
+        const name = kinds[chosen];
+        if (name !== undefined) onChange({ name });
+      },
+    );
+  }
 
   return (
     <View style={styles.meal}>
@@ -259,13 +297,28 @@ function MealCard({
           },
         ]}
       >
-        <FormRow label="Nom">
-          <FormInput
-            value={meal.name}
-            onChangeText={(name) => onChange({ name })}
-            placeholder="Déjeuner"
-            autoCapitalize="sentences"
-          />
+        {/*
+          A CHOICE, NOT A FIELD. A day's meals are copied from its template, so
+          a template free to type any name would put any name on a day — and
+          the closed list would hold everywhere except the place that decides
+          what a day looks like.
+        */}
+        <FormRow label="Repas">
+          <Pressable onPress={chooseKind} accessibilityRole="button" style={styles.kind}>
+            <SymbolView
+              name={mealSymbol(meal.name)}
+              size={16}
+              tintColor={theme.colors.textMuted}
+            />
+            <Text style={[styles.kindLabel, { color: theme.colors.text }]}>
+              {meal.name === '' ? 'Choisir' : meal.name}
+            </Text>
+            <SymbolView
+              name="chevron.up.chevron.down"
+              size={11}
+              tintColor={theme.colors.textFaint}
+            />
+          </Pressable>
         </FormRow>
 
         {MACRO_FIELDS.map((field) => (
@@ -285,6 +338,13 @@ function MealCard({
           </View>
         ))}
       </View>
+
+      {duplicated ? (
+        <Text style={[styles.problem, { color: theme.colors.warning }]}>
+          Une journée ne peut porter qu’un petit-déjeuner, un déjeuner et un dîner.
+          Seules les collations peuvent se répéter.
+        </Text>
+      ) : null}
 
       {partial ? (
         <Text style={[styles.problem, { color: theme.colors.warning }]}>
@@ -318,6 +378,8 @@ const styles = StyleSheet.create({
   mealCaption: { fontSize: 12, fontWeight: '600', letterSpacing: 0.6 },
   remove: { fontSize: 14 },
   card: { borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
+  kind: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  kindLabel: { fontSize: 17 },
   unit: { fontSize: 15 },
   problem: { fontSize: 12, lineHeight: 17, marginHorizontal: 16 },
   add: {

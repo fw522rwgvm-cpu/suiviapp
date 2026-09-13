@@ -2,6 +2,7 @@ import { parseDecimal } from '@/core/format';
 import type { TemplateInput, TemplateMealInput } from '../data/planning-writes';
 import { addMacros, ZERO_MACROS, type Macros } from './macros';
 import type { PlannedMeal } from './day-plan';
+import { canUseKind, isMealKind, SNACK_KIND } from './meal-kinds';
 
 /**
  * A day template being edited (specs 8.1).
@@ -36,6 +37,8 @@ export interface TemplateDraft {
 export type TemplateProblem =
   | { code: 'name_empty' }
   | { code: 'meal_name_empty'; index: number }
+  | { code: 'meal_name_unknown'; index: number; name: string }
+  | { code: 'meal_name_duplicated'; index: number; name: string }
   | { code: 'target_invalid'; index: number; target: TargetKey }
   | { code: 'target_partial'; index: number };
 
@@ -77,9 +80,31 @@ export function validateTemplateDraft(draft: TemplateDraft): TemplateProblem[] {
     problems.push({ code: 'name_empty' });
   }
 
+  const names = draft.meals.map((meal) => meal.name.trim());
+
   draft.meals.forEach((meal, index) => {
-    if (meal.name.trim() === '') {
+    const name = names[index] ?? '';
+
+    if (name === '') {
       problems.push({ code: 'meal_name_empty', index });
+    } else if (!isMealKind(name)) {
+      /**
+       * THE CLOSED LIST REACHES THE TEMPLATES, and it has to.
+       *
+       * A day's meals are copied from its template at materialisation, so a
+       * template free to name a meal anything would put anything on a day —
+       * and the rule would hold everywhere except the one place that decides
+       * what a day looks like.
+       *
+       * Templates written before the list was closed keep their names until
+       * they are next saved. Rewriting them here would be changing data
+       * nobody asked to touch, on a screen that has not been opened.
+       */
+      problems.push({ code: 'meal_name_unknown', index, name });
+    } else if (!canUseKind(names, index, name)) {
+      // One breakfast, one lunch, one dinner. Snacks may repeat, which is
+      // what canUseKind knows and this does not have to.
+      problems.push({ code: 'meal_name_duplicated', index, name });
     }
 
     const filled = TARGET_KEYS.filter((key) => rawOf(meal, key).trim() !== '');
@@ -158,6 +183,9 @@ export function draftOfTemplate(template: {
 }): TemplateDraft {
   return { name: template.name, meals: template.meals.map(draftMealOf) };
 }
+
+/** A meal a template can always take one more of (specs 8.1). */
+export const DEFAULT_NEW_MEAL_NAME = SNACK_KIND;
 
 export function emptyTemplateMealDraft(name = ''): TemplateMealDraft {
   return { name, protein: '', carbs: '', fat: '', kcal: '' };

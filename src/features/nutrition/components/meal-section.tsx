@@ -8,6 +8,7 @@ import type { JournalEntryView } from '../data/day-reads';
 import type { DayMealView } from '../domain/day-plan';
 import { progressRatio, targetStanding, ZERO_MACROS, type Macros } from '../domain/macros';
 import { EntryRow } from './entry-row';
+import { mealSymbol } from './meal-symbol';
 import { ProgressRing } from './progress-ring';
 import { SwipeToDeleteRow } from './swipe-to-delete-row';
 import { ListSeparator } from '@/core/ui/list-separator';
@@ -49,13 +50,17 @@ export function MealSection({
   const targetKcal = meal.targets?.kcal ?? null;
 
   /**
-   * The ring and the macro band appear TOGETHER, and only against a target.
+   * THE ICON IS ALWAYS THERE; THE RING IS NOT.
    *
-   * A ring with nothing to fill against is not a ring at half past nothing, it
-   * is a shape that looks broken — and a day with no template would show four
-   * of them stacked. So on a meal with no target the header stays exactly as
-   * it was before slice 5, which is also what every day logged before 0004
-   * looks like.
+   * The glyph says which meal this is and is true whether or not anyone set a
+   * goal, so it stays. The ring is a proportion, and a proportion of nothing is
+   * not a ring at zero — it is a shape that looks broken, and a day with no
+   * template would stack four of them. So a meal with no target keeps its icon
+   * and loses its circle, which is exactly what was asked for and also what
+   * every day logged before 0004 will look like for ever.
+   *
+   * The macro band follows the ring, for the same reason: three bars with no
+   * denominator are three bars that cannot be read.
    */
   const standing = targetStanding(consumedKcal, targetKcal);
   const ringColor =
@@ -99,16 +104,27 @@ export function MealSection({
           {/*
             Same rule as the day's ring, because it answers the same question
             one level down: the theme's red past 10% over, amber for the first
-            slip. It carries no figure inside — the kcal are written out an inch
-            to its right, and repeating them would be saying one fact twice.
+            slip. It carries the icon rather than a figure — the kcal are
+            written out an inch to its right, and repeating them would be
+            saying one fact twice.
           */}
-          {targetKcal === null ? null : (
+          {targetKcal === null ? (
+            <View style={styles.iconAlone}>
+              <SymbolView
+                name={mealSymbol(meal.name)}
+                size={20}
+                tintColor={theme.colors.textMuted}
+              />
+            </View>
+          ) : (
             <ProgressRing
               progress={progressRatio(consumedKcal, targetKcal)}
               size={34}
               thickness={4}
               color={ringColor}
-            />
+            >
+              <SymbolView name={mealSymbol(meal.name)} size={16} tintColor={ringColor} />
+            </ProgressRing>
           )}
 
           {/*
@@ -119,7 +135,7 @@ export function MealSection({
           */}
           <View style={styles.identity}>
             <Text style={[styles.name, { color: theme.colors.text }]} numberOfLines={1}>
-              {meal.name}
+              {meal.label}
             </Text>
             <Text style={[styles.total, { color: theme.colors.textMuted }]}>
               {targetKcal === null
@@ -139,7 +155,7 @@ export function MealSection({
         <Pressable
           onPress={onAdd}
           accessibilityRole="button"
-          accessibilityLabel={`Ajouter à ${meal.name}`}
+          accessibilityLabel={`Ajouter à ${meal.label}`}
           hitSlop={10}
           style={styles.add}
         >
@@ -309,6 +325,9 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
     marginTop: -6,
   },
+  // The same 34 points the ring occupies, so a day mixing meals with and
+  // without a target keeps one column of names rather than two.
+  iconAlone: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
   macroColumn: { flex: 1, gap: 4 },
   macroText: { fontSize: 11, fontVariant: ['tabular-nums'] },
   macroTrack: { height: 4, borderRadius: 2, overflow: 'hidden' },

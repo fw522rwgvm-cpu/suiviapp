@@ -13,6 +13,7 @@ import {
 } from '@/core/db/schema';
 import { virtualDay, type DayView } from '../domain/day-plan';
 import { totalOf, ZERO_MACROS, type Macros } from '../domain/macros';
+import { mealLabels } from '../domain/meal-kinds';
 import { readTargets } from '../domain/planning';
 import { readDayPlan } from './planning-reads';
 
@@ -101,16 +102,22 @@ export function readDay(db: AppDatabase, date: LocalDate): DayView {
     .orderBy(asc(dayMeal.position), asc(dayMeal.id))
     .all();
 
+  // Derived from the day's own list, never stored (D9): a stored "Collation 2"
+  // would outlive the deletion of "Collation 1" and name a position that no
+  // longer exists.
+  const labels = mealLabels(meals.map((meal) => meal.name));
+
   return {
     date,
     materialized: true,
     // The snapshot, not the planning: this names the template this day was
     // frozen from, which may since have been renamed or deleted (specs 5.2).
     templateName: row.templateName,
-    meals: meals.map((meal) => ({
+    meals: meals.map((meal, index) => ({
       id: meal.id,
       position: meal.position,
       name: meal.name,
+      label: labels[index] ?? meal.name,
       // All four or none: a partial set would be a target nobody could read
       // (specs 8.1). Shared with the template meals rather than restated,
       // because materialisation copies one onto the other — two readings of

@@ -3,7 +3,11 @@ import { toLocalDate, weekday } from '../../src/core/date';
 import { setting, type DayTemplateId } from '../../src/core/db/schema';
 import { newId } from '../../src/core/id';
 import { readDay } from '../../src/features/nutrition/data/day-reads';
-import { addFreeEntry, renameMeal } from '../../src/features/nutrition/data/day-writes';
+import {
+  addFreeEntry,
+  renameMeal,
+  updateMealTargets,
+} from '../../src/features/nutrition/data/day-writes';
 import {
   readDayPlan,
   readDefaultTemplateId,
@@ -318,14 +322,22 @@ describe('a materialised day is deaf to the planning, for ever (specs 8.1)', () 
     const training = trainingTemplate();
     const future = toLocalDate('2027-03-04');
     assignWeekday(fixture.db, weekday(future), training);
-    renameMeal(fixture.db, { date: future, mealPosition: 0, name: 'Préparé' });
+    // Any action on the day materialises it (specs 8.2). Setting a target is
+    // the one that changes neither the names nor the count, so what the
+    // assertions below check is untouched by the act of preparing.
+    updateMealTargets(fixture.db, {
+      date: future,
+      mealPosition: 0,
+      targets: { protein: 1, carbs: 2, fat: 3, kcal: 39 },
+    });
 
     updateTemplate(fixture.db, training, { name: 'Vidé', meals: [] });
 
     const view = readDay(fixture.db, future);
     expect(view.materialized).toBe(true);
     expect(view.meals).toHaveLength(4);
-    expect(view.meals[0]?.name).toBe('Préparé');
+    expect(view.meals[0]?.name).toBe('Petit-déjeuner');
+    expect(view.meals[0]?.targets).toEqual({ protein: 1, carbs: 2, fat: 3, kcal: 39 });
   });
 });
 
@@ -473,7 +485,10 @@ describe('applying the planning targets to a day already materialised', () => {
     // The promise the button makes — "apply the TARGETS of X" — is exactly
     // what happens. A meal the user renamed keeps its name; a meal they added
     // stays; the entries stay.
-    renameMeal(fixture.db, { date: TUESDAY, mealPosition: 0, name: 'Mon réveil' });
+    // Position 0 is a breakfast on the fallback day and on the template. Turned
+    // into a snack here, so that applying the template's targets would have to
+    // overwrite the name to get it wrong — which is the thing being tested.
+    renameMeal(fixture.db, { date: TUESDAY, mealPosition: 0, name: 'Collation' });
     addFreeEntry(fixture.db, {
       date: TUESDAY,
       mealPosition: 0,
@@ -485,7 +500,9 @@ describe('applying the planning targets to a day already materialised', () => {
     applyPlanTargetsToDay(fixture.db, TUESDAY);
 
     const view = readDay(fixture.db, TUESDAY);
-    expect(view.meals[0]?.name).toBe('Mon réveil');
+    expect(view.meals[0]?.name).toBe('Collation');
+    // And it did take the template's targets for that position.
+    expect(view.meals[0]?.targets).toEqual({ protein: 40, carbs: 60, fat: 15, kcal: 535 });
     expect(view.meals).toHaveLength(DEFAULT_MEAL_NAMES.length);
     expect(countRows(fixture.raw, 'journal_entry')).toBe(1);
     // And the snapshot now names the template whose numbers the day carries.

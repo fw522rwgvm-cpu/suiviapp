@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_NEW_MEAL_NAME,
   draftOfTemplate,
   draftTargetsTotal,
   emptyTemplateDraft,
@@ -181,5 +182,35 @@ describe('the round trip through the write layer', () => {
     expect(value.name).toBe('');
     expect(value.meals.map((entry) => entry.name)).toEqual(['Petit-déjeuner', 'Déjeuner']);
     expect(value.meals.every((entry) => entry.kcal === '')).toBe(true);
+  });
+});
+
+describe('the closed list reaches the templates', () => {
+  it('refuses a meal name outside the four', () => {
+    // A day's meals are copied from its template at materialisation, so a
+    // template free to name a meal anything would put anything on a day.
+    expect(validateTemplateDraft(draft(meal('Pre-entrainement')))).toContainEqual({
+      code: 'meal_name_unknown',
+      index: 0,
+      name: 'Pre-entrainement',
+    });
+  });
+
+  it('refuses a second breakfast, lunch or dinner in the same template', () => {
+    expect(validateTemplateDraft(draft(meal('Déjeuner'), meal('Déjeuner')))).toContainEqual({
+      code: 'meal_name_duplicated',
+      index: 1,
+      name: 'Déjeuner',
+    });
+  });
+
+  it('accepts as many snacks as asked for', () => {
+    expect(
+      isValidTemplateDraft(draft(meal('Collation'), meal('Collation'), meal('Collation'))),
+    ).toBe(true);
+  });
+
+  it('seeds a new row with the one kind a template can always take again', () => {
+    expect(DEFAULT_NEW_MEAL_NAME).toBe('Collation');
   });
 });

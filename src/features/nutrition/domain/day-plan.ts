@@ -2,6 +2,7 @@ import type { LocalDate } from '@/core/date';
 import type { DayTemplateId } from '@/core/db/schema/planning';
 import type { DayMealId } from '@/core/db/schema/nutrition';
 import { addMacros, ZERO_MACROS, type Macros } from './macros';
+import { mealLabels, MEAL_KINDS, type MealKind } from './meal-kinds';
 
 /**
  * What a day is made of, materialised or not (specs 8.2).
@@ -30,12 +31,16 @@ import { addMacros, ZERO_MACROS, type Macros } from './macros';
  * template in 0004 would not have removed this path — only added a second
  * source of meal names beside it.
  */
-export const DEFAULT_MEAL_NAMES = [
-  'Petit-déjeuner',
-  'Déjeuner',
-  'Dîner',
-  'Collation',
-] as const;
+/**
+ * One of each kind, in the order a day is eaten.
+ *
+ * BUILT FROM MEAL_KINDS rather than spelled out again. That the fallback day
+ * happens to be exactly the four kinds is a decision and not an identity — a
+ * fifth kind would not automatically belong here — but deriving it means this
+ * list can never name a meal the vocabulary does not have, which is the way the
+ * two could actually drift.
+ */
+export const DEFAULT_MEAL_NAMES: readonly MealKind[] = [...MEAL_KINDS];
 
 /** A meal as the plan describes it, before it exists in the database. */
 export interface PlannedMeal {
@@ -86,7 +91,17 @@ export function fallbackDayPlan(): DayPlan {
 export interface DayMealView {
   id: DayMealId | null;
   position: number;
+  /** What is STORED: one of the four kinds. What a write addresses. */
   name: string;
+  /**
+   * What is SHOWN: the same, with the snacks numbered when there are several.
+   *
+   * Carried on the view rather than worked out by each screen, because it
+   * cannot be derived from one meal — it depends on the whole day. A component
+   * doing it alone would have to be handed the day anyway, and two of them
+   * doing it would be two chances to number differently.
+   */
+  label: string;
   targets: Macros | null;
 }
 
@@ -120,11 +135,17 @@ export interface DayView {
  * emptied of every one of its meals.
  */
 export function virtualDay(date: LocalDate, plan: DayPlan = fallbackDayPlan()): DayView {
+  const labels = mealLabels(plan.meals.map((meal) => meal.name));
+
   return {
     date,
     materialized: false,
     templateName: plan.templateName,
-    meals: plan.meals.map((meal) => ({ id: null, ...meal })),
+    meals: plan.meals.map((meal, index) => ({
+      id: null,
+      ...meal,
+      label: labels[index] ?? meal.name,
+    })),
   };
 }
 

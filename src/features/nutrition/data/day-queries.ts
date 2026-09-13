@@ -28,6 +28,7 @@ import {
   deleteMeal,
   renameMeal,
   updateFoodEntryQuantity,
+  updateMealTargets,
   updateFreeEntry,
 } from './day-writes';
 
@@ -192,6 +193,20 @@ export function useAddMeal() {
   return useMutation({
     mutationFn: (input: Parameters<typeof addMeal>[1]) =>
       Promise.resolve(addMeal(getAppDatabase(), input)),
+  });
+}
+
+/**
+ * Sets or clears the targets of one meal of one day (specs 8.3).
+ *
+ * It touches the day and never the template: a day is a snapshot, so editing
+ * it edits the snapshot. The template it came from is not consulted here and
+ * not written.
+ */
+export function useUpdateMealTargets() {
+  return useMutation({
+    mutationFn: (input: Parameters<typeof updateMealTargets>[1]) =>
+      Promise.resolve(updateMealTargets(getAppDatabase(), input)),
   });
 }
 

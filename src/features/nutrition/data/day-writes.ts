@@ -14,6 +14,7 @@ import {
 } from '@/core/db/schema';
 import { newId } from '@/core/id';
 import { readDayPlan } from './planning-reads';
+import { canUseKind, isMealKind, type MealKind } from '../domain/meal-kinds';
 import type { Macros } from '../domain/macros';
 import type { QuantityChoice } from '../domain/portions';
 import type { CompleteOffProduct } from '../off/off-product';
@@ -540,41 +541,149 @@ export function deleteEntry(db: AppDatabase, entryId: JournalEntryId): void {
   db.delete(journalEntry).where(eq(journalEntry.id, entryId)).run();
 }
 
-/** Renaming a meal is one of the actions that materialise a day (specs 8.2). */
+/**
+ * The names a day already holds, in position order.
+ *
+ * Read inside the transaction that is about to change one of them, so the
+ * uniqueness rule is decided against the day as it will actually be written
+ * rather than as some screen last saw it.
+ */
+function mealNamesOf(tx: AppDatabase, date: LocalDate): string[] {
+  return tx
+    .select({ name: dayMeal.name })
+    .from(dayMeal)
+    .where(eq(dayMeal.date, date))
+    .orderBy(dayMeal.position)
+    .all()
+    .map((row) => row.name);
+}
+
+/**
+ * ONE BREAKFAST, ONE LUNCH, ONE DINNER PER DAY — enforced here and not in SQL.
+ *
+ * `day_meal` has been frozen since 0001, so no constraint can be added to it
+ * without rebuilding the table every journal entry hangs off. A partial unique
+ * index could be created — indexes are the one addable part — and is refused
+ * anyway: a database in use already holds meals named whatever their owner
+ * typed, and an archive certainly can, so the index would fail to build on
+ * exactly the data it exists to protect.
+ *
+ * A caller offering a kind the day already has is a screen bug, not an expected
+ * failure: the picker is built from availableKinds and cannot show one. So it
+ * throws, which also rolls back a materialisation that no longer has an action
+ * to justify it (conventions, section 4).
+ */
+function requireUsableKind(
+  tx: AppDatabase,
+  date: LocalDate,
+  kind: MealKind,
+  index: number,
+): void {
+  if (!canUseKind(mealNamesOf(tx, date), index, kind)) {
+    throw new Error(`${date} already holds a meal named ${kind}`);
+  }
+}
+
+function requireKind(name: string): MealKind {
+  if (!isMealKind(name)) {
+    throw new Error(`${name} is not one of the four meal names`);
+  }
+  return name;
+}
+
+/**
+ * Changes which of the four a meal is (specs 8.3), materialising the day.
+ *
+ * No longer free text: the name is one of a closed list, so what used to be a
+ * rename is now a choice between kinds. The old signature took any string, and
+ * the rows it wrote keep their names — see the note in domain/meal-kinds.ts.
+ */
 export function renameMeal(
   db: AppDatabase,
   input: { date: LocalDate; mealPosition: number; name: string },
 ): void {
+  const kind = requireKind(input.name);
+
   db.transaction((tx) => {
-    const meal = requireMeal(ensureMaterialized(tx, input.date), input.mealPosition);
-    tx.update(dayMeal).set({ name: input.name }).where(eq(dayMeal.id, meal.id)).run();
+    const meals = ensureMaterialized(tx, input.date);
+    const meal = requireMeal(meals, input.mealPosition);
+    requireUsableKind(tx, input.date, kind, meals.indexOf(meal));
+
+    tx.update(dayMeal).set({ name: kind }).where(eq(dayMeal.id, meal.id)).run();
   });
 }
 
-/** Appends a meal, without any effect on the template it came from (specs 8.3). */
+/**
+ * Appends a meal, without any effect on the template it came from (specs 8.3).
+ *
+ * It may carry targets from the start. A meal added to a day that has a plan is
+ * otherwise the one meal on it with nothing to aim at, and the banner would sum
+ * a day whose parts no longer add up to it — the day's targets being the sum of
+ * its meals' (specs 8.1). All four or none, as everywhere else.
+ */
 export function addMeal(
   db: AppDatabase,
-  input: { date: LocalDate; name: string },
+  input: { date: LocalDate; name: string; targets?: Macros | null },
 ): DayMealId {
+  const kind = requireKind(input.name);
+
   return db.transaction((tx) => {
     const meals = ensureMaterialized(tx, input.date);
+    requireUsableKind(tx, input.date, kind, meals.length);
+
     const id = newId<DayMealId>();
     const position = meals.reduce((highest, meal) => Math.max(highest, meal.position), -1) + 1;
+    const targets = input.targets ?? null;
 
     tx.insert(dayMeal)
       .values({
         id,
         date: input.date,
         position,
-        name: input.name,
-        targetProtein: null,
-        targetCarbs: null,
-        targetFat: null,
-        targetKcal: null,
+        name: kind,
+        targetProtein: targets?.protein ?? null,
+        targetCarbs: targets?.carbs ?? null,
+        targetFat: targets?.fat ?? null,
+        targetKcal: targets?.kcal ?? null,
       })
       .run();
 
     return id;
+  });
+}
+
+/**
+ * Sets or clears the targets of one meal of one day (specs 8.1, 8.3).
+ *
+ * ## IT CHANGES THE DAY AND NEVER THE TEMPLATE
+ *
+ * "Adding, renaming and deleting meals is free, WITHOUT IMPACT ON THE SOURCE
+ * TEMPLATE, with the targets recalculated" (specs 8.3). This is the same
+ * sentence applied to the numbers: a day is a snapshot, editing it edits the
+ * snapshot, and the template it came from is not consulted and not written.
+ *
+ * Null clears all four, which is how a meal goes back to having no goal — and
+ * why the argument is a whole Macros or nothing rather than four optional
+ * numbers. A meal carrying protein and nothing else would be a target nobody
+ * could read.
+ */
+export function updateMealTargets(
+  db: AppDatabase,
+  input: { date: LocalDate; mealPosition: number; targets: Macros | null },
+): void {
+  db.transaction((tx) => {
+    const meal = requireMeal(ensureMaterialized(tx, input.date), input.mealPosition);
+    const { targets } = input;
+
+    tx.update(dayMeal)
+      .set({
+        targetProtein: targets?.protein ?? null,
+        targetCarbs: targets?.carbs ?? null,
+        targetFat: targets?.fat ?? null,
+        targetKcal: targets?.kcal ?? null,
+      })
+      .where(eq(dayMeal.id, meal.id))
+      .run();
   });
 }
 

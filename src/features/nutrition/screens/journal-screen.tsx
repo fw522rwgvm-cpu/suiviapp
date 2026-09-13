@@ -2,6 +2,7 @@ import { SymbolView } from 'expo-symbols';
 import { Link, Stack, useRouter } from 'expo-router';
 import { useEffect, useLayoutEffect, useState } from 'react';
 import {
+  ActionSheetIOS,
   Alert,
   Pressable,
   StyleSheet,
@@ -29,6 +30,7 @@ import type { JournalEntryView } from '../data/day-reads';
 import { DayPage } from '../components/day-page';
 import { useRequestedDate } from '../hooks/requested-date';
 import type { DayMealView } from '../domain/day-plan';
+import { canUseKind, MEAL_KINDS } from '../domain/meal-kinds';
 
 /**
  * The Journal (specs 8.3).
@@ -198,42 +200,80 @@ export function JournalScreen() {
     deleteEntry.mutate(entry.id);
   }
 
+  /**
+   * A MODAL NOW, WHERE IT WAS AN Alert.prompt, and the prompt could not have
+   * survived the change: a meal is no longer a name typed in but a choice
+   * between four kinds, with four optional targets beside it. An alert holds
+   * one text field and nothing else.
+   */
   function promptAddMeal(pageDate: LocalDate): void {
-    // No message under the title: the second argument of Alert.prompt is a
-    // MESSAGE, not a placeholder, so "Son nom" sat as a line of prose above a
-    // field that is self-evidently for a name. Renaming a meal already passed
-    // undefined here; this was the odd one out.
-    Alert.prompt('Nouveau repas', undefined, (name) => {
-      const trimmed = name.trim();
-      if (trimmed !== '') addMeal.mutate({ date: pageDate, name: trimmed });
-    });
+    router.push({ pathname: '/(modals)/meal', params: { date: pageDate } });
   }
 
-  function promptMealActions(pageDate: LocalDate, meal: DayMealView): void {
-    Alert.alert(meal.name, undefined, [
+  function promptMealActions(
+    pageDate: LocalDate,
+    meal: DayMealView,
+    siblings: readonly DayMealView[],
+  ): void {
+    /**
+     * Only the kinds the day does not already hold, plus this meal's own.
+     *
+     * A day may hold one breakfast, one lunch and one dinner; offering a kind
+     * that is taken and then refusing it at the write would be asking a
+     * question whose answer is already known. Snacks are always offered.
+     *
+     * The siblings are handed in by the page that is showing them rather than
+     * fetched again here: it already holds the day, and a second read could
+     * answer differently from what is on screen.
+     */
+    const names = siblings.map((entry) => entry.name);
+    const index = siblings.findIndex((entry) => entry.position === meal.position);
+    const kinds = MEAL_KINDS.filter(
+      (kind) => kind !== meal.name && canUseKind(names, index, kind),
+    );
+
+    Alert.alert(meal.label, undefined, [
       { text: 'Annuler', style: 'cancel' },
       {
-        text: 'Renommer',
+        text: 'Modifier les objectifs',
         onPress: () =>
-          Alert.prompt(
-            'Renommer le repas',
-            undefined,
-            (name) => {
-              const trimmed = name.trim();
-              if (trimmed !== '') {
-                renameMeal.mutate({ date: pageDate, mealPosition: meal.position, name: trimmed });
-              }
-            },
-            'plain-text',
-            meal.name,
-          ),
+          router.push({
+            pathname: '/(modals)/meal',
+            params: { date: pageDate, mealPosition: String(meal.position) },
+          }),
       },
+      // Absent rather than disabled when every other kind is taken: a greyed
+      // row in an alert is a row you try to press.
+      ...(kinds.length === 0
+        ? []
+        : [
+            {
+              text: 'Changer de repas',
+              onPress: () => promptMealKind(pageDate, meal, kinds),
+            },
+          ]),
       {
         text: 'Supprimer le repas',
-        style: 'destructive',
+        style: 'destructive' as const,
         onPress: () => deleteMeal.mutate({ date: pageDate, mealPosition: meal.position }),
       },
     ]);
+  }
+
+  function promptMealKind(
+    pageDate: LocalDate,
+    meal: DayMealView,
+    kinds: readonly string[],
+  ): void {
+    const options = [...kinds, 'Annuler'];
+    ActionSheetIOS.showActionSheetWithOptions(
+      { title: 'Changer de repas', options, cancelButtonIndex: options.length - 1 },
+      (chosen) => {
+        const name = kinds[chosen];
+        if (name === undefined) return;
+        renameMeal.mutate({ date: pageDate, mealPosition: meal.position, name });
+      },
+    );
   }
 
   const pageProps = {
