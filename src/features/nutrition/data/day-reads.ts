@@ -13,6 +13,9 @@ import {
 } from '@/core/db/schema';
 import { virtualDay, type DayView } from '../domain/day-plan';
 import { totalOf, ZERO_MACROS, type Macros } from '../domain/macros';
+import { mealLabels } from '../domain/meal-kinds';
+import { readTargets } from '../domain/planning';
+import { readDayPlan } from './planning-reads';
 
 /**
  * Reads of the journal (D8).
@@ -55,11 +58,34 @@ function toMacros(row: MacroSumRow | undefined): Macros {
  * The day as the screen renders it, materialised or not.
  *
  * A date with no row is not an error and not an empty screen: it is a virtual
- * day, built by the same function that will later feed its snapshot.
+ * day, built from the planning in force right now (specs 8.2) by the same
+ * function that will later feed its snapshot.
+ *
+ * ## THE BRANCH IS WHERE "NO RETROACTIVE EFFECT" ACTUALLY LIVES
+ *
+ * A materialised day reads its own day_meal rows and NEVER consults the
+ * planning. So specs 8.1 — "modifying a template does not retroactively affect
+ * materialised days" — is not a rule enforced here; it is a query that is not
+ * made. A future day already filled in is covered by the same sentence with no
+ * special case: 8.2 says a materialised future day becomes insensitive to
+ * later planning changes, and it does so by being materialised, not by being
+ * in the future.
+ *
+ * The consequence the user meets: a day materialised before templates existed
+ * has no targets and will never grow any on its own. That is the truthful
+ * record — no template applied when it was frozen — and the banner offers to
+ * apply today's targets as an explicit act rather than adopting them in
+ * silence.
  */
 export function readDay(db: AppDatabase, date: LocalDate): DayView {
-  const rows = db.select({ date: day.date }).from(day).where(eq(day.date, date)).all();
-  if (rows.length === 0) return virtualDay(date);
+  const rows = db
+    .select({ date: day.date, templateName: day.templateNameSnapshot })
+    .from(day)
+    .where(eq(day.date, date))
+    .all();
+
+  const row = rows[0];
+  if (row === undefined) return virtualDay(date, readDayPlan(db, date));
 
   const meals = db
     .select({
@@ -76,27 +102,27 @@ export function readDay(db: AppDatabase, date: LocalDate): DayView {
     .orderBy(asc(dayMeal.position), asc(dayMeal.id))
     .all();
 
+  // Derived from the day's own list, never stored (D9): a stored "Collation 2"
+  // would outlive the deletion of "Collation 1" and name a position that no
+  // longer exists.
+  const labels = mealLabels(meals.map((meal) => meal.name));
+
   return {
     date,
     materialized: true,
-    meals: meals.map((meal) => ({
+    // The snapshot, not the planning: this names the template this day was
+    // frozen from, which may since have been renamed or deleted (specs 5.2).
+    templateName: row.templateName,
+    meals: meals.map((meal, index) => ({
       id: meal.id,
       position: meal.position,
       name: meal.name,
-      // A meal either carries the four targets or none: a partial set would be
-      // a target nobody could read (specs 8.1).
-      targets:
-        meal.targetProtein === null ||
-        meal.targetCarbs === null ||
-        meal.targetFat === null ||
-        meal.targetKcal === null
-          ? null
-          : {
-              protein: meal.targetProtein,
-              carbs: meal.targetCarbs,
-              fat: meal.targetFat,
-              kcal: meal.targetKcal,
-            },
+      label: labels[index] ?? meal.name,
+      // All four or none: a partial set would be a target nobody could read
+      // (specs 8.1). Shared with the template meals rather than restated,
+      // because materialisation copies one onto the other — two readings of
+      // the same four columns would be free to disagree.
+      targets: readTargets(meal),
     })),
   };
 }
@@ -221,4 +247,115 @@ function selectEntries(db: AppDatabase, where: SQL | undefined): JournalEntryVie
         reference === null || row.quantity === null ? null : totalOf(reference, row.quantity),
     };
   });
+}
+
+export interface RecentMeal {
+  mealId: DayMealId;
+  date: LocalDate;
+  name: string;
+  entryCount: number;
+  /** What the meal came to, derived here and never stored (D9). */
+  kcal: number;
+}
+
+/**
+ * Meals logged recently, for the quick-access screen (specs 8.4a).
+ *
+ * > Meals: recent ones. Selecting a recent meal adds all of its entries at once
+ * > to the target meal.
+ *
+ * ## WHAT A "RECENT MEAL" IS, WHICH 8.4a DOES NOT SAY
+ *
+ * A CONCRETE PAST MEAL — "Déjeuner, 15 septembre, 4 lignes" — and not a
+ * grouping of meals that share a name. The specs give no window, no identity
+ * and no deduplication rule, and grouping by name would need one: deciding
+ * when two "Déjeuner" are the same meal is a question nobody has asked, and
+ * every answer would be invented. A past meal is unambiguous and needs none.
+ *
+ * Only meals holding at least one entry appear: an empty meal is a row in a
+ * template, not something that was eaten.
+ *
+ * Ordered by when the entries were WRITTEN, not by the day they belong to —
+ * the rule slice 3 settled for foods, for the same reason: logging yesterday's
+ * dinner this morning makes it the most recent thing you did. Both terms are
+ * aggregated, and max(id) is both the tie-break and the fallback, ULIDs
+ * sorting by creation time and created_at being nullable in the frozen schema.
+ */
+export function readRecentMeals(db: AppDatabase, limit = 10): RecentMeal[] {
+  return db
+    .select({
+      mealId: dayMeal.id,
+      date: dayMeal.date,
+      name: dayMeal.name,
+      entryCount: sql<number>`count(${journalEntry.id})`,
+      kcal: sql<number | null>`sum(${journalEntry.quantity} * ${journalEntry.kcal100} / 100.0)`,
+    })
+    .from(dayMeal)
+    .innerJoin(journalEntry, eq(journalEntry.dayMealId, dayMeal.id))
+    .groupBy(dayMeal.id)
+    .orderBy(
+      sql`max(${journalEntry.createdAt}) desc`,
+      sql`max(${journalEntry.id}) desc`,
+    )
+    .limit(limit)
+    .all()
+    .map((row) => ({
+      mealId: row.mealId,
+      date: row.date,
+      name: row.name,
+      entryCount: row.entryCount,
+      kcal: row.kcal ?? 0,
+    }));
+}
+
+/**
+ * Every entry of a meal, in the raw columns a replay needs (specs 8.4a).
+ *
+ * Deliberately NOT JournalEntryView: that shape is built for display and drops
+ * the tree — parent_entry_id, kind, the frozen reference as stored. Replaying
+ * a meal needs the rows as they are.
+ */
+export interface ReplayableEntry {
+  id: JournalEntryId;
+  parentEntryId: JournalEntryId | null;
+  position: number;
+  kind: JournalEntryKind;
+  sourceFoodId: FoodId | null;
+  name: string;
+  brand: string | null;
+  baseUnit: BaseUnit | null;
+  quantity: number | null;
+  portionName: string | null;
+  portionQuantity: number | null;
+  protein100: number | null;
+  carbs100: number | null;
+  fat100: number | null;
+  kcal100: number | null;
+}
+
+export function readEntriesForReplay(db: AppDatabase, mealId: DayMealId): ReplayableEntry[] {
+  return db
+    .select({
+      id: journalEntry.id,
+      parentEntryId: journalEntry.parentEntryId,
+      position: journalEntry.position,
+      kind: journalEntry.kind,
+      sourceFoodId: journalEntry.sourceFoodId,
+      name: journalEntry.name,
+      brand: journalEntry.brand,
+      baseUnit: journalEntry.baseUnit,
+      quantity: journalEntry.quantity,
+      portionName: journalEntry.portionName,
+      portionQuantity: journalEntry.portionQuantity,
+      protein100: journalEntry.protein100,
+      carbs100: journalEntry.carbs100,
+      fat100: journalEntry.fat100,
+      kcal100: journalEntry.kcal100,
+    })
+    .from(journalEntry)
+    .where(eq(journalEntry.dayMealId, mealId))
+    // Parents before children, so a replay can map old identifiers to new ones
+    // in a single pass.
+    .orderBy(asc(journalEntry.parentEntryId), asc(journalEntry.position), asc(journalEntry.id))
+    .all();
 }

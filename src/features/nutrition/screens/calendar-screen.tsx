@@ -10,27 +10,32 @@ import { useRequestDate } from '../hooks/requested-date';
 /**
  * Direct access to a date (specs 8.3).
  *
- * ## Why this is a screen and not a window drawn in place
+ * ## IT WAS A ZOOM TRANSITION, AND IT IS NOT ANY MORE
  *
- * It was a Modal, morphing out of the calendar button by interpolating its own
- * geometry. That looked close but it was an imitation, and iOS has the real
- * thing: the zoom transition, where a control genuinely becomes the view it
- * presents, with an interactive dismissal that follows the finger back into it.
+ * iOS 18 has a transition where a control genuinely becomes the view it
+ * presents, and expo-router exposes it as Link.AppleZoom. It was used here, and
+ * the anchoring worked: the sheet came out of the calendar button and the
+ * interactive dismissal took it back in.
  *
- * expo-router exposes it as Link.AppleZoom on the source — and it animates a
- * NAVIGATION, so the destination has to be a route. Hence this screen, and
- * hence the request context that carries the chosen day back (see
- * hooks/requested-date.tsx: a route parameter would outlive the visit, and
- * specs 7 wants the Journal on today at every launch).
+ * It was dropped for one thing it carries and cannot be separated from:
+ * Apple's transition SCALES THE PRESENTING SCREEN BACK while the sheet is up.
+ * Verified in the API rather than assumed — LinkZoomTransitionSource takes
+ * `identifier`, `alignment` and `animateAspectRatioChange`, and nothing that
+ * turns the scale-back off. The Journal shrinking behind, with the window
+ * showing white above and below it, was worse to look at than the anchoring
+ * was good.
  *
- * ## THERE IS NO Link.AppleZoomTarget HERE, AND THAT IS DELIBERATE
+ * The reason it HAD to be a route goes with the transition — that animated a
+ * NAVIGATION. It stays one anyway: the request context that carries the chosen
+ * day back is built round that shape, and specs 7 wants the Journal on today at
+ * every launch, which a route parameter outliving the visit would break.
  *
- * It looked like the name for "the view the button becomes", so it once went
- * round the whole screen. It is not that. It marks the ALIGNMENT RECT — which
- * part of the destination corresponds to the source — and the library's own
- * example puts it round a 200-point image inside an ordinary screen, never
- * round the screen itself. As a screen root it removes the root from layout,
- * and everything inside then measures against nothing.
+ * ## THE PANEL IS THE APPLICATION'S OWN IDIOM, AND IT ALREADY DOES ALL OF IT
+ *
+ * Full width, running to the bottom edge, rounded at the top only, rising from
+ * the bottom and falling back, with a drag on the actions row that follows the
+ * finger. Every other window uses it. The calendar spent several turns being
+ * the exception and gained nothing by it.
  *
  * ## Why the parts are separate components
  *
@@ -75,7 +80,7 @@ function TodayAction() {
 
 function CancelAction() {
   const dismiss = useDismiss();
-  return <GlassButton label="Annuler" onPress={dismiss} />;
+  return <GlassButton label="Fermer" onPress={dismiss} />;
 }
 
 function Grid({ date }: { date: LocalDate }) {

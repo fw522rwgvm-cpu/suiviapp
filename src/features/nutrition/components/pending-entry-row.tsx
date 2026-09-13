@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { StyleSheet, Text, View, type TextLayoutEventData } from 'react-native';
+import { StyleSheet, View, type TextLayoutEventData } from 'react-native';
+import { Text } from '@/core/ui/text';
 import { formatKcal } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import type { PendingEntry } from '../domain/pending-entry';

@@ -1,5 +1,8 @@
 import Constants from 'expo-constants';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SymbolView } from 'expo-symbols';
+import { useRouter } from 'expo-router';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '@/core/ui/text';
 import { useStartupReport } from '@/core/db/database-gate';
 import { useTheme } from '@/core/theme';
 import { DataSection } from '@/features/backup/components/data-section';
@@ -10,13 +13,18 @@ import { ListSeparator } from '@/core/ui/list-separator';
 /**
  * The Reglages tab (specs 8.8, 12).
  *
- * Theme, day cutoff, templates and tolerance arrive at slice 7. Two sections
- * exist before then: About, because specs 8.8 asks for the application and
- * schema versions, and Données, because slice 2 is the safety net and specs 12
- * places export, import and the age indicator in V1.
+ * Theme, day cutoff and the adherence tolerance arrive at slice 7. Nutrition
+ * arrives here at slice 5, as specs 12 places it: day templates, the planning
+ * and the default template. Données came with slice 2, and About because specs
+ * 8.8 asks for the application and schema versions.
+ *
+ * The two Nutrition rows PUSH rather than present: browsing is a push, adding
+ * is a modal, and these are places you go into. That is what the settings
+ * group and its native stack exist for.
  */
 export function SettingsScreen() {
   const theme = useTheme();
+  const router = useRouter();
   const report = useStartupReport();
   const config = Constants.expoConfig;
 
@@ -29,10 +37,24 @@ export function SettingsScreen() {
       <Text style={[styles.screenTitle, { color: theme.colors.text }]}>Réglages</Text>
       <Text style={[styles.lead, { color: theme.colors.textMuted }]}>
         Les autres réglages arriveront avec la fin de la V1 : thème, heure de bascule de la
-        journée, modèles de journée, tolérance d’adhérence.
+        journée, tolérance d’adhérence.
       </Text>
 
-      {/* The safety net comes first: it is the only one there is (specs 5.4). */}
+      <Text style={[styles.section, { color: theme.colors.textFaint }]}>NUTRITION</Text>
+      <View style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+        <LinkRow
+          label="Modèles de journée"
+          onPress={() => router.push('/(tabs)/settings/templates')}
+        />
+        <ListSeparator />
+        <LinkRow
+          label="Planning et modèle par défaut"
+          onPress={() => router.push('/(tabs)/settings/planning')}
+        />
+      </View>
+
+      {/* The safety net comes first among the rest: it is the only one there
+          is (specs 5.4). */}
       <DataSection />
 
       <Text style={[styles.section, { color: theme.colors.textFaint }]}>À PROPOS</Text>
@@ -64,6 +86,17 @@ export function SettingsScreen() {
       <SearchDiagnosticSection />
       <SeedSection />
     </ScrollView>
+  );
+}
+
+/** A row that goes somewhere, as against a row that states a fact. */
+function LinkRow({ label, onPress }: { label: string; onPress: () => void }) {
+  const theme = useTheme();
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" style={styles.row}>
+      <Text style={[styles.label, { color: theme.colors.text, fontSize: 17 }]}>{label}</Text>
+      <SymbolView name="chevron.right" size={13} tintColor={theme.colors.textFaint} />
+    </Pressable>
   );
 }
 

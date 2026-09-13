@@ -129,3 +129,49 @@ export function hasKcalWarning(macros: Macros): boolean {
 export function describeMacros(macros: Macros): string {
   return `P ${formatMacro(macros.protein)} · G ${formatMacro(macros.carbs)} · L ${formatMacro(macros.fat)}`;
 }
+
+/**
+ * How far along a target a consumed value is, clamped to [0, 1].
+ *
+ * FOR DRAWING ONLY. The clamp is what keeps a ring inside its own circle and a
+ * bar inside its rounded corners; the figures beside it stay exact, because
+ * the drawing is the glance and the numbers are the answer. A target of zero
+ * or none has no proportion to show and reads as empty rather than as full.
+ */
+export function progressRatio(consumed: number, target: number | null): number {
+  if (target === null || !Number.isFinite(target) || target <= 0) return 0;
+  if (!Number.isFinite(consumed) || consumed <= 0) return 0;
+  return Math.min(1, consumed / target);
+}
+
+/**
+ * Whether a calorie total has passed its margin (specs 8.3).
+ *
+ * ## ONE THRESHOLD, TWO STATES, AND NO COLOUR FOR "FULL"
+ *
+ * A full gauge is not an event. Reaching the target means there is nothing
+ * left, which is the goal MET — so the arc closes in the ordinary colour and
+ * keeps it while the overshoot is still small. Only past the margin does
+ * anything change. An amber band between the two was tried and taken out: it
+ * put a warning on the moment of success and then a second one just after,
+ * so the first thing the user saw when they hit their target was a colour
+ * telling them off.
+ *
+ * ## THE MARGIN IS ABSOLUTE, NOT A PERCENTAGE
+ *
+ * Fifty kilocalories, the same on every target. Ten per cent would grant a
+ * 2 600 kcal training day 260 kcal of slack and a 1 400 kcal rest day only
+ * 140 — most slack exactly where the target is hardest to hold to, which is
+ * backwards. Fifty kilocalories is a biscuit, on any day.
+ */
+
+/** The margin past a calorie target before the gauge calls it a problem. */
+export const KCAL_OVERSHOOT_KCAL = 50;
+
+/** Null when there is no target: nothing to stand against (specs 8.1). */
+export type TargetStanding = 'within' | 'beyond';
+
+export function targetStanding(consumed: number, target: number | null): TargetStanding | null {
+  if (target === null || !Number.isFinite(target) || target <= 0) return null;
+  return consumed > target + KCAL_OVERSHOOT_KCAL ? 'beyond' : 'within';
+}

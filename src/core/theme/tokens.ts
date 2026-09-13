@@ -40,13 +40,58 @@ export interface ColorTokens {
    * iOS itself uses for "you can touch this", which is not a coincidence worth
    * fighting.
    *
-   * It was a green before, and the green was the problem: it sat next to the
-   * teal of protein, so an accent and a figure could be mistaken for each
-   * other on the one screen where both appear at once.
+   * IT WAS BLUE, AND BEFORE THAT GREEN. The green was dropped because it sat
+   * next to the teal of protein, and an accent and a figure could be mistaken
+   * for each other on the one screen where both appear at once.
+   *
+   * It is now a mint green — #08c99c, asked for by name as the application's
+   * colour. Which brings that exact collision back, so the answer is the other
+   * half of the trade: THE ACCENT VACATED BLUE, AND PROTEIN TOOK IT. The two
+   * are now a green and a blue rather than two greens, and the reason the old
+   * note gave for avoiding green no longer applies.
+   *
+   * ## THE SAME HEX IN BOTH THEMES, AND WHAT THAT COSTS
+   *
+   * A darkened variant was tried for the light theme and rejected on sight: it
+   * read as a different, duller colour rather than as the same one adapted.
+   * The brand colour is the brand colour, so #08c99c is used as given on both
+   * surfaces. Decision recorded rather than inferred.
+   *
+   * The price, measured: 2.13:1 against white. That is below the 4.5:1 a label
+   * needs and below even the 3:1 a drawn shape needs. So in the LIGHT theme
+   * everything tinted with the accent — the chevrons, "Enregistrer", the add
+   * button's glyph — is faint, and the gauge is a pale ring on a white card.
+   * On the dark surface it reaches 9.60:1 and is exemplary.
+   *
+   * If that becomes a problem in use, the way out is NOT a darker green, which
+   * is the thing that was rejected: it is a darker surface behind the accent —
+   * a tinted card under the gauge, or a dark-only application. The tests below
+   * record the measurement instead of asserting a threshold the palette no
+   * longer meets, so the number is visible rather than lost.
+   *
+   * `onAccent` IS WHITE, ASKED FOR AFTER SEEING IT. Near-black on this mint
+   * measures 8.98:1 and white measures 2.13:1, so the readable choice was the
+   * dark one — and it was tried, and it read as a black label on a bright
+   * button rather than as a filled control. White it is, at the same 2.13:1
+   * the accent already carries against white elsewhere: the compromise is one
+   * compromise, consistently, rather than two different ones.
+   *
+   * The same value in both themes, because THE FILL IS THE SAME HEX IN BOTH.
+   * A button that is one colour cannot carry two different labels depending on
+   * a setting that does not change it.
    */
   accent: string;
   /** Text drawn on top of accent. */
   onAccent: string;
+  /**
+   * Text drawn on top of danger.
+   *
+   * Its own token since the accent became mint. The two fills no longer take
+   * the same label colour — near-black reads on the mint and white reads on
+   * the red — and one token serving both was how changing the green broke the
+   * delete button without touching it.
+   */
+  onDanger: string;
   /** Non-blocking warnings, such as the 10% kcal discrepancy (specs 5.1). */
   warning: string;
   /** Destructive actions. */
@@ -63,11 +108,17 @@ export interface ColorTokens {
    * quantity of protein is not touchable, and borrowing the interactive colour
    * for it makes both meanings weaker.
    *
-   * FOUR HUES, AS FAR APART AS FOUR CAN BE, once the accent and the
-   * destructive red are excluded: orange for carbs, teal for protein, violet
-   * for fat, and magenta for calories. Calories came last and took what was
-   * left, which is also the only choice that survives being looked at -- a
-   * blue would sit on top of the teal, an amber on top of the orange, and a
+   * CALORIES ARE THE EXCEPTION, AND DELIBERATELY SO: they wear the accent
+   * itself. Calories are the figure the gauge draws and the one specs 8.3 makes
+   * legible without interaction, so one colour across the gauge, the dot and
+   * the headline says they are one thing. The rule below holds for the other
+   * three, which are quantities and not the subject.
+   *
+   * THREE HUES, AS FAR APART AS THREE CAN BE, once the accent and the
+   * destructive red are excluded: orange for carbs, blue for protein, violet
+   * for fat. Protein moved off teal when the accent became mint, which is what
+   * keeps them apart -- a green beside a teal was the very problem the accent
+   * note above records, and an amber would sit on top of the orange, and a
    * red would be read as something having gone wrong.
    *
    * In the spirit of the app the design was asked to follow, not sampled from
@@ -78,6 +129,26 @@ export interface ColorTokens {
   macroProtein: string;
   macroCarbs: string;
   macroFat: string;
+
+  /**
+   * One colour per meal, chosen to agree with WHAT ITS ICON DEPICTS rather
+   * than to fill out a palette: coffee, cutlery, wine, a carrot.
+   *
+   * They are allowed to sit near the macro hues, and that is not an oversight.
+   * A meal is identified by the SHAPE of its glyph and a macro bar by the
+   * label written on it, so neither is ever decoded by colour — which is what
+   * would make a shared hue family cost something. Being coherent with the
+   * thing drawn was the requirement; being unlike the other three meals is the
+   * rest of it, and a test pins both.
+   *
+   * Each clears 3:1 against its own surface — the WCAG threshold for a
+   * graphical object, which is what a glyph is, rather than the 4.5:1 that
+   * governs text.
+   */
+  mealBreakfast: string;
+  mealLunch: string;
+  mealDinner: string;
+  mealSnack: string;
 }
 
 const light: ColorTokens = {
@@ -89,8 +160,9 @@ const light: ColorTokens = {
   text: '#111113',
   textMuted: '#65656d',
   textFaint: '#9a9aa3',
-  accent: '#3b5bdb',
+  accent: '#08c99c',
   onAccent: '#ffffff',
+  onDanger: '#ffffff',
   warning: '#8a5a00',
   /**
    * Destructive, and deliberately bright.
@@ -107,10 +179,18 @@ const light: ColorTokens = {
    * clears the bar — 4.60:1, pinned by a test.
    */
   danger: '#e02d1f',
-  macroKcal: '#b5307a',
-  macroProtein: '#2f7d8c',
+  macroKcal: '#08c99c',
+  macroProtein: '#3457c5',
   macroCarbs: '#d98324',
   macroFat: '#8a5cc4',
+  /** Coffee. */
+  mealBreakfast: '#7a4e24',
+  /** Cutlery: the one neutral of the four, and the only one that is not food. */
+  mealLunch: '#6b6257',
+  /** Wine, kept well clear of the destructive red — darker and far less vivid. */
+  mealDinner: '#9b2242',
+  /** A carrot, and nothing else this colour needs to mean. */
+  mealSnack: '#cc5a0a',
 };
 
 const dark: ColorTokens = {
@@ -120,8 +200,9 @@ const dark: ColorTokens = {
   text: '#f2f2f4',
   textMuted: '#a0a0a9',
   textFaint: '#6b6b74',
-  accent: '#8ea8ff',
-  onAccent: '#0f0f11',
+  accent: '#08c99c',
+  onAccent: '#ffffff',
+  onDanger: '#0f0f11',
   warning: '#e0a942',
   /**
    * iOS systemRed for dark mode, exactly.
@@ -137,10 +218,16 @@ const dark: ColorTokens = {
   danger: '#ff453a',
   // Lifted, not the same hex: a colour that reads on white disappears on near
   // black, and the point of giving each macro a colour is that it be readable.
-  macroKcal: '#ec6fb5',
-  macroProtein: '#5cc4d4',
+  macroKcal: '#08c99c',
+  macroProtein: '#7f9cf5',
   macroCarbs: '#f0a94c',
   macroFat: '#b18ce0',
+  // Lifted like the macros: a colour that reads on white disappears on near
+  // black, and a glyph nobody can make out is a glyph with no colour at all.
+  mealBreakfast: '#d0a173',
+  mealLunch: '#b5aa9a',
+  mealDinner: '#e8718f',
+  mealSnack: '#ff9b45',
 };
 
 export const colors: Record<ColorScheme, ColorTokens> = { light, dark };
@@ -223,10 +310,29 @@ export interface Theme {
   radius: typeof radius;
   typography: typeof typography;
   shadow: ShadowTokens;
+  /**
+   * Whether Nunito is registered yet.
+   *
+   * On the theme because a typeface is part of how the application looks, and
+   * because every Text already reads the theme — a second context would be a
+   * second subscription on the most numerous component in the tree.
+   *
+   * False is a working state, not a failure: core/ui/text falls back to the
+   * system face, which is what shipped for five slices.
+   */
+  fontsLoaded: boolean;
 }
 
-export function themeFor(scheme: ColorScheme): Theme {
-  return { scheme, colors: colors[scheme], spacing, radius, typography, shadow: shadows[scheme] };
+export function themeFor(scheme: ColorScheme, fontsLoaded = false): Theme {
+  return {
+    scheme,
+    colors: colors[scheme],
+    spacing,
+    radius,
+    typography,
+    shadow: shadows[scheme],
+    fontsLoaded,
+  };
 }
 
 /**

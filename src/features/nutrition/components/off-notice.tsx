@@ -1,5 +1,6 @@
 import { SymbolView } from 'expo-symbols';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { Text } from '@/core/ui/text';
 import { useTheme } from '@/core/theme';
 import { minutesUntil } from '../off/rate-limit';
 

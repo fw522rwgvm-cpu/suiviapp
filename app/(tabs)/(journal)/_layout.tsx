@@ -1,6 +1,6 @@
 import { isLiquidGlassAvailable } from 'expo-glass-effect';
 import { Stack } from 'expo-router';
-import { useTheme } from '@/core/theme';
+import { fontFamilyFor, useTheme } from '@/core/theme';
 import { RequestedDateProvider } from '@/features/nutrition/hooks/requested-date';
 
 /**
@@ -61,10 +61,27 @@ export default function JournalLayout() {
         headerTransparent: true,
         headerShadowVisible: false,
         headerTintColor: theme.colors.accent,
-        // A touch larger than the system default: it is the one word on the
-        // bar that carries meaning, and it sits beside two icons rather than
-        // centred, so it has the room.
-        headerTitleStyle: { color: theme.colors.text, fontSize: 20 },
+        /**
+         * THE TITLE WAS THE ONE PIECE OF TEXT STILL IN THE SYSTEM FACE.
+         *
+         * core/ui/text cannot reach it: the bar is a UINavigationBar and the
+         * title is painted by UIKit, not rendered as a Text in the tree. Its
+         * font comes from headerTitleStyle or from nowhere — and with nothing
+         * set it came from nowhere, so the date sat in San Francisco above a
+         * page entirely in Nunito.
+         *
+         * Extra-bold rather than bold: it is the one word on the bar that says
+         * where you are, it sits beside two icons rather than centred so it has
+         * the room, and it now heads a page whose own section titles are bold.
+         * Asking for 800 is what makes the fourth face worth bundling — against
+         * a Bold file iOS would synthesise the extra weight instead.
+         */
+        headerTitleStyle: {
+          color: theme.colors.text,
+          fontSize: 20,
+          fontWeight: '800',
+          fontFamily: fontFamilyFor('800', theme.fontsLoaded),
+        },
         ...(glass
           ? { scrollEdgeEffects: { top: 'soft' as const } }
           : { headerBlurEffect: 'systemChromeMaterial' as const }),
@@ -72,13 +89,23 @@ export default function JournalLayout() {
     >
       <Stack.Screen name="index" />
       {/*
-        A TRANSPARENT MODAL, not a push: the Journal stays mounted and visible
-        underneath, so choosing a date reads as something opening on top rather
-        than as going somewhere else — which is what it is. A pushed screen is
-        opaque by definition and cannot show anything behind it.
+        A TRANSPARENT MODAL, like every other window in this application.
 
-        No header either: the screen carries its own two buttons, and a bar
-        above a floating panel would make it look like a page again.
+        It was a zoom transition for a while — the sheet coming out of the
+        calendar button, with an interactive dismissal that took it back in.
+        That was dropped: Apple's transition scales the presenting screen back
+        while the sheet is up, the API offers nothing to turn that off, and the
+        Journal shrinking behind with the window showing white above and below
+        it was worse to look at than the anchoring was good. See the note in
+        calendar-screen.tsx.
+
+        So: `animation: 'none'`, exactly like its siblings, because OverlayPanel
+        raises and folds the window itself. That is also what keeps the backdrop
+        darkening where it is instead of rising with the panel — every built-in
+        presentation moves the whole screen as one.
+
+        No header: the screen carries its own two buttons, and a bar above a
+        floating panel would make it look like a page again.
       */}
       <Stack.Screen
         name="calendar"
@@ -86,6 +113,7 @@ export default function JournalLayout() {
           headerShown: false,
           presentation: 'transparentModal',
           contentStyle: { backgroundColor: 'transparent' },
+          animation: 'none',
         }}
       />
     </Stack>

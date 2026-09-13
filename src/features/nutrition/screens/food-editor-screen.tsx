@@ -7,9 +7,9 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   View,
 } from 'react-native';
+import { Text } from '@/core/ui/text';
 import { formatKcal, parseDecimal } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import type { FoodId } from '@/core/db/schema';

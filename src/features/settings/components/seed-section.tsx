@@ -1,6 +1,7 @@
 import Constants from 'expo-constants';
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { Text } from '@/core/ui/text';
 import { currentLocalDate } from '@/core/date';
 import { getAppDatabase } from '@/core/db/app-database';
 import { useTheme } from '@/core/theme';

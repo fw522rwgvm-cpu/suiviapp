@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { Text } from '@/core/ui/text';
 import { formatKcal } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import { isCompleteProduct, type OffProduct } from '../off/off-product';

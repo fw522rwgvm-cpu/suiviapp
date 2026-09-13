@@ -60,12 +60,13 @@ function RootStack() {
     >
       <Stack.Screen name="(tabs)" />
       {/*
-        ALL THREE ARE OVERLAYS, and siblings rather than a nested stack.
+        ALL FOUR ARE OVERLAYS, and siblings rather than a nested stack.
 
         Specs 7 calls the add screen a full-screen modal; it is a window over
         the Journal instead, and the rest of the slice went the same way. What
-        the three have in common is that none of them is a place: adding to a
-        day, correcting a line, picking a date are all things done ON the day.
+        the four have in common is that none of them is a place: adding to a
+        day, correcting a line, setting a goal, picking a date are all things
+        done ON the day.
         An opaque screen says you left it.
 
         Siblings because the fast path never navigates between them — choosing
@@ -85,7 +86,7 @@ function RootStack() {
         }}
       />
       {/*
-        THE TWO EDITING ROUTES ARE OVERLAYS, not full-screen modals.
+        THE EDITING ROUTES ARE OVERLAYS, not full-screen modals.
 
         Correcting a line already in the journal — a quantity, or four typed
         numbers — is done ON the day rather than instead of it. A transparent
@@ -122,6 +123,26 @@ function RootStack() {
           // from the bottom while the backdrop darkens where it is, and every
           // built-in presentation moves the whole screen as one — which is
           // what made the veil rise along with the window.
+          animation: 'none',
+        }}
+      />
+      {/*
+        THE ONE THAT WAS MISSING, and its absence is why it behaved differently.
+        An undeclared route falls back to the stack's default — an opaque card
+        pushed in from the RIGHT — so adding a meal slid in sideways while every
+        other window rose from the bottom. OverlayPanel was already raising it
+        correctly; nothing ever saw that, because the screen carrying it was
+        being pushed.
+
+        Declaring it is the whole fix: same three options as its siblings, and
+        animation 'none' so the panel does the moving.
+      */}
+      <Stack.Screen
+        name="(modals)/meal"
+        options={{
+          presentation: 'transparentModal',
+          headerShown: false,
+          contentStyle: { backgroundColor: 'transparent' },
           animation: 'none',
         }}
       />

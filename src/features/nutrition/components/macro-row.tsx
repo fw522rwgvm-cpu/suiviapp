@@ -1,4 +1,5 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { Text } from '@/core/ui/text';
 import { formatKcal, formatMacro } from '@/core/format';
 import { useTheme, type Theme } from '@/core/theme';
 import type { Macros } from '../domain/macros';

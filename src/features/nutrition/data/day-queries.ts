@@ -9,23 +9,27 @@ import {
   type JournalEntryId,
 } from '@/core/db/schema';
 import { readsFrom } from '@/core/query';
+import { PLANNING_TABLES } from './planning-queries';
 import {
   readDay,
   readDayTotals,
   readEntry,
   readMealEntries,
   readMealTotals,
+  readRecentMeals,
 } from './day-reads';
 import {
   addEntries,
   addFoodEntry,
   addFreeEntry,
   addMeal,
+  addRecentMeal,
   deleteEntry,
   deleteMeal,
-  renameMeal,
   updateFoodEntryQuantity,
+  updateMealTargets,
   updateFreeEntry,
+  updateMeal,
 } from './day-writes';
 
 /**
@@ -46,14 +50,27 @@ export const journalKeys = {
   mealTotals: (date: LocalDate) => ['nutrition', 'meal-totals', date] as const,
   mealEntries: (mealId: DayMealId | null) => ['nutrition', 'meal-entries', mealId] as const,
   entry: (entryId: JournalEntryId | null) => ['nutrition', 'entry', entryId] as const,
+  recentMeals: () => ['nutrition', 'recent-meals'] as const,
 };
 
-/** The day, materialised or virtual. Reading it never creates it (specs 8.2). */
+/**
+ * The day, materialised or virtual. Reading it never creates it (specs 8.2).
+ *
+ * IT DECLARES THE PLANNING TABLES TOO, and it has to, even though a
+ * materialised day never reads them: the query cannot know which branch it
+ * will take before it runs. So editing a template invalidates every open day,
+ * the virtual ones re-resolve, and the materialised ones re-read and do not
+ * move — which is the correct outcome reached by the cheapest possible means,
+ * a refetch of a local synchronous query.
+ *
+ * This is also the whole of how a template edit reaches the Journal. No write
+ * site enumerates anything, and there is still not one onSuccess in this file.
+ */
 export function useDay(date: LocalDate) {
   return useQuery({
     queryKey: journalKeys.day(date),
     queryFn: () => readDay(getAppDatabase(), date),
-    meta: readsFrom(day, dayMeal),
+    meta: readsFrom(day, dayMeal, ...PLANNING_TABLES),
   });
 }
 
@@ -98,6 +115,29 @@ export function useEntry(entryId: JournalEntryId | null) {
     queryFn: () => (entryId === null ? null : readEntry(getAppDatabase(), entryId)),
     enabled: entryId !== null,
     meta: readsFrom(journalEntry),
+  });
+}
+
+/**
+ * Meals logged recently, for the quick-access screen (specs 8.4a).
+ *
+ * It reads both tables, and it has to: a meal's name lives in day_meal and
+ * what makes it recent lives in journal_entry. So logging anything refreshes
+ * the list, which is the correct behaviour reached for free.
+ */
+export function useRecentMeals() {
+  return useQuery({
+    queryKey: journalKeys.recentMeals(),
+    queryFn: () => readRecentMeals(getAppDatabase()),
+    meta: readsFrom(dayMeal, journalEntry),
+  });
+}
+
+/** A whole past meal, replayed into another (specs 8.4a). */
+export function useAddRecentMeal() {
+  return useMutation({
+    mutationFn: (input: Parameters<typeof addRecentMeal>[1]) =>
+      Promise.resolve(addRecentMeal(getAppDatabase(), input)),
   });
 }
 
@@ -156,10 +196,31 @@ export function useAddMeal() {
   });
 }
 
-export function useRenameMeal() {
+/**
+ * Sets or clears the targets of one meal of one day (specs 8.3).
+ *
+ * It touches the day and never the template: a day is a snapshot, so editing
+ * it edits the snapshot. The template it came from is not consulted here and
+ * not written.
+ */
+export function useUpdateMealTargets() {
   return useMutation({
-    mutationFn: (input: Parameters<typeof renameMeal>[1]) =>
-      Promise.resolve(renameMeal(getAppDatabase(), input)),
+    mutationFn: (input: Parameters<typeof updateMealTargets>[1]) =>
+      Promise.resolve(updateMealTargets(getAppDatabase(), input)),
+  });
+}
+
+/**
+ * Changes what a meal is and what it aims at, together (specs 8.3).
+ *
+ * One mutation because it is one transaction: the two used to be separate
+ * writes behind separate menu entries, and a forced quit between them could
+ * leave a meal renamed with its old targets.
+ */
+export function useUpdateMeal() {
+  return useMutation({
+    mutationFn: (input: Parameters<typeof updateMeal>[1]) =>
+      Promise.resolve(updateMeal(getAppDatabase(), input)),
   });
 }
 

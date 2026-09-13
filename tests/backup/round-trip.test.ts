@@ -6,6 +6,8 @@ import { newId } from '../../src/core/id';
 import {
   setting,
   type DayMealId,
+  type DayTemplateId,
+  type DayTemplateMealId,
   type FoodId,
   type JournalEntryId,
 } from '../../src/core/db/schema';
@@ -163,6 +165,7 @@ function fillEveryColumn(raw: Database.Database): void {
   const childId = newId<JournalEntryId>();
   const foodId = newId<FoodId>();
   const plainFoodId = newId<FoodId>();
+  const templateId = newId<DayTemplateId>();
 
   raw.prepare("INSERT INTO setting (key, value) VALUES ('theme', 'dark')").run();
 
@@ -204,6 +207,49 @@ function fillEveryColumn(raw: Database.Database): void {
   // The same name under a different food: the unique index is per food, and an
   // importer that widened it to a global unique would fail exactly here.
   insertPortion.run(newId(), plainFoodId, 'tranche', 40.75, 0);
+  raw
+    .prepare(
+      'INSERT INTO day_template (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)',
+    )
+    .run(templateId, "Jour d'entraînement", 1_789_000_000_020, 1_789_000_000_021);
+
+  const insertTemplateMeal = raw.prepare(
+    'INSERT INTO day_template_meal (id, template_id, position, name, target_protein, ' +
+      'target_carbs, target_fat, target_kcal) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+  );
+  insertTemplateMeal.run(
+    newId<DayTemplateMealId>(), templateId, 0, 'Petit-déjeuner',
+    30.5, 55.25, 12.125, 430.5,
+  );
+  // position 1 as well as 0, for the same reason the portions above use both:
+  // a serialiser that dropped the column and let SQLite default it would
+  // otherwise pass unnoticed.
+  insertTemplateMeal.run(
+    newId<DayTemplateMealId>(), templateId, 1, 'Déjeuner',
+    45.75, 70.5, 18.25, 680.25,
+  );
+
+  // The recurrence and an override, both pointing at a template that really
+  // exists — unlike day.template_id_snapshot below, which is deliberately free
+  // to dangle. These two carry declared foreign keys, so barrier three of the
+  // import checks them, and a fixture naming a phantom template would fail
+  // there rather than here.
+  raw
+    .prepare('INSERT INTO planning_weekday (weekday, template_id) VALUES (?, ?)')
+    .run(2, templateId);
+  // 7 as well as 2: the CHECK admits 1 through 7, and pinning both ends means a
+  // narrowed constraint could not survive a round trip unnoticed.
+  raw
+    .prepare('INSERT INTO planning_weekday (weekday, template_id) VALUES (?, ?)')
+    .run(7, templateId);
+  raw
+    .prepare('INSERT INTO planning_override (date, template_id) VALUES (?, ?)')
+    .run('2026-03-05', templateId);
+
+  // template_id_snapshot holds an identifier no template answers to, and that
+  // is the point rather than an oversight: the column is informative, without
+  // a live link and without a foreign key, precisely so a day survives the
+  // deletion of the template it came from (specs 5.2).
   raw
     .prepare(
       'INSERT INTO day (date, template_id_snapshot, template_name_snapshot, ' +

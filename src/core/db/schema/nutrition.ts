@@ -11,6 +11,7 @@ import {
 } from 'drizzle-orm/sqlite-core';
 import type { LocalDate } from '@/core/date';
 import type { EntityId } from '@/core/id';
+import type { DayTemplateId } from './planning';
 
 /**
  * Foods, days, meals and journal entries (schema 2.2 and 2.3).
@@ -297,16 +298,34 @@ export const foodPortion = sqliteTable(
  * it is the difference between a day nobody touched and a day emptied on
  * purpose, and browsing three months of history must never create one.
  *
- * Both snapshot columns stay NULL until slice 5, when templates exist. That
- * they are nullable is what lets slice 1 ship without a schema change later.
+ * THE TWO SNAPSHOT COLUMNS ARE WHERE SLICE 1's PREDICTION PAID OFF. They
+ * shipped nullable and stayed NULL for four slices; 0004 gave them templates
+ * to point at and cost no schema change at all, exactly as predicted.
+ *
+ * They stay NULL for every day materialised before 0004, and that is the
+ * truthful record rather than a gap to be filled: at the moment those days
+ * were materialised no template existed, so "no template" is what happened.
+ * Backfilling them would invent a fact, and specs 8.1 forbids a template
+ * change from reaching a materialised day retroactively in any case.
  *
  * No created_at / updated_at here: section 2.3 spells this table's columns out
  * explicitly, and materialized_at is the creation stamp.
  */
 export const day = sqliteTable('day', {
   date: text('date').$type<LocalDate>().primaryKey(),
-  /** Informative, no live link: a template can be edited or deleted freely. */
-  templateIdSnapshot: text('template_id_snapshot'),
+  /**
+   * Informative, WITHOUT A LIVE LINK, and deliberately carrying no foreign
+   * key (schema 2.3). Marked in slice 4's successor exactly as source_food_id
+   * was marked in slice 3: a TypeScript change with no SQL in it.
+   *
+   * The absence of a key here is the counterweight to the CASCADE on
+   * planning_weekday and planning_override. Those are live configuration and a
+   * dangling row there means nothing; this is history, and a cascade would
+   * destroy it. Deleting a template therefore clears the planning and leaves
+   * every past day exactly as it was — which is what specs 5.3 and 5.2
+   * together require.
+   */
+  templateIdSnapshot: text('template_id_snapshot').$type<DayTemplateId>(),
   templateNameSnapshot: text('template_name_snapshot'),
   materializedAt: integer('materialized_at').notNull(),
 });

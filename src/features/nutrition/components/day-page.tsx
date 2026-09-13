@@ -1,6 +1,7 @@
 import { useHeaderHeight } from 'expo-router/build/react-navigation/elements';
 import { useEffect, useRef } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '@/core/ui/text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { LocalDate } from '@/core/date';
 import { useTheme } from '@/core/theme';
@@ -10,6 +11,7 @@ import { useDay, useDayTotals, useMealTotals } from '../data/day-queries';
 import type { JournalEntryView } from '../data/day-reads';
 import { dayTargets, type DayMealView } from '../domain/day-plan';
 import { ZERO_MACROS } from '../domain/macros';
+import { DayPlanRow } from './day-plan-row';
 import { MealSection } from './meal-section';
 import { RemainingBanner } from './remaining-banner';
 
@@ -167,7 +169,20 @@ export function DayPage({
         contentInsetAdjustmentBehavior="never"
         scrollEnabled={!showDots}
       >
+        {/*
+          Two headings where there were none, and they do the work a card
+          cannot do on its own: say what it is. The banner and the meals are
+          two different questions — what the day comes to, and what was eaten —
+          and stacked cards read as one list until something names them.
+
+          Left-aligned and bold, the way a section title is everywhere else in
+          the application: they belong to the page, not to the card under them.
+        */}
+        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Résumé</Text>
+
         <RemainingBanner consumed={totals.data ?? ZERO_MACROS} target={dayTargets(meals)} />
+
+        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Alimentation</Text>
 
         {meals.map((meal) => (
           <MealSection
@@ -191,9 +206,20 @@ export function DayPage({
           </Text>
         </Pressable>
 
-        <Text style={[styles.hint, { color: theme.colors.textFaint }]}>
-          Appui long sur un repas pour le renommer ou le supprimer.
-        </Text>
+        {/*
+          Where these meals came from, at the foot of the list they describe.
+          Only the active page renders it: the neighbours are drawn for the
+          swipe, and an action on a page nobody is looking at is a tap waiting
+          to be made by accident.
+        */}
+        {active ? (
+          <DayPlanRow
+            date={date}
+            materialized={day.data?.materialized ?? false}
+            templateName={day.data?.templateName ?? null}
+          />
+        ) : null}
+
       </ScrollView>
 
       {showDots ? (
@@ -212,6 +238,12 @@ const styles = StyleSheet.create({
   // Cards float on the background rather than butting against each other, so
   // the gap is what separates them and the shadow is what raises them.
   content: { paddingHorizontal: 16, gap: 14 },
+  /**
+   * Pulled down onto the card below it and away from the one above: a heading
+   * belongs to what follows it, and an even gap on both sides would make it
+   * float between two things instead of introducing one.
+   */
+  sectionTitle: { fontSize: 22, fontWeight: '700', marginTop: 10, marginBottom: -6 },
   /**
    * The scroll view fills its page wrapper. NO `flex` on the wrapper itself:
    * the carousel is a row, so flex there would act on the HORIZONTAL axis and
@@ -237,5 +269,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   addMealLabel: { fontSize: 15, fontWeight: '600' },
-  hint: { fontSize: 12, lineHeight: 17, textAlign: 'center', marginTop: 4 },
 });

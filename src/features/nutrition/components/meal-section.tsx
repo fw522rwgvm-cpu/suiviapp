@@ -1,13 +1,16 @@
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { formatKcal } from '@/core/format';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { Text } from '@/core/ui/text';
+import { formatKcal, formatMacroWhole } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import { useMealEntries } from '../data/day-queries';
 import type { JournalEntryView } from '../data/day-reads';
 import type { DayMealView } from '../domain/day-plan';
-import type { Macros } from '../domain/macros';
+import { progressRatio, targetStanding, ZERO_MACROS, type Macros } from '../domain/macros';
 import { EntryRow } from './entry-row';
+import { mealColor, mealSymbol } from './meal-symbol';
+import { ProgressRing } from './progress-ring';
 import { SwipeToDeleteRow } from './swipe-to-delete-row';
 import { ListSeparator } from '@/core/ui/list-separator';
 
@@ -43,8 +46,25 @@ export function MealSection({
   const [open, setOpen] = useState(false);
   const entries = useMealEntries(open ? meal.id : null);
 
-  const consumedKcal = total?.kcal ?? 0;
+  const consumed = total ?? ZERO_MACROS;
+  const consumedKcal = consumed.kcal;
   const targetKcal = meal.targets?.kcal ?? null;
+
+  /**
+   * THE ICON IS ALWAYS THERE; THE RING IS NOT.
+   *
+   * The glyph says which meal this is and is true whether or not anyone set a
+   * goal, so it stays. The ring is a proportion, and a proportion of nothing is
+   * not a ring at zero — it is a shape that looks broken, and a day with no
+   * template would stack four of them. So a meal with no target keeps its icon
+   * and loses its circle, which is exactly what was asked for and also what
+   * every day logged before 0004 will look like for ever.
+   *
+   * The macro band follows the ring, for the same reason: three bars with no
+   * denominator are three bars that cannot be read.
+   */
+  const standing = targetStanding(consumedKcal, targetKcal);
+  const ringColor = standing === 'beyond' ? theme.colors.danger : theme.colors.accent;
 
   return (
     <View
@@ -78,6 +98,49 @@ export function MealSection({
           />
 
           {/*
+            Same rule as the day's ring, because it answers the same question
+            one level down: the ordinary colour until the margin is passed. It
+            carries the icon rather than a figure — the kcal are
+            written out an inch to its right, and repeating them would be
+            saying one fact twice.
+          */}
+          {targetKcal === null ? (
+            <View style={styles.iconAlone}>
+              <SymbolView
+                name={mealSymbol(meal.name)}
+                size={26}
+                tintColor={mealColor(meal.name, theme.colors)}
+              />
+            </View>
+          ) : (
+            <ProgressRing
+              progress={progressRatio(consumedKcal, targetKcal)}
+              size={MEAL_RING_SIZE}
+              thickness={5}
+              color={ringColor}
+            >
+              {/*
+                THE ICON KEEPS ITS OWN COLOUR AND NEVER TAKES THE RING'S, and
+                that colour is the one belonging to what it depicts — a dawn
+                sky, midday, night, a carrot.
+
+                The glyph says WHICH meal this is; the ring says how that meal
+                is going. Tinting the glyph with the ring made one fact colour
+                the other, so a snack turning amber looked like a different
+                snack — and it also meant the icon moved between three colours
+                while the identical icon on a meal with no target stayed grey.
+                It is now the same colour in both states, which is what makes
+                the two read as one thing with and without a goal.
+              */}
+              <SymbolView
+                name={mealSymbol(meal.name)}
+                size={22}
+                tintColor={mealColor(meal.name, theme.colors)}
+              />
+            </ProgressRing>
+          )}
+
+          {/*
             Name above, figure below, rather than both on one line. It gives
             the meal name room to be a real name — slice 5 lets templates call
             a meal whatever they like — and puts the kcal where the eye already
@@ -85,7 +148,7 @@ export function MealSection({
           */}
           <View style={styles.identity}>
             <Text style={[styles.name, { color: theme.colors.text }]} numberOfLines={1}>
-              {meal.name}
+              {meal.label}
             </Text>
             <Text style={[styles.total, { color: theme.colors.textMuted }]}>
               {targetKcal === null
@@ -105,13 +168,30 @@ export function MealSection({
         <Pressable
           onPress={onAdd}
           accessibilityRole="button"
-          accessibilityLabel={`Ajouter à ${meal.name}`}
+          accessibilityLabel={`Ajouter à ${meal.label}`}
           hitSlop={10}
           style={styles.add}
         >
-          <SymbolView name="plus.circle.fill" size={54} tintColor={theme.colors.accent} />
+          <SymbolView
+            name="plus.circle.fill"
+            size={MEAL_RING_SIZE}
+            tintColor={theme.colors.accent}
+          />
         </Pressable>
       </View>
+
+      {/*
+        ITS OWN ROW, SPANNING THE CARD, rather than tucked under the kcal line
+        inside the identity block — which is where it was asked for and where
+        it does not fit. Beside the chevron, the ring and a 54-point add
+        button, the identity column is about 187 points wide; three columns of
+        it leave 62 each, and "Gluc. 240 / 100 g" needs more than that at any
+        size still worth reading. Given the card's full width each column gets
+        over a hundred, and the band still reads as sitting under the kcal.
+      */}
+      {meal.targets === null ? null : (
+        <MacroBand consumed={consumed} targets={meal.targets} />
+      )}
 
       {open ? (
         <View style={[styles.entries, { borderTopColor: theme.colors.border }]}>
@@ -157,6 +237,93 @@ export function MealSection({
   );
 }
 
+/**
+ * The ring and the add button are the same size, and that is the point.
+ *
+ * They are the two circles on the row, one at each end, and the eye reads a
+ * pair before it reads either. At 34 against 54 they were a small thing and a
+ * big thing that happened to both be round; matched, the row has two poles
+ * rather than a button and an ornament.
+ *
+ * One constant, used by both, so they cannot drift apart in a later edit.
+ */
+const MEAL_RING_SIZE = 54;
+
+/** The three that have bars. Calories are the ring, not a fourth bar. */
+const MACRO_BARS: readonly {
+  key: 'protein' | 'carbs' | 'fat';
+  label: string;
+  token: 'macroProtein' | 'macroCarbs' | 'macroFat';
+}[] = [
+  { key: 'protein', label: 'Prot.', token: 'macroProtein' },
+  { key: 'carbs', label: 'Gluc.', token: 'macroCarbs' },
+  { key: 'fat', label: 'Lip.', token: 'macroFat' },
+];
+
+/**
+ * The three bars, as their own component so the narrowing is real.
+ *
+ * Taking `targets` already non-null is what lets the caller pass it after a
+ * null check instead of asserting it away — conventions section 4 rules out
+ * assertions, and a `!` here would be one on the very value the whole band
+ * depends on.
+ */
+function MacroBand({ consumed, targets }: { consumed: Macros; targets: Macros }) {
+  const theme = useTheme();
+
+  return (
+    <View style={styles.macroBand}>
+      {MACRO_BARS.map((bar) => (
+        <MacroBar
+          key={bar.key}
+          label={bar.label}
+          consumed={consumed[bar.key]}
+          target={targets[bar.key]}
+          color={theme.colors[bar.token]}
+        />
+      ))}
+    </View>
+  );
+}
+
+/**
+ * One macro of the meal: what it stands at, over a bar.
+ *
+ * NEVER RED, however full — the same rule as the day's three bars. Going over
+ * on carbohydrates is not the same kind of event as going over on the day, and
+ * a row of red bars would say that it was. The ring is the one thing on this
+ * card allowed to raise its voice.
+ */
+function MacroBar({
+  label,
+  consumed,
+  target,
+  color,
+}: {
+  label: string;
+  consumed: number;
+  target: number;
+  color: string;
+}) {
+  const theme = useTheme();
+
+  return (
+    <View style={styles.macroColumn}>
+      <Text style={[styles.macroText, { color: theme.colors.textMuted }]} numberOfLines={1}>
+        {`${label} ${formatMacroWhole(consumed)} / ${formatMacroWhole(target)} g`}
+      </Text>
+      <View style={[styles.macroTrack, { backgroundColor: theme.colors.border }]}>
+        <View
+          style={[
+            styles.macroFill,
+            { backgroundColor: color, width: `${progressRatio(consumed, target) * 100}%` },
+          ]}
+        />
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   // overflow hidden so the swipe-to-delete row cannot paint outside the
   // rounded corners while it is being dragged.
@@ -171,11 +338,34 @@ const styles = StyleSheet.create({
     paddingLeft: 18,
   },
   identity: { flex: 1, gap: 3 },
-  name: { fontSize: 17, fontWeight: '600' },
+  // Bold, not semibold: the name is what the row IS, and it now sits beside a
+  // coloured glyph and above a line of figures that are both quieter than it.
+  name: { fontSize: 17, fontWeight: '700' },
   total: { fontSize: 14, fontVariant: ['tabular-nums'] },
   // Tighter than the row's own padding: the glyph is large enough to carry the
   // target on its own, so padding here would only push it off the edge.
   add: { paddingHorizontal: 14, paddingVertical: 10 },
   entries: { borderTopWidth: StyleSheet.hairlineWidth },
   empty: { fontSize: 14, paddingHorizontal: 18, paddingVertical: 16 },
+  // Pulled up under the header rather than spaced from it: the band belongs to
+  // the figure above it, not to the list below.
+  macroBand: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 18,
+    paddingBottom: 14,
+    marginTop: -6,
+  },
+  // The same box the ring occupies, so a day mixing meals with and without a
+  // target keeps one column of names rather than two.
+  iconAlone: {
+    width: MEAL_RING_SIZE,
+    height: MEAL_RING_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  macroColumn: { flex: 1, gap: 4 },
+  macroText: { fontSize: 11, fontVariant: ['tabular-nums'] },
+  macroTrack: { height: 4, borderRadius: 2, overflow: 'hidden' },
+  macroFill: { height: 4, borderRadius: 2 },
 });

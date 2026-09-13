@@ -6,15 +6,19 @@ import {
   dayMeal,
   food,
   journalEntry,
+  type BaseUnit,
   type DayMealId,
   type FoodId,
   type JournalEntryId,
+  type JournalEntryKind,
 } from '@/core/db/schema';
 import { newId } from '@/core/id';
-import { defaultDayMeals } from '../domain/day-plan';
+import { readDayPlan } from './planning-reads';
+import { canUseKind, isMealKind, type MealKind } from '../domain/meal-kinds';
 import type { Macros } from '../domain/macros';
 import type { QuantityChoice } from '../domain/portions';
 import type { CompleteOffProduct } from '../off/off-product';
+import { readEntriesForReplay } from './day-reads';
 import { readFood } from './food-reads';
 import { findFoodByBarcode } from './food-writes';
 
@@ -140,15 +144,30 @@ function ensureOffFood(tx: AppDatabase, product: CompleteOffProduct, now: number
  * is the first statement of the writes that need it, inside their transaction,
  * and it exists nowhere else.
  *
- * Both snapshot columns stay NULL: there is no template to snapshot before
- * slice 5. The meals come from the same function that renders a virtual day,
- * so what the user saw is what they get.
+ * ## THE SNAPSHOT IS TAKEN HERE, INSIDE THE TRANSACTION (D5/R4, specs 8.2)
+ *
+ * The planning is resolved on this line and frozen on the next, with nothing
+ * able to slip between the two. Resolving it earlier — in the screen, or in a
+ * read the caller made before deciding to write — would let a template edited
+ * in between produce a day whose meals came from one version and whose
+ * template_name_snapshot named another.
+ *
+ * The meals come from the same function that renders a virtual day, so what
+ * the user saw is what they get. Both snapshot columns stay NULL when the
+ * planning designates nothing, which is the truthful record rather than a gap:
+ * no template applied.
+ *
+ * From this moment the day is deaf to the planning for ever (specs 8.1). That
+ * includes a day prepared in the future: 8.2 makes a filled-in future day
+ * insensitive to later planning changes, and it gets there by being
+ * materialised rather than by being in the future.
  */
 function ensureMaterialized(tx: AppDatabase, date: LocalDate): MealRef[] {
   const existing = tx.select({ date: day.date }).from(day).where(eq(day.date, date)).all();
 
   if (existing.length === 0) {
-    const rows = defaultDayMeals().map((meal) => ({
+    const plan = readDayPlan(tx, date);
+    const rows = plan.meals.map((meal) => ({
       id: newId<DayMealId>(),
       date,
       position: meal.position,
@@ -162,12 +181,16 @@ function ensureMaterialized(tx: AppDatabase, date: LocalDate): MealRef[] {
     tx.insert(day)
       .values({
         date,
-        templateIdSnapshot: null,
-        templateNameSnapshot: null,
+        templateIdSnapshot: plan.templateId,
+        templateNameSnapshot: plan.templateName,
         materializedAt: Date.now(),
       })
       .run();
-    tx.insert(dayMeal).values(rows).run();
+    // A template holding no meal is legitimate, and Drizzle refuses an empty
+    // VALUES list. The day row is what says the day exists, not its meals.
+    if (rows.length > 0) {
+      tx.insert(dayMeal).values(rows).run();
+    }
 
     return rows.map(({ id, position }) => ({ id, position }));
   }
@@ -518,41 +541,181 @@ export function deleteEntry(db: AppDatabase, entryId: JournalEntryId): void {
   db.delete(journalEntry).where(eq(journalEntry.id, entryId)).run();
 }
 
-/** Renaming a meal is one of the actions that materialise a day (specs 8.2). */
-export function renameMeal(
-  db: AppDatabase,
-  input: { date: LocalDate; mealPosition: number; name: string },
+/**
+ * The names a day already holds, in position order.
+ *
+ * Read inside the transaction that is about to change one of them, so the
+ * uniqueness rule is decided against the day as it will actually be written
+ * rather than as some screen last saw it.
+ */
+function mealNamesOf(tx: AppDatabase, date: LocalDate): string[] {
+  return tx
+    .select({ name: dayMeal.name })
+    .from(dayMeal)
+    .where(eq(dayMeal.date, date))
+    .orderBy(dayMeal.position)
+    .all()
+    .map((row) => row.name);
+}
+
+/**
+ * ONE BREAKFAST, ONE LUNCH, ONE DINNER PER DAY — enforced here and not in SQL.
+ *
+ * `day_meal` has been frozen since 0001, so no constraint can be added to it
+ * without rebuilding the table every journal entry hangs off. A partial unique
+ * index could be created — indexes are the one addable part — and is refused
+ * anyway: a database in use already holds meals named whatever their owner
+ * typed, and an archive certainly can, so the index would fail to build on
+ * exactly the data it exists to protect.
+ *
+ * A caller offering a kind the day already has is a screen bug, not an expected
+ * failure: the picker is built from availableKinds and cannot show one. So it
+ * throws, which also rolls back a materialisation that no longer has an action
+ * to justify it (conventions, section 4).
+ */
+function requireUsableKind(
+  tx: AppDatabase,
+  date: LocalDate,
+  kind: MealKind,
+  index: number,
 ): void {
+  if (!canUseKind(mealNamesOf(tx, date), index, kind)) {
+    throw new Error(`${date} already holds a meal named ${kind}`);
+  }
+}
+
+function requireKind(name: string): MealKind {
+  if (!isMealKind(name)) {
+    throw new Error(`${name} is not one of the four meal names`);
+  }
+  return name;
+}
+
+/**
+ * Changes what a meal IS and what it aims at, in one transaction (specs 8.3).
+ *
+ * ## THE TWO USED TO BE SEPARATE ACTIONS, AND THAT WAS THE BUG
+ *
+ * The journal offered "changer de repas" and "modifier les objectifs" as two
+ * entries in a long-press menu, backed by two writes. They are one thought —
+ * this meal is not what it says, or not aiming where it should — and splitting
+ * them made the user choose which half of an edit they wanted before being
+ * shown either.
+ *
+ * Merged, they also become atomic, which they were not. Two writes meant a
+ * forced quit between them could leave a meal renamed with its old targets, and
+ * specs 2.2 says the application can be killed at any moment.
+ *
+ * The name is one of the four, and the day may hold only one breakfast, one
+ * lunch and one dinner — checked here against the day as it will be written,
+ * not as some screen last saw it.
+ *
+ * Targets are all four or none, and null clears them: that is how a meal goes
+ * back to having no goal, and why the argument is a whole Macros rather than
+ * four optional numbers.
+ */
+export function updateMeal(
+  db: AppDatabase,
+  input: {
+    date: LocalDate;
+    mealPosition: number;
+    name: string;
+    targets: Macros | null;
+  },
+): void {
+  const kind = requireKind(input.name);
+
   db.transaction((tx) => {
-    const meal = requireMeal(ensureMaterialized(tx, input.date), input.mealPosition);
-    tx.update(dayMeal).set({ name: input.name }).where(eq(dayMeal.id, meal.id)).run();
+    const meals = ensureMaterialized(tx, input.date);
+    const meal = requireMeal(meals, input.mealPosition);
+    requireUsableKind(tx, input.date, kind, meals.indexOf(meal));
+
+    const { targets } = input;
+
+    tx.update(dayMeal)
+      .set({
+        name: kind,
+        targetProtein: targets?.protein ?? null,
+        targetCarbs: targets?.carbs ?? null,
+        targetFat: targets?.fat ?? null,
+        targetKcal: targets?.kcal ?? null,
+      })
+      .where(eq(dayMeal.id, meal.id))
+      .run();
   });
 }
 
-/** Appends a meal, without any effect on the template it came from (specs 8.3). */
+/**
+ * Appends a meal, without any effect on the template it came from (specs 8.3).
+ *
+ * It may carry targets from the start. A meal added to a day that has a plan is
+ * otherwise the one meal on it with nothing to aim at, and the banner would sum
+ * a day whose parts no longer add up to it — the day's targets being the sum of
+ * its meals' (specs 8.1). All four or none, as everywhere else.
+ */
 export function addMeal(
   db: AppDatabase,
-  input: { date: LocalDate; name: string },
+  input: { date: LocalDate; name: string; targets?: Macros | null },
 ): DayMealId {
+  const kind = requireKind(input.name);
+
   return db.transaction((tx) => {
     const meals = ensureMaterialized(tx, input.date);
+    requireUsableKind(tx, input.date, kind, meals.length);
+
     const id = newId<DayMealId>();
     const position = meals.reduce((highest, meal) => Math.max(highest, meal.position), -1) + 1;
+    const targets = input.targets ?? null;
 
     tx.insert(dayMeal)
       .values({
         id,
         date: input.date,
         position,
-        name: input.name,
-        targetProtein: null,
-        targetCarbs: null,
-        targetFat: null,
-        targetKcal: null,
+        name: kind,
+        targetProtein: targets?.protein ?? null,
+        targetCarbs: targets?.carbs ?? null,
+        targetFat: targets?.fat ?? null,
+        targetKcal: targets?.kcal ?? null,
       })
       .run();
 
     return id;
+  });
+}
+
+/**
+ * Sets or clears the targets of one meal of one day (specs 8.1, 8.3).
+ *
+ * ## IT CHANGES THE DAY AND NEVER THE TEMPLATE
+ *
+ * "Adding, renaming and deleting meals is free, WITHOUT IMPACT ON THE SOURCE
+ * TEMPLATE, with the targets recalculated" (specs 8.3). This is the same
+ * sentence applied to the numbers: a day is a snapshot, editing it edits the
+ * snapshot, and the template it came from is not consulted and not written.
+ *
+ * Null clears all four, which is how a meal goes back to having no goal — and
+ * why the argument is a whole Macros or nothing rather than four optional
+ * numbers. A meal carrying protein and nothing else would be a target nobody
+ * could read.
+ */
+export function updateMealTargets(
+  db: AppDatabase,
+  input: { date: LocalDate; mealPosition: number; targets: Macros | null },
+): void {
+  db.transaction((tx) => {
+    const meal = requireMeal(ensureMaterialized(tx, input.date), input.mealPosition);
+    const { targets } = input;
+
+    tx.update(dayMeal)
+      .set({
+        targetProtein: targets?.protein ?? null,
+        targetCarbs: targets?.carbs ?? null,
+        targetFat: targets?.fat ?? null,
+        targetKcal: targets?.kcal ?? null,
+      })
+      .where(eq(dayMeal.id, meal.id))
+      .run();
   });
 }
 
@@ -572,4 +735,153 @@ export function deleteMeal(
     const meal = requireMeal(ensureMaterialized(tx, input.date), input.mealPosition);
     tx.delete(dayMeal).where(eq(dayMeal.id, meal.id)).run();
   });
+}
+
+/**
+ * Adds every line of a past meal to another meal, in one transaction
+ * (specs 8.4a).
+ *
+ * > Selecting a recent meal adds all of its entries at once to the target
+ * > meal.
+ *
+ * ## IT REPLAYS THE CHOICES, NOT THE FIGURES
+ *
+ * The frozen capsule of an old entry is what was eaten THEN. Adding a meal
+ * today is an addition today, so each line goes back through the food it came
+ * from and freezes what that food says now. The case that settles it: specs
+ * 8.5 makes correcting a copied Open Food Facts product "the main mechanism
+ * for compensating for the uneven quality of the source" — replaying the
+ * capsule would silently re-import the error the user just corrected, on a
+ * path built for repeating habits.
+ *
+ * What always comes from the OLD entry is the QUANTITY and the way it was
+ * expressed. That is what "the same meal" means, and it is the same ruling
+ * slice 3 made for the pre-filled quantity: the frozen portion size wins, so
+ * that a tranche redefined from 25 g to 30 g does not quietly turn a 50 g
+ * habit into 60 g.
+ *
+ * ## THREE LINES DO NOT GO BACK TO A FOOD, AND EACH FOR ITS OWN REASON
+ *
+ *  - a FREE entry never had one: its macros ARE the choice (D5/R2);
+ *  - a food DELETED since cannot be read, and specs 5.3 says deleting a food
+ *    leaves past entries intact — making the user lose the line would charge
+ *    them for a deletion the specs call free;
+ *  - a food whose BASE UNIT has changed since would pair macros per 100 ml
+ *    with a quantity counted in grams. Falling back is one condition and it
+ *    removes the case entirely; re-reading anyway would be a wrong figure that
+ *    looks plausible, which is the only kind that matters.
+ *
+ * Recipe blocks copy verbatim, parent and children, with the tree rebuilt
+ * through an identifier map. They cannot occur before slice 6 — kind is only
+ * ever 'food' or 'free' today — and a block is an adjusted composition
+ * (specs 8.6), not a reference to re-read.
+ */
+export function addRecentMeal(
+  db: AppDatabase,
+  input: { date: LocalDate; mealPosition: number; sourceMealId: DayMealId },
+): JournalEntryId[] {
+  return db.transaction((tx) => {
+    const source = readEntriesForReplay(tx, input.sourceMealId);
+    // Nothing to add, and therefore nothing to materialise: an empty meal must
+    // not create a day (specs 8.2).
+    if (source.length === 0) return [];
+
+    const target = requireMeal(ensureMaterialized(tx, input.date), input.mealPosition);
+    const now = Date.now();
+    let position = nextPosition(tx, target.id);
+
+    /** Old identifier to new, so a recipe block keeps its shape. */
+    const remapped = new Map<JournalEntryId, JournalEntryId>();
+    const ids: JournalEntryId[] = [];
+
+    for (const entry of source) {
+      const id = newId<JournalEntryId>();
+      remapped.set(entry.id, id);
+      ids.push(id);
+
+      // A child whose parent is not in this meal would point outside it; the
+      // query returns a whole meal, so this only guards the impossible.
+      const parentEntryId =
+        entry.parentEntryId === null ? null : (remapped.get(entry.parentEntryId) ?? null);
+
+      const refreshed = refreshedReference(tx, entry);
+
+      tx.insert(journalEntry)
+        .values({
+          id,
+          dayMealId: target.id,
+          date: input.date,
+          parentEntryId,
+          position: position++,
+          kind: entry.kind,
+          sourceFoodId: entry.sourceFoodId,
+          sourceRecipeId: null,
+          name: refreshed.name,
+          brand: refreshed.brand,
+          baseUnit: entry.baseUnit,
+          quantity: entry.quantity,
+          portionName: entry.portionName,
+          portionQuantity: entry.portionQuantity,
+          protein100: refreshed.protein100,
+          carbs100: refreshed.carbs100,
+          fat100: refreshed.fat100,
+          kcal100: refreshed.kcal100,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run();
+    }
+
+    return ids;
+  });
+}
+
+interface FrozenReference {
+  name: string;
+  brand: string | null;
+  protein100: number | null;
+  carbs100: number | null;
+  fat100: number | null;
+  kcal100: number | null;
+}
+
+/** The food as it reads today, or the old capsule when it cannot be read. */
+function refreshedReference(
+  tx: AppDatabase,
+  entry: {
+    kind: JournalEntryKind;
+    sourceFoodId: FoodId | null;
+    baseUnit: BaseUnit | null;
+    name: string;
+    brand: string | null;
+    protein100: number | null;
+    carbs100: number | null;
+    fat100: number | null;
+    kcal100: number | null;
+  },
+): FrozenReference {
+  const capsule: FrozenReference = {
+    name: entry.name,
+    brand: entry.brand,
+    protein100: entry.protein100,
+    carbs100: entry.carbs100,
+    fat100: entry.fat100,
+    kcal100: entry.kcal100,
+  };
+
+  if (entry.kind !== 'food' || entry.sourceFoodId === null) return capsule;
+
+  const food = readFood(tx, entry.sourceFoodId);
+  if (food === null) return capsule;
+  // See the note above: matching units or nothing.
+  if (food.baseUnit !== entry.baseUnit) return capsule;
+
+  return {
+    name: food.name,
+    brand: food.brand,
+    protein100: food.reference.protein,
+    carbs100: food.reference.carbs,
+    fat100: food.reference.fat,
+    kcal100: food.reference.kcal,
+  };
 }

@@ -282,6 +282,7 @@ describe('slicing the migration journal', () => {
       '0001_journal',
       '0002_food',
       '0003_barcode_off_cache',
+      '0004_templates_planning',
     ]);
     // An archive from this binary has nothing left, which is the ordinary case.
     expect(tagsAfter(bundle, bundle.journal.entries.length - 1)).toEqual([]);

@@ -53,8 +53,16 @@ L'application doit tolérer un arrêt forcé à tout moment sans perte.
 ---
 
 ## État du projet
-Tranches 0 à 4 livrées. **La tranche 4 est vérifiée sur l'iPhone, scan
-compris** (13/09/2026) : le code-barres se lit, le produit arrive avec ses
+Tranches 0 à 5 livrées. **La tranche 5 n'a pas encore tourné sur l'appareil** :
+code complet, typé, 671 tests verts sous les trois fuseaux, bundle produit —
+mais rien de son interface n'a été touché sur l'iPhone. À lire comme tel.
+
+**Elle ne demande aucun cycle CI.** Aucune dépendance native n'entre, donc tout
+se vérifie par Metro sur le binaire dev existant — l'inverse exact de la
+tranche 4, où le scan imposait de reconstruire.
+
+Tranches 0 à 4 livrées avant elle. **La tranche 4 est vérifiée sur l'iPhone,
+scan compris** (13/09/2026) : le code-barres se lit, le produit arrive avec ses
 macros, et la recherche sans accent est confirmée à l'usage.
 
 L'appareil a fait remonter trois choses que rien d'autre n'aurait trouvées —
@@ -97,7 +105,8 @@ qu'un export réel existe, la version 1 doit rester lisible : sinon l'archive
 est morte, et l'export est l'unique filet du projet.
 
 **Le schéma est gelé. Ajout seul désormais (D6/G2).** La migration initiale
-n'a jamais été dégelée : `0001_journal` a été ajoutée à côté, puis `0002_food`.
+n'a jamais été dégelée : `0001_journal` a été ajoutée à côté, puis `0002_food`,
+`0003_barcode_off_cache` et `0004_templates_planning`.
 Réécrire `0000` aurait changé son horodatage, fait voir une migration en
 attente à l'installation quotidienne, qui aurait tenté de recréer `setting` et
 échoué au démarrage. Le dégel servait à corriger `0000` ; `0000` n'avait rien à
@@ -210,6 +219,19 @@ rien : chaque écran affiche les chiffres d'hier, sans le dire.
   Et la seule vérification qui vaille est celle que fait la CI :
   `rm -rf node_modules && npm ci --ignore-scripts`. `npm test` ne la remplace
   pas — il ne lit jamais le lockfile.
+
+  **Mordu une quatrième fois en tranche 5, et cette fois tout était écrit
+  ci-dessus.** `expo-font` ajoutée au `package.json`, lockfile mis à jour avec
+  **`npm install --package-lock-only`** — qui résout l'arbre sans l'installer et
+  laisse tomber les paquets de plateforme à tous les coups. Puis le mauvais
+  `grep`, celui que le paragraphe précédent déclare faux, qui a rendu quinze
+  pour quinze déclarations et zéro paquet. `npm ci` local est passé, la CI a
+  échoué.
+
+  Deux conséquences. **Ne jamais mettre un lockfile à jour autrement que par un
+  vrai `npm install`.** Et savoir qu'un piège est documenté ne suffit pas : la
+  seule chose qui l'attrape est de rejouer la commande de la CI, pas de compter
+  quoi que ce soit.
 - Un dépôt fraîchement cloné n'a pas de `node_modules` : `npm ci --ignore-scripts`.
 - **`ulid` lève une exception sur l'appareil si on le laisse choisir son
   générateur.** Il cherche `crypto.getRandomValues` sur l'objet global et
@@ -1386,6 +1408,616 @@ au système, le contenu est à nous.** Un `GlassButton` dans un en-tête natif e
 du verre dans du verre ; une étoile dans une rangée de liste est du contenu et
 doit porter son propre matériau.
 
+## Ce que la tranche 5 a établi
+
+**Tout l'irréversible tient dans `0004`, et ça se réduit à trois lignes** :
+deux clés étrangères et une `CHECK`. SQLite n'a pas d'`ALTER TABLE ADD
+CONSTRAINT`, donc ce qui n'y entrait pas n'y entrerait jamais. Le reste de la
+tranche — tables, colonnes, index, écrans — se corrige à volonté.
+
+**L'asymétrie qui décide des clés étrangères était déjà écrite au §2.3, par
+quelqu'un d'autre.** `day.template_id_snapshot` y est déclaré « informatif,
+sans lien vivant » et ne porte aucune clé, parce qu'un cascade y détruirait
+l'historique. `planning_weekday` est l'inverse : de la **configuration
+vivante**, où une ligne désignant un modèle disparu ne s'affiche pas et ne se
+résout pas. La supprimer n'est pas une perte, c'est la seule sémantique
+cohérente. `RESTRICT` était exclu par le §5.3 ; `CASCADE` ne bloque rien non
+plus, donc la règle est tenue et non contournée.
+
+Ce qui a décidé contre « aucune clé » : **l'import perdrait une barrière.**
+`foreign_key_check` est la barrière 3 de la tranche 2, et sans clé déclarée
+elle ne distinguerait plus une archive saine d'une archive dont le planning
+pointe dans le vide.
+
+**« Une journée matérialisée n'est pas affectée rétroactivement » n'est pas une
+règle appliquée quelque part : c'est une requête qu'on ne fait pas.** `readDay`
+branche — matérialisée, elle lit ses propres `day_meal` ; virtuelle, elle
+résout le planning. Une journée future préparée à l'avance est couverte par la
+même phrase **sans cas particulier** : elle tient parce qu'elle est
+matérialisée, pas parce qu'elle est dans le futur.
+
+**La résolution se fait DANS la transaction de matérialisation**, sur la ligne
+qui précède le figeage. Plus tôt — dans l'écran, ou dans une lecture faite
+avant de décider d'écrire — un modèle édité entre les deux produirait une
+journée dont les repas viennent d'une version et dont `template_name_snapshot`
+en nomme une autre.
+
+**Le pointeur par défaut est le seul de l'application qu'aucune contrainte ne
+peut protéger**, `setting` étant une table clé/valeur en TEXT. Il est traité
+des deux côtés, et ce ne sont pas deux fois la même chose : `deleteTemplate`
+l'efface dans la même transaction — **la règle** — et `readDefaultTemplateId`
+vérifie que le modèle existe encore — **la garantie**. Seule la seconde survit
+à une archive écrite par un autre binaire ou à une ligne réparée à la main.
+Trois tests couvrent le pointeur qui pend, la valeur qui n'est pas un
+identifiant, et la récurrence qui répond quand même.
+
+**La conversion `1 = lundi` n'a rien coûté : elle existait depuis la tranche
+0.** `core/date.weekday()` rend l'ISO 1..7 par arithmétique entière sur le
+numéro de jour, et `tests/date/local-date.test.ts` porte littéralement
+`it('keeps the weekday numbering the planning table expects')`, avec
+`planning_weekday` nommée en commentaire. La tranche 0 avait écrit le test de
+la table de la tranche 5. **Rien de neuf n'est sensible au fuseau** — le
+planning est indexé par date civile et par jour ISO, tous deux tirés d'une
+chaîne : il n'y a pas un seul instant dans ces modules.
+
+**Le repli en code a survécu, exactement comme `day-plan.ts` l'avait écrit.**
+« No template applies » est devenu « le planning ne désigne rien », qui est
+l'état d'une base neuve **et** de toute base dont le dernier modèle vient
+d'être supprimé. Aucune graine n'a été posée en migration : elle ne livrerait
+pas d'objectif, ne permettrait pas de retirer le repli, et une migration porte
+ce qui ne peut pas être ajouté plus tard.
+
+**Le bandeau serait resté muet le jour même où les modèles arrivent.**
+Aujourd'hui est matérialisée dès le petit-déjeuner logué, et une journée
+matérialisée ne consulte jamais le planning. D'où `applyPlanTargetsToDay`, acte
+**explicite** : le §8.2 fait de l'action de l'utilisateur l'acte qui définit
+une journée, et rien ici ne se déclenche seul. Le repli refusé était de faire
+retomber une journée sans objectif sur le planning **à la lecture** — éditer un
+modèle bougerait alors le bandeau de journées vieilles de trois mois.
+
+Elle ne touche que les quatre colonnes d'objectif, **appariées par position**.
+Jamais un nom, jamais le nombre de repas, jamais une entrée : une journée porte
+des repas que l'utilisateur a pu renommer et qui contiennent des lignes. D'où
+le libellé « appliquer les **objectifs** de X » — la promesse est exactement ce
+qui se passe.
+
+**Le Journal doit dire d'où viennent ses repas, sinon rien ne l'explique.**
+Une journée matérialisée énonce son snapshot sans être touchable, et c'est la
+seule chose à l'écran qui réponde à « j'ai modifié mon modèle, pourquoi mon
+jeudi n'a pas bougé ». Le §8.2 rend ce comportement correct ; il ne l'explique
+à personne.
+
+**Un dossier réel, pas un groupe entre parenthèses.** `(journal)` porte des
+parenthèses parce que le Journal **doit rester** la route index du groupe
+d'onglets. Les Réglages ne sont pas cet index : un `(settings)/index.tsx`
+aurait réclamé « / » une seconde fois, à côté de celui du Journal. Écrit en
+groupe d'abord, corrigé avant le commit — **le bundle ne l'aurait pas
+attrapé**, c'est le genre d'ambiguïté qui se paie sur l'appareil.
+
+**Les repas d'un modèle sont remplacés en bloc**, pour le motif établi en
+tranche 3 sur les portions : la machinerie d'une réconciliation ligne à ligne
+servirait des identifiants que **rien ne référence**. Une journée copie le nom
+et les objectifs dans ses propres lignes ; aucune colonne ne pointe vers
+`day_template_meal.id`.
+
+**Un repas récent rejoue les choix, pas les chiffres figés.** La capsule d'une
+vieille entrée est ce qui a été mangé *alors* ; ajouter un repas aujourd'hui
+est un ajout d'aujourd'hui, donc chaque ligne repasse par son aliment et fige
+ce qu'il dit maintenant. Le cas qui tranche : le §8.5 fait de la correction d'un
+produit copié « le mécanisme principal de compensation de la qualité inégale de
+la source » — rejouer la capsule réimporterait en silence l'erreur qu'on vient
+de corriger, sur le chemin construit pour répéter une habitude.
+
+La **quantité**, elle, reste figée : même arbitrage que le pré-remplissage de
+la tranche 3, la taille de portion figée gagne. Trois lignes repartent malgré
+tout de leur capsule, chacune pour son motif — une saisie libre n'a aucun
+aliment à relire, un aliment supprimé ne se lit pas (et le §5.3 déclare cette
+suppression gratuite), et un aliment dont l'**unité de base** a changé
+apparierait des macros pour 100 ml avec une quantité comptée en grammes. Ce
+dernier est un chiffre faux et parfaitement plausible : le seul genre qui
+compte.
+
+**Aucune dépendance n'est entrée.** Le choix d'un modèle passe par
+`ActionSheetIOS`, un vrai `UIAlertController` du cœur de React Native — la
+direction iOS 26 appliquée telle qu'écrite, le chrome appartient au système.
+
+## Ce que les retours d'appareil de la tranche 5 ont établi
+
+**Une dépendance native ne se juge pas sur sa légitimité mais sur l'écran qui
+la monte.** `react-native-svg` est au §5 et D13 en fait l'outil graphique
+unique : l'utiliser pour l'anneau n'enfreignait rien. Ce qui a décidé contre,
+c'est que le premier écran à le monter est le **Journal** — l'application
+cesserait de s'ouvrir jusqu'à un cycle CI et une réinstallation, et tout ce qui
+est livré à côté deviendrait intestable au même instant. `picker` et
+`expo-camera` avaient déjà facturé ça, les deux fois sur un écran qu'on pouvait
+éviter. Règle qui en sort : **avant d'ajouter du natif, demander quel écran le
+monte en premier.**
+
+**L'anneau en vues, et pourquoi ce n'est pas un second outil graphique.** Un
+cercle en `borderRadius`, deux demi-anneaux tournés, deux masques : cinquante
+lignes, une seule interface (`progress`, `size`, `thickness`, `color`). La
+tranche 7 le réécrit sur svg sans qu'un appelant bouge. La géométrie est
+reproduite en test — le composant ne se rend pas depuis Node, mais les deux
+rotations qu'il calcule, si.
+
+**Les deux seuils n'ont désormais même plus la même unité, et c'est mieux.**
+`KCAL_DISCREPANCY_THRESHOLD` reste un ratio — il vérifie qu'une valeur calorique
+déclarée s'accorde avec `4P + 4G + 9L` (§5.1). `KCAL_OVERSHOOT_KCAL` est
+maintenant **50 kcal**, un nombre de kilocalories. Avoir refusé de les confondre
+en une constante quand ils partageaient le nombre 10 est exactement ce qui a
+permis de changer l'un — de 10 % à 50 kcal — sans toucher l'autre.
+
+**Les calories sont le seul chiffre qui a le droit d'élever la voix.** Anneau
+rouge dès qu'il est plein ; les trois barres de macros ne rougissent jamais,
+journée comme repas. Dépasser en glucides n'est pas le même
+genre d'événement que dépasser sur la journée, et une rangée de barres rouges
+dirait que si.
+
+**Une macro tronquée est pire qu'une petite.** Les points de suspension tombent
+là où un chiffre tomberait, donc la ligne se lit comme une valeur au lieu de se
+lire comme une valeur manquante. La ligne grise du journal est descendue à 10
+points, interlettrage resserré, avec dix points de largeur repris sur les
+marges de la rangée.
+
+**Anneau et bandeau de macros n'apparaissent que contre un objectif.** Un
+anneau sans rien à remplir n'est pas un anneau à zéro, c'est une forme qui a
+l'air cassée — et une journée sans modèle en empilerait quatre. Sur un repas
+sans objectif, l'en-tête reste exactement ce qu'il était avant la tranche 5.
+
+**Un vocabulaire fermé de quatre noms de repas, et un numéro qui n'est pas
+stocké.** Petit-déjeuner, Déjeuner, Dîner, Collation. Un seul de chacun des
+trois premiers par journée et par modèle ; les collations se répètent, et ce
+sont les seules à avoir jamais besoin d'un numéro.
+
+Le numéro est **dérivé à chaque lecture**, jamais écrit. D9 interdit de stocker
+ce qui se dérive, et c'est le cas qui montre pourquoi ça compte au lieu d'être
+seulement propre : stockée, « Collation 2 » survivrait à la suppression de
+« Collation 1 » et resterait là à nommer un rang qui n'existe plus. Dérivée, la
+survivante redevient « Collation » toute seule. Une seule collation n'est pas
+numérotée — le numéro sert à en distinguer plusieurs.
+
+D'où `DayMealView.name` (ce qui est **stocké**, ce qu'une écriture adresse) et
+`DayMealView.label` (ce qui s'**affiche**). Le libellé vit sur la vue et non
+dans les composants parce qu'il ne se dérive pas d'un repas : il dépend de la
+journée entière, et deux composants le calculant seraient deux façons de
+numéroter.
+
+**Aucune contrainte SQL, et c'est la position tenue.** `day_meal` est gelée
+depuis `0001`, donc une `CHECK` demanderait de reconstruire la table dont pend
+tout le journal. L'index unique partiel, lui, **serait** ajoutable — les index
+sont la seule partie d'une migration qui le reste — et il est refusé quand même :
+une base en service porte déjà des repas nommés comme leur propriétaire les a
+tapés, une archive aussi, donc l'index échouerait à se construire sur exactement
+les données qu'il existe pour protéger. La règle vit à la frontière d'écriture,
+où elle peut nommer ce qu'elle refuse. Même arbitrage que `food_portion.name` en
+tranche 3.
+
+**Les lignes écrites avant la règle la gardent.** Renuméroter la vieille journée
+de quelqu'un serait réécrire l'historique pour satisfaire une règle qui
+n'existait pas quand il l'a faite (§5.2). Un nom hors liste s'affiche tel quel
+et ne bloque aucun ajout : n'étant pas l'un des quatre, il ne peut pas être
+l'occurrence unique de l'un d'eux.
+
+**La liste fermée devait atteindre les modèles.** Une journée copie ses repas de
+son modèle à la matérialisation : un modèle libre de nommer n'importe quoi
+poserait n'importe quoi sur une journée, et la règle tiendrait partout sauf à
+l'endroit qui décide de quoi une journée a l'air.
+
+**L'icône reste, l'anneau part.** Le glyphe dit quel repas c'est et reste vrai
+qu'un objectif ait été posé ou non. L'anneau est une proportion, et une
+proportion de rien n'est pas un anneau à zéro : c'est une forme qui a l'air
+cassée. Les trois repas fixes se distinguent par l'**heure** — lever, midi,
+nuit — et non par la nourriture, parce qu'une fourchette dirait « repas » sur
+les quatre ; la collation prend le seul glyphe de nourriture, ce qui la fait
+lire comme l'intruse qu'elle est.
+
+**Ajouter un repas est passé d'un `Alert.prompt` à une modale**, et le prompt
+n'aurait pas pu survivre au changement : un repas n'est plus un nom tapé mais un
+choix entre quatre, avec quatre objectifs facultatifs à côté. Une alerte porte
+un champ de texte et rien d'autre. Les objectifs se modifient par la même
+modale, depuis l'appui long — et ça touche la journée, jamais le modèle.
+
+**Une route modale non déclarée retombe sur une poussée latérale, en silence.**
+`(modals)/meal` manquait au `Stack` racine, donc elle prenait le défaut — une
+carte opaque venue de la **droite** — pendant que ses trois sœurs montaient du
+bas. `OverlayPanel` la levait déjà correctement ; personne ne l'a jamais vu,
+parce que l'écran qui la portait était poussé. Règle qui en sort : **toute route
+ajoutée sous `(modals)/` doit être déclarée**, et l'oubli ne produit ni erreur
+ni avertissement.
+
+**Les embouts arrondis sont des pastilles, et c'est exact plutôt
+qu'approchant.** SVG les donnerait par `strokeLinecap="round"`. Ici chaque
+extrémité est un cercle dont le **diamètre est l'épaisseur du trait**, centré
+sur la ligne médiane de l'arc — géométriquement la même forme qu'un embout
+rond. Un test le vérifie à 37°, un angle qu'aucun axe ne traverse : la distance
+au centre doit valoir le rayon de la médiane. Ils sont omis là où ils seraient
+faux et non seulement inutiles : un arc vide n'a pas d'extrémités à arrondir, un
+cercle fermé n'en a pas du tout.
+
+**Une jauge est le même arc, tourné.** `sweep` le raccourcit, `startAngle`
+tourne le cadre entier : trois quarts = 270° à partir de 225°, soit un vide de
+90° centré sur six heures. Une forme ouverte a deux bouts, et les bouts sont ce
+qui dit dans quel sens elle se remplit — un cercle fermé à 95 % et un à 5 % ne
+diffèrent que par l'endroit de la couture. **Les enfants restent hors de la
+rotation**, sinon le chiffre au centre pendrait de travers.
+
+**Une icône ne prend pas la couleur de ce qui l'entoure.** Le glyphe dit *quel*
+repas c'est ; l'anneau dit *comment* ce repas se passe. Les teinter ensemble
+faisait colorer un fait par l'autre — une collation virant à l'ambre avait l'air
+d'une autre collation — et faisait passer l'icône par trois couleurs là où la
+même icône, sur un repas sans objectif, restait grise.
+
+**Une molette native plutôt qu'une feuille d'action, pour une valeur que le
+formulaire porte.** `Picker` sur iOS **est** un `UIPickerView`, déjà au §5 et
+déjà dans le binaire, donc aucune reconstruction. Il est en ligne et montre tous
+les choix à la fois : une feuille est une décision qu'on prend et qu'on congédie,
+une molette est une valeur sur laquelle on peut revenir pendant que les quatre
+champs d'objectif sont encore devant soi.
+
+**La couleur voyage avec le glyphe, dans le même module.** Séparées, le soleil
+pourrait finir bleu le jour où quelqu'un ajoute une cinquième sorte ou réordonne
+une palette — et tout l'intérêt de la couleur est qu'elle s'accorde avec ce qui
+est dessiné. **Quelle** couleur est un jeton de thème, parce qu'elle doit
+différer entre clair et sombre ; **quel** jeton est l'affaire de
+`meal-symbol.ts`, parce que ça dépend de ce que le glyphe représente.
+
+Les quatre voisinent délibérément les teintes des macros, et ça ne coûte rien :
+un repas s'identifie par la **forme** de son glyphe et une barre de macro par
+l'**étiquette** écrite dessus, donc ni l'un ni l'autre n'est jamais décodé par
+la couleur. Ce qui aurait coûté quelque chose, c'est une couleur qui contredit
+l'image.
+
+**Le seuil d'un glyphe est 3:1, pas 4,5:1.** WCAG sépare le texte des objets
+graphiques, et une icône est le second. Le midi a été assombri de `#c08a00` à
+`#a8780a` pour avoir de la marge — il était à 3,05.
+
+**Une roue est le bon contrôle pour une quantité, le mauvais pour quatre mots.**
+Le `UIPickerView` a été essayé pour le nom du repas puis ressorti : la valeur
+d'une quantité est continue et tourner **est** le réglage, alors que quatre mots
+fixes se touchent. Elle coûtait un défilement pour atteindre ce qui pouvait être
+un toucher, et mangeait cent cinquante points d'un panneau dont les quatre
+champs d'objectif sont tout le propos.
+
+**Un dixième de gramme est une mesure sur un aliment et du bruit sur une
+somme.** Les macros d'une journée et d'un repas s'affichent à l'entier ;
+une entrée individuelle garde sa décimale, parce que là le chiffre **est** la
+mesure. Divergence assumée avec le §5.1, consignée en `specs §14.6`. Le calcul
+interne reste en pleine précision : c'est un arrondi au point d'affichage, comme
+tous les autres de `core/format`. Un test pose `formatMacro` et
+`formatMacroWhole` côte à côte pour qu'on ne les fusionne pas par mégarde.
+
+**Une dépendance native déjà autolinkée ne coûte pas de cycle CI.** `expo-font`
+est une dépendance directe d'`expo` et porte son `expo-module.config.json` :
+son module natif est **déjà dans le client installé**. Les fontes se chargent
+donc à l'exécution et non à la compilation, et Nunito est arrivée sans
+reconstruire. C'est le pendant exact de la règle posée pour l'anneau — avant
+d'ajouter du natif, demander quel écran le monte en premier — et ici la réponse
+était « il est déjà là ».
+
+Elle est quand même **déclarée au `package.json`** plutôt que laissée
+transitive : une montée mineure d'`expo` pourrait la retirer, et le §5 veut ses
+dépendances nommées.
+
+**Trois fichiers statiques, pas une fonte variable.** Un seul fichier aurait été
+plus propre, mais `fontWeight` ne pilote pas un axe variable à travers React
+Native : iOS enregistre l'instance par défaut et **synthétise** le gras — un
+faux épaissi qui se voit à côté de vraie typographie, surtout aux petites
+tailles, c'est-à-dire presque partout ici. La graisse choisit donc le fichier.
+
+**Et la graisse redevient `normal` en sortie.** Sinon iOS reçoit une demande de
+gras *sur une fonte déjà grasse* et en synthétise un par-dessus : le double-gras
+qui donne mauvaise réputation aux polices embarquées.
+
+**Un composant plutôt qu'un réglage global, parce qu'il n'y en a plus.**
+`Text.defaultProps` au démarrage était le recours habituel ; React 19 a supprimé
+`defaultProps` des composants fonction. Y revenir demanderait une affirmation de
+type sur un composant — interdite par le §4 — pour écrire un champ que React ne
+lit plus. D'où `core/ui/text.tsx` et trente-cinq imports déplacés une fois ; le
+prochain changement de police en changera un.
+
+**Le fichier d'actifs est séparé de la table de correspondance**, et ce n'est pas
+du rangement : `require` d'un `.ttf` parle à Metro et pas à Node. Sans la
+coupure, la table — le mécanisme entier, ce qui produit du faux gras en silence
+quand elle est fausse — ne pourrait pas être testée du tout.
+
+**Rien n'est bloqué sur la fonte.** Le chargement peut échouer ; `fontFamilyFor`
+rend alors `undefined`, chaque `Text` retombe sur la police système, et c'est
+exactement ce qui a tourné pendant cinq tranches. Retenir l'application pour une
+fonte mettrait un écran blanc sur le chemin critique d'une application dont
+toute la cible est quinze secondes.
+
+**Une boîte carrée qui ne peint que son haut laisse un écart qu'on prend pour
+une marge.** Une jauge trois quarts descend à cos(45°) × rayon sous le centre,
+soit une vingtaine de points au-dessus du bord sur une boîte de 186. La bande
+vide se lisait comme un espace entre le chiffre et les barres ; elle est reprise
+par une marge négative, avec l'arithmétique écrite à côté du nombre.
+
+**Le mint est `#08c99c` dans les deux thèmes, et ce qu'il coûte est mesuré, pas
+caché.** La variante assombrie a été essayée et refusée à vue : elle se lisait
+comme une autre couleur, plus terne, et non comme la même adaptée. Prix : **2,13:1
+sur blanc**, sous le 4,5:1 d'une étiquette et sous le 3:1 d'une forme dessinée.
+En thème clair, tout ce qui porte l'accent est donc pâle. Sur le sombre il
+atteint 9,60:1.
+
+**Le test enregistre la mesure au lieu d'asséner un seuil que la palette ne
+tient plus.** Supprimer l'assertion aurait effacé la connaissance ; la garder
+aurait fait échouer la CI sur une chose déjà décidée. Elle vérifie donc la
+valeur exacte et nomme la sortie : **si ça gêne à l'usage, la réponse n'est pas
+un vert plus sombre — c'est une surface plus sombre derrière lui.**
+
+**Changer une couleur de marque casse ce qui empruntait son jeton.** Deux cas,
+et aucun n'était visible avant de mesurer :
+
+- `onAccent` a dû passer au quasi-noir (blanc sur mint : 1,81:1). Or le bouton
+  de suppression peignait `danger` et écrivait `onAccent` dessus — le noir sur
+  le rouge tombe à 4,16:1. D'où un jeton **`onDanger`** propre : deux fonds
+  différents ne prennent plus la même étiquette.
+- Le **réticule du scanner** empruntait `onAccent` parce qu'il se trouvait être
+  blanc. Il est dessiné sur un flux caméra, pas sur une surface que
+  l'application peint : il serait devenu quasi noir sur l'étagère sombre où se
+  trouve justement un code-barres. Règle qui en sort : **ce qui est posé sur du
+  contenu que l'application ne peint pas ne prend pas un jeton de thème.**
+
+**Le chiffre des calories reste dans la couleur du texte, quel que soit
+l'état.** C'est la seule chose que le §8.3 exige lisible sans aucune
+interaction, et un nombre rouge sur une carte se lit comme une erreur avant de
+se lire comme une quantité. L'anneau autour dit déjà l'état, là où un état a sa
+place.
+
+**Quatre aliments plutôt que quatre moments.** Le lever, le midi et la nuit
+séparaient proprement les trois repas fixes mais laissaient la collation seule à
+n'être pas un moment — une intruse parmi ses propres sœurs. Café, couverts,
+verre de vin, carotte : chacun se reconnaît sans être déduit, et aucun n'est
+l'exception. Coût connu et assumé : une fourchette dit « un repas » en général
+plutôt que « déjeuner » en particulier.
+
+Le vin est tenu à l'écart du rouge destructif **par la saturation et non par la
+teinte** — ce sont les deux seuls rouges d'une carte de repas, et l'un des deux
+veut dire « ça supprime ».
+
+**Deux entrées de menu pour une seule pensée, c'est une de trop.** « Changer de
+repas » et « modifier les objectifs » forçaient l'utilisateur à choisir quelle
+moitié d'une modification il voulait **avant** qu'on lui montre l'une ou
+l'autre. Fusionnées en « Modifier le repas », elles deviennent aussi
+**atomiques**, ce qu'elles n'étaient pas : deux écritures voulaient dire qu'un
+arrêt forcé entre les deux pouvait laisser un repas renommé avec ses anciens
+objectifs (§2.2). Le test qui compte n'est pas que la fusion marche — c'est
+qu'un changement refusé pour doublon n'ait **rien** bougé, chiffres compris.
+
+Corollaire de câblage : les repas voisins ne remontent plus du carrousel
+jusqu'à l'écran. La modale lit la journée elle-même et décide là quels types
+sont libres — un paramètre de moins à faire traverser trois composants pour
+répondre à une question que le destinataire pouvait poser lui-même.
+
+**Une jauge pleine n'est pas un événement.** Atteindre l'objectif veut dire
+qu'il ne reste rien, ce qui est le but *atteint* : l'arc se ferme donc dans la
+couleur ordinaire et la garde tant que le dépassement reste petit. Le rouge y a
+été posé un temps, puis une bande ambre — et l'ambre était pire, parce qu'elle
+mettait un avertissement sur l'instant de la réussite **puis un second juste
+après**. Deux états, un seuil, rouge seulement au-delà de la marge.
+
+**La marge est de 50 kcal, absolue, et pas un pourcentage.** La différence n'est
+pas cosmétique : 10 % accorde 260 kcal de tolérance à une journée
+d'entraînement à 2 600 et seulement 140 à une journée de repos à 1 400. Le mou
+qu'un pourcentage donne est maximal exactement là où l'objectif est le plus dur
+à tenir, ce qui est à l'envers. Cinquante kilocalories, c'est un biscuit,
+n'importe quel jour.
+
+**Deux cercles sur une rangée doivent faire la même taille, ou ils cessent
+d'être une paire.** L'anneau du repas et le bouton d'ajout sont aux deux bouts
+de la même ligne, et l'œil lit une paire avant de lire l'un ou l'autre. À 34
+contre 54, c'étaient une petite chose et une grande qui se trouvaient toutes
+deux rondes. Une seule constante sert les deux, pour qu'ils ne divergent pas à
+la prochaine retouche.
+
+**Un compromis de contraste doit rester un seul compromis.** L'étiquette blanche
+sur le mint est à 2,13:1 — exactement ce que l'accent coûte déjà contre une
+carte blanche. Le quasi-noir aurait été lisible (8,98:1) et a été refusé à vue :
+il se lisait comme une étiquette noire sur un bouton vif plutôt que comme un
+contrôle plein. Le test ne vérifie donc pas un seuil mais **que le compromis ne
+s'aggrave pas** : l'étiquette sur l'accent n'est jamais pire que l'accent sur
+du blanc. Et la même valeur dans les deux thèmes, parce que le fond est le même
+hex dans les deux : un bouton d'une seule couleur ne peut pas porter deux
+étiquettes selon un réglage qui ne le change pas.
+
+**Un titre fait ce qu'une carte ne peut pas faire seule : dire ce qu'elle est.**
+« Résumé » et « Alimentation » sont deux questions différentes — ce à quoi la
+journée revient, et ce qui a été mangé — et des cartes empilées se lisent comme
+une seule liste tant que rien ne les nomme. Ferrés à gauche et en gras : ils
+appartiennent à la page, pas à la carte en dessous. Et tirés vers le bas sur
+elle, écartés de celle du dessus, parce qu'un titre appartient à ce qui le
+suit.
+
+**`calendar` n'a pas de variante `.fill`.** Seulement `.circle.fill`. Donc rendre
+les icônes d'en-tête « pleines » obligeait à choisir : apparier un disque plein
+et un glyphe plein ordinaire aurait fait lire une icône comme un bouton et
+l'autre comme une étiquette. Les deux sont passées au disque.
+
+**Un titre de barre native n'est pas atteint par un composant `Text`.** La barre
+est une `UINavigationBar` et son titre est peint par UIKit, pas rendu dans
+l'arbre React : `core/ui/text.tsx` ne le voit jamais. Sa police vient de
+`headerTitleStyle` ou de nulle part — et rien n'étant posé, la date est restée
+en San Francisco au-dessus d'une page entièrement en Nunito, sans que rien ne
+le signale. **À vérifier pour tout texte peint par le système** : titres de
+`Stack`, `Alert`, `ActionSheetIOS`, molettes.
+
+**Une quatrième fonte pour une seule ligne, et c'est justifié.** Bold était la
+plus lourde embarquée, donc « encore plus gras » n'avait nulle part où aller :
+demander 800 contre un fichier Bold fait **synthétiser** le surplus à iOS au
+lieu d'utiliser une graisse plus lourde. `Nunito-ExtraBold` existe pour le nom
+de la journée et rien d'autre.
+
+**SF Symbols n'a pas de calendrier rempli.** `calendar` n'existe qu'au trait, et
+tous ses remplissages sont des `.circle.fill` — le glyphe dans un disque opaque,
+ce qui n'est pas le glyphe lui-même plein. `31.square.fill` est la seule
+métaphore de date réellement pleine du jeu, et c'est celle d'Apple.
+
+**Et les noms de symboles sont vérifiables ici, ce que j'ignorais.**
+`sf-symbols-typescript` type `SFSymbol` comme l'union de tous les symboles
+réels : un nom inventé échoue au `tsc` au lieu de rendre un carré vide sur
+l'appareil. Le point ouvert qui disait le contraire tombe.
+
+**Une surcharge ne suffit pas à « changer le modèle » d'une journée.** Elle
+n'est lue que tant que la journée est **virtuelle** ; sur une journée
+matérialisée elle écrit une ligne qui ne change rien à l'écran, la journée
+portant ses propres repas (§8.1). Proposer le contrôle là et n'avoir aucun effet
+aurait été **un contrôle qui ment**. `setDayTemplate` fait donc les deux moitiés
+en une transaction : la surcharge est enregistrée, et les objectifs du modèle
+choisi sont appliqués à la journée quand elle existe déjà.
+
+Pas de rétroactif pour autant : le §8.2 fait de l'action de l'utilisateur sur
+une journée l'acte qui la définit, et c'est une action sur *cette* journée, une
+fois. Deux refus sont écrits dans la fonction — une journée virtuelle n'est pas
+matérialisée au passage (choisir n'est pas agir), et « suivre le planning » sur
+une journée dont le planning ne dit rien **ne vide pas** ses objectifs, ce qui
+serait un effacement que personne n'a demandé.
+
+**Trois comportements derrière une seule ligne en cachaient un manquant.** Le
+contrôle était tour à tour un constat, un bouton « appliquer les objectifs » et
+un sélecteur — et le cas qui comptait le plus n'existait pas : dès le
+petit-déjeuner logué, le modèle de la journée cessait d'être modifiable. Quand
+un composant a trois branches selon l'état, la question à poser n'est pas si
+elles sont justes mais **s'il en manque une**.
+
+**Apparier par position était faux, et il a fallu une suppression pour le
+voir.** Appliquer un modèle marchait index à index. Supprimez le dîner et tout
+ce qui suit le trou remonte d'un cran : les objectifs du dîner s'écrivaient sur
+la collation. **Rien ne le montrait** — les chiffres étaient plausibles, ils
+étaient simplement les mauvais, ce qui est le seul genre de faux qui compte.
+
+L'appariement se fait par **nom**, ce que les noms peuvent porter depuis qu'ils
+sont une liste fermée de quatre avec au plus un petit-déjeuner, un déjeuner et
+un dîner par journée : « le dîner de la journée » est une question à une seule
+réponse. Les collations, la seule sorte qui se répète, sont appariées dans
+l'ordre et le reste est rendu — manquantes d'un côté, non réclamées de l'autre.
+
+**Un repas du modèle que la journée n'a plus revient, à sa place dans le
+modèle.** Appliquer un modèle réordonne la journée : chaque repas qu'il nomme
+prend sa place dans sa séquence, et ce qu'il ne nomme pas suit derrière dans
+l'ordre qu'il avait déjà.
+
+**Renuméroter est sûr, et pour deux raisons qui ne se devinent pas.** Les
+entrées pendent de `day_meal.id` et **jamais** de sa position, donc rien de
+logué ne bouge quand les rangs changent. Et `day_meal` ne porte délibérément
+aucun index unique sur `(date, position)` — noté comme une rigueur inégale du
+§2.3 dès la tranche 1 — ce qui laisse ces lignes traverser des positions en
+double au milieu de la transaction au lieu d'exiger un emplacement temporaire
+pour permuter. `food_portion`, qui porte un tel index, avait dû être remplacée
+en bloc pour exactement ce motif. **Une absence de contrainte qui paie quatre
+tranches plus tard.**
+
+Ce qui reste intouché : un nom, une entrée, et tout repas que le modèle ne
+nomme pas — celui-là garde tout et ne perd que ses chiffres.
+
+**`Link.AppleZoom` a été essayé pour le calendrier, puis retiré — et le motif
+vaut pour tout usage futur.** La transition d'Apple **recule l'écran
+présentateur** pendant que la feuille est levée, et `LinkZoomTransitionSource`
+n'expose que `identifier`, `alignment` et `animateAspectRatioChange` : rien qui
+l'en empêche. Vérifié dans l'API, pas supposé. Le Journal rétréci derrière, avec
+la fenêtre blanche au-dessus et en dessous, coûtait plus que l'ancrage au bouton
+ne rapportait.
+
+**Trois choses apprises en chemin, toutes payées cher.** Une transition native
+et une animation maison ne peuvent pas partager une fenêtre : `OverlayPanel`
+repliait sa fenêtre *puis* appelait `router.back()`, si bien qu'au départ de la
+navigation il ne restait rien à rétrécir vers le bouton. Un voile est incompatible
+avec le zoom : c'est l'écran *tout entier* qui sort du bouton, assombrissement
+compris. Et **passer de la modale au push ne supprime pas le recul** — je l'ai
+cru, essayé, et ça a coûté le geste au passage : le renvoi interactif d'une pile
+native est le balayage horizontal, donc un glissement vers le bas n'a rien à
+suivre.
+
+**La fenêtre n'a aucun fond posé**, d'où le blanc. `backgroundColor` dans
+`app.config.ts` ou `expo-system-ui` le corrigeraient, les deux nativement, donc
+au prix d'un cycle CI. Non fait : sans zoom, plus rien ne découvre la fenêtre.
+
+## Points ouverts après la tranche 5
+- ~~**Vérification iPhone en attente.**~~ **Faite pour l'essentiel** : la
+  tranche 5 a tourné sur l'appareil et a rendu six retours d'interface, tous
+  traités. **Le bandeau et les cartes de repas remaniés n'ont pas encore été
+  revus sur l'appareil** — l'anneau en particulier, dont la géométrie est
+  testée en arithmétique mais dont le rendu ne l'est pas.
+- **La jauge n'a jamais été peinte.** Deux demi-anneaux tournés, clippés, dans
+  un cadre lui-même tourné de 225°, plus deux pastilles placées par
+  trigonométrie : c'est la seule chose de cette tranche dont aucun test ne dit à
+  quoi elle ressemble. Ce qu'il faut regarder : l'arc à 0 (rien, pas même une
+  pastille), la jonction à mi-course, le raccord des deux bouts sur le vide du
+  bas, et l'alignement des pastilles sur l'épaisseur du trait.
+- **Le vide de la jauge est à six heures, et le chiffre est dedans.** Si le
+  texte déborde sur les arcs, c'est la taille du cadre (186) qu'il faut monter,
+  pas celle du chiffre — le rayon et l'épaisseur sont liés au premier.
+- **Les repas récents affichent le nom stocké, sans numéro de collation.** Le
+  numéro se dérive de la journée entière, que cette liste ne charge pas — elle
+  lit un repas par ligne. « Collation · 15 septembre » reste sans ambiguïté ;
+  à rouvrir si deux collations du même jour s'y côtoient et se confondent.
+- ~~**Plus rien ne dit pourquoi une journée matérialisée ne suit pas son
+  modèle.**~~ **Partiellement répondu** : la ligne au pied des repas nomme le
+  modèle de la journée, donc le snapshot est de nouveau visible. Ce qui reste
+  non dit, c'est *pourquoi* il ne bouge pas quand le modèle est édité — mais le
+  contrôle offre désormais la sortie, ce qui vaut mieux qu'une explication.
+- **Le thème clair porte un accent à 2,13:1, et c'est une décision prise en
+  connaissance de cause.** Chevrons, « Enregistrer », le glyphe du bouton
+  d'ajout et la jauge y sont pâles. Rien ne casse ; tout est moins lisible. La
+  sortie, si ça gêne, est une surface plus sombre derrière l'accent — jamais un
+  vert plus sombre, qui est précisément ce qui a été refusé.
+- ~~**Les noms de SF Symbols ne sont pas vérifiés.**~~ **Ils le sont** : le type
+  `SFSymbol` est l'union de tous les symboles réels, donc `tsc` refuse un nom
+  qui n'existe pas. Reste non vérifié le **rendu** — qu'un symbole présent dans
+  le jeu soit disponible sur la version d'iOS de l'appareil.
+
+- ~~**La police de l'application n'a pas changé.**~~ **Nunito est en place**
+  (Regular, SemiBold, Bold), sous licence OFL, chargée à l'exécution.
+- **Nunito n'a jamais été vue à l'écran.** Les trois fichiers sont dans le
+  bundle et la table graisse → fonte est testée, mais rien ne dit qu'iOS les
+  enregistre sous les noms attendus : une famille mal nommée rend la police
+  système sans erreur. Le témoin est un titre en 700 — s'il n'est pas plus gras
+  que le corps, c'est le nom de famille qui est faux, pas la graisse.
+- **`fontVariant: ['tabular-nums']` n'est pas vérifié sur Nunito.** Une
+  vingtaine de chiffres de l'application en dépendent pour s'aligner en colonne.
+  Si Nunito ne porte pas la fonctionnalité `tnum`, les colonnes de nombres
+  danseront — visible surtout sur la liste des entrées et les barres de macros.
+- **Les contrôles natifs gardent la police système**, et c'est irréductible :
+  `ActionSheetIOS`, les alertes, les en-têtes de `Stack` et le
+  `UIPickerView` des quantités sont dessinés par UIKit. Nunito s'arrête à ce
+  que l'application dessine elle-même.
+- **Un repas nommé librement avant la règle reste tel quel, et c'est voulu**
+  (§5.2). Conséquence à connaître : sa fiche ne propose que les types encore
+  libres, donc un tel repas ne peut pas être « corrigé » vers un type déjà pris
+  sans supprimer l'autre d'abord.
+- **Le parcours à vérifier en premier**, parce qu'il est le critère de sortie :
+  créer « Jour d'entraînement » avec quatre repas et leurs objectifs, l'affecter
+  au mardi, surcharger une date depuis le Journal, et lire un vrai restant sur
+  une journée jamais touchée **et** sur une journée déjà loguée.
+- **`ActionSheetIOS` n'a jamais tourné dans ce projet.** C'est du natif de base
+  et il n'y a pas de raison qu'il échoue, mais aucun test Node ne le touche et
+  c'est le seul contrôle système que la tranche introduit.
+- **Un modèle sans repas est permis et mène à une journée sans repas.** Cohérent
+  — le §8.3 laisse déjà vider une journée matérialisée de tous ses repas — mais
+  l'écran n'offre alors rien à quoi ajouter. L'échappatoire existe (« Ajouter un
+  repas » matérialise et crée), elle n'est simplement pas signalée.
+- **Le taux d'adhérence de la tranche 7 devra exclure les journées sans
+  objectif**, comme il exclut déjà celles sans entrée. Toute journée
+  matérialisée avant `0004` est dans ce cas, définitivement, sauf action
+  explicite de l'utilisateur.
+- **`readDayPlan` fait trois lectures là où deux suffiraient** quand la
+  surcharge répond : les trois candidats sont lus avant d'appeler la fonction
+  pure, pour que la règle de préséance vive à un seul endroit au lieu d'être
+  réécrite en chaîne de retours anticipés. Deux lectures sur clé primaire de
+  plus, sur une base locale synchrone. Non mesuré, parce qu'il n'y a rien à
+  mesurer.
+- **`useDay` accroche le Journal à `off_suspended_until`.** `setting` est dans
+  sa liste de tables pour le pointeur par défaut, et le limiteur y écrit à
+  chaque 429 : scanner en magasin invalidera le Journal. Coût réel, le rejeu de
+  quelques lectures sur index. Nommé plutôt que découvert.
+- **Le générateur de jeu de démonstration ne crée aucun modèle.** Il produit des
+  journées matérialisées sans objectif, donc le bandeau reste muet dessus. À
+  rouvrir si la tranche 7 a besoin de données avec objectifs pour éprouver
+  l'adhérence.
+- **Deux piles natives déclarent les mêmes options d'en-tête**, celle du Journal
+  et celle des Réglages. C'est le deuxième utilisateur, donc la règle du
+  deuxième utilisateur est atteinte de justesse — mais le partage ferait un
+  composant de quatre lignes d'options. Laissé tel quel ; le troisième tranchera.
+
 ## Points ouverts après la tranche 4
 - ~~**Vérification iPhone en attente.**~~ **Faite, scan compris.** Reste non
   exercé ce qui demande de provoquer une panne : hors ligne, réponse illisible,
@@ -1465,8 +2097,8 @@ doit porter son propre matériau.
   type TypeScript et le tableau `one_of` du catalogue. `PORTION_NAMES` montre
   la forme correcte — données d'abord, type dérivé. Non corrigé : ce serait
   toucher du code livré sans autre motif que la cohérence.
-- **Hors périmètre, décidé** : les repas récents du §8.4a (le §7 cadre la
-  tranche 3 sur les aliments ; ils iront en tranche 5, où un repas a un sens),
+- ~~**Hors périmètre, décidé** : les repas récents du §8.4a.~~ **Livrés en
+  tranche 5**, où un repas a effectivement un sens. Restent hors périmètre :
   ~~le seuil « au-delà de 900 kcal pour 100 g »~~ **livré en tranche 4**, et
   ~~`barcode` avec son index unique partiel~~ **livrés par `0003`, en un ALTER
   TABLE et un CREATE INDEX — le report a tenu exactement ce qu'il promettait.**
@@ -1498,9 +2130,11 @@ doit porter son propre matériau.
   l'appareil.
 - L'heure de bascule de la journée n'est **pas lue** : `currentLocalDate()`
   utilise le défaut de minuit. Son réglage et sa lecture arrivent tranche 7.
-- Pas d'anneau de progression : il réclame `react-native-svg`, dépendance
-  native que le §7 place avec les primitives graphiques de la tranche 7. Sans
-  objectif avant la tranche 5, ce serait un cycle CI pour un cercle vide.
+- ~~Pas d'anneau de progression : il réclame `react-native-svg`.~~ **Livré en
+  tranche 5, dessiné en vues.** Le raisonnement tenait sauf sur un point : svg
+  est **natif**, et le premier écran qui le monterait est le Journal — donc
+  l'application cesserait de s'ouvrir jusqu'à un cycle CI. Voir
+  `progress-ring.tsx`, à réécrire sur svg en tranche 7 derrière les mêmes props.
 - **Hypothèse signalée** : le §5.1 parle d'un écart kcal de 10 % sans nommer le
   dénominateur. La valeur théorique est retenue. Faux positif connu et sans
   remède dans les specs : l'alcool fait 7 kcal/g et n'est pas une macro suivie,

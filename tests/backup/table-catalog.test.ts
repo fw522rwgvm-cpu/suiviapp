@@ -34,16 +34,53 @@ describe('table catalog', () => {
     expect(unclassified).toEqual([]);
   });
 
-  it('carries the tables of slices 0 to 3, parents before children', () => {
+  it('carries the tables of slices 0 to 5, parents before children', () => {
     // The importer follows this order, never the file's key order.
+    //
+    // The planning block sits between the settings and the reference data, so
+    // the order reads as configuration, then reference data, then journal.
+    // day_template leads it because the other three reference it.
     expect(exportedTables().map((table) => table.name)).toEqual([
       'setting',
+      'day_template',
+      'day_template_meal',
+      'planning_weekday',
+      'planning_override',
       'food',
       'food_portion',
       'day',
       'day_meal',
       'journal_entry',
     ]);
+  });
+
+  it('dates the planning tables to 0004, so a slice-4 archive stays readable', () => {
+    // Same mechanism as the food tables below, one slice on: an archive
+    // written before 0004 carries no planning keys, and their absence is a
+    // fact about its age rather than corruption.
+    const byName = new Map(exportedTables().map((table) => [table.name, table]));
+    for (const name of [
+      'day_template',
+      'day_template_meal',
+      'planning_weekday',
+      'planning_override',
+    ]) {
+      expect(byName.get(name)?.introducedIn).toBe('0004_templates_planning');
+    }
+  });
+
+  it('leaves planning_weekday.weekday to its CHECK rather than a value rule', () => {
+    // The one_of rule takes strings and this column is an integer, so SQL
+    // carries the constraint instead — which it can afford to, a week never
+    // gaining an eighth day. Asserted so that adding a rule here later is a
+    // deliberate act rather than a reflex.
+    const byName = new Map(
+      exportedTables()
+        .find((table) => table.name === 'planning_weekday')
+        ?.columns.map((column) => [column.name, column]) ?? [],
+    );
+    expect(byName.get('weekday')?.value).toBeNull();
+    expect(byName.get('template_id')?.value).toEqual({ rule: 'entity_id' });
   });
 
   it('dates the food tables to 0002, which is what makes a slice-2 archive readable', () => {

@@ -53,6 +53,15 @@ export default function TabsLayout() {
         <NativeTabs.Trigger.Label>Stats</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
 
+      {/*
+        A real directory rather than a group, unlike (journal) — and the
+        difference is the whole reason (journal) has parentheses. The Journal
+        MUST stay the tabs group's index route, so its folder may not add a
+        path segment. The Settings must not be that index, so its folder is
+        free to be a plain one: app/(tabs)/settings/index.tsx is /settings, and
+        a second parenthesised group here would have claimed / for a second
+        time.
+      */}
       <NativeTabs.Trigger name="settings">
         <NativeTabs.Trigger.Icon sf="gearshape" />
         <NativeTabs.Trigger.Label>Réglages</NativeTabs.Trigger.Label>

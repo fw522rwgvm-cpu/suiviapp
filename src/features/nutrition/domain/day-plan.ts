@@ -1,6 +1,8 @@
 import type { LocalDate } from '@/core/date';
+import type { DayTemplateId } from '@/core/db/schema/planning';
 import type { DayMealId } from '@/core/db/schema/nutrition';
 import { addMacros, ZERO_MACROS, type Macros } from './macros';
+import { mealLabels, MEAL_KINDS, type MealKind } from './meal-kinds';
 
 /**
  * What a day is made of, materialised or not (specs 8.2).
@@ -23,15 +25,22 @@ import { addMacros, ZERO_MACROS, type Macros } from './macros';
  * (D9) — the day_meal rows it produces are a snapshot, and D9 says in as many
  * words that frozen is not derived.
  *
- * When slice 5 lands, "no template applies" becomes "the planning designates
- * nothing", and this survives as the "no default template configured" path.
+ * SLICE 5 LANDED AND THIS SURVIVED, exactly as written: "no template applies"
+ * now means "the planning designates nothing", which is a fresh database and
+ * is also every database whose last template has just been deleted. Seeding a
+ * template in 0004 would not have removed this path — only added a second
+ * source of meal names beside it.
  */
-export const DEFAULT_MEAL_NAMES = [
-  'Petit-déjeuner',
-  'Déjeuner',
-  'Dîner',
-  'Collation',
-] as const;
+/**
+ * One of each kind, in the order a day is eaten.
+ *
+ * BUILT FROM MEAL_KINDS rather than spelled out again. That the fallback day
+ * happens to be exactly the four kinds is a decision and not an identity — a
+ * fifth kind would not automatically belong here — but deriving it means this
+ * list can never name a meal the vocabulary does not have, which is the way the
+ * two could actually drift.
+ */
+export const DEFAULT_MEAL_NAMES: readonly MealKind[] = [...MEAL_KINDS];
 
 /** A meal as the plan describes it, before it exists in the database. */
 export interface PlannedMeal {
@@ -46,6 +55,34 @@ export function defaultDayMeals(): PlannedMeal[] {
 }
 
 /**
+ * What a date's planning prescribes: a template, and the meals it carries.
+ *
+ * ONE SHAPE FOR TWO USES, and that is the point. It renders a virtual day, and
+ * it feeds the snapshot taken when that day is materialised — so what the user
+ * saw is what they get, and the two cannot drift apart. The identifier and the
+ * name travel with the meals because day.template_id_snapshot and
+ * template_name_snapshot are written from the same resolution, in the same
+ * transaction.
+ */
+export interface DayPlan {
+  /** Null when the planning designates nothing at all. */
+  templateId: DayTemplateId | null;
+  templateName: string | null;
+  meals: PlannedMeal[];
+}
+
+/**
+ * The plan when the planning answers nothing (specs 8.1 assumes it always
+ * does; see DEFAULT_MEAL_NAMES for why that assumption needed an answer).
+ *
+ * The snapshot columns stay NULL, which is the truthful record: no template
+ * applied, so naming one would invent a fact.
+ */
+export function fallbackDayPlan(): DayPlan {
+  return { templateId: null, templateName: null, meals: defaultDayMeals() };
+}
+
+/**
  * A meal as a screen renders it. The identifier is null while the day is
  * virtual, which is why writes address a meal by position and not by id: on a
  * virtual day there is no id to address it with, and tapping "add" on the
@@ -54,7 +91,17 @@ export function defaultDayMeals(): PlannedMeal[] {
 export interface DayMealView {
   id: DayMealId | null;
   position: number;
+  /** What is STORED: one of the four kinds. What a write addresses. */
   name: string;
+  /**
+   * What is SHOWN: the same, with the snacks numbered when there are several.
+   *
+   * Carried on the view rather than worked out by each screen, because it
+   * cannot be derived from one meal — it depends on the whole day. A component
+   * doing it alone would have to be handed the day anyway, and two of them
+   * doing it would be two chances to number differently.
+   */
+  label: string;
   targets: Macros | null;
 }
 
@@ -62,15 +109,43 @@ export interface DayView {
   date: LocalDate;
   /** False while nothing has been written for this date. */
   materialized: boolean;
+  /**
+   * The template this day SHOWS, which is two different facts under one name.
+   *
+   * On a materialised day it is template_name_snapshot: the template as it was
+   * called on the day this one was frozen, and possibly a template that no
+   * longer exists. On a virtual day it is the template the planning resolves
+   * to right now.
+   *
+   * That is not a conflation, it is the same question answered in the two
+   * regimes specs 8.2 defines — "where do these meals come from" — and the
+   * screen needs exactly one answer to show. Null when neither applies.
+   */
+  templateName: string | null;
   meals: DayMealView[];
 }
 
-/** The day as it reads before anyone has acted on it. No rows, no writes. */
-export function virtualDay(date: LocalDate): DayView {
+/**
+ * The day as it reads before anyone has acted on it. No rows, no writes.
+ *
+ * The plan is passed in rather than fetched, because this module knows no
+ * database — and because the caller has already resolved it to decide whether
+ * the day is virtual at all. A template holding no meal yields a day holding
+ * no meal, which is legitimate: specs 8.3 already lets a materialised day be
+ * emptied of every one of its meals.
+ */
+export function virtualDay(date: LocalDate, plan: DayPlan = fallbackDayPlan()): DayView {
+  const labels = mealLabels(plan.meals.map((meal) => meal.name));
+
   return {
     date,
     materialized: false,
-    meals: defaultDayMeals().map((meal) => ({ id: null, ...meal })),
+    templateName: plan.templateName,
+    meals: plan.meals.map((meal, index) => ({
+      id: null,
+      ...meal,
+      label: labels[index] ?? meal.name,
+    })),
   };
 }
 
@@ -78,10 +153,14 @@ export function virtualDay(date: LocalDate): DayView {
  * The day's targets are the sum of its meals' and are never stored
  * (specs 8.1, D9).
  *
- * Null when no meal carries one, which is the whole of slice 1: without
- * templates there is no target, so the banner shows what was eaten rather than
- * what is left. Section 7 says as much — the remaining banner becomes
- * meaningful in slice 5.
+ * Null when no meal carries one — which was the whole of slice 1, and is now
+ * the state of a day the planning answers nothing for, and of every day
+ * materialised before 0004. The banner then shows what was eaten rather than
+ * what is left, and says so.
+ *
+ * Meals carrying a target and meals carrying none can coexist: a "Collation"
+ * with no goal is legitimate, and the sum is over those that have one. That is
+ * specs 8.1 read literally — the day's targets are the sum of its meals'.
  */
 export function dayTargets(meals: readonly Pick<DayMealView, 'targets'>[]): Macros | null {
   const present = meals

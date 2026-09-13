@@ -1,5 +1,5 @@
 import { SymbolView } from 'expo-symbols';
-import { Link, Stack, useRouter } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { useEffect, useLayoutEffect, useState } from 'react';
 import {
   Alert,
@@ -23,7 +23,6 @@ import {
   useAddMeal,
   useDeleteEntry,
   useDeleteMeal,
-  useRenameMeal,
 } from '../data/day-queries';
 import type { JournalEntryView } from '../data/day-reads';
 import { DayPage } from '../components/day-page';
@@ -103,7 +102,6 @@ export function JournalScreen() {
   }, [requested, clear]);
 
   const addMeal = useAddMeal();
-  const renameMeal = useRenameMeal();
   const deleteMeal = useDeleteMeal();
   const deleteEntry = useDeleteEntry();
 
@@ -198,35 +196,38 @@ export function JournalScreen() {
     deleteEntry.mutate(entry.id);
   }
 
+  /**
+   * A MODAL NOW, WHERE IT WAS AN Alert.prompt, and the prompt could not have
+   * survived the change: a meal is no longer a name typed in but a choice
+   * between four kinds, with four optional targets beside it. An alert holds
+   * one text field and nothing else.
+   */
   function promptAddMeal(pageDate: LocalDate): void {
-    // No message under the title: the second argument of Alert.prompt is a
-    // MESSAGE, not a placeholder, so "Son nom" sat as a line of prose above a
-    // field that is self-evidently for a name. Renaming a meal already passed
-    // undefined here; this was the odd one out.
-    Alert.prompt('Nouveau repas', undefined, (name) => {
-      const trimmed = name.trim();
-      if (trimmed !== '') addMeal.mutate({ date: pageDate, name: trimmed });
-    });
+    router.push({ pathname: '/(modals)/meal', params: { date: pageDate } });
   }
 
+  /**
+   * ONE ENTRY WHERE THERE WERE TWO.
+   *
+   * "Changer de repas" and "modifier les objectifs" were separate rows here,
+   * and they are one thought: this meal is not what it says, or not aiming
+   * where it should. Splitting them made the user pick which half of an edit
+   * they wanted before being shown either — and backed it with two writes, so
+   * a forced quit between them could rename a meal and leave its old targets.
+   *
+   * The siblings are no longer needed: the screen behind the modal reads the
+   * day itself, and decides there which kinds are still free.
+   */
   function promptMealActions(pageDate: LocalDate, meal: DayMealView): void {
-    Alert.alert(meal.name, undefined, [
+    Alert.alert(meal.label, undefined, [
       { text: 'Annuler', style: 'cancel' },
       {
-        text: 'Renommer',
+        text: 'Modifier le repas',
         onPress: () =>
-          Alert.prompt(
-            'Renommer le repas',
-            undefined,
-            (name) => {
-              const trimmed = name.trim();
-              if (trimmed !== '') {
-                renameMeal.mutate({ date: pageDate, mealPosition: meal.position, name: trimmed });
-              }
-            },
-            'plain-text',
-            meal.name,
-          ),
+          router.push({
+            pathname: '/(modals)/meal',
+            params: { date: pageDate, mealPosition: String(meal.position) },
+          }),
       },
       {
         text: 'Supprimer le repas',
@@ -265,33 +266,34 @@ export function JournalScreen() {
           headerRight: () => (
             <View style={styles.headerGroup}>
               {/*
-                Direct access to a date (specs 8.3), through the system's zoom
-                transition: this button genuinely becomes the calendar screen,
-                and the interactive dismissal brings it back into the button.
+                Direct access to a date (specs 8.3).
 
-                Link.AppleZoom is what asks for it, and it animates a
-                NAVIGATION — which is why the calendar is a route rather than a
-                window drawn over this screen. Below iOS 18 the same navigation
-                simply happens with the ordinary push; nothing here is
-                conditional.
+                IT WAS A Link.AppleZoom, and the button genuinely became the
+                screen it presented. Dropped because Apple's transition scales
+                the Journal back while the sheet is up and offers no way to stop
+                it — see the note in calendar-screen.tsx. An ordinary push, and
+                the panel raises itself from the bottom like every other window.
 
                 The day being shown travels out as a parameter. The day chosen
                 comes back through the request context, not through the URL.
               */}
-              <Link
-                href={{ pathname: '/(tabs)/(journal)/calendar', params: { date } }}
-                asChild
+              <Pressable
+                onPress={() =>
+                  router.push({
+                    pathname: '/(tabs)/(journal)/calendar',
+                    params: { date },
+                  })
+                }
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Choisir une date"
               >
-                <Link.AppleZoom>
-                  <Pressable
-                    hitSlop={12}
-                    accessibilityRole="button"
-                    accessibilityLabel="Choisir une date"
-                  >
-                    <SymbolView name="calendar" size={20} tintColor={theme.colors.accent} />
-                  </Pressable>
-                </Link.AppleZoom>
-              </Link>
+                <SymbolView
+                  name="31.square.fill"
+                  size={22}
+                  tintColor={theme.colors.accent}
+                />
+              </Pressable>
 
               {/* The library, reached from the Journal header (specs 7). */}
               <Pressable
@@ -300,7 +302,11 @@ export function JournalScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Bibliothèque"
               >
-                <SymbolView name="books.vertical" size={20} tintColor={theme.colors.accent} />
+                <SymbolView
+                  name="books.vertical.fill"
+                  size={22}
+                  tintColor={theme.colors.accent}
+                />
               </Pressable>
             </View>
           ),

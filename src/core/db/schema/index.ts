@@ -3,5 +3,6 @@
 // do not exist yet would be a layer built "for later", which section 7 rules
 // out.
 export * from './setting';
+export * from './planning';
 export * from './nutrition';
 export * from './off';

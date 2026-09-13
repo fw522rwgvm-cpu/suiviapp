@@ -1,7 +1,8 @@
 import { SymbolView } from 'expo-symbols';
 import { Stack, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '@/core/ui/text';
 import { formatKcal } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import { useFoods, useSetFoodFavorite } from '../data/food-queries';
