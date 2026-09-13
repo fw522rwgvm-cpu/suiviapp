@@ -10,6 +10,7 @@ import { GlassButton } from '@/core/ui/glass-button';
 import { OverlayPanel, useDismiss, usePanelHeading } from '@/core/ui/overlay-panel';
 import { SwipeBack } from '@/core/ui/swipe-back';
 import type { FoodId, RecipeId } from '@/core/db/schema';
+import { Segmented } from '@/core/ui/segmented';
 import { useAddEntries } from '../data/day-queries';
 import {
   useFavoriteFoods,
@@ -84,14 +85,45 @@ import { ListSeparator } from '@/core/ui/list-separator';
  * own — specs 3 asks for it, and the Journal opens it when an already-logged
  * food is tapped — but the fast path never travels through the router.
  *
- * ## WHAT IS DELIBERATELY ABSENT
+ * ## THE THREE LISTS OF 8.4a ARE ALL HERE NOW, AND ONLY ONE AT A TIME
  *
- * Recipes (slice 6) and recent meals both belong to 8.4a and neither is here:
- * section 7 scopes this slice to the personal food database. Open Food Facts
- * results (8.4b) arrive in slice 4 and will append a second section below
- * "Mes aliments" — which is why the personal results already sit under a
- * heading rather than in a bare list.
+ * Foods arrived in slice 3, Open Food Facts results in slice 4, recent meals
+ * in slice 5, recipes in slice 6 — and stacking all four made the screen a
+ * scroll: the recipes sat below a meals list below two food lists, on the one
+ * screen D16 budgets in taps rather than in milliseconds.
+ *
+ * A segmented filter under the search field now selects which, always exactly
+ * one, foods by default. The field narrows whichever is showing, and the three
+ * do not answer it the same way — which is a fact about them rather than an
+ * inconsistency:
+ *
+ *  - foods and recipes swap QUICK ACCESS for THE WHOLE LIBRARY once a term is
+ *    typed, because the thing you type the name of is usually the thing quick
+ *    access does not hold;
+ *  - a recent meal is a PAST MEAL, so a term can only narrow what is there.
+ *
+ * And the remote search belongs to the foods alone: submitting under another
+ * filter does nothing at all, because a request against the quota of D11 that
+ * nobody will see is the one gesture here that costs something off the phone.
  */
+/**
+ * The three lists of specs 8.4a, and which one is on screen.
+ *
+ * Their order is 8.4a's own — foods, then meals, then recipes — with the
+ * recipes brought next to the foods because the two behave identically under
+ * the search field and the meals do not.
+ *
+ * Declared as data with the type derived from it, the shape PORTION_NAMES set
+ * in slice 3, so the control and the state cannot disagree about what exists.
+ */
+const LIST_FILTERS = [
+  { value: 'foods', label: 'Aliments' },
+  { value: 'recipes', label: 'Recettes' },
+  { value: 'meals', label: 'Repas' },
+] as const;
+
+type ListFilter = (typeof LIST_FILTERS)[number]['value'];
+
 export function AddEntryScreen({
   date,
   mealPosition,
@@ -126,6 +158,17 @@ export function AddEntryScreen({
   const [scanning, setScanning] = useState(false);
   const [chosen, setChosen] = useState<FoodId | null>(null);
   const [chosenRecipe, setChosenRecipe] = useState<RecipeId | null>(null);
+  /**
+   * Which of the three lists the screen is showing (demande explicite).
+   *
+   * ALWAYS EXACTLY ONE, never none, and 'foods' by default: specs 8.4a orders
+   * the three as foods, meals, recipes, and the foods are what the fifteen
+   * second target of section 4 is measured on.
+   *
+   * Before it, all three were stacked and the recipes sat below a meals list
+   * below two food lists — a scroll on the screen D16 budgets in taps.
+   */
+  const [listFilter, setListFilter] = useState<ListFilter>('foods');
   const [freeEntry, setFreeEntry] = useState(false);
   const [showBasket, setShowBasket] = useState(false);
   const [basket, setBasket] = useState<PendingEntry[]>([]);
@@ -433,22 +476,66 @@ export function AddEntryScreen({
                 Submitting the field IS the explicit trigger specs 8.4b asks
                 for. The search key on the keyboard already says "rechercher",
                 so the gesture exists without adding a control to the screen.
+
+                GUARDED BY THE FILTER since it gained one: a remote search is
+                the one gesture on this screen that costs something outside the
+                phone, and firing it while the recipes are on screen would
+                spend a request against the quota of D11 that nobody would ever
+                see. The trigger is silent rather than disabled — the keyboard
+                key cannot be taken away, and a search for a recipe is a
+                perfectly sensible thing to submit.
               */
-              onSubmit={() => setSubmitted(term.trim() === '' ? null : term.trim())}
+              onSubmit={() =>
+                setSubmitted(
+                  listFilter !== 'foods' || term.trim() === '' ? null : term.trim(),
+                )
+              }
             />
 
             {/*
-              Directly under the field, because that is what it explains: a
-              remote list that is missing or old. It follows the field rather
-              than heading the screen, so an offline phone does not announce
-              itself before being asked anything.
+              WHICH LIST, directly under the field it narrows (demande
+              explicite). Always exactly one, never none, foods by default.
+
+              Under the field rather than above it because it governs what the
+              field searches: read top down it says "look for this — among
+              these". Above, it would have separated the two entry points from
+              the field they are already deliberately placed over.
             */}
-            {notice === null ? null : <OffNoticeBanner notice={notice} now={Date.now()} />}
+            <Segmented
+              options={LIST_FILTERS}
+              value={listFilter}
+              onChange={(next) => {
+                setListFilter(next);
+                // A remote result belongs to the foods list and to no other.
+                // Leaving it behind would make it reappear on the way back,
+                // answering a term that may since have been retyped.
+                if (next !== 'foods') setSubmitted(null);
+              }}
+              grow
+            />
+
+            {/*
+              THE BANNER BELONGS TO THE FOODS, so it only appears with them.
+
+              It explains a remote list that is missing or old, and the remote
+              list is the foods' alone: under the recipes or the meals it would
+              be a sentence about something not on screen. It sits under the
+              filter rather than under the field for the same reason it used to
+              sit under the field — it heads what it explains.
+            */}
+            {listFilter === 'foods' && notice !== null ? (
+              <OffNoticeBanner notice={notice} now={Date.now()} />
+            ) : null}
           </View>
 
           {/*
             Only the lists scroll — including the empty state, which is about
             what the lists hold rather than about how to fill them.
+
+            ONE LIST AT A TIME since the filter arrived. The three were stacked
+            before, and the recipes sat below a meals list below two food
+            lists: a scroll, on the screen D16 budgets in taps rather than in
+            milliseconds.
           */}
           <ScrollView
             style={styles.fill}
@@ -456,73 +543,77 @@ export function AddEntryScreen({
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
           >
-            {!searching &&
-            (favorites.data?.length ?? 0) === 0 &&
-            (recents.data?.length ?? 0) === 0 &&
-            (foods.data?.length ?? 0) === 0 ? (
-              <Text style={[styles.empty, { color: theme.colors.textMuted }]}>
-                Aucun aliment en bibliothèque. Utilisez la saisie libre, ou créez un
-                aliment depuis l’icône de bibliothèque du Journal.
-              </Text>
+            {listFilter === 'foods' ? (
+              searching ? (
+                <>
+                  <Section
+                    title="Mes aliments"
+                    foods={results}
+                    onPick={setChosen}
+                    emptyText={`Aucun résultat pour « ${term.trim()} ».`}
+                    quickAdd={repeatable}
+                  />
+
+                  {/*
+                    BELOW the personal results, never folded into them: specs
+                    8.4b puts personal results first and visually distinguished,
+                    and D11 explains why they cannot share a rhythm — the local
+                    list answers every keystroke, the remote one only on submit.
+                  */}
+                  <RemoteSection
+                    term={term}
+                    submitted={submitted}
+                    products={remoteResults}
+                    loading={remote.isFetching || lookup.isFetching}
+                    onSubmit={() => setSubmitted(term.trim() === '' ? null : term.trim())}
+                    onPick={(product) => setPicked(product.barcode)}
+                  />
+                </>
+              ) : (favorites.data?.length ?? 0) === 0 &&
+                (recents.data?.length ?? 0) === 0 &&
+                (foods.data?.length ?? 0) === 0 ? (
+                <Text style={[styles.empty, { color: theme.colors.textMuted }]}>
+                  Aucun aliment en bibliothèque. Utilisez la saisie libre, ou créez un
+                  aliment depuis l’icône de bibliothèque du Journal.
+                </Text>
+              ) : (
+                <>
+                  <Section
+                    title="Favoris"
+                    foods={favorites.data ?? []}
+                    onPick={setChosen}
+                    quickAdd={repeatable}
+                  />
+                  <Section
+                    title="Récents"
+                    foods={recents.data ?? []}
+                    onPick={setChosen}
+                    quickAdd={repeatable}
+                  />
+                </>
+              )
             ) : null}
 
-            {searching ? (
-              <>
-                <Section
-                  title="Mes aliments"
-                  foods={results}
-                  onPick={setChosen}
-                  emptyText={`Aucun résultat pour « ${term.trim()} ».`}
-                  quickAdd={repeatable}
-                />
+            {/*
+              Unlike a recent meal, a recipe fills the basket — see the note in
+              the component for why that is the reading of 8.4a rather than an
+              exception to 8.4. The term switches it between quick access and
+              the whole library, exactly as it does for the foods.
+            */}
+            {listFilter === 'recipes' ? (
+              <RecipesSection onPick={setChosenRecipe} term={term} />
+            ) : null}
 
-                {/*
-                  BELOW the personal results, never folded into them: specs
-                  8.4b puts personal results first and visually distinguished,
-                  and D11 explains why they cannot share a rhythm — the local
-                  list answers every keystroke, the remote one only on submit.
-                */}
-                <RemoteSection
-                  term={term}
-                  submitted={submitted}
-                  products={remoteResults}
-                  loading={remote.isFetching || lookup.isFetching}
-                  onSubmit={() => setSubmitted(term.trim() === '' ? null : term.trim())}
-                  onPick={(product) => setPicked(product.barcode)}
-                />
-              </>
-            ) : (
-              <>
-                <Section
-                  title="Favoris"
-                  foods={favorites.data ?? []}
-                  onPick={setChosen}
-                  quickAdd={repeatable}
-                />
-                <Section
-                  title="Récents"
-                  foods={recents.data ?? []}
-                  onPick={setChosen}
-                  quickAdd={repeatable}
-                />
-
-                {/*
-                  Below the foods, as specs 8.4a orders them: foods, then
-                  meals, then recipes. It writes and closes rather than filling
-                  the basket — see the note in the component for why that is
-                  the reading of 8.4a rather than an exception to 8.4.
-                */}
-                <RecentMealsSection date={date} mealPosition={mealPosition} />
-
-                {/*
-                  Last of the three lists, as specs 8.4a orders them: foods,
-                  then meals, then recipes. Unlike a recent meal it fills the
-                  basket — see the note in the component for why that is the
-                  reading of 8.4a rather than an exception to 8.4.
-                */}
-                <RecipesSection onPick={setChosenRecipe} />
-              </>
-            )}
+            {/*
+              It writes and closes rather than filling the basket — again, the
+              note in the component says why that is the reading of 8.4a rather
+              than an exception to 8.4. A term can only narrow what is there: a
+              recent meal is a past meal, and there is no wider library behind
+              it to fall back on.
+            */}
+            {listFilter === 'meals' ? (
+              <RecentMealsSection date={date} mealPosition={mealPosition} term={term} />
+            ) : null}
           </ScrollView>
 
           <Confirm date={date} mealPosition={mealPosition} basket={basket} />

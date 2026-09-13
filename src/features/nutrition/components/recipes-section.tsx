@@ -1,9 +1,11 @@
+import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Text } from '@/core/ui/text';
 import { useTheme } from '@/core/theme';
 import { ListSeparator } from '@/core/ui/list-separator';
 import type { RecipeId } from '@/core/db/schema';
-import { useQuickAccessRecipes } from '../data/recipe-queries';
+import { useQuickAccessRecipes, useRecipes } from '../data/recipe-queries';
+import { searchFoods } from '../domain/food-search';
 import { RecipeRow } from './recipe-row';
 
 /**
@@ -30,23 +32,58 @@ import { RecipeRow } from './recipe-row';
  * mean either inventing a quantity or opening a screen anyway, and both undo
  * the promise the rows above it just made.
  *
- * The section disappears when the library has no recipes rather than showing
- * an empty heading — there is nothing to explain here, the library being where
- * a recipe is made.
+ * ## A TERM SWITCHES THE LIST IT IS SHOWING
+ *
+ * The same arrangement the foods already have on this screen, and it is worth
+ * stating because it is not obvious from either half: with no term, quick
+ * access — favourites then recents. With one, THE WHOLE LIBRARY, ranked.
+ *
+ * Searching inside quick access would be the plausible alternative and it is
+ * wrong: a recipe you have never logged and never starred is exactly the one
+ * you would type the name of, and it is precisely the one quick access does
+ * not hold.
  */
-export function RecipesSection({ onPick }: { onPick: (recipeId: RecipeId) => void }) {
+export function RecipesSection({
+  onPick,
+  term = '',
+}: {
+  onPick: (recipeId: RecipeId) => void;
+  /** Empty means quick access; anything else searches the whole library. */
+  term?: string;
+}) {
   const theme = useTheme();
-  const recipes = useQuickAccessRecipes();
+  const quick = useQuickAccessRecipes();
+  const all = useRecipes();
 
-  const favorites = recipes.data?.favorites ?? [];
-  const recents = recipes.data?.recents ?? [];
+  const searching = term.trim() !== '';
 
-  if (favorites.length === 0 && recents.length === 0) return null;
+  const shown = useMemo(() => {
+    if (searching) return searchFoods(all.data ?? [], term);
+    const favorites = quick.data?.favorites ?? [];
+    const recents = quick.data?.recents ?? [];
+    return [...favorites, ...recents];
+  }, [searching, term, all.data, quick.data]);
+
+  const library = all.data ?? [];
+
+  if (shown.length === 0) {
+    return (
+      <Text style={[styles.empty, { color: theme.colors.textMuted }]}>
+        {library.length === 0
+          ? 'Aucune recette. Créez-en une depuis l’icône de bibliothèque du Journal : elle calcule ses macros depuis ses ingrédients.'
+          : searching
+            ? `Aucune recette pour « ${term.trim()} ».`
+            : 'Aucune recette favorite ni récente. Cherchez par son nom, ou marquez-en une d’une étoile.'}
+      </Text>
+    );
+  }
 
   return (
+    // NO HEADING OF ITS OWN: the filter above already says "Recettes", and a
+    // card headed by the name of the tab that selected it is the same word
+    // twice in the space of an inch. The foods keep theirs because they are
+    // two groups — favourites and recents — under one tab.
     <View style={styles.section}>
-      <Text style={[styles.title, { color: theme.colors.text }]}>Recettes</Text>
-
       <View
         style={[
           styles.list,
@@ -64,7 +101,7 @@ export function RecipesSection({ onPick }: { onPick: (recipeId: RecipeId) => voi
           star on each row already says which half a row is in, so a divider
           would be saying it twice.
         */}
-        {[...favorites, ...recents].map((item, index) => (
+        {shown.map((item, index) => (
           <View key={item.id}>
             {index === 0 ? null : <ListSeparator />}
             <RecipeRow recipe={item} onPress={() => onPick(item.id)} />
@@ -79,4 +116,5 @@ const styles = StyleSheet.create({
   section: { gap: 8 },
   title: { fontSize: 17, fontWeight: '700' },
   list: { borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
+  empty: { fontSize: 15, lineHeight: 21 },
 });

@@ -8,6 +8,7 @@ import { useTheme } from '@/core/theme';
 import { ListSeparator } from '@/core/ui/list-separator';
 import { useDismiss } from '@/core/ui/overlay-panel';
 import { useAddRecentMeal, useRecentMeals } from '../data/day-queries';
+import { searchFoods } from '../domain/food-search';
 
 /**
  * Recent meals, on the quick-access screen (specs 8.4a).
@@ -31,10 +32,21 @@ import { useAddRecentMeal, useRecentMeals } from '../data/day-queries';
 export function RecentMealsSection({
   date,
   mealPosition,
+  term = '',
 }: {
   date: LocalDate;
   /** Null while no meal is targeted; the section then renders nothing. */
   mealPosition: number | null;
+  /**
+   * Narrows the list by name.
+   *
+   * A recent meal is a PAST MEAL, so there is no wider library to fall back on
+   * the way the foods and the recipes have one: searching here can only filter
+   * what is already there. Said plainly because the other two lists behave
+   * differently under the same field, and the difference is a fact about meals
+   * rather than an inconsistency.
+   */
+  term?: string;
 }) {
   const theme = useTheme();
   // Read once and frozen for the life of the panel, as the Journal does: one
@@ -47,13 +59,29 @@ export function RecentMealsSection({
   const recents = useRecentMeals();
   const add = useAddRecentMeal();
 
-  const meals = recents.data ?? [];
-  if (mealPosition === null || meals.length === 0) return null;
+  const all = recents.data ?? [];
+  // Through the same pure function the foods and the recipes use, so "matches"
+  // means one thing on this screen. A meal has no brand, which the searchable
+  // shape has allowed since slice 6.
+  const meals = term.trim() === '' ? all : searchFoods(all, term);
+
+  if (mealPosition === null) return null;
+
+  if (meals.length === 0) {
+    return (
+      <Text style={[styles.emptyText, { color: theme.colors.textMuted }]}>
+        {all.length === 0
+          ? 'Aucun repas récent. Ils apparaissent ici dès qu’un repas a été enregistré.'
+          : `Aucun repas récent pour « ${term.trim()} ».`}
+      </Text>
+    );
+  }
 
   return (
+    // NO HEADING OF ITS OWN since slice 6: the filter above the list already
+    // says "Repas", and a card headed by the name of the tab that selected it
+    // is the same word twice in the space of an inch.
     <View style={styles.section}>
-      <Text style={[styles.sectionTitle, { color: theme.colors.textMuted }]}>Repas</Text>
-
       <View
         style={[
           styles.card,
@@ -126,4 +154,5 @@ const styles = StyleSheet.create({
   detail: { fontSize: 13 },
   kcal: { fontSize: 13, fontVariant: ['tabular-nums'] },
   note: { fontSize: 12, lineHeight: 16, marginHorizontal: 4 },
+  emptyText: { fontSize: 15, lineHeight: 21 },
 });

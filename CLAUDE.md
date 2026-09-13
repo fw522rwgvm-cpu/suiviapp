@@ -2182,6 +2182,68 @@ l'objet `food` ; `nutrition.ts` importe seulement le **type** `RecipeId`. Un
 sens unique — mais `planning.ts` n'importe rien de `nutrition.ts`, donc aucun
 précédent n'existait. Vérifié par `npm run bundle:ios`, pas supposé.
 
+## Ce que le filtre de listes a établi (14/09/2026)
+
+**Trois listes empilées étaient une file d'attente.** L'écran d'ajout a gagné
+ses listes une par tranche — aliments en 3, Open Food Facts en 4, repas récents
+en 5, recettes en 6 — et à la quatrième les recettes se retrouvaient sous les
+repas sous deux listes d'aliments. Sur l'écran que D16 budgète en **touchers**,
+c'était devenu un défilement. Un filtre segmenté les remplace : toujours
+exactement un actif, jamais aucun, Aliments par défaut.
+
+**Le filtre est SOUS le champ, pas au-dessus.** Lu de haut en bas il dit
+« cherche ceci, parmi ceux-là ». Au-dessus, il aurait séparé les deux entrées
+rapides — Scanner, Saisie libre — du champ qu'elles surplombent délibérément
+depuis la tranche 4.
+
+**Les trois listes ne répondent pas de la même façon au terme, et c'est un fait
+sur elles.** Aliments et recettes échangent l'accès rapide contre **toute la
+bibliothèque** dès qu'un terme est tapé ; un repas récent ne peut être que
+*filtré*. La raison est dans le §14.6 n° 5 : un repas récent **est** un repas
+passé, donc il n'existe aucun repas qu'on pourrait chercher sans l'avoir déjà
+mangé. Chercher à l'intérieur de l'accès rapide serait l'alternative plausible
+et elle est fausse — ce dont on tape le nom est précisément ce que l'accès
+rapide ne contient pas.
+
+**La recherche distante appartient aux Aliments seuls, et le déclencheur est
+silencieux plutôt que désactivé.** Valider le champ sous Recettes ou Repas ne
+fait rien ; changer de filtre efface le résultat distant. C'est le seul geste
+de cet écran qui coûte quelque chose **hors** du téléphone, et dépenser une
+requête contre le quota de D11 pour une liste que personne ne regardera est
+exactement ce que le limiteur existe pour éviter. Vérifié à la source plutôt
+que supposé : `useOffSearch` est `enabled` sur un terme soumis non vide, donc
+mettre `submitted` à `null` suffit à ce qu'aucune requête ne parte.
+
+**Le bandeau d'échec suit la liste qu'il explique.** Il était « directement
+sous le champ » ; il est maintenant sous le filtre et seulement avec les
+aliments. Sous les recettes, il parlerait de quelque chose qui n'est pas à
+l'écran.
+
+**Un titre de section qui répète l'onglet actif est le même mot deux fois.**
+`RecipesSection` et `RecentMealsSection` ont perdu le leur. Les aliments
+gardent les leurs — « Favoris », « Récents » — parce que ce sont deux groupes
+sous un seul onglet, ce qui est autre chose.
+
+**Le « + » de la bibliothèque crée le type affiché au lieu de demander lequel.**
+Il posait une question à deux réponses dans une feuille d'action ; le filtre
+vient de rendre la réponse **visible à l'écran**, donc la reposer serait
+redemander ce que l'utilisateur vient de dire. Deux touchers pour ce qui en
+vaut un, à chaque fois. Créer l'autre type coûte un toucher sur le filtre, et
+devient prévisible au lieu d'être mémorisé.
+
+**`core/ui/segmented.tsx` arrive avec deux utilisateurs réels le premier jour**,
+ce qui est exactement ce que la règle de migration demande. Il diffère de
+`TagFilter` sur un point qui n'est pas cosmétique : **toucher l'option active
+ne fait rien**, là où toucher la puce active l'efface. Un tag *narrowe* une
+liste qui a du sens sans lui ; celui-ci *sélectionne* quelle liste s'affiche, et
+« aucune » n'est pas un état que quelqu'un a demandé.
+
+*Duplication connue, nommée plutôt que cachée* : `unit-toggle.tsx` et
+`yield-toggle.tsx` dessinent la même chose et lui sont antérieurs. Ils sont
+laissés tels quels — toucher du code livré pour la seule cohérence est ce que
+ce projet décline — mais celui des deux qu'on éditera ensuite pour ses propres
+raisons doit se replier dessus au lieu d'être copié une quatrième fois.
+
 ## Points ouverts après la tranche 6
 - **Vérification iPhone en attente.** Rien de l'interface des recettes n'a été
   touché sur l'appareil. À regarder en premier : le bloc groupé du Journal — le
@@ -2203,6 +2265,11 @@ précédent n'existait. Vérifié par `npm run bundle:ios`, pas supposé.
   aliment. Choisir un aliment est *ajouter* un ingrédient. Volontaire : laisser
   re-lier remplacerait une capsule par les valeurs d'un autre aliment, en
   silence. À rouvrir si supprimer puis recréer un aliment devient courant.
+- **Trois dessins du même contrôle segmenté.** `core/ui/segmented.tsx` est le
+  bon, `unit-toggle.tsx` et `yield-toggle.tsx` lui sont antérieurs et copient
+  ses styles. Non fusionnés : ce serait toucher du code livré sans autre motif
+  que la cohérence. À replier au premier de ces deux fichiers qu'on rouvrira
+  pour une autre raison.
 - **La recherche de la bibliothèque ne cherche pas dans les tags.** Seul le nom
   et la marque sont classés ; un tag ne se trouve qu'en touchant sa puce. C'est
   la conséquence directe du refus de fondre les deux filtres, et la réserve est
