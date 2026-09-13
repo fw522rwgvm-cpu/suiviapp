@@ -53,9 +53,15 @@ L'application doit tolérer un arrêt forcé à tout moment sans perte.
 ---
 
 ## État du projet
-Tranches 0, 1 et 2 livrées et vérifiées sur l'iPhone. **Tranche 3 (base
-d'aliments personnelle) écrite, typée, testée et bundlée — rien de son
-interface n'a encore tourné sur l'appareil.**
+Tranches 0 à 3 livrées. **Tranche 3 (base d'aliments personnelle) vérifiée sur
+l'iPhone**, interface comprise : la mise au point de son interface a duré plus
+longtemps que son écriture, et c'est de là que vient la moitié de ce fichier.
+
+Ce qui n'a **pas** été vérifié sur l'appareil et reste ouvert : la recherche
+sans accent (« creme » doit trouver « Crème fraîche », donc Hermes doit porter
+`String.prototype.normalize` ou le repli doit prendre la main), et
+l'aller-retour export / import avec les tables `food` et `food_portion`
+dedans.
 
 **Base de départ, résolue.** La tranche 2 a été fusionnée sur `main` le
 12/09/2026 (PR #3). `tranche-3-food` partait de `tranche-2-export` et contient
@@ -986,15 +992,44 @@ l'attente commencée** — sans quoi chaque journée déjà en cache serait reta
 d'une seconde au nom de la fluidité, ce que personne ne veut. Et seul le
 **reste** est attendu, donc ça ne peut jamais ralentir une journée lente.
 
+## Ce que la mise au point de la tranche 3 a laissé derrière elle
+
+Des pièces partagées, nées d'une demande précise et devenues la façon dont
+l'application s'écrit. À connaître avant d'en redessiner une :
+
+- `core/ui/form-section.tsx` — l'idiome groupé encastré des Réglages :
+  `FormSection`, `FormRow`, `FormInput`, plus `FormNavigation` et ses chevrons
+  au-dessus du clavier. **La rangée est le champ** ; rien ne se dessine autour
+  d'une valeur.
+- `core/ui/list-separator.tsx` — le filet entre deux rangées, en retrait des
+  deux côtés. Il a remplacé six définitions et trois retraits différents.
+- `core/ui/cross-fade.tsx` — deux contenus qui se croisent, pour un contrôle
+  qui change de sens sans bouger.
+- `core/ui/overlay-panel.tsx` — la fenêtre par-dessus la journée, et depuis la
+  tranche 3 son bandeau : `usePanelHeading` fait remonter le titre depuis
+  l'écran qui le connaît, comme `useDismiss` fait redescendre la fermeture.
+- `features/nutrition/components/` — `unit-toggle`, `macro-fields`,
+  `macro-row`, `quantity-wheel` et sa règle de domaine `wheel-choice`.
+
+Et une règle d'interface qui vaut pour toute la suite : **le chrome appartient
+au système, le contenu est à nous.** Un `GlassButton` dans un en-tête natif est
+du verre dans du verre ; une étoile dans une rangée de liste est du contenu et
+doit porter son propre matériau.
+
 ## Points ouverts après la tranche 3
-- **Vérification iPhone en cours.** Première passe faite : l'application
-  démarre, la migration `0002` s'applique, et deux défauts ont été trouvés et
-  corrigés — le chiffre pré-rempli non sélectionné, et l'absence de sortie des
-  modales (voir « deux pièges d'interface » ci-dessus). Restent à confirmer :
-  que la sélection tient maintenant, que la recherche trouve « crème » depuis
-  « creme » (c'est-à-dire que Hermes porte `String.prototype.normalize`, ou que
-  le repli prend la main), et que l'en-tête du Journal à deux icônes par côté
-  ne serre pas.
+- ~~Vérification iPhone en cours.~~ **Faite pour l'interface.** L'application
+  démarre, la migration `0002` s'applique, et tout ce qui se touche a été repris
+  à l'usage. Restent à confirmer, faute d'avoir été exercés : la recherche sans
+  accent (Hermes et `String.prototype.normalize`) et l'aller-retour export /
+  import avec les nouvelles tables.
+- **L'écran de quantité n'a plus de champ de saisie.** Une quantité se choisit
+  à la molette, donc taper 137 g demande de faire tourner une roue. C'est le
+  prix accepté d'un choix qui rend les fractions de portion possibles ; à
+  rouvrir si une quantité précise devient pénible.
+- **La quantité de référence d'un aliment n'est plus saisissable** : 100 g ou
+  100 ml. Une étiquette donnant ses valeurs pour 30 g se convertit à la main.
+  `display_ref_qty` reste en base et vaut 100, donc le champ peut revenir sans
+  migration.
 - **Hypothèse signalée** : `String.prototype.normalize` sur Hermes. Sonde
   écrite, repli écrit, les deux testés en Node — mais lequel s'exécute sur
   l'appareil ne se sait qu'en le regardant.
