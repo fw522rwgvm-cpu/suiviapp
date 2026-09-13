@@ -34,7 +34,7 @@ import { useRequestDate } from '../hooks/requested-date';
  * while the way in had come from the header — the one place a transition must
  * not disagree with itself.
  *
- * So the screen animates nothing of its own now. It draws a card and lets the
+ * So the screen animates nothing of its own now. It draws a sheet and lets the
  * transition own both directions, which is the whole reason it is a route.
  * OverlayPanel stays right for the other windows — add, quantity, free entry,
  * meal — because none of those has a source view to come out of.
@@ -44,7 +44,7 @@ import { useRequestDate } from '../hooks/requested-date';
  * OverlayPanel darkens what is behind it. Under a zoom transition the whole
  * presented screen is what grows out of the button, dimming included — which
  * would be a small dark square swelling from the header. A transparent screen
- * carrying one card means the card alone comes out of the control, which is
+ * carrying one sheet means the sheet alone comes out of the control, which is
  * exactly what the transition is for.
  *
  * ## THERE IS NO Link.AppleZoomTarget HERE, AND THAT IS DELIBERATE
@@ -73,7 +73,7 @@ export function CalendarScreen({ date }: { date: LocalDate }) {
    * Asked for first, then dismissed.
    *
    * The Journal applies the day while the transition is still running, so what
-   * is uncovered behind the shrinking card is already the right date rather
+   * is uncovered behind the shrinking sheet is already the right date rather
    * than the old one changing under the eye.
    */
   function choose(chosen: LocalDate): void {
@@ -85,13 +85,14 @@ export function CalendarScreen({ date }: { date: LocalDate }) {
     <View style={[styles.screen, { paddingTop: insets.top + 12 }]}>
       <View
         style={[
-          styles.card,
+          styles.sheet,
           {
             backgroundColor: theme.colors.surface,
-            borderColor: theme.colors.border,
-            borderRadius: theme.radius.xl,
+            borderTopColor: theme.colors.border,
+            borderTopLeftRadius: theme.radius.xl,
+            borderTopRightRadius: theme.radius.xl,
+            paddingBottom: insets.bottom + 16,
           },
-          theme.shadow,
         ]}
       >
         <View style={styles.actions}>
@@ -112,20 +113,35 @@ export function CalendarScreen({ date }: { date: LocalDate }) {
 }
 
 const styles = StyleSheet.create({
-  // Top-aligned rather than centred: the card comes out of a button in the
-  // header, and a shape that grows downward from where it was touched reads as
-  // one movement.
-  screen: { flex: 1, paddingHorizontal: 16 },
-  card: {
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingBottom: 16,
+  /**
+   * Top-aligned rather than centred: the sheet comes out of a button in the
+   * header, and a shape that grows downward from where it was touched reads as
+   * one movement.
+   */
+  screen: { flex: 1 },
+  /**
+   * A SHEET, NOT A CARD. It was a card sized to its contents with a margin all
+   * round, and it read as a window floating over the Journal — which is what
+   * OverlayPanel used to draw and what this screen is no longer.
+   *
+   * `flex: 1` is what carries it to the bottom edge: without it the view takes
+   * the height of the calendar grid and stops there. Full width, so only the
+   * top corners are rounded and only the top edge is ruled — a shape that
+   * reaches three sides of the screen has no business drawing them.
+   *
+   * The grid keeps its own side padding; the BACKGROUND runs to the edges and
+   * the content does not.
+   */
+  sheet: {
+    flex: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 16,
     overflow: 'hidden',
   },
   actions: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 12,
     paddingTop: 12,
     paddingBottom: 4,
   },
