@@ -21,6 +21,7 @@ import {
   assignWeekday,
   createTemplate,
   deleteTemplate,
+  setDayTemplate,
   setDefaultTemplate,
   setOverride,
   updateTemplate,
@@ -630,5 +631,109 @@ describe('the name the day shows for its template', () => {
     });
 
     expect(readDay(fixture.db, TUESDAY).templateName).toBeNull();
+  });
+});
+
+describe('saying which template one day follows', () => {
+  it('changes a virtual day by recording the override alone', () => {
+    const training = trainingTemplate();
+
+    setDayTemplate(fixture.db, { date: TUESDAY, templateId: training });
+
+    const view = readDay(fixture.db, TUESDAY);
+    expect(view.materialized).toBe(false);
+    expect(view.meals[0]?.targets).toEqual({ protein: 40, carbs: 60, fat: 15, kcal: 535 });
+    // And it created nothing: choosing is not acting on the day (specs 8.2).
+    expect(countRows(fixture.raw, 'day')).toBe(0);
+  });
+
+  it('changes a day THAT ALREADY HAS AN ENTRY, which is the whole point', () => {
+    // The case the old control could not reach: the moment breakfast was
+    // logged, the day's template stopped being changeable. An override alone
+    // would write a row and move nothing on screen.
+    addFreeEntry(fixture.db, {
+      date: TUESDAY,
+      mealPosition: 0,
+      macros: { protein: 20, carbs: 30, fat: 10, kcal: 290 },
+    });
+    expect(readDay(fixture.db, TUESDAY).meals.every((meal) => meal.targets === null)).toBe(
+      true,
+    );
+
+    const training = trainingTemplate();
+    setDayTemplate(fixture.db, { date: TUESDAY, templateId: training });
+
+    const view = readDay(fixture.db, TUESDAY);
+    expect(view.meals[0]?.targets).toEqual({ protein: 40, carbs: 60, fat: 15, kcal: 535 });
+    expect(view.templateName).toBe("Jour d'entraînement");
+    // The entry is untouched: only the targets moved.
+    expect(countRows(fixture.raw, 'journal_entry')).toBe(1);
+  });
+
+  it('replaces the targets of a day that already had some', () => {
+    const training = trainingTemplate();
+    assignWeekday(fixture.db, weekday(TUESDAY), training);
+    addFreeEntry(fixture.db, {
+      date: TUESDAY,
+      mealPosition: 0,
+      macros: { protein: 1, carbs: 1, fat: 1, kcal: 17 },
+    });
+
+    const rest = restTemplate();
+    setDayTemplate(fixture.db, { date: TUESDAY, templateId: rest });
+
+    const view = readDay(fixture.db, TUESDAY);
+    expect(view.meals[0]?.targets).toEqual({ protein: 30, carbs: 40, fat: 12, kcal: 388 });
+    // Beyond the new template's single meal, the old targets are cleared
+    // rather than left as a remnant of a plan no longer in force.
+    expect(view.meals[1]?.targets).toBeNull();
+  });
+
+  it('never renames a meal or changes how many there are', () => {
+    updateMeal(fixture.db, {
+      date: TUESDAY,
+      mealPosition: 0,
+      name: 'Collation',
+      targets: null,
+    });
+
+    const training = trainingTemplate();
+    setDayTemplate(fixture.db, { date: TUESDAY, templateId: training });
+
+    const view = readDay(fixture.db, TUESDAY);
+    expect(view.meals[0]?.name).toBe('Collation');
+    expect(view.meals).toHaveLength(DEFAULT_MEAL_NAMES.length);
+  });
+
+  it('goes back to the planning when handed nothing', () => {
+    const training = trainingTemplate();
+    const rest = restTemplate();
+    assignWeekday(fixture.db, weekday(TUESDAY), training);
+    setDayTemplate(fixture.db, { date: TUESDAY, templateId: rest });
+    expect(readDay(fixture.db, TUESDAY).meals[0]?.targets?.kcal).toBe(388);
+
+    setDayTemplate(fixture.db, { date: TUESDAY, templateId: null });
+
+    // The recurrence answers again, and the override row is gone — removing it
+    // is what makes "without breaking the recurrence" structural (specs 8.1).
+    expect(readDay(fixture.db, TUESDAY).meals[0]?.targets?.kcal).toBe(535);
+    expect(countRows(fixture.raw, 'planning_override')).toBe(0);
+  });
+
+  it('leaves a materialised day alone when the planning then designates nothing', () => {
+    // "Follow the planning" on a day the planning has no answer for would
+    // otherwise strip the targets the day already carries — a clearing gesture
+    // nobody made.
+    const training = trainingTemplate();
+    setDayTemplate(fixture.db, { date: TUESDAY, templateId: training });
+    addFreeEntry(fixture.db, {
+      date: TUESDAY,
+      mealPosition: 0,
+      macros: { protein: 1, carbs: 1, fat: 1, kcal: 17 },
+    });
+
+    setDayTemplate(fixture.db, { date: TUESDAY, templateId: null });
+
+    expect(readDay(fixture.db, TUESDAY).meals[0]?.targets?.kcal).toBe(535);
   });
 });

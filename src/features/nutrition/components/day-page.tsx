@@ -182,23 +182,6 @@ export function DayPage({
 
         <RemainingBanner consumed={totals.data ?? ZERO_MACROS} target={dayTargets(meals)} />
 
-        {/*
-          Where this day's meals come from — the planning on a virtual day, the
-          snapshot on a materialised one, and an offer to apply today's targets
-          to a day that was frozen before templates existed. Only the active
-          page renders it: the neighbours are drawn for the swipe and an action
-          on a page nobody is looking at would be a tap waiting to be made by
-          accident.
-        */}
-        {active ? (
-          <DayPlanRow
-            date={date}
-            materialized={day.data?.materialized ?? false}
-            hasTargets={meals.some((meal) => meal.targets !== null)}
-            templateName={day.data?.templateName ?? null}
-          />
-        ) : null}
-
         <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Alimentation</Text>
 
         {meals.map((meal) => (
@@ -222,6 +205,20 @@ export function DayPage({
             Ajouter un repas
           </Text>
         </Pressable>
+
+        {/*
+          Where these meals came from, at the foot of the list they describe.
+          Only the active page renders it: the neighbours are drawn for the
+          swipe, and an action on a page nobody is looking at is a tap waiting
+          to be made by accident.
+        */}
+        {active ? (
+          <DayPlanRow
+            date={date}
+            materialized={day.data?.materialized ?? false}
+            templateName={day.data?.templateName ?? null}
+          />
+        ) : null}
 
       </ScrollView>
 

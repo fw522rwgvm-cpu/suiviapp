@@ -261,7 +261,20 @@ export function setDefaultTemplate(db: AppDatabase, templateId: DayTemplateId | 
  * and no remnant of an earlier one.
  */
 export function applyPlanTargetsToDay(db: AppDatabase, date: LocalDate): void {
-  db.transaction((tx) => {
+  db.transaction((tx) => applyPlanTargets(tx, date));
+}
+
+/**
+ * The body of the above, without a transaction of its own.
+ *
+ * Split out so setDayTemplate can run it INSIDE the transaction that writes the
+ * override, rather than opening a second one. Nesting is a thing SQLite can be
+ * asked to do with savepoints and a thing neither driver promises here, and a
+ * write whose two halves can land separately is exactly what this function
+ * exists to prevent.
+ */
+function applyPlanTargets(tx: AppDatabase, date: LocalDate): void {
+  {
     const existing = tx.select({ date: day.date }).from(day).where(eq(day.date, date)).all();
     if (existing.length === 0) {
       // Materialising here would create a day out of a settings gesture, which
@@ -302,5 +315,61 @@ export function applyPlanTargetsToDay(db: AppDatabase, date: LocalDate): void {
       .set({ templateIdSnapshot: plan.templateId, templateNameSnapshot: plan.templateName })
       .where(eq(day.date, date))
       .run();
+  }
+}
+
+/**
+ * Says which template a single day follows, and makes it true in both regimes
+ * (specs 8.1, 8.2).
+ *
+ * ## WHY IT IS NOT JUST AN OVERRIDE
+ *
+ * An override is read only while a day is VIRTUAL. On a materialised day it
+ * writes a row that changes nothing on screen — the day holds its own meals and
+ * never consults the planning again (specs 8.1). Offering "change the template"
+ * there and having nothing happen would be the worst of both: a control that
+ * lies.
+ *
+ * So the two halves go together. The override is recorded, because that is what
+ * the user said; and if the day already exists, the chosen template's targets
+ * are applied to it as well. That is not the retroactive effect 8.1 forbids —
+ * 8.2 makes the user's action on a day the act that defines it, and this is an
+ * action on this day, taken deliberately, once.
+ *
+ * ## ONE TRANSACTION, AND THAT IS THE POINT
+ *
+ * Two writes could land apart: an override set on a day whose figures never
+ * moved, which reads as the feature silently failing rather than as half of it
+ * having worked. Specs 2.2 says the application can be killed at any moment.
+ *
+ * Passing null clears the override and lets the recurrence answer again. On a
+ * materialised day the recurrence's own template is then applied — "follow the
+ * planning" has to mean the same thing in both regimes, or it means nothing on
+ * one of them.
+ */
+export function setDayTemplate(
+  db: AppDatabase,
+  input: { date: LocalDate; templateId: DayTemplateId | null },
+): void {
+  db.transaction((tx) => {
+    setOverride(tx, input.date, input.templateId);
+
+    const existing = tx
+      .select({ date: day.date })
+      .from(day)
+      .where(eq(day.date, input.date))
+      .all();
+
+    // A virtual day needs nothing else: it reads the planning directly, and
+    // materialising it here would create data out of a choice rather than out
+    // of an entry (specs 8.2).
+    if (existing.length === 0) return;
+
+    // Nothing to apply when the planning now designates nothing at all — the
+    // day keeps the targets it has rather than losing them to a clearing
+    // gesture nobody made.
+    if (readDayPlan(tx, input.date).templateId === null) return;
+
+    applyPlanTargets(tx, input.date);
   });
 }

@@ -22,6 +22,7 @@ import {
   assignWeekday,
   createTemplate,
   deleteTemplate,
+  setDayTemplate,
   setDefaultTemplate,
   setOverride,
   updateTemplate,
@@ -163,6 +164,20 @@ export function useSetDefaultTemplate() {
   return useMutation({
     mutationFn: (templateId: DayTemplateId | null) =>
       Promise.resolve(setDefaultTemplate(getAppDatabase(), templateId)),
+  });
+}
+
+/**
+ * Says which template one day follows, and makes it true whether that day is
+ * virtual or already written (specs 8.1, 8.2).
+ *
+ * One mutation because it is one transaction: an override recorded without the
+ * day's figures moving reads as the feature failing, not as half of it working.
+ */
+export function useSetDayTemplate() {
+  return useMutation({
+    mutationFn: (input: Parameters<typeof setDayTemplate>[1]) =>
+      Promise.resolve(setDayTemplate(getAppDatabase(), input)),
   });
 }
 
