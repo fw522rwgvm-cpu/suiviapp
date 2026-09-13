@@ -615,9 +615,11 @@ export function AddEntryScreen({
             ) : null}
 
             {/*
-              It writes and closes rather than filling the basket — again, the
-              note in the component says why that is the reading of 8.4a rather
-              than an exception to 8.4.
+              IT FILLS THE BASKET NOW, like everything else on this screen. It
+              used to write and close, which made it the one line that could
+              not be combined with a food, corrected before it landed, or
+              removed without having been written — see the note in the
+              component.
 
               NOTHING TO SEARCH: the field above is inert here. A recent meal
               is a PAST meal, so there is no library behind it to look through,
@@ -625,7 +627,18 @@ export function AddEntryScreen({
               a way of hiding some of them.
             */}
             {listFilter === 'meals' ? (
-              <RecentMealsSection date={date} mealPosition={mealPosition} />
+              <RecentMealsSection
+                mealPosition={mealPosition}
+                onPick={(meal) =>
+                  collect({
+                    kind: 'meal',
+                    sourceMealId: meal.mealId,
+                    name: meal.name,
+                    entryNames: meal.entryNames,
+                    kcal: meal.kcal,
+                  })
+                }
+              />
             ) : null}
           </ScrollView>
 
@@ -744,7 +757,7 @@ export function AddEntryScreen({
               recipeId={editing.recipeId}
               onCollect={(occurrence) => amend(amending, { kind: 'recipe', ...occurrence })}
             />
-          ) : (
+          ) : editing.kind === 'free' ? (
             <FreeEntryScreen
               date={date}
               mealPosition={mealPosition}
@@ -758,6 +771,14 @@ export function AddEntryScreen({
                 })
               }
             />
+          ) : (
+            /*
+              A meal, which has no middle ground to reopen — its row hands over
+              no press, so this branch is unreachable. Rendering nothing rather
+              than falling through to the free-entry form, which would have
+              read `macros` off a line that has none.
+            */
+            null
           )}
         </SwipeBack>
       ) : step === 'free' && mealPosition !== null ? (
@@ -911,6 +932,15 @@ function Confirm({
                     quantity: entry.quantity,
                   };
                 }
+                if (entry.kind === 'meal') {
+                  /*
+                    THE IDENTIFIER, NOT A COPY. The replay happens in the write
+                    transaction, so the macros are the ones the foods carry at
+                    that instant (specs 14.6 n° 6) rather than the ones they
+                    carried when the basket was filled.
+                  */
+                  return { kind: 'meal' as const, sourceMealId: entry.sourceMealId };
+                }
                 if (entry.kind === 'recipe') {
                   /*
                     A COPY, NOT A TRANSLATION. The basket already holds the
@@ -1007,8 +1037,20 @@ function Basket({
             <SwipeToDeleteRow
               actionLabel="Retirer"
               onDelete={() => onRemove(index)}
-              onPress={() => onEdit(index)}
-              accessibilityLabel={`Modifier ${pendingEntryName(entry)}`}
+              /*
+                A MEAL LINE IS NOT CORRECTABLE, and that is not an omission.
+                Specs 8.4 v2.3 says touching a line reopens the choice that
+                made it — for a meal that choice was "this meal", which has no
+                middle ground to reopen: it is the meal or it is not. It is
+                taken back the way it was refused, by a swipe, and picked
+                again if a different one was meant.
+              */
+              onPress={entry.kind === 'meal' ? undefined : () => onEdit(index)}
+              accessibilityLabel={
+                entry.kind === 'meal'
+                  ? pendingEntryName(entry)
+                  : `Modifier ${pendingEntryName(entry)}`
+              }
             >
               <PendingEntryRow entry={entry} />
             </SwipeToDeleteRow>

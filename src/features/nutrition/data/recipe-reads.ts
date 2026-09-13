@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNotNull, sql } from 'drizzle-orm';
 import type { AppDatabase } from '@/core/db/database';
 import {
   food,
@@ -16,6 +16,7 @@ import {
 import { ZERO_MACROS, type Macros } from '../domain/macros';
 import { ingredientView, type IngredientView, type RecipeYield } from '../domain/recipe-macros';
 import type { IngredientDraft, RecipeDraft, StepDraft } from '../domain/recipe-draft';
+import { prefillRecipeQuantity } from '../domain/recipe-occurrence';
 
 /**
  * Reads of the recipe domain (D8).
@@ -502,4 +503,63 @@ export function readQuickAccessRecipes(
   }
 
   return { favorites, recents };
+}
+
+/**
+ * The last amount of a recipe that was logged, in the terms of its yield.
+ *
+ * The parent row of a grouped block holds it — portions or grams, matching the
+ * recipe's yield at the time — and nothing else does: a recipe is a living
+ * object that may have changed its yield since, so the entry is the only
+ * record of what was actually eaten.
+ *
+ * Ordered by created_at and THEN BY id, which is not belt and braces: the
+ * column is nullable in the frozen schema, so an imported archive can hold
+ * NULLs there, and SQLite sorts NULLs last on a descending order — quietly
+ * handing back the oldest row instead of the newest. Identifiers are ULIDs and
+ * therefore sort by creation time, so id is both a correct tie-breaker and a
+ * working fallback.
+ *
+ * NO INDEX BEHIND IT, and that is still the slice-6 deferral rather than an
+ * oversight. ix_entry_source_recipe would mirror ix_entry_source_food, and the
+ * rule says an index is the one part of a migration that can always be added
+ * later. This one scans a journal, on a path D16 budgets in tenths of a
+ * second; adding a migration for symmetry alone is what this project declines.
+ * The day a real history makes it measurable, it is one CREATE INDEX.
+ */
+export function readLastRecipeQuantity(db: AppDatabase, recipeId: RecipeId): number | null {
+  const rows = db
+    .select({ quantity: journalEntry.quantity })
+    .from(journalEntry)
+    .where(
+      and(
+        eq(journalEntry.sourceRecipeId, recipeId),
+        eq(journalEntry.kind, 'recipe'),
+        isNotNull(journalEntry.quantity),
+      ),
+    )
+    .orderBy(desc(journalEntry.createdAt), desc(journalEntry.id))
+    .limit(1)
+    .all();
+
+  return rows[0]?.quantity ?? null;
+}
+
+/**
+ * What the occurrence screen opens on: the whole chain, composed in the read
+ * layer so the screen carries no rule of its own (D9).
+ *
+ * Null once the recipe is gone, the shape readQuantityPrefill already has.
+ */
+export function readRecipeOccurrencePrefill(
+  db: AppDatabase,
+  recipeId: RecipeId,
+): { recipe: RecipeView; consumed: number } | null {
+  const view = readRecipe(db, recipeId);
+  if (view === null) return null;
+
+  return {
+    recipe: view,
+    consumed: prefillRecipeQuantity(readLastRecipeQuantity(db, recipeId), view.yield.type),
+  };
 }

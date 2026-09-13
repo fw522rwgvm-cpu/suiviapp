@@ -6,8 +6,8 @@ import { currentLocalDate, type LocalDate } from '@/core/date';
 import { formatDayShort, formatKcal } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import { ListSeparator } from '@/core/ui/list-separator';
-import { useDismiss } from '@/core/ui/overlay-panel';
-import { useAddRecentMeal, useRecentMeals } from '../data/day-queries';
+import { useRecentMeals } from '../data/day-queries';
+import type { RecentMeal } from '../data/day-reads';
 
 /**
  * Recent meals, on the quick-access screen (specs 8.4a).
@@ -15,37 +15,40 @@ import { useAddRecentMeal, useRecentMeals } from '../data/day-queries';
  * > Meals: recent ones. Selecting a recent meal adds all of its entries at
  * > once to the target meal.
  *
- * ## IT WRITES DIRECTLY, WHERE EVERYTHING ELSE ON THIS SCREEN IS STAGED
+ * ## IT FILLS THE BASKET NOW, LIKE EVERYTHING ELSE ON THIS SCREEN
  *
- * A tension worth naming rather than smoothing over. Specs 8.4 v2.3 says
- * nothing is written before "Confirmer"; 8.4a says selecting a recent meal
- * "adds all of its entries AT ONCE". The basket rule names the two things it
- * governs — choosing a food, and typing a free entry — and a recent meal is
- * neither: it is a whole meal in one gesture, which is its entire reason to
- * exist. Staging it would turn one tap into one tap plus a confirmation, for
- * the one action on this screen that is already complete when it is made.
+ * It used to write and close, and that was a considered exception: specs 8.4a
+ * says selecting a recent meal "adds all of its entries AT ONCE", and the
+ * basket rule of 8.4 v2.3 names only the two things it governs — choosing a
+ * food and typing a free entry. Staging it looked like turning one tap into
+ * one tap plus a confirmation.
  *
- * So it writes, in one transaction, and closes. It is undone the way any other
- * line is: swipe, then tap.
+ * REVERSED ON REQUEST, and the argument against it was weaker than it looked:
+ * the cost is one tap on a "Confirmer" that is already there for the rest of
+ * the meal, and what it buys is that a recent meal can be combined with a
+ * food, corrected before it lands, and removed without having been written.
+ * Three things the exception made impossible. "AT ONCE" is satisfied by the
+ * one gesture that fills the basket; nothing in 8.4a says the gesture has to
+ * reach the database.
+ *
+ * The panel no longer closes either — the basket is the destination, and it is
+ * confirmed with whatever else is in it.
  */
 export function RecentMealsSection({
-  date,
   mealPosition,
+  onPick,
 }: {
-  date: LocalDate;
   /** Null while no meal is targeted; the section then renders nothing. */
   mealPosition: number | null;
+  /** Stages the meal. Nothing is written until "Confirmer" (specs 8.4 v2.3). */
+  onPick: (meal: RecentMeal) => void;
 }) {
   const theme = useTheme();
   // Read once and frozen for the life of the panel, as the Journal does: one
   // function decides what today is (D3), and a label must not change under a
   // list because midnight went past while it was open.
   const [today] = useState<LocalDate>(() => currentLocalDate());
-  // Inside the panel, so this folds the window away rather than cutting it.
-  const dismiss = useDismiss();
-
   const recents = useRecentMeals();
-  const add = useAddRecentMeal();
 
   const meals = recents.data ?? [];
 
@@ -78,12 +81,7 @@ export function RecentMealsSection({
           <View key={meal.mealId}>
             {index === 0 ? null : <ListSeparator />}
             <Pressable
-              onPress={() =>
-                add.mutate(
-                  { date, mealPosition, sourceMealId: meal.mealId },
-                  { onSuccess: dismiss },
-                )
-              }
+              onPress={() => onPick(meal)}
               accessibilityRole="button"
               // VoiceOver gets the COUNT as well as the names: it reads the
               // whole label whatever the width, so nothing is cut here and

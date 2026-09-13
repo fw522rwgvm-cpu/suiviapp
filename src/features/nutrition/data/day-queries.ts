@@ -23,7 +23,6 @@ import {
   addFoodEntry,
   addFreeEntry,
   addMeal,
-  addRecentMeal,
   deleteEntry,
   deleteMeal,
   updateFoodEntryQuantity,
@@ -133,13 +132,12 @@ export function useRecentMeals() {
   });
 }
 
-/** A whole past meal, replayed into another (specs 8.4a). */
-export function useAddRecentMeal() {
-  return useMutation({
-    mutationFn: (input: Parameters<typeof addRecentMeal>[1]) =>
-      Promise.resolve(addRecentMeal(getAppDatabase(), input)),
-  });
-}
+/*
+ * useAddRecentMeal is GONE, and its absence is the change of slice 6's
+ * follow-up: a recent meal now fills the basket like everything else, so it is
+ * written by useAddEntries with every other line, in one transaction. There is
+ * no operation left that replays a meal on its own — see replayMeal.
+ */
 
 /** A whole basket, in one transaction (specs 8.4). */
 export function useAddEntries() {

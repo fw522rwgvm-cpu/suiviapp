@@ -16,6 +16,7 @@ import {
   readQuickAccessRecipes,
   readRecipe,
   readRecipeDraft,
+  readRecipeOccurrencePrefill,
 } from './recipe-reads';
 import {
   createRecipe,
@@ -50,6 +51,7 @@ export const recipeKeys = {
   one: (recipeId: RecipeId | null) => ['nutrition', 'recipe', recipeId] as const,
   draft: (recipeId: RecipeId | null) => ['nutrition', 'recipe-draft', recipeId] as const,
   quickAccess: ['nutrition', 'recipe-quick-access'] as const,
+  prefill: (recipeId: RecipeId | null) => ['nutrition', 'recipe-prefill', recipeId] as const,
 };
 
 /** The tables a recipe's figures depend on, including the live foods. */
@@ -109,6 +111,23 @@ export function useQuickAccessRecipes() {
   return useQuery({
     queryKey: recipeKeys.quickAccess,
     queryFn: () => readQuickAccessRecipes(getAppDatabase()),
+    meta: readsFrom(...RECIPE_TABLES, journalEntry),
+  });
+}
+
+/**
+ * What the occurrence screen opens on: the recipe and how much of it (8.6).
+ *
+ * It declares journal_entry as well as the recipe tables — the last amount
+ * logged lives in a block's parent row, so logging one changes what this
+ * answers, with nothing at the write site knowing the screen exists.
+ */
+export function useRecipeOccurrencePrefill(recipeId: RecipeId | null) {
+  return useQuery({
+    queryKey: recipeKeys.prefill(recipeId),
+    queryFn: () =>
+      recipeId === null ? null : readRecipeOccurrencePrefill(getAppDatabase(), recipeId),
+    enabled: recipeId !== null,
     meta: readsFrom(...RECIPE_TABLES, journalEntry),
   });
 }

@@ -12,13 +12,20 @@ import {
   readLastEntryForFood,
   readRecentFoods,
 } from '../../src/features/nutrition/data/food-reads';
-import { readRecipe } from '../../src/features/nutrition/data/recipe-reads';
+import {
+  readLastRecipeQuantity,
+  readRecipe,
+  readRecipeOccurrencePrefill,
+} from '../../src/features/nutrition/data/recipe-reads';
 import { createRecipe, deleteRecipe } from '../../src/features/nutrition/data/recipe-writes';
 import { emptyFoodDraft, type FoodDraft } from '../../src/features/nutrition/domain/food-draft';
 import { emptyRecipeDraft } from '../../src/features/nutrition/domain/recipe-draft';
 import {
+  adjustLine,
   occurrenceLines,
   occurrenceTotal,
+  prefillRecipeQuantity,
+  rescaleLines,
   usableLines,
 } from '../../src/features/nutrition/domain/recipe-occurrence';
 import { baseQuantity } from '../../src/features/nutrition/domain/portions';
@@ -404,5 +411,139 @@ describe('the whole journey, as the slice was asked for', () => {
     // Still pointing at it, informatively: the column is what ties the entry
     // to what it was, and erasing it would be the one thing that loses.
     expect(block?.sourceRecipeId).toBe(recipeId);
+  });
+});
+
+describe('what the occurrence screen opens on', () => {
+  it('falls back to one portion, or a hundred grams', () => {
+    // One portion is the amount a serving IS, which is what a yield in
+    // portions exists to express. A weight yield has no analogue of "one
+    // serving", so it takes 100 base units — the canonical quantity of the
+    // whole schema.
+    expect(prefillRecipeQuantity(null, 'portions')).toBe(1);
+    expect(prefillRecipeQuantity(null, 'weight')).toBe(100);
+  });
+
+  it('prefers the last amount logged', () => {
+    expect(prefillRecipeQuantity(2, 'portions')).toBe(2);
+    expect(prefillRecipeQuantity(250, 'weight')).toBe(250);
+    expect(prefillRecipeQuantity(1.5, 'portions')).toBe(1.5);
+  });
+
+  it('treats a stored zero as absent rather than trusting it', () => {
+    // consumedFraction throws on it, and only an archive repaired by hand
+    // could produce one. Falling back is the behaviour that keeps the screen
+    // openable.
+    expect(prefillRecipeQuantity(0, 'portions')).toBe(1);
+    expect(prefillRecipeQuantity(-3, 'weight')).toBe(100);
+    expect(prefillRecipeQuantity(Number.NaN, 'portions')).toBe(1);
+  });
+
+  it('reads the last block written for that recipe, and no other', () => {
+    const { recipeId } = buildRecipe();
+    const other = buildRecipe();
+
+    addEntries(database.db, {
+      date: DATE,
+      mealPosition: 0,
+      entries: [occurrence(recipeId, 3), occurrence(other.recipeId, 250)],
+    });
+
+    expect(readLastRecipeQuantity(database.db, recipeId)).toBe(3);
+    expect(readLastRecipeQuantity(database.db, other.recipeId)).toBe(250);
+  });
+
+  it('is null for a recipe never logged, which is what the default answers', () => {
+    const { recipeId } = buildRecipe();
+
+    expect(readLastRecipeQuantity(database.db, recipeId)).toBeNull();
+    expect(readRecipeOccurrencePrefill(database.db, recipeId)?.consumed).toBe(1);
+  });
+
+  it('ignores an ingredient line, which also carries a quantity', () => {
+    // The same leak the foods' pre-fill had: a recipe_item row has a quantity
+    // and would be a plausible wrong answer. Here the clause is on `kind`
+    // AND on source_recipe_id, which a child never carries — two reasons it
+    // cannot be picked, and this asserts the pair.
+    const { recipeId } = buildRecipe();
+    addEntries(database.db, {
+      date: DATE,
+      mealPosition: 0,
+      entries: [occurrence(recipeId, 2)],
+    });
+
+    expect(readLastRecipeQuantity(database.db, recipeId)).toBe(2);
+  });
+});
+
+describe('scaling the lines instead of re-deriving them', () => {
+  const lines = [
+    {
+      sourceFoodId: null,
+      name: 'A',
+      baseUnit: 'g' as const,
+      quantity: 200,
+      reference: { protein: 1, carbs: 1, fat: 1, kcal: 100 },
+    },
+    {
+      sourceFoodId: null,
+      name: 'B',
+      baseUnit: 'g' as const,
+      quantity: 50,
+      reference: { protein: 1, carbs: 1, fat: 1, kcal: 100 },
+    },
+  ];
+
+  it('agrees with re-deriving whenever nothing has been adjusted', () => {
+    // THE ASSERTION THAT LETS THE TWO SCREENS BECOME ONE.
+    //
+    //   q × (c₁ / yield) × (c₂ / c₁)  =  q × (c₂ / yield)
+    //
+    // So the merged screen behaves exactly as the split one did on the common
+    // path, and only differs where the split one lost work.
+    const recipe = {
+      yield: { type: 'portions' as const, value: 4 },
+      ingredients: [
+        {
+          foodId: null,
+          name: 'A',
+          unit: 'g' as const,
+          quantity: 400,
+          reference: { protein: 1, carbs: 1, fat: 1, kcal: 100 },
+        },
+      ],
+    };
+
+    const atTwo = occurrenceLines(recipe, 2);
+    const atThree = occurrenceLines(recipe, 3);
+    const scaled = rescaleLines(atTwo, 2, 3);
+
+    expect(scaled?.[0]?.quantity).toBeCloseTo(atThree[0]!.quantity, 12);
+  });
+
+  it('keeps an adjustment as a ratio', () => {
+    // Halve one line at two portions, move to four, and it is still half —
+    // which is what the split screens could not do, and the whole reason the
+    // objection to merging them is gone.
+    const adjusted = adjustLine(lines, 1, 25);
+    const scaled = rescaleLines(adjusted, 2, 4);
+
+    expect(scaled?.[0]?.quantity).toBe(400);
+    expect(scaled?.[1]?.quantity).toBe(50);
+  });
+
+  it('leaves a line taken out at zero', () => {
+    // It was removed from this occasion; changing how much of the dish is
+    // eaten does not put it back.
+    const removed = adjustLine(lines, 1, 0);
+
+    expect(rescaleLines(removed, 2, 8)?.[1]?.quantity).toBe(0);
+  });
+
+  it('refuses to scale from nothing, so the caller re-derives', () => {
+    // The field passes through empty while it is retyped. Returning the lines
+    // unchanged would silently freeze them at the old amount.
+    expect(rescaleLines(lines, 0, 2)).toBeNull();
+    expect(rescaleLines(lines, Number.NaN, 2)).toBeNull();
   });
 });

@@ -427,7 +427,21 @@ describe('export then import — the round trip (D15 n1)', () => {
     }
   });
 
-  it('restores a year of generated history, identically', () => {
+  /**
+   * THE HEAVIEST TEST IN THE SUITE, and it is given room on purpose.
+   *
+   * A year of generated history through export, validation, import and a
+   * row-by-row comparison across every exported table. It sat just under the
+   * five-second default until slice 6 added four tables to each of those four
+   * passes, and then it began to time out on a busy machine — as a FLAKE, in
+   * two runs out of three, which is the worst way for a test to fail.
+   *
+   * The year is not negotiable: D15 gives the generator the job of "checking
+   * performance on long histories", and shrinking it to fit a timeout would
+   * delete the only place that happens. So the budget moves instead, far
+   * enough that a slow machine is not a red build.
+   */
+  it('restores a year of generated history, identically', { timeout: 30_000 }, () => {
     // Generated, never copied from real data (D15). Deterministic seed, so a
     // failure is reproducible rather than a story about last Tuesday.
     const report = seedJournal(source.db, { endDate: DAY, days: 365, seed: 42 });

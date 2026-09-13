@@ -298,7 +298,19 @@ export type NewEntry =
       /** Portions, or grams, matching yieldType. */
       consumed: number;
       lines: readonly OccurrenceLine[];
-    };
+    }
+  /**
+   * A whole past meal, replayed (specs 8.4a).
+   *
+   * IT CARRIES AN IDENTIFIER WHERE A RECIPE CARRIES ITS LINES, and the
+   * asymmetry is the point. A recipe was ADJUSTED on screen, so what the user
+   * confirmed exists only there; a recent meal was not touched at all, so
+   * there is nothing to carry and re-reading it at write time is strictly
+   * better — specs 14.6 n° 6 wants the macros of the foods as they read TODAY,
+   * and a copy taken when the basket was filled would be a few seconds older
+   * for no benefit.
+   */
+  | { kind: 'meal'; sourceMealId: DayMealId };
 
 /**
  * Logs one or more lines into a meal, materialising the day in the same
@@ -344,6 +356,9 @@ export function addEntries(
   input: { date: LocalDate; mealPosition: number; entries: readonly NewEntry[] },
 ): JournalEntryId[] {
   for (const entry of input.entries) {
+    // A meal carries no quantity of its own: it is a list of lines that
+    // already have theirs.
+    if (entry.kind === 'meal') continue;
     if (entry.kind === 'recipe') {
       // Its own shape of quantity: how much of the recipe, not base units. The
       // lines are checked inside the transaction, where dropping the empty
@@ -372,6 +387,31 @@ export function addEntries(
     const ids: JournalEntryId[] = [];
 
     for (const entry of input.entries) {
+      if (entry.kind === 'meal') {
+        /**
+         * A past meal, replayed into this one — inside the SAME transaction as
+         * every other line of the basket (specs 8.4 v2.3).
+         *
+         * Handled BEFORE the identifier is minted, because a meal is not one
+         * row: it brings several, with their own tree, and its positions
+         * continue from wherever the basket has got to. Minting an id for it
+         * and then discarding it would be a row that never existed appearing
+         * in the returned list.
+         */
+        const written = replayMeal(tx, {
+          date: input.date,
+          sourceMealId: entry.sourceMealId,
+          target: meal,
+          now,
+        });
+
+        ids.push(...written);
+        // Its lines took the positions after this one, so the next basket line
+        // must not reuse them.
+        position = nextPosition(tx, meal.id);
+        continue;
+      }
+
       const id = newId<JournalEntryId>();
       ids.push(id);
 
@@ -900,18 +940,34 @@ export function deleteMeal(
  * ever 'food' or 'free' today — and a block is an adjusted composition
  * (specs 8.6), not a reference to re-read.
  */
-export function addRecentMeal(
-  db: AppDatabase,
-  input: { date: LocalDate; mealPosition: number; sourceMealId: DayMealId },
+/**
+ * Replays one past meal into a target meal, INSIDE the caller's transaction.
+ *
+ * ## IT IS NO LONGER AN OPERATION OF ITS OWN
+ *
+ * It used to be `addRecentMeal`, which opened its own transaction, wrote, and
+ * closed the panel. Slice 6 puts a recent meal in the basket like everything
+ * else, so the replay is now one case of addEntries and has no reason to be
+ * reachable on its own — the rule ensureMaterialized and ensureOffFood already
+ * follow: what the user explicitly confirms is written, what they merely
+ * choose is not.
+ *
+ * It returns the ids it wrote, and the caller decides what a meal with nothing
+ * in it means.
+ */
+function replayMeal(
+  tx: AppDatabase,
+  input: {
+    date: LocalDate;
+    sourceMealId: DayMealId;
+    target: MealRef;
+    now: number;
+  },
 ): JournalEntryId[] {
-  return db.transaction((tx) => {
+  {
     const source = readEntriesForReplay(tx, input.sourceMealId);
-    // Nothing to add, and therefore nothing to materialise: an empty meal must
-    // not create a day (specs 8.2).
-    if (source.length === 0) return [];
-
-    const target = requireMeal(ensureMaterialized(tx, input.date), input.mealPosition);
-    const now = Date.now();
+    const target = input.target;
+    const now = input.now;
     let position = nextPosition(tx, target.id);
 
     /** Old identifier to new, so a recipe block keeps its shape. */
@@ -959,7 +1015,7 @@ export function addRecentMeal(
     }
 
     return ids;
-  });
+  }
 }
 
 interface FrozenReference {

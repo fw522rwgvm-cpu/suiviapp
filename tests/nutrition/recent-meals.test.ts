@@ -3,9 +3,9 @@ import { toLocalDate } from '../../src/core/date';
 import type { FoodId } from '../../src/core/db/schema';
 import { readDay, readMealEntries, readRecentMeals } from '../../src/features/nutrition/data/day-reads';
 import {
+  addEntries,
   addFoodEntry,
   addFreeEntry,
-  addRecentMeal,
   deleteEntry,
 } from '../../src/features/nutrition/data/day-writes';
 import { createFood, deleteFood, updateFood } from '../../src/features/nutrition/data/food-writes';
@@ -20,7 +20,24 @@ import { openTestDatabase, type TestDatabase } from '../helpers/database';
  * macros from the food as it reads today. Three cases fall back to the frozen
  * capsule, and each has its own test — a free entry, a deleted food, and a food
  * whose base unit has moved.
+ *
+ * IT GOES THROUGH THE BASKET SINCE SLICE 6's FOLLOW-UP. addRecentMeal is gone:
+ * a recent meal is staged like every other line and written by addEntries, so
+ * the path under test here is the one the screen actually takes.
  */
+
+/** One meal, staged and confirmed — what the add window now does. */
+function replayMeal(input: {
+  date: (typeof MONDAY);
+  mealPosition: number;
+  sourceMealId: Parameters<typeof readMealEntries>[1];
+}) {
+  return addEntries(fixture.db, {
+    date: input.date,
+    mealPosition: input.mealPosition,
+    entries: [{ kind: 'meal', sourceMealId: input.sourceMealId }],
+  });
+}
 
 const MONDAY = toLocalDate('2026-09-14');
 const TUESDAY = toLocalDate('2026-09-15');
@@ -122,7 +139,7 @@ describe('replaying a recent meal', () => {
     lunch();
     const sourceMealId = readDay(fixture.db, MONDAY).meals[1]!.id!;
 
-    addRecentMeal(fixture.db, {
+    replayMeal({
       date: TUESDAY,
       mealPosition: 1,
       sourceMealId,
@@ -160,7 +177,7 @@ describe('replaying a recent meal', () => {
       portions: [],
     });
 
-    addRecentMeal(fixture.db, {
+    replayMeal({
       date: TUESDAY,
       mealPosition: 1,
       sourceMealId: readDay(fixture.db, MONDAY).meals[1]!.id!,
@@ -207,7 +224,7 @@ describe('replaying a recent meal', () => {
       quantity: { baseQuantity: 50, portion: { name: 'tranche', quantity: 25, count: 2 } },
     });
 
-    addRecentMeal(fixture.db, {
+    replayMeal({
       date: TUESDAY,
       mealPosition: 0,
       sourceMealId: readDay(fixture.db, MONDAY).meals[0]!.id!,
@@ -230,7 +247,7 @@ describe('replaying a recent meal', () => {
       macros: { protein: 0, carbs: 0, fat: 0, kcal: 5 },
     });
 
-    addRecentMeal(fixture.db, {
+    replayMeal({
       date: TUESDAY,
       mealPosition: 0,
       sourceMealId: readDay(fixture.db, MONDAY).meals[0]!.id!,
@@ -256,7 +273,7 @@ describe('replaying a recent meal', () => {
     });
     deleteFood(fixture.db, foodId);
 
-    addRecentMeal(fixture.db, {
+    replayMeal({
       date: TUESDAY,
       mealPosition: 0,
       sourceMealId: readDay(fixture.db, MONDAY).meals[0]!.id!,
@@ -293,7 +310,7 @@ describe('replaying a recent meal', () => {
       portions: [],
     });
 
-    addRecentMeal(fixture.db, {
+    replayMeal({
       date: TUESDAY,
       mealPosition: 0,
       sourceMealId: readDay(fixture.db, MONDAY).meals[0]!.id!,
@@ -313,23 +330,32 @@ describe('replaying a recent meal', () => {
     const sourceMealId = readDay(fixture.db, MONDAY).meals[1]!.id!;
 
     expect(readDay(fixture.db, TUESDAY).materialized).toBe(false);
-    addRecentMeal(fixture.db, { date: TUESDAY, mealPosition: 1, sourceMealId });
+    replayMeal({ date: TUESDAY, mealPosition: 1, sourceMealId });
     expect(readDay(fixture.db, TUESDAY).materialized).toBe(true);
   });
 
-  it('writes nothing at all when the source meal has been emptied', () => {
-    // An empty basket must not create a day (specs 8.2), and a meal whose
-    // entries were all deleted between the list being drawn and the tap is
-    // exactly that.
+  it('writes no line when the source meal has been emptied — but does make the day', () => {
+    // THE ONE BEHAVIOUR THE BASKET CHANGED, and it changed in the right
+    // direction.
+    //
+    // The standalone replay refused to materialise here, on the reading that
+    // an empty meal is an empty basket and specs 8.2 forbids creating a day
+    // from nothing. Through the basket that reading no longer holds: the
+    // basket was NOT empty — the user put a meal line in it and pressed
+    // Confirmer — and 8.2 makes the user's action on a day the act that
+    // defines it. A day materialised with nothing in it is the same state a
+    // day emptied of its entries is already in, which slice 1 settled.
+    //
+    // It can only be reached by the meal being emptied between the list being
+    // drawn and Confirmer, which one screen at a time makes unreachable.
     lunch();
     const sourceMealId = readDay(fixture.db, MONDAY).meals[1]!.id!;
     for (const entry of readMealEntries(fixture.db, sourceMealId)) {
       deleteEntry(fixture.db, entry.id);
     }
 
-    expect(addRecentMeal(fixture.db, { date: TUESDAY, mealPosition: 1, sourceMealId })).toEqual(
-      [],
-    );
-    expect(readDay(fixture.db, TUESDAY).materialized).toBe(false);
+    expect(replayMeal({ date: TUESDAY, mealPosition: 1, sourceMealId })).toEqual([]);
+    expect(readDay(fixture.db, TUESDAY).materialized).toBe(true);
+    expect(readMealEntries(fixture.db, readDay(fixture.db, TUESDAY).meals[1]!.id!)).toEqual([]);
   });
 });

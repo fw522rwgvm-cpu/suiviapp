@@ -2282,6 +2282,119 @@ laissés tels quels — toucher du code livré pour la seule cohérence est ce q
 ce projet décline — mais celui des deux qu'on éditera ensuite pour ses propres
 raisons doit se replier dessus au lieu d'être copié une quatrième fois.
 
+## Deux renversements, et pourquoi ils tiennent (14/09/2026)
+
+**Un repas récent passe par le panier.** Il écrivait et fermait, et c'était une
+exception consignée (`specs §14.6 n° 8`) : mettre en attente semblait
+transformer un toucher en un toucher plus une confirmation.
+
+L'argument était plus faible qu'il n'en avait l'air. Le « Confirmer » est
+**déjà là** pour le reste du repas, donc l'exception ne faisait économiser
+aucun geste à qui ajoutait autre chose en même temps — et elle rendait
+impossibles trois choses : combiner un repas récent avec un aliment, le
+corriger avant qu'il n'atterrisse, le retirer sans qu'il ait été écrit. Le
+« d'un coup » du §8.4a est satisfait par le geste unique qui remplit le panier ;
+rien n'y dit que le geste doit atteindre la base.
+
+**La ligne de panier d'un repas porte un IDENTIFIANT, là où une recette porte
+ses lignes.** L'asymétrie est le point : une recette a été **ajustée** à
+l'écran, donc ce que l'utilisateur a confirmé n'existe que là ; un repas récent
+n'a été touché en rien. Le relire au moment de l'écriture est donc strictement
+meilleur — le §14.6 n° 6 veut les macros des aliments telles qu'elles se lisent
+**aujourd'hui**, et une copie prise au remplissage du panier serait plus
+vieille de quelques secondes pour rien.
+
+**`addRecentMeal` n'existe plus.** Le rejeu est devenu `replayMeal`, privé, une
+étape de la transaction d'`addEntries` — la règle qu'`ensureMaterialized` et
+`ensureOffFood` suivent déjà : ce que l'utilisateur enregistre explicitement
+s'écrit, ce qu'il se contente de choisir non.
+
+**Une conséquence qui change un comportement, signalée** : confirmer un panier
+contenant un repas depuis vidé **matérialise** la journée, là où l'ancien
+chemin refusait. L'ancien refus lisait « un repas vide est un panier vide ». Le
+panier, lui, n'était pas vide. Le §8.2 fait de l'action de l'utilisateur l'acte
+qui définit une journée, et une journée matérialisée sans rien dedans est déjà
+l'état d'une journée vidée de ses entrées.
+
+**Une ligne de repas au panier ne se corrige pas.** Le §8.4 v2.3 dit que
+toucher une ligne rouvre le choix qui l'a faite ; pour un repas ce choix était
+« ce repas-là », qui n'a pas de milieu à rouvrir. Elle se reprend comme elle
+s'est refusée, par un balayage.
+
+---
+
+**Les deux écrans d'une recette n'en font qu'un, et l'objection tombe au lieu
+d'être acceptée.** Ils étaient séparés parce que les deux éditions ne commutent
+pas : ajuster une ligne puis changer la quantité devrait re-dériver depuis la
+recette, effaçant l'ajustement en silence (`specs §14.7 n° 2`).
+
+Changer la quantité **ré-échelonne** désormais au lieu de re-dériver. Un
+ajustement est conservé comme un **rapport** — la moitié de crème à deux
+portions reste la moitié à quatre — et sur le chemin ordinaire, où rien n'a
+encore été ajusté, les deux sont arithmétiquement la même chose :
+
+```
+q × (c₁ / rendement) × (c₂ / c₁)  =  q × (c₂ / rendement)
+```
+
+Un test le fixe. Ce que la fusion achète est exactement ce que la séparation
+coûtait : les lignes se re-échelonnent sous le doigt, ce qui est l'énoncé le
+plus clair de ce que la quantité fait.
+
+**Le ré-échelonnement s'applique au blur, pas à chaque frappe.** En direct il
+passerait sur « 1 », puis « 13 », puis « 137 » — trois passes sur la liste,
+deux à des montants que personne n'a voulus, sur un formulaire dont les
+chiffres sont lus pendant qu'ils bougent. Même arbitrage que les molettes de la
+tranche 4.
+
+**Une ligne mise à zéro reste à zéro quand la quantité change.** Elle a été
+retirée de cette fois-là ; changer la part du plat qu'on mange ne l'y remet pas.
+
+**Et échelonner depuis zéro est refusé plutôt que toléré.** Le champ passe par
+la chaîne vide pendant qu'on le retape. Rendre les lignes inchangées les
+figerait en silence à l'ancienne quantité, donc `rescaleLines` rend `null` et
+l'appelant re-dérive.
+
+**La quantité existe AVANT les lignes, et c'est structurel.** La tranche 4 l'a
+payé sur l'appareil : les molettes se montaient sur un défaut et un effet les
+déplaçait quand la requête répondait — **un effet tourne après que son rendu a
+été peint**, donc elles tournaient visiblement en s'ouvrant. L'écran est donc
+scindé en deux composants et seul le **corps** attend ; il initialise son état
+depuis ses props, dans l'initialiseur, jamais dans un effet.
+
+Corollaire : **`autoFocus` + `selectTextOnFocus` fonctionnent ici**, là où la
+tranche 3 avait constaté qu'ils ne sélectionnaient rien. La différence est la
+seule qui compte — la valeur vient d'un initialiseur d'état et existe **avant**
+le champ.
+
+**Le pré-remplissage d'une recette est plus court que celui d'un aliment, et
+c'est normal.** La chaîne à quatre temps du §8.4 a deux étapes sans contrepartie
+ici : une recette n'a ni portions propres dont revérifier la taille, ni
+`display_ref_qty`. Reste « la dernière fois, sinon un défaut » — 1 portion, ou
+100 g pour un rendement en poids, faute d'analogue d'« une portion ».
+
+**Réserve levée, et non exploitée** : le §14.7 n° 4 refusait un bouton « + »
+sur une rangée de recette faute de pré-remplissage. Il devient possible. Il
+n'est pas ajouté, parce que la rangée n'affiche pas de quantité et que le
+§8.4a v2.4 exige que les deux aillent ensemble — ce serait un troisième
+changement que personne n'a demandé.
+
+**Aucun index derrière la lecture de la dernière quantité**, et c'est toujours
+le report de la tranche 6. `ix_entry_source_recipe` refléterait
+`ix_entry_source_food`, mais la règle dit qu'un index est la seule chose d'une
+migration qui s'ajoute toujours plus tard, et ajouter une migration par symétrie
+est ce que ce projet décline. Le jour où un vrai historique le rend mesurable,
+c'est un `CREATE INDEX`.
+
+**Le test le plus lourd de la suite a un délai à lui.** Une année d'historique
+généré traverse export, validation, import et une comparaison ligne à ligne sur
+quatorze tables ; il tenait sous les cinq secondes par défaut jusqu'à ce que la
+tranche 6 ajoute quatre tables à chacune de ces quatre passes, et il s'est mis à
+dépasser **par intermittence** — la pire façon pour un test d'échouer. L'année
+n'est pas négociable : D15 donne au générateur la tâche de « vérifier les
+performances sur de longs historiques », et la rétrécir pour tenir dans un délai
+supprimerait le seul endroit où ça se fait. C'est le budget qui bouge.
+
 ## Points ouverts après la tranche 6
 - **Vérification iPhone en attente.** Rien de l'interface des recettes n'a été
   touché sur l'appareil. À regarder en premier : le bloc groupé du Journal — le

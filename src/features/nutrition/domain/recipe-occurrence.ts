@@ -145,3 +145,73 @@ export function adjustLine(
 export function usableLines(lines: readonly OccurrenceLine[]): OccurrenceLine[] {
   return lines.filter((line) => Number.isFinite(line.quantity) && line.quantity > 0);
 }
+
+/**
+ * What a recipe's quantity field opens on, when nothing else says (specs 8.6).
+ *
+ * One portion for a recipe yielded in portions: the amount a serving IS, which
+ * is what the yield exists to express.
+ *
+ * A hundred grams for one yielded by weight, because there is no analogue of
+ * "one serving" there and 100 base units is the canonical quantity of the
+ * whole schema — the same figure the ingredient editor opens a new line on.
+ */
+export const DEFAULT_PORTIONS = 1;
+export const DEFAULT_WEIGHT = 100;
+
+/**
+ * How much of a recipe the screen opens on (specs 8.4 v2.2, applied to 8.6).
+ *
+ * > L'écran de quantité s'ouvre pré-rempli avec la dernière quantité consommée.
+ *
+ * The same lever the foods have had since slice 3, and the same shape: the
+ * last amount logged, or a default. It is SHORTER than the foods' four-step
+ * chain because the two steps they need in the middle have no counterpart —
+ * a recipe has no portions of its own to re-check the size of, and no
+ * display_ref_qty. What is left is "last time, else a default", which is the
+ * whole of it.
+ *
+ * A non-positive or non-finite last is treated as absent rather than trusted:
+ * consumedFraction throws on it, and a stored zero could only come from an
+ * archive repaired by hand.
+ */
+export function prefillRecipeQuantity(last: number | null, yieldType: YieldType): number {
+  if (last !== null && Number.isFinite(last) && last > 0) return last;
+  return yieldType === 'portions' ? DEFAULT_PORTIONS : DEFAULT_WEIGHT;
+}
+
+/**
+ * The same lines, for a different amount of the recipe.
+ *
+ * ## THIS IS WHAT LETS THE TWO STEPS BECOME ONE
+ *
+ * They were two screens, and the reason was that the two edits do not commute:
+ * adjusting a line and then changing the quantity would have to re-derive from
+ * the recipe, silently discarding the adjustment.
+ *
+ * Scaling removes the objection instead of working around it. An adjustment is
+ * kept as a RATIO — halve the cream at two portions, move to four, and it is
+ * still half. And in the ordinary case, where nothing has been adjusted yet,
+ * scaling and re-deriving are arithmetically the same thing:
+ *
+ *     q × (c₁ / yield) × (c₂ / c₁)  =  q × (c₂ / yield)
+ *
+ * So the merged screen behaves exactly as the two did on the common path, and
+ * better on the one that used to lose work.
+ *
+ * A line at zero stays at zero, which is right: it was taken out of this
+ * occasion, and changing how much of the dish is eaten does not put it back.
+ *
+ * `from` at zero cannot be scaled from — the field passes through empty while
+ * it is retyped — so the caller re-derives instead. Returning the lines
+ * unchanged would silently freeze them at the old amount.
+ */
+export function rescaleLines(
+  lines: readonly OccurrenceLine[],
+  from: number,
+  to: number,
+): OccurrenceLine[] | null {
+  if (!Number.isFinite(from) || from <= 0) return null;
+  const factor = to / from;
+  return lines.map((line) => ({ ...line, quantity: line.quantity * factor }));
+}

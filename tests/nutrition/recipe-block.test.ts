@@ -16,7 +16,7 @@ import {
   readMealTotals,
   readRecentMeals,
 } from '../../src/features/nutrition/data/day-reads';
-import { addFreeEntry, addRecentMeal, deleteEntry } from '../../src/features/nutrition/data/day-writes';
+import { addEntries, addFreeEntry, deleteEntry } from '../../src/features/nutrition/data/day-writes';
 import { countRows, openTestDatabase, type TestDatabase } from '../helpers/database';
 
 /**
@@ -271,14 +271,18 @@ describe('deleting a block', () => {
 describe('replaying a meal that holds a block', () => {
   it('keeps the recipe the block came from', () => {
     // The leak slice 5 left: readEntriesForReplay did not select
-    // source_recipe_id and addRecentMeal wrote a hard null, so a replayed
+    // source_recipe_id and the replay wrote a hard null, so a replayed
     // block was correct and silently anonymous.
     const mealId = firstMeal();
     const recipeId = newId<RecipeId>();
     writeBlock(mealId, { recipeId });
 
     const tomorrow = toLocalDate('2026-09-12');
-    addRecentMeal(database.db, { date: tomorrow, mealPosition: 0, sourceMealId: mealId });
+    addEntries(database.db, {
+      date: tomorrow,
+      mealPosition: 0,
+      entries: [{ kind: 'meal', sourceMealId: mealId }],
+    });
 
     const copiedMeal = requireMealId(readDay(database.db, tomorrow).meals[0]?.id);
     const block = readMealEntries(database.db, copiedMeal).find(
@@ -293,7 +297,11 @@ describe('replaying a meal that holds a block', () => {
     writeBlock(mealId);
 
     const tomorrow = toLocalDate('2026-09-12');
-    addRecentMeal(database.db, { date: tomorrow, mealPosition: 0, sourceMealId: mealId });
+    addEntries(database.db, {
+      date: tomorrow,
+      mealPosition: 0,
+      entries: [{ kind: 'meal', sourceMealId: mealId }],
+    });
 
     const copiedMeal = requireMealId(readDay(database.db, tomorrow).meals[0]?.id);
     const entries = readMealEntries(database.db, copiedMeal);
