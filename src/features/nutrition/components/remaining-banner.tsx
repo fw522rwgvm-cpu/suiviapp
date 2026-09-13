@@ -1,7 +1,8 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { formatKcal, formatMacro } from '@/core/format';
 import { useTheme } from '@/core/theme';
-import { remainingMacros, type Macros } from '../domain/macros';
+import { progressRatio, remainingMacros, targetStanding, type Macros } from '../domain/macros';
+import { ProgressRing } from './progress-ring';
 
 /**
  * The banner at the top of the Journal (specs 8.3).
@@ -20,12 +21,19 @@ import { remainingMacros, type Macros } from '../domain/macros';
  * bars have nothing to fill. The contract carries `target` from the first day
  * so that nothing here changes when it arrives.
  *
- * STILL NO PROGRESS RING, and it is worth restating because this layout is
- * where one would go. A ring needs react-native-svg, a native dependency that
- * section 7 schedules with the graphic primitives of slice 7, and D13 asks for
- * ONE graphics tool — so assembling a ring out of rotated Views would not be a
- * cheap substitute but a second one. A thick bar is the honest stand-in: it
- * answers the same question, and it is two Views.
+ * THE RING ARRIVED, and the note that used to stand here was right about
+ * everything except the cost. It said a ring needs react-native-svg and that
+ * views would be "a second graphics tool" — true, but react-native-svg is
+ * NATIVE, and the first screen to mount it is this one. Adding it would stop
+ * the application opening at all until a CI cycle and a reinstall. So the ring
+ * is drawn with views, and slice 7 rewrites it behind the same props when svg
+ * lands for the charts. See progress-ring.tsx.
+ *
+ * THE RING IS THE ONE THING HERE THAT TURNS RED, past 10% over target. The
+ * three macro bars never do, whatever they are filled to: going over on
+ * carbohydrates is not a failure the way going over on the day is, and a row
+ * of red bars would say it was. Calories are the number specs 8.3 makes
+ * legible without interaction; they are the one that gets to raise its voice.
  */
 
 interface MacroColumn {
@@ -73,7 +81,16 @@ export function RemainingBanner({
       : remaining.kcal >= 0
         ? 'kcal restantes'
         : 'kcal au-dessus';
-  const over = remaining !== null && remaining.kcal < 0;
+
+  // Three states, decided in the domain (D9): under, over, and more than 10%
+  // over. Amber for the first slip, the theme's red past the threshold.
+  const standing = targetStanding(consumed.kcal, target?.kcal ?? null);
+  const kcalColor =
+    standing === 'far_over'
+      ? theme.colors.danger
+      : standing === 'over'
+        ? theme.colors.warning
+        : theme.colors.text;
 
   return (
     <View
@@ -87,32 +104,43 @@ export function RemainingBanner({
         theme.shadow,
       ]}
     >
-      <Text
-        style={[styles.figure, { color: over ? theme.colors.warning : theme.colors.text }]}
-        // Read out as one phrase rather than a bare number.
+      {/*
+        The figure lives INSIDE the ring now. Specs 8.3 wants the remaining
+        calories legible without any interaction, and the ring is the one shape
+        on the screen whose whole job is to be read at a glance — putting the
+        number anywhere else would make the eye do the work twice.
+      */}
+      <View
+        style={styles.ringRow}
+        accessible
         accessibilityLabel={`${formatKcal(Math.abs(headlineValue))} ${headlineLabel}`}
       >
-        {formatKcal(Math.abs(headlineValue))}
-      </Text>
-      <Text style={[styles.figureLabel, { color: theme.colors.textMuted }]}>{headlineLabel}</Text>
+        <ProgressRing
+          progress={progressRatio(consumed.kcal, target?.kcal ?? null)}
+          size={168}
+          thickness={14}
+          color={
+            standing === 'far_over'
+              ? theme.colors.danger
+              : standing === 'over'
+                ? theme.colors.warning
+                : theme.colors.accent
+          }
+        >
+          <Text style={[styles.figure, { color: kcalColor }]}>
+            {formatKcal(Math.abs(headlineValue))}
+          </Text>
+          <Text style={[styles.figureLabel, { color: theme.colors.textMuted }]}>
+            {headlineLabel}
+          </Text>
+        </ProgressRing>
+      </View>
 
       {target === null ? (
         <Text style={[styles.note, { color: theme.colors.textFaint }]}>
           Aucun objectif défini
         </Text>
-      ) : (
-        <View style={[styles.calorieTrack, { backgroundColor: theme.colors.border }]}>
-          <View
-            style={[
-              styles.calorieFill,
-              {
-                backgroundColor: over ? theme.colors.warning : theme.colors.accent,
-                width: `${ratioOf(consumed.kcal, target.kcal) * 100}%`,
-              },
-            ]}
-          />
-        </View>
-      )}
+      ) : null}
 
       <View style={styles.columns}>
         {columns.map((column) => (
@@ -121,16 +149,6 @@ export function RemainingBanner({
       </View>
     </View>
   );
-}
-
-/**
- * Clamped, so passing a target fills the bar rather than overflowing its
- * rounded corners. The figures beside it stay exact — the bar is the glance,
- * the numbers are the answer.
- */
-function ratioOf(consumed: number, target: number | null): number {
-  if (target === null || target <= 0) return 0;
-  return Math.min(1, Math.max(0, consumed / target));
 }
 
 function MacroColumnView({ column }: { column: MacroColumn }) {
@@ -143,10 +161,18 @@ function MacroColumnView({ column }: { column: MacroColumn }) {
       </Text>
 
       <View style={[styles.track, { backgroundColor: theme.colors.border }]}>
+        {/*
+          ALWAYS ITS OWN COLOUR, never red, however full. Going over on
+          carbohydrates is not the same kind of event as going over on the day,
+          and three red bars would say that it was.
+        */}
         <View
           style={[
             styles.fill,
-            { backgroundColor: column.color, width: `${ratioOf(column.consumed, column.target) * 100}%` },
+            {
+              backgroundColor: column.color,
+              width: `${progressRatio(column.consumed, column.target) * 100}%`,
+            },
           ]}
         />
       </View>
@@ -168,22 +194,32 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     gap: 2,
   },
+  ringRow: { alignItems: 'center', paddingVertical: 6 },
   figure: {
-    fontSize: 52,
+    fontSize: 40,
     fontWeight: '700',
     textAlign: 'center',
     letterSpacing: -1,
     fontVariant: ['tabular-nums'],
   },
-  figureLabel: { fontSize: 15, textAlign: 'center' },
+  // Smaller than it was outside the ring: it has to sit under the figure
+  // within the circle's own width, and "kcal au-dessus" is the longest of the
+  // three labels.
+  figureLabel: { fontSize: 12, textAlign: 'center' },
   note: { fontSize: 12, textAlign: 'center', marginTop: 8 },
-  calorieTrack: { height: 10, borderRadius: 5, overflow: 'hidden', marginTop: 18 },
-  calorieFill: { height: 10, borderRadius: 5 },
   // Side by side rather than stacked: three macros are one glance, not three.
   columns: { flexDirection: 'row', gap: 14, marginTop: 20 },
   column: { flex: 1, gap: 7 },
-  columnLabel: { fontSize: 12 },
+  // Centred over their bar, both of them: the bar is the column's axis, and
+  // text ranged left against a centred shape reads as three things that do not
+  // line up.
+  columnLabel: { fontSize: 12, textAlign: 'center' },
   track: { height: 6, borderRadius: 3, overflow: 'hidden' },
   fill: { height: 6, borderRadius: 3 },
-  columnValue: { fontSize: 13, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  columnValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+    textAlign: 'center',
+  },
 });

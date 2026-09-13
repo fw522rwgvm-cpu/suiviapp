@@ -73,7 +73,10 @@ export function EntryRow({ entry }: { entry: JournalEntryView }) {
           {entry.brand === null ? '' : ` · ${entry.brand}`}
         </Text>
         {detail === '' ? null : (
-          <Text style={[styles.detail, { color: theme.colors.textMuted }]} numberOfLines={1}>
+          <Text
+            style={[styles.detail, styles.detailFigures, { color: theme.colors.textMuted }]}
+            numberOfLines={1}
+          >
             {detail}
           </Text>
         )}
@@ -110,15 +113,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 10,
-    paddingHorizontal: 16,
-    gap: 12,
+    // Tightened from 16/12 to buy back about ten points for the grey line,
+    // which was losing its last macro to an ellipsis on a phone.
+    paddingHorizontal: 14,
+    gap: 8,
   },
   identity: { flex: 1, gap: 1 },
   name: { fontSize: 14 },
-  // Smaller again than the name, because it carries two things and is read
-  // second -- and never so small that the figures stop being figures.
-  detail: { fontSize: 11 },
+  /**
+   * Smaller again than the name, because it carries two things and is read
+   * second -- and never so small that the figures stop being figures.
+   *
+   * DOWN FROM 11, and the reason is a defect seen on the device rather than a
+   * preference: "2 tranches · 50 g · P 4,0 · G 23,5 · L 1,5" is five values on
+   * one line, and it was being cut at the last one. A truncated macro is worse
+   * than a small one — it reads as a value rather than as a missing value,
+   * because the ellipsis lands where a digit would.
+   *
+   * The letter spacing comes down with it. At ten points the default tracking
+   * is what costs the line its last two characters, and the figures stay
+   * tabular so a column of rows still lines up.
+   */
+  detail: { fontSize: 10, letterSpacing: -0.1 },
   figures: { alignItems: 'flex-end' },
   kcal: { fontSize: 14, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  detailFigures: { fontVariant: ['tabular-nums'] },
   warning: { fontSize: 10 },
 });

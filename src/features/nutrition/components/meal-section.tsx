@@ -1,13 +1,14 @@
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { formatKcal } from '@/core/format';
+import { formatKcal, formatMacro } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import { useMealEntries } from '../data/day-queries';
 import type { JournalEntryView } from '../data/day-reads';
 import type { DayMealView } from '../domain/day-plan';
-import type { Macros } from '../domain/macros';
+import { progressRatio, targetStanding, ZERO_MACROS, type Macros } from '../domain/macros';
 import { EntryRow } from './entry-row';
+import { ProgressRing } from './progress-ring';
 import { SwipeToDeleteRow } from './swipe-to-delete-row';
 import { ListSeparator } from '@/core/ui/list-separator';
 
@@ -43,8 +44,26 @@ export function MealSection({
   const [open, setOpen] = useState(false);
   const entries = useMealEntries(open ? meal.id : null);
 
-  const consumedKcal = total?.kcal ?? 0;
+  const consumed = total ?? ZERO_MACROS;
+  const consumedKcal = consumed.kcal;
   const targetKcal = meal.targets?.kcal ?? null;
+
+  /**
+   * The ring and the macro band appear TOGETHER, and only against a target.
+   *
+   * A ring with nothing to fill against is not a ring at half past nothing, it
+   * is a shape that looks broken — and a day with no template would show four
+   * of them stacked. So on a meal with no target the header stays exactly as
+   * it was before slice 5, which is also what every day logged before 0004
+   * looks like.
+   */
+  const standing = targetStanding(consumedKcal, targetKcal);
+  const ringColor =
+    standing === 'far_over'
+      ? theme.colors.danger
+      : standing === 'over'
+        ? theme.colors.warning
+        : theme.colors.accent;
 
   return (
     <View
@@ -76,6 +95,21 @@ export function MealSection({
             size={13}
             tintColor={theme.colors.textFaint}
           />
+
+          {/*
+            Same rule as the day's ring, because it answers the same question
+            one level down: the theme's red past 10% over, amber for the first
+            slip. It carries no figure inside — the kcal are written out an inch
+            to its right, and repeating them would be saying one fact twice.
+          */}
+          {targetKcal === null ? null : (
+            <ProgressRing
+              progress={progressRatio(consumedKcal, targetKcal)}
+              size={34}
+              thickness={4}
+              color={ringColor}
+            />
+          )}
 
           {/*
             Name above, figure below, rather than both on one line. It gives
@@ -112,6 +146,19 @@ export function MealSection({
           <SymbolView name="plus.circle.fill" size={54} tintColor={theme.colors.accent} />
         </Pressable>
       </View>
+
+      {/*
+        ITS OWN ROW, SPANNING THE CARD, rather than tucked under the kcal line
+        inside the identity block — which is where it was asked for and where
+        it does not fit. Beside the chevron, the ring and a 54-point add
+        button, the identity column is about 187 points wide; three columns of
+        it leave 62 each, and "Gluc. 240 / 100 g" needs more than that at any
+        size still worth reading. Given the card's full width each column gets
+        over a hundred, and the band still reads as sitting under the kcal.
+      */}
+      {meal.targets === null ? null : (
+        <MacroBand consumed={consumed} targets={meal.targets} />
+      )}
 
       {open ? (
         <View style={[styles.entries, { borderTopColor: theme.colors.border }]}>
@@ -157,6 +204,81 @@ export function MealSection({
   );
 }
 
+/** The three that have bars. Calories are the ring, not a fourth bar. */
+const MACRO_BARS: readonly {
+  key: 'protein' | 'carbs' | 'fat';
+  label: string;
+  token: 'macroProtein' | 'macroCarbs' | 'macroFat';
+}[] = [
+  { key: 'protein', label: 'Prot.', token: 'macroProtein' },
+  { key: 'carbs', label: 'Gluc.', token: 'macroCarbs' },
+  { key: 'fat', label: 'Lip.', token: 'macroFat' },
+];
+
+/**
+ * The three bars, as their own component so the narrowing is real.
+ *
+ * Taking `targets` already non-null is what lets the caller pass it after a
+ * null check instead of asserting it away — conventions section 4 rules out
+ * assertions, and a `!` here would be one on the very value the whole band
+ * depends on.
+ */
+function MacroBand({ consumed, targets }: { consumed: Macros; targets: Macros }) {
+  const theme = useTheme();
+
+  return (
+    <View style={styles.macroBand}>
+      {MACRO_BARS.map((bar) => (
+        <MacroBar
+          key={bar.key}
+          label={bar.label}
+          consumed={consumed[bar.key]}
+          target={targets[bar.key]}
+          color={theme.colors[bar.token]}
+        />
+      ))}
+    </View>
+  );
+}
+
+/**
+ * One macro of the meal: what it stands at, over a bar.
+ *
+ * NEVER RED, however full — the same rule as the day's three bars. Going over
+ * on carbohydrates is not the same kind of event as going over on the day, and
+ * a row of red bars would say that it was. The ring is the one thing on this
+ * card allowed to raise its voice.
+ */
+function MacroBar({
+  label,
+  consumed,
+  target,
+  color,
+}: {
+  label: string;
+  consumed: number;
+  target: number;
+  color: string;
+}) {
+  const theme = useTheme();
+
+  return (
+    <View style={styles.macroColumn}>
+      <Text style={[styles.macroText, { color: theme.colors.textMuted }]} numberOfLines={1}>
+        {`${label} ${formatMacro(consumed)} / ${formatMacro(target)} g`}
+      </Text>
+      <View style={[styles.macroTrack, { backgroundColor: theme.colors.border }]}>
+        <View
+          style={[
+            styles.macroFill,
+            { backgroundColor: color, width: `${progressRatio(consumed, target) * 100}%` },
+          ]}
+        />
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   // overflow hidden so the swipe-to-delete row cannot paint outside the
   // rounded corners while it is being dragged.
@@ -178,4 +300,17 @@ const styles = StyleSheet.create({
   add: { paddingHorizontal: 14, paddingVertical: 10 },
   entries: { borderTopWidth: StyleSheet.hairlineWidth },
   empty: { fontSize: 14, paddingHorizontal: 18, paddingVertical: 16 },
+  // Pulled up under the header rather than spaced from it: the band belongs to
+  // the figure above it, not to the list below.
+  macroBand: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 18,
+    paddingBottom: 14,
+    marginTop: -6,
+  },
+  macroColumn: { flex: 1, gap: 4 },
+  macroText: { fontSize: 11, fontVariant: ['tabular-nums'] },
+  macroTrack: { height: 4, borderRadius: 2, overflow: 'hidden' },
+  macroFill: { height: 4, borderRadius: 2 },
 });

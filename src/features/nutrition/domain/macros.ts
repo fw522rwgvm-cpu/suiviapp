@@ -129,3 +129,38 @@ export function hasKcalWarning(macros: Macros): boolean {
 export function describeMacros(macros: Macros): string {
   return `P ${formatMacro(macros.protein)} · G ${formatMacro(macros.carbs)} · L ${formatMacro(macros.fat)}`;
 }
+
+/**
+ * How far along a target a consumed value is, clamped to [0, 1].
+ *
+ * FOR DRAWING ONLY. The clamp is what keeps a ring inside its own circle and a
+ * bar inside its rounded corners; the figures beside it stay exact, because
+ * the drawing is the glance and the numbers are the answer. A target of zero
+ * or none has no proportion to show and reads as empty rather than as full.
+ */
+export function progressRatio(consumed: number, target: number | null): number {
+  if (target === null || !Number.isFinite(target) || target <= 0) return 0;
+  if (!Number.isFinite(consumed) || consumed <= 0) return 0;
+  return Math.min(1, consumed / target);
+}
+
+/**
+ * How far past a calorie target a day or a meal has gone (specs 8.3).
+ *
+ * ITS OWN THRESHOLD, deliberately NOT KCAL_DISCREPANCY_THRESHOLD. That one is
+ * the §5.1 check of a source's stated calories against 4P + 4C + 9F — a
+ * statement about one food's own coherence. This one is about eating more than
+ * you meant to. Two unrelated questions that happen to share the number 10, and
+ * folding them into one constant would tie a display rule to a nutrition rule
+ * for ever.
+ */
+export const KCAL_OVERSHOOT_THRESHOLD = 0.1;
+
+/** Null when there is no target: nothing to stand against (specs 8.1). */
+export type TargetStanding = 'under' | 'over' | 'far_over';
+
+export function targetStanding(consumed: number, target: number | null): TargetStanding | null {
+  if (target === null || !Number.isFinite(target) || target <= 0) return null;
+  if (consumed <= target) return 'under';
+  return consumed > target * (1 + KCAL_OVERSHOOT_THRESHOLD) ? 'far_over' : 'over';
+}
