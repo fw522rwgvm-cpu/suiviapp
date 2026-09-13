@@ -337,13 +337,21 @@ export function AddEntryScreen({
    */
   const picker = (
     <View style={styles.fill}>
+          {/*
+            THE HEAD DOES NOT SCROLL, and the lists below it do.
 
-          <ScrollView
-            style={styles.fill}
-            contentContainerStyle={styles.content}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
-          >
+            Everything here is a way IN: two one-tap entry points and the field
+            that filters what follows. Scrolling a list of foods must never take
+            them off screen — reaching the scanner would then cost a scroll back
+            up, on a journey specs 8.5 budgets at five seconds, in a shop,
+            one-handed.
+
+            It also settles what the search field is. Above a scrolling region
+            it reads as a filter on that region, which is what it is; inside it,
+            it read as the first item of a list that happened to have a text box
+            in it.
+          */}
+          <View style={styles.head}>
             {/*
               THE TWO FASTEST WAYS IN, ABOVE THE SEARCH FIELD.
 
@@ -428,7 +436,18 @@ export function AddEntryScreen({
               itself before being asked anything.
             */}
             {notice === null ? null : <OffNoticeBanner notice={notice} now={Date.now()} />}
+          </View>
 
+          {/*
+            Only the lists scroll — including the empty state, which is about
+            what the lists hold rather than about how to fill them.
+          */}
+          <ScrollView
+            style={styles.fill}
+            contentContainerStyle={styles.lists}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          >
             {!searching &&
             (favorites.data?.length ?? 0) === 0 &&
             (recents.data?.length ?? 0) === 0 &&
@@ -1111,6 +1130,10 @@ function RemoteSection({
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   content: { paddingHorizontal: 16, paddingBottom: 32, gap: 18 },
+  // Same gutter as the lists, so the field and the rows line up; its own
+  // vertical rhythm, because it is a head rather than a first item.
+  head: { paddingHorizontal: 16, paddingBottom: 14, gap: 12 },
+  lists: { paddingHorizontal: 16, paddingBottom: 32, gap: 18 },
   freeEntry: {
     flexDirection: 'row',
     alignItems: 'center',

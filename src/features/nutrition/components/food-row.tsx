@@ -98,13 +98,30 @@ export function FoodRow({
           </Text>
         )}
 
-        <Text style={[styles.detail, { color: theme.colors.textMuted }]} numberOfLines={1}>
-          {formatKcal(food.reference.kcal)} kcal / 100 {food.baseUnit}
-        </Text>
+        {/*
+          ONE CALORIE FIGURE PER ROW, and which one depends on what the row is
+          for.
+        
+          Where the row offers to add itself, the figure that matters is what
+          the tap costs — shown beside the button. Stating "265 kcal / 100 g"
+          underneath as well put two calorie numbers on one card, neither of
+          which was obviously the one being read.
+        
+          Where there is no button — the library — the per-100 figure is the
+          only one there is, and it is the one worth having: it is stated
+          against the same quantity on every line, which is what lets two foods
+          be compared at a glance. That is also why it is never scaled by
+          display_ref_qty (D9).
+        */}
+        {kcal !== undefined ? null : (
+          <Text style={[styles.detail, { color: theme.colors.textMuted }]} numberOfLines={1}>
+            {formatKcal(food.reference.kcal)} kcal / 100 {food.baseUnit}
+          </Text>
+        )}
       </View>
 
       {kcal === undefined ? null : (
-        <Text style={[styles.kcal, { color: theme.colors.text }]}>{kcal}</Text>
+        <Text style={[styles.kcal, { color: theme.colors.textMuted }]}>{kcal}</Text>
       )}
 
       {onQuickAdd === undefined ? null : (
@@ -173,10 +190,20 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   identity: { flex: 1, gap: 1 },
-  name: { fontSize: 16 },
-  // Not shrinkable: a calorie figure cut in half is worse than a name cut in
-  // half, and it is the one number the + button is answerable for.
-  kcal: { fontSize: 15, fontWeight: '500', flexShrink: 0 },
+  // Bold: it is the one thing on the row that identifies the food, and every
+  // other line under it qualifies it.
+  name: { fontSize: 16, fontWeight: '600' },
+  /**
+   * Same voice as the brand and the quantity, one size up.
+   *
+   * It is a fact about the row rather than its heading — the name is the
+   * heading — so it does not compete with it. The size is what keeps it
+   * readable at arm's length from the button it belongs to.
+   *
+   * Not shrinkable: a calorie figure cut in half is worse than a name cut in
+   * half, and it is the one number the + button is answerable for.
+   */
+  kcal: { fontSize: 15, flexShrink: 0 },
   // Between the name and the figures in weight as well as in place: it says
   // which food this is, not what it is worth.
   brand: { fontSize: 13 },

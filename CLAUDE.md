@@ -1200,6 +1200,29 @@ jamais que cette quantité a été mangée — elle énonce ce que le bouton ajo
 ce qui est vrai à chaque étape. Retirer le bouton aurait coupé la liste des
 favoris en deux selon un critère invisible.
 
+**Un seul chiffre de calories par ligne, et lequel dépend de ce que la ligne
+sert.** Là où elle offre de s'ajouter, le chiffre qui compte est le prix du
+toucher, montré près du bouton ; énoncer « 265 kcal / 100 g » en dessous
+mettait deux nombres de calories sur une carte sans que l'un soit manifestement
+celui qu'on lit. Là où il n'y a pas de bouton — la bibliothèque — le chiffre
+pour 100 est le seul, et c'est le bon : il est énoncé contre la même quantité
+sur chaque ligne, ce qui est précisément ce qui rend une liste comparable.
+
+**Conséquence assumée** : les listes de l'écran d'ajout cessent d'être
+comparables entre elles, chaque ligne étant désormais énoncée contre sa propre
+quantité. C'est correct pour un écran où l'on logue plutôt qu'où l'on compare,
+et c'est exactement ce que le commentaire de `FoodRow` interdisait quand la
+ligne ne portait pas d'action — la règle n'a pas été enfreinte, son motif a
+cessé de s'appliquer.
+
+**L'en-tête de l'écran d'ajout ne défile pas.** Les deux entrées rapides et le
+champ restent à l'écran ; seules les listes bougent. Atteindre le scanner ne
+doit jamais coûter un retour vers le haut, sur un parcours budgété à cinq
+secondes, en magasin, à une main. Effet de bord qui n'en est pas un : un champ
+placé **au-dessus** d'une zone qui défile se lit comme le filtre de cette zone,
+ce qu'il est ; à l'intérieur, il se lisait comme le premier élément d'une liste
+qui contenait une boîte de texte.
+
 **Trois formulations d'une quantité coexistent, et chacune a sa raison** :
 « 2 tranches · 50 g » au Journal, où une entrée se lit face à un total ;
 « 2 tranches » au panier, où la ligne a la place d'une seule chose ;
