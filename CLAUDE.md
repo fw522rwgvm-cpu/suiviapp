@@ -1776,11 +1776,12 @@ jusqu'à l'écran. La modale lit la journée elle-même et décide là quels typ
 sont libres — un paramètre de moins à faire traverser trois composants pour
 répondre à une question que le destinataire pouvait poser lui-même.
 
-**L'anneau se ferme dans la couleur de l'accent, et le rouge attend.** Une jauge
-pleine veut dire « il ne reste rien », ce qui est l'objectif *atteint* et non
-manqué : le rouge y a été posé un temps, et il mettait la couleur d'alarme sur
-l'instant de la réussite. Trois états désormais — accent jusqu'à l'objectif,
-ambre tant que le dépassement tient dans la marge, rouge au-delà.
+**Une jauge pleine n'est pas un événement.** Atteindre l'objectif veut dire
+qu'il ne reste rien, ce qui est le but *atteint* : l'arc se ferme donc dans la
+couleur ordinaire et la garde tant que le dépassement reste petit. Le rouge y a
+été posé un temps, puis une bande ambre — et l'ambre était pire, parce qu'elle
+mettait un avertissement sur l'instant de la réussite **puis un second juste
+après**. Deux états, un seuil, rouge seulement au-delà de la marge.
 
 **La marge est de 50 kcal, absolue, et pas un pourcentage.** La différence n'est
 pas cosmétique : 10 % accorde 260 kcal de tolérance à une journée
@@ -1806,6 +1807,19 @@ du blanc. Et la même valeur dans les deux thèmes, parce que le fond est le mê
 hex dans les deux : un bouton d'une seule couleur ne peut pas porter deux
 étiquettes selon un réglage qui ne le change pas.
 
+**Un titre fait ce qu'une carte ne peut pas faire seule : dire ce qu'elle est.**
+« Résumé » et « Alimentation » sont deux questions différentes — ce à quoi la
+journée revient, et ce qui a été mangé — et des cartes empilées se lisent comme
+une seule liste tant que rien ne les nomme. Ferrés à gauche et en gras : ils
+appartiennent à la page, pas à la carte en dessous. Et tirés vers le bas sur
+elle, écartés de celle du dessus, parce qu'un titre appartient à ce qui le
+suit.
+
+**`calendar` n'a pas de variante `.fill`.** Seulement `.circle.fill`. Donc rendre
+les icônes d'en-tête « pleines » obligeait à choisir : apparier un disque plein
+et un glyphe plein ordinaire aurait fait lire une icône comme un bouton et
+l'autre comme une étiquette. Les deux sont passées au disque.
+
 ## Points ouverts après la tranche 5
 - ~~**Vérification iPhone en attente.**~~ **Faite pour l'essentiel** : la
   tranche 5 a tourné sur l'appareil et a rendu six retours d'interface, tous
@@ -1825,6 +1839,11 @@ hex dans les deux : un bouton d'une seule couleur ne peut pas porter deux
   numéro se dérive de la journée entière, que cette liste ne charge pas — elle
   lit un repas par ligne. « Collation · 15 septembre » reste sans ambiguïté ;
   à rouvrir si deux collations du même jour s'y côtoient et se confondent.
+- **Plus rien ne dit pourquoi une journée matérialisée ne suit pas son modèle.**
+  La ligne « Journée créée avec X » a été retirée sur demande ; c'était la seule
+  chose à l'écran qui répondait à « j'ai modifié mon modèle, pourquoi mon jeudi
+  n'a pas bougé ». Le §8.2 rend toujours le comportement correct, et le
+  `template_name_snapshot` est toujours en base — seul l'affichage est parti.
 - **Le thème clair porte un accent à 2,13:1, et c'est une décision prise en
   connaissance de cause.** Chevrons, « Enregistrer », le glyphe du bouton
   d'ajout et la jauge y sont pâles. Rien ne casse ; tout est moins lisible. La
