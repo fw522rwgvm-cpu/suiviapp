@@ -1,6 +1,15 @@
-import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
-import { formatQuantity } from '@/core/format';
+import { useId, useState } from 'react';
+import {
+  InputAccessoryView,
+  Keyboard,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import { formatQuantity, parseDecimal } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import type { FoodId, JournalEntryId } from '@/core/db/schema';
 import { useEntry, useUpdateFoodEntryQuantity } from '../data/day-queries';
@@ -22,6 +31,7 @@ import { QuantityWheel } from '../components/quantity-wheel';
 import {
   amountOf,
   wheelFor,
+  wheelWithAmount,
   type WheelChoice,
   type WheelUnit,
 } from '../domain/wheel-choice';
@@ -325,6 +335,15 @@ function QuantityBody({
    * Computed at mount from the quantity handed in, never in an effect.
    */
   const [wheel, setWheel] = useState<WheelChoice>(() => wheelFor(initial, portions));
+  /**
+   * Whether the quantity row has become a field.
+   *
+   * A state rather than a permanent input, because the wheels are the ordinary
+   * way to answer and the keyboard is the exception: a text box sitting there
+   * always would invite the slower gesture on the screen whose whole budget is
+   * two taps (D16).
+   */
+  const [editing, setEditing] = useState(false);
 
   /**
    * What it can be counted in: the base unit first, then this food's portions.
@@ -376,16 +395,53 @@ function QuantityBody({
           brackets would repeat the words in front of them.
         */}
         <FormRow label="Quantité">
-          <Text style={[styles.amount, { color: theme.colors.text }]}>
-            {choice === null
-              ? '—'
-              : chosen === null
-                ? formatQuantity(choice.baseQuantity, baseUnit)
-                : `${formatPortionCount(choice.portion?.count ?? 0, chosen.name)} (${formatQuantity(
-                    choice.baseQuantity,
-                    baseUnit,
-                  )})`}
-          </Text>
+          {/*
+            THE ROW IS THE FIELD, once it is touched.
+
+            Slice 3 took the keyboard off this screen so a quantity could be a
+            fraction of a portion, and wrote the price down: "typing 137 g means
+            turning a wheel". This is that reservation being spent. The wheels
+            stay the way a quantity is CHOSEN; the keyboard is how an exact one
+            is STATED, which is a different act and deserved a different gesture
+            rather than a second control sitting there permanently.
+
+            What is typed is the number, in whatever the wheels are counting —
+            grams here, slices on a food that has them. The unit stays beside
+            it so that is never in doubt.
+          */}
+          {editing ? (
+            <TypedAmount
+              initialText={typedFrom(amount)}
+              unit={chosen === null ? baseUnit : chosen.name}
+              onDone={(text) => {
+                setEditing(false);
+                const value = parseDecimal(text);
+                // A blank, a stray character or a nothing leaves the wheels
+                // where they were: the field is a shortcut, not a way to reach
+                // a state the wheels cannot hold.
+                if (value === null || value <= 0) return;
+                setWheel((current) => wheelWithAmount(current, value));
+              }}
+            />
+          ) : (
+            <Pressable
+              onPress={() => setEditing(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Saisir la quantité au clavier"
+              hitSlop={8}
+            >
+              <Text style={[styles.amount, { color: theme.colors.text }]}>
+                {choice === null
+                  ? '—'
+                  : chosen === null
+                    ? formatQuantity(choice.baseQuantity, baseUnit)
+                    : `${formatPortionCount(
+                        choice.portion?.count ?? 0,
+                        chosen.name,
+                      )} (${formatQuantity(choice.baseQuantity, baseUnit)})`}
+              </Text>
+            </Pressable>
+          )}
         </FormRow>
 
         {/*
@@ -422,9 +478,118 @@ function QuantityBody({
   );
 }
 
+/**
+ * The number as the field should open on it.
+ *
+ * French decimal separator, and no trailing ",0": what is offered for retyping
+ * has to look like what someone would have typed.
+ */
+function typedFrom(amount: number): string {
+  const rounded = Math.round(amount * 1000) / 1000;
+  return Number.isInteger(rounded)
+    ? String(rounded)
+    : String(rounded).replace('.', ',');
+}
+
+/**
+ * The quantity row while it is being typed into.
+ *
+ * ## WHY IT IS ITS OWN COMPONENT
+ *
+ * So that the text being typed is state that is born WITH the field and dies
+ * with it. Kept on the screen instead, it would need clearing every time the
+ * row opened and closed, and the bug that produces — a field opening on the
+ * previous edit — is invisible until someone edits twice.
+ *
+ * ## autoFocus AND selectTextOnFocus WORK HERE, WHERE THEY DID NOT ELSEWHERE
+ *
+ * Slice 3 found that the pair selects nothing when the value arrives from a
+ * query: autoFocus fires at mount, the field is still empty then, and a
+ * selection lands on an empty string. Here the value is in hand before the
+ * field exists — it comes from the wheels, which are local state — so this is
+ * the case the pair was built for: FOCUSING A FIELD THAT IS ALREADY FILLED.
+ * Typing therefore replaces, which is the whole point of offering the current
+ * value at all.
+ *
+ * ## THE VALUE IS APPLIED ON THE WAY OUT, NOT ON EVERY KEYSTROKE
+ *
+ * Applying as it is typed would spin the wheels through 1, then 13, then 137.
+ * They are a native picker and they animate; a number pad is not a place to
+ * watch that happen. Blur is the moment the answer is finished, and the bar
+ * above the keyboard is how it is reached without hunting for somewhere
+ * harmless to tap.
+ */
+function TypedAmount({
+  initialText,
+  unit,
+  onDone,
+}: {
+  initialText: string;
+  unit: string;
+  onDone: (text: string) => void;
+}) {
+  const theme = useTheme();
+  const [text, setText] = useState(initialText);
+  // Punctuation-free: it crosses to a native view as a plain string, and useId
+  // spells its own with colons.
+  const accessoryId = `qty${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
+
+  return (
+    <View style={styles.typedRow}>
+      <TextInput
+        value={text}
+        onChangeText={setText}
+        onBlur={() => onDone(text)}
+        autoFocus
+        selectTextOnFocus
+        // French keyboards put the comma on this pad; parseDecimal takes both.
+        keyboardType="decimal-pad"
+        inputAccessoryViewID={accessoryId}
+        style={[styles.typedInput, { color: theme.colors.text }]}
+      />
+      <Text style={[styles.amount, { color: theme.colors.textMuted }]}>{unit}</Text>
+
+      {/*
+        AFTER the field: the native view binds itself on entering the window by
+        looking for an input carrying its id, so the field has to be there
+        first. One field, so no chevrons — they would be two dead controls.
+      */}
+      <InputAccessoryView nativeID={accessoryId}>
+        <View
+          style={[
+            styles.accessory,
+            { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border },
+          ]}
+        >
+          <Pressable
+            onPress={() => Keyboard.dismiss()}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Valider la quantité"
+          >
+            <Text style={[styles.done, { color: theme.colors.accent }]}>OK</Text>
+          </Pressable>
+        </View>
+      </InputAccessoryView>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   content: { padding: 16, gap: 16, paddingBottom: 56 },
   amount: { fontSize: 17 },
+  typedRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
+  // Right-aligned like the text it replaces, so the row does not shift as it
+  // becomes a field.
+  typedInput: { fontSize: 17, minWidth: 64, textAlign: 'right', padding: 0 },
+  accessory: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  done: { fontSize: 17, fontWeight: '600' },
   equivalent: { fontSize: 13 },
   save: { borderRadius: 18, paddingVertical: 16, alignItems: 'center' },
   saveLabel: { fontSize: 17, fontWeight: '600' },

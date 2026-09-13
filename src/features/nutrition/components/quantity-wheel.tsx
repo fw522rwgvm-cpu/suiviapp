@@ -4,6 +4,7 @@ import { StyleSheet, View } from 'react-native';
 import { useTheme } from '@/core/theme';
 import {
   FRACTIONS,
+  LAST_WHOLE,
   settleWheel,
   type WheelChoice,
   type WheelUnit,
@@ -41,8 +42,8 @@ import {
  * is not a quantity — live in the domain, not here. See settleWheel.
  */
 
-/** One thousand is past any plate. */
-const LAST_WHOLE = 1000;
+// One thousand is past any plate. Declared in the domain, because a quantity
+// typed by hand is clamped to it and that is a rule about quantities.
 
 export function QuantityWheel({
   units,

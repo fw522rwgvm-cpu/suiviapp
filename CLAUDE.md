@@ -1258,6 +1258,35 @@ a porté. Un ajout direct au journal aurait réclamé une confirmation ; une lig
 au panier n'en réclame aucune. C'est la même propriété qui rend le geste rapide
 et qui le rend rattrapable.
 
+**Le clavier est revenu sur l'écran de quantité, et c'est une réserve qui se
+dépense.** La tranche 3 l'avait retiré pour rendre les fractions de portion
+possibles, en écrivant le prix : « taper 137 g demande de faire tourner une
+roue ; à rouvrir si une quantité précise devient pénible ». Elle l'est devenue.
+
+La forme compte : **les molettes restent l'unique source de vérité.** Ce qui est
+tapé y atterrit par `wheelWithAmount`, et tout le reste les lit. Garder la
+valeur tapée *à côté* aurait fait deux réponses à une question — exactement la
+forme de bug que cet écran évite déjà une fois.
+
+Trois détails qui ne se devinent pas :
+- **Le nombre seul est saisi, jamais l'unité.** Le champ s'ouvre sur une ligne
+  qui dit « 2 tranches (50 g) » : ce qu'on retape est le 2. Un clavier qui
+  rebasculerait en grammes répondrait à une question que personne n'a posée.
+- **La valeur s'applique au blur, pas à chaque frappe.** Appliquer en direct
+  ferait tourner les molettes par 1, puis 13, puis 137 — ce sont des pickers
+  natifs, ils s'animent, et un pavé numérique n'est pas un endroit d'où
+  regarder ça. D'où une barre « OK » au-dessus du clavier : un seul champ, donc
+  pas de chevrons, qui seraient deux contrôles morts.
+- **`autoFocus` + `selectTextOnFocus` fonctionnent ici**, là où la tranche 3
+  avait constaté qu'ils ne sélectionnaient rien. La différence est la seule qui
+  compte : la valeur vient de l'état local et existe **avant** le champ, donc
+  on retombe dans le cas où la paire marche — focaliser un champ déjà rempli.
+
+Et le champ est un composant à lui, pour que le texte en cours de frappe naisse
+et meure avec lui : gardé sur l'écran, il faudrait le vider à chaque
+ouverture, et le bug que ça produit — un champ qui s'ouvre sur l'édition
+précédente — ne se voit qu'à la deuxième.
+
 ### Deux défauts trouvés sur l'appareil, et ce qu'ils enseignent
 
 **Un balayage qui se termine sur la rangée déclenchait son press.** Découvrir
@@ -1377,10 +1406,11 @@ doit porter son propre matériau.
   export / import avec les nouvelles tables.~~ **L'aller-retour est vérifié
   (13/09/2026).** La recherche sans accent a désormais un porteur : une section
   de diagnostic dans les Réglages dev dit quel chemin de pliage s'exécute.
-- **L'écran de quantité n'a plus de champ de saisie.** Une quantité se choisit
-  à la molette, donc taper 137 g demande de faire tourner une roue. C'est le
-  prix accepté d'un choix qui rend les fractions de portion possibles ; à
-  rouvrir si une quantité précise devient pénible.
+- ~~**L'écran de quantité n'a plus de champ de saisie.**~~ **Rouvert et réglé en
+  tranche 4**, exactement comme la réserve le prévoyait : toucher la ligne
+  « Quantité » la transforme en champ numérique. Les molettes restent l'unique
+  source de vérité — ce qui est tapé atterrit dessus — et gardent les fractions
+  de portion.
 - **La quantité de référence d'un aliment n'est plus saisissable** : 100 g ou
   100 ml. Une étiquette donnant ses valeurs pour 30 g se convertit à la main.
   `display_ref_qty` reste en base et vaut 100, donc le champ peut revenir sans

@@ -3,8 +3,10 @@ import {
   amountOf,
   FRACTIONS,
   nearestFraction,
+  LAST_WHOLE,
   settleWheel,
   wheelFor,
+  wheelWithAmount,
   type WheelChoice,
   type WheelUnit,
 } from '../../src/features/nutrition/domain/wheel-choice';
@@ -142,5 +144,55 @@ describe('where the wheels stand when the screen opens', () => {
     expect(wheel.whole).toBe(2);
     expect(wheel.unit).toBe(1);
     expect(FRACTIONS[wheel.fraction]?.value).toBeCloseTo(1 / 3, 5);
+  });
+});
+
+describe('a quantity typed by hand', () => {
+  /**
+   * The keyboard slice 3 deliberately took off this screen, brought back as an
+   * exception rather than as the ordinary way to answer.
+   *
+   * Its reservation was written down at the time — "typing 137 g means turning
+   * a wheel" — and this is it being spent. What is tested is not that a number
+   * arrives, but the two places it can quietly go wrong: the unit it applies
+   * to, and what happens to a value the wheels cannot hold.
+   */
+  const grams: WheelChoice = { whole: 50, fraction: 0, unit: 0 };
+  const slices: WheelChoice = { whole: 2, fraction: 0, unit: 1 };
+
+  it('replaces the number and LEAVES THE UNIT ALONE', () => {
+    // The field opens on a row reading "2 tranches (50 g)", so what is being
+    // retyped is the 2. A keyboard that switched the unit back to grams would
+    // answer a question nobody asked.
+    expect(wheelWithAmount(slices, 3)).toEqual({ whole: 3, fraction: 0, unit: 1 });
+    expect(wheelWithAmount(grams, 137)).toEqual({ whole: 137, fraction: 0, unit: 0 });
+  });
+
+  it('lands a decimal on the nearest face the wheels have', () => {
+    // Eight fractions, so 137,5 is exact and 137,3 is not. The wheels visibly
+    // move to what was understood rather than silently keeping a value they
+    // cannot show.
+    expect(wheelWithAmount(grams, 137.5).whole).toBe(137);
+    expect(FRACTIONS[wheelWithAmount(grams, 137.5).fraction]?.value).toBeCloseTo(0.5, 5);
+    expect(FRACTIONS[wheelWithAmount(grams, 137.3).fraction]?.value).toBeCloseTo(1 / 3, 5);
+  });
+
+  it('CLAMPS rather than refuses a number past the last wheel face', () => {
+    // A hand on a number pad produces 1370 for 137 often enough. Refusing it
+    // would leave the wheels on a value nobody chose, with nothing said.
+    expect(wheelWithAmount(grams, 5000).whole).toBe(LAST_WHOLE);
+    expect(wheelWithAmount(grams, LAST_WHOLE).whole).toBe(LAST_WHOLE);
+  });
+
+  it('never goes negative', () => {
+    expect(wheelWithAmount(grams, -5).whole).toBe(0);
+  });
+
+  it('round-trips a quantity the wheels can hold', () => {
+    // The property that keeps typing and turning the same answer: what the row
+    // shows, retyped, must land back where it was.
+    for (const amount of [1, 50, 137, 2.5, 0.25, 999]) {
+      expect(amountOf(wheelWithAmount(grams, amount))).toBeCloseTo(amount, 5);
+    }
   });
 });

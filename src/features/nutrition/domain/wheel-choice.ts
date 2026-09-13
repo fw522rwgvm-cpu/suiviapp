@@ -142,3 +142,46 @@ export function wheelFor(
 
   return { whole, fraction: nearestFraction(amount - whole), unit };
 }
+
+/**
+ * The largest whole number the wheels carry.
+ *
+ * Declared here rather than in the picker because it is now a DOMAIN limit:
+ * a quantity typed by hand has to be brought back inside it, and that is a
+ * rule about quantities rather than about how many rows a list renders. The
+ * picker reads it from here.
+ */
+export const LAST_WHOLE = 1000;
+
+/**
+ * The same wheels, standing on a quantity typed by hand (specs 8.4).
+ *
+ * ## WHY THE UNIT IS UNTOUCHED
+ *
+ * Typing replaces the NUMBER, never what it counts. The field opens on the row
+ * showing "2 tranches (50 g)", so what is being retyped is the 2 — and a
+ * keyboard that silently switched a portion back to grams would answer a
+ * question nobody asked.
+ *
+ * ## AND WHY IT GOES THROUGH THE WHEELS AT ALL
+ *
+ * The wheels stay the single source of truth: what is typed lands on them, and
+ * everything downstream reads them. The alternative — keeping the typed value
+ * beside them — is two answers to one question, which is the shape of bug this
+ * whole screen already avoids once.
+ *
+ * The cost, and it is visible rather than silent: the wheels carry eight
+ * fractions, so a decimal they cannot express lands on the nearest one they
+ * can. Typing 137,3 g gives 137 and a third. For the case that motivated a
+ * keyboard at all — a whole number of grams off a scale — there is nothing to
+ * lose, and the wheels visibly move to what was understood.
+ */
+export function wheelWithAmount(wheel: WheelChoice, amount: number): WheelChoice {
+  // Clamped rather than refused: a hand on a number pad produces 1370 for 137
+  // often enough, and a wheel that cannot show it would otherwise be left on a
+  // value nobody chose.
+  const bounded = Math.min(Math.max(amount, 0), LAST_WHOLE);
+  const whole = Math.floor(bounded);
+
+  return { ...wheel, whole, fraction: nearestFraction(bounded - whole) };
+}
