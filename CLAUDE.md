@@ -1844,6 +1844,28 @@ métaphore de date réellement pleine du jeu, et c'est celle d'Apple.
 réels : un nom inventé échoue au `tsc` au lieu de rendre un carré vide sur
 l'appareil. Le point ouvert qui disait le contraire tombe.
 
+**Une surcharge ne suffit pas à « changer le modèle » d'une journée.** Elle
+n'est lue que tant que la journée est **virtuelle** ; sur une journée
+matérialisée elle écrit une ligne qui ne change rien à l'écran, la journée
+portant ses propres repas (§8.1). Proposer le contrôle là et n'avoir aucun effet
+aurait été **un contrôle qui ment**. `setDayTemplate` fait donc les deux moitiés
+en une transaction : la surcharge est enregistrée, et les objectifs du modèle
+choisi sont appliqués à la journée quand elle existe déjà.
+
+Pas de rétroactif pour autant : le §8.2 fait de l'action de l'utilisateur sur
+une journée l'acte qui la définit, et c'est une action sur *cette* journée, une
+fois. Deux refus sont écrits dans la fonction — une journée virtuelle n'est pas
+matérialisée au passage (choisir n'est pas agir), et « suivre le planning » sur
+une journée dont le planning ne dit rien **ne vide pas** ses objectifs, ce qui
+serait un effacement que personne n'a demandé.
+
+**Trois comportements derrière une seule ligne en cachaient un manquant.** Le
+contrôle était tour à tour un constat, un bouton « appliquer les objectifs » et
+un sélecteur — et le cas qui comptait le plus n'existait pas : dès le
+petit-déjeuner logué, le modèle de la journée cessait d'être modifiable. Quand
+un composant a trois branches selon l'état, la question à poser n'est pas si
+elles sont justes mais **s'il en manque une**.
+
 ## Points ouverts après la tranche 5
 - ~~**Vérification iPhone en attente.**~~ **Faite pour l'essentiel** : la
   tranche 5 a tourné sur l'appareil et a rendu six retours d'interface, tous
@@ -1863,11 +1885,11 @@ l'appareil. Le point ouvert qui disait le contraire tombe.
   numéro se dérive de la journée entière, que cette liste ne charge pas — elle
   lit un repas par ligne. « Collation · 15 septembre » reste sans ambiguïté ;
   à rouvrir si deux collations du même jour s'y côtoient et se confondent.
-- **Plus rien ne dit pourquoi une journée matérialisée ne suit pas son modèle.**
-  La ligne « Journée créée avec X » a été retirée sur demande ; c'était la seule
-  chose à l'écran qui répondait à « j'ai modifié mon modèle, pourquoi mon jeudi
-  n'a pas bougé ». Le §8.2 rend toujours le comportement correct, et le
-  `template_name_snapshot` est toujours en base — seul l'affichage est parti.
+- ~~**Plus rien ne dit pourquoi une journée matérialisée ne suit pas son
+  modèle.**~~ **Partiellement répondu** : la ligne au pied des repas nomme le
+  modèle de la journée, donc le snapshot est de nouveau visible. Ce qui reste
+  non dit, c'est *pourquoi* il ne bouge pas quand le modèle est édité — mais le
+  contrôle offre désormais la sortie, ce qui vaut mieux qu'une explication.
 - **Le thème clair porte un accent à 2,13:1, et c'est une décision prise en
   connaissance de cause.** Chevrons, « Enregistrer », le glyphe du bouton
   d'ajout et la jauge y sont pâles. Rien ne casse ; tout est moins lisible. La
