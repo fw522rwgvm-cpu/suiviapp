@@ -20,9 +20,9 @@ import { setting } from '@/core/db/schema';
 /**
  * Keys slice 2 actually uses.
  *
- * Section 2.1 lists eight; the other six arrive with their features (theme and
- * the day cutoff at slice 7, the default template at slice 5). Declaring them
- * now would be a layer built "for later", which section 7 rules out.
+ * Section 2.1 lists eight; the rest arrive with their features (theme and the
+ * day cutoff at slice 7). Declaring them early would be a layer built "for
+ * later", which section 7 rules out.
  */
 export const SETTING_KEYS = {
   /** Instant of the last successful export, epoch ms (specs 5.4). */
@@ -50,6 +50,24 @@ export const SETTING_KEYS = {
    * be anything but a clock that moved.
    */
   offSuspendedUntil: 'off_suspended_until',
+  /**
+   * The default day template, applying to any weekday with no assignment
+   * (specs 8.1, 8.8), slice 5.
+   *
+   * THE ONE POINTER IN THE APPLICATION NO CONSTRAINT CAN PROTECT. `setting` is
+   * key/value TEXT: there is no foreign key to declare here and nothing to
+   * cascade, where planning_weekday and planning_override both carry one.
+   *
+   * It is answered on both sides. Deleting a template clears this key in the
+   * same transaction — the rule — and readDefaultTemplateId checks that the
+   * template still exists before returning it — the guarantee. Only the second
+   * survives an archive written by another binary, or a row repaired by hand.
+   *
+   * It rides along in an export, `setting` being an exported table, and that
+   * is correct: the templates travel with it, so the pointer still resolves on
+   * the receiving device.
+   */
+  defaultTemplateId: 'default_template_id',
 } as const;
 
 /**

@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm';
 import type { AppDatabase } from '@/core/db/database';
 import { setting } from '@/core/db/schema';
 import { SETTING_KEYS } from './settings-reads';
@@ -27,6 +28,21 @@ export function writeSetting(db: AppDatabase, key: string, value: string): void 
     .values({ key, value })
     .onConflictDoUpdate({ target: setting.key, set: { value } })
     .run();
+}
+
+/**
+ * Removes a preference, rather than storing an empty string for "none".
+ *
+ * The distinction matters for a pointer: default_template_id holding '' would
+ * be a value that parses to nothing, and every reader would have to know that
+ * the empty string means unset. An absent key already means exactly that, and
+ * settings-reads.ts already treats a missing key and a corrupt value alike.
+ *
+ * One statement, so no explicit transaction — but callers that clear a pointer
+ * BECAUSE something was deleted must wrap both, and deleteTemplate does.
+ */
+export function clearSetting(db: AppDatabase, key: string): void {
+  db.delete(setting).where(eq(setting.key, key)).run();
 }
 
 /**

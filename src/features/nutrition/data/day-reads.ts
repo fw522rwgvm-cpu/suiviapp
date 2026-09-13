@@ -13,6 +13,8 @@ import {
 } from '@/core/db/schema';
 import { virtualDay, type DayView } from '../domain/day-plan';
 import { totalOf, ZERO_MACROS, type Macros } from '../domain/macros';
+import { readTargets } from '../domain/planning';
+import { readDayPlan } from './planning-reads';
 
 /**
  * Reads of the journal (D8).
@@ -55,11 +57,28 @@ function toMacros(row: MacroSumRow | undefined): Macros {
  * The day as the screen renders it, materialised or not.
  *
  * A date with no row is not an error and not an empty screen: it is a virtual
- * day, built by the same function that will later feed its snapshot.
+ * day, built from the planning in force right now (specs 8.2) by the same
+ * function that will later feed its snapshot.
+ *
+ * ## THE BRANCH IS WHERE "NO RETROACTIVE EFFECT" ACTUALLY LIVES
+ *
+ * A materialised day reads its own day_meal rows and NEVER consults the
+ * planning. So specs 8.1 — "modifying a template does not retroactively affect
+ * materialised days" — is not a rule enforced here; it is a query that is not
+ * made. A future day already filled in is covered by the same sentence with no
+ * special case: 8.2 says a materialised future day becomes insensitive to
+ * later planning changes, and it does so by being materialised, not by being
+ * in the future.
+ *
+ * The consequence the user meets: a day materialised before templates existed
+ * has no targets and will never grow any on its own. That is the truthful
+ * record — no template applied when it was frozen — and the banner offers to
+ * apply today's targets as an explicit act rather than adopting them in
+ * silence.
  */
 export function readDay(db: AppDatabase, date: LocalDate): DayView {
   const rows = db.select({ date: day.date }).from(day).where(eq(day.date, date)).all();
-  if (rows.length === 0) return virtualDay(date);
+  if (rows.length === 0) return virtualDay(date, readDayPlan(db, date));
 
   const meals = db
     .select({
@@ -83,20 +102,11 @@ export function readDay(db: AppDatabase, date: LocalDate): DayView {
       id: meal.id,
       position: meal.position,
       name: meal.name,
-      // A meal either carries the four targets or none: a partial set would be
-      // a target nobody could read (specs 8.1).
-      targets:
-        meal.targetProtein === null ||
-        meal.targetCarbs === null ||
-        meal.targetFat === null ||
-        meal.targetKcal === null
-          ? null
-          : {
-              protein: meal.targetProtein,
-              carbs: meal.targetCarbs,
-              fat: meal.targetFat,
-              kcal: meal.targetKcal,
-            },
+      // All four or none: a partial set would be a target nobody could read
+      // (specs 8.1). Shared with the template meals rather than restated,
+      // because materialisation copies one onto the other — two readings of
+      // the same four columns would be free to disagree.
+      targets: readTargets(meal),
     })),
   };
 }

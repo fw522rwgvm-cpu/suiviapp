@@ -11,7 +11,7 @@ import {
   type JournalEntryId,
 } from '@/core/db/schema';
 import { newId } from '@/core/id';
-import { defaultDayMeals } from '../domain/day-plan';
+import { readDayPlan } from './planning-reads';
 import type { Macros } from '../domain/macros';
 import type { QuantityChoice } from '../domain/portions';
 import type { CompleteOffProduct } from '../off/off-product';
@@ -140,15 +140,30 @@ function ensureOffFood(tx: AppDatabase, product: CompleteOffProduct, now: number
  * is the first statement of the writes that need it, inside their transaction,
  * and it exists nowhere else.
  *
- * Both snapshot columns stay NULL: there is no template to snapshot before
- * slice 5. The meals come from the same function that renders a virtual day,
- * so what the user saw is what they get.
+ * ## THE SNAPSHOT IS TAKEN HERE, INSIDE THE TRANSACTION (D5/R4, specs 8.2)
+ *
+ * The planning is resolved on this line and frozen on the next, with nothing
+ * able to slip between the two. Resolving it earlier — in the screen, or in a
+ * read the caller made before deciding to write — would let a template edited
+ * in between produce a day whose meals came from one version and whose
+ * template_name_snapshot named another.
+ *
+ * The meals come from the same function that renders a virtual day, so what
+ * the user saw is what they get. Both snapshot columns stay NULL when the
+ * planning designates nothing, which is the truthful record rather than a gap:
+ * no template applied.
+ *
+ * From this moment the day is deaf to the planning for ever (specs 8.1). That
+ * includes a day prepared in the future: 8.2 makes a filled-in future day
+ * insensitive to later planning changes, and it gets there by being
+ * materialised rather than by being in the future.
  */
 function ensureMaterialized(tx: AppDatabase, date: LocalDate): MealRef[] {
   const existing = tx.select({ date: day.date }).from(day).where(eq(day.date, date)).all();
 
   if (existing.length === 0) {
-    const rows = defaultDayMeals().map((meal) => ({
+    const plan = readDayPlan(tx, date);
+    const rows = plan.meals.map((meal) => ({
       id: newId<DayMealId>(),
       date,
       position: meal.position,
@@ -162,12 +177,16 @@ function ensureMaterialized(tx: AppDatabase, date: LocalDate): MealRef[] {
     tx.insert(day)
       .values({
         date,
-        templateIdSnapshot: null,
-        templateNameSnapshot: null,
+        templateIdSnapshot: plan.templateId,
+        templateNameSnapshot: plan.templateName,
         materializedAt: Date.now(),
       })
       .run();
-    tx.insert(dayMeal).values(rows).run();
+    // A template holding no meal is legitimate, and Drizzle refuses an empty
+    // VALUES list. The day row is what says the day exists, not its meals.
+    if (rows.length > 0) {
+      tx.insert(dayMeal).values(rows).run();
+    }
 
     return rows.map(({ id, position }) => ({ id, position }));
   }
