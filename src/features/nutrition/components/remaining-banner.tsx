@@ -119,40 +119,50 @@ export function RemainingBanner({
       ]}
     >
       {/*
-        The figure lives INSIDE the ring now. Specs 8.3 wants the remaining
-        calories legible without any interaction, and the ring is the one shape
-        on the screen whose whole job is to be read at a glance — putting the
-        number anywhere else would make the eye do the work twice.
-      */}
-      <View
-        style={styles.ringRow}
-        accessible
-        accessibilityLabel={`${formatKcal(Math.abs(headlineValue))} ${headlineLabel}`}
-      >
-        {/*
-          A THREE-QUARTER GAUGE, not a closed ring: sweep 270 from 225°, which
-          is a 90° gap centred on six o'clock. An open shape has two ends, and
-          ends are what say which way the thing fills — a closed circle at 95%
-          and one at 5% differ only by where the seam is.
+        THREE FIGURES ON ONE LINE, and they are three different questions: what
+        went in, what is left, what was aimed at. The one in the middle is the
+        one specs 8.3 requires legible without any interaction, so it keeps the
+        ring and the size; the two beside it are the terms it was computed from,
+        which is what turns a bare number into a sentence.
 
-          The gap also buys the figure its width back: the number sits in the
-          widest part of the shape rather than between two arcs.
-        */}
-        <ProgressRing
-          progress={progressRatio(consumed.kcal, target?.kcal ?? null)}
-          size={186}
-          thickness={14}
-          sweep={270}
-          startAngle={225}
-          color={standing === 'beyond' ? theme.colors.danger : theme.colors.accent}
+        THE FLANKS ARE ABSENT WITHOUT A TARGET. "Objectif" would have nothing to
+        show, and "Mangées" would then repeat the middle figure word for word —
+        the banner would be saying one fact twice and calling it three.
+      */}
+      <View style={styles.ringRow}>
+        {target === null ? null : <Flank value={consumed.kcal} label="Mangées" />}
+
+        <View
+          accessible
+          accessibilityLabel={`${formatKcal(Math.abs(headlineValue))} ${headlineLabel}`}
         >
-          <Text style={[styles.figure, { color: theme.colors.text }]}>
-            {formatKcal(Math.abs(headlineValue))}
-          </Text>
-          <Text style={[styles.figureLabel, { color: theme.colors.textMuted }]}>
-            {headlineLabel}
-          </Text>
-        </ProgressRing>
+          {/*
+            A THREE-QUARTER GAUGE, not a closed ring: sweep 270 from 225°, which
+            is a 90° gap centred on six o'clock. An open shape has two ends, and
+            ends are what say which way the thing fills — a closed circle at 95%
+            and one at 5% differ only by where the seam is.
+
+            The gap also buys the figure its width back: the number sits in the
+            widest part of the shape rather than between two arcs.
+          */}
+          <ProgressRing
+            progress={progressRatio(consumed.kcal, target?.kcal ?? null)}
+            size={164}
+            thickness={14}
+            sweep={270}
+            startAngle={225}
+            color={standing === 'beyond' ? theme.colors.danger : theme.colors.accent}
+          >
+            <Text style={[styles.figure, { color: theme.colors.text }]}>
+              {formatKcal(Math.abs(headlineValue))}
+            </Text>
+            <Text style={[styles.figureLabel, { color: theme.colors.textMuted }]}>
+              {headlineLabel}
+            </Text>
+          </ProgressRing>
+        </View>
+
+        {target === null ? null : <Flank value={target.kcal} label="Objectif" />}
       </View>
 
       {target === null ? (
@@ -166,6 +176,29 @@ export function RemainingBanner({
           <MacroColumnView key={column.label} column={column} />
         ))}
       </View>
+    </View>
+  );
+}
+
+/**
+ * One of the two terms beside the gauge.
+ *
+ * Quieter than the figure in the middle and not by a little: these are what the
+ * middle one was worked out FROM, and a banner with three numbers the same size
+ * has no headline. Tabular figures so the two sides do not wobble as the day
+ * fills up.
+ */
+function Flank({ value, label }: { value: number; label: string }) {
+  const theme = useTheme();
+
+  return (
+    <View style={styles.flank}>
+      <Text style={[styles.flankValue, { color: theme.colors.text }]} numberOfLines={1}>
+        {formatKcal(value)}
+      </Text>
+      <Text style={[styles.flankLabel, { color: theme.colors.textMuted }]} numberOfLines={1}>
+        {label}
+      </Text>
     </View>
   );
 }
@@ -224,7 +257,27 @@ const styles = StyleSheet.create({
    * rounded. Nothing computes it, because a magic number with its arithmetic
    * written down beside it is easier to change than a formula.
    */
-  ringRow: { alignItems: 'center', marginBottom: -20 },
+  /**
+   * The gauge box is square, but a three-quarter gauge only paints the top of
+   * it: the arc ends at 135° and 225°, so its lowest point sits at
+   * cos(45°) × radius below centre — about eighteen points short of the bottom
+   * edge on a 164-point box. That empty band was reading as a gap between the
+   * figure and the bars, so it is pulled back out.
+   *
+   * The flanks are centred on the box rather than on the painted arc, so they
+   * sit a touch low against it. Correcting that would mean lifting them by the
+   * same eighteen points and leaving them adrift of everything else.
+   */
+  ringRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    marginBottom: -18,
+  },
+  flank: { flex: 1, alignItems: 'center', gap: 2 },
+  flankValue: { fontSize: 19, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  flankLabel: { fontSize: 12 },
   figure: {
     fontSize: 40,
     fontWeight: '700',
