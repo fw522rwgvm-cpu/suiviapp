@@ -1,5 +1,5 @@
 import { SymbolView } from 'expo-symbols';
-import { Link, Stack, useRouter } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { useEffect, useLayoutEffect, useState } from 'react';
 import {
   Alert,
@@ -266,53 +266,34 @@ export function JournalScreen() {
           headerRight: () => (
             <View style={styles.headerGroup}>
               {/*
-                Direct access to a date (specs 8.3), through the system's zoom
-                transition: this button genuinely becomes the calendar screen,
-                and the interactive dismissal brings it back into the button.
+                Direct access to a date (specs 8.3).
 
-                Link.AppleZoom is what asks for it, and it animates a
-                NAVIGATION — which is why the calendar is a route rather than a
-                window drawn over this screen. Below iOS 18 the same navigation
-                simply happens with the ordinary push; nothing here is
-                conditional.
+                IT WAS A Link.AppleZoom, and the button genuinely became the
+                screen it presented. Dropped because Apple's transition scales
+                the Journal back while the sheet is up and offers no way to stop
+                it — see the note in calendar-screen.tsx. An ordinary push, and
+                the panel raises itself from the bottom like every other window.
 
                 The day being shown travels out as a parameter. The day chosen
                 comes back through the request context, not through the URL.
               */}
-              <Link
-                href={{ pathname: '/(tabs)/(journal)/calendar', params: { date } }}
-                asChild
+              <Pressable
+                onPress={() =>
+                  router.push({
+                    pathname: '/(tabs)/(journal)/calendar',
+                    params: { date },
+                  })
+                }
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Choisir une date"
               >
-                <Link.AppleZoom>
-                  <Pressable
-                    hitSlop={12}
-                    accessibilityRole="button"
-                    accessibilityLabel="Choisir une date"
-                  >
-                    {/*
-                      A DATE, NOT A CALENDAR, AND THAT IS A CONSTRAINT RATHER
-                      THAN A CHOICE.
-                      
-                      SF Symbols has no filled calendar. `calendar` exists only
-                      as an outline, and every fill it offers is a `.circle.fill`
-                      — the glyph inside an opaque disc, which is a different
-                      thing from the glyph itself being solid. `31.square.fill`
-                      is the one date metaphor in the set that is genuinely
-                      filled, and it is Apple's own: a numbered square is what
-                      the Calendar app shows on the home screen.
-                      
-                      Verified rather than assumed: sf-symbols-typescript types
-                      the name as a union of every real symbol, so a made-up one
-                      fails the typecheck instead of rendering an empty box.
-                    */}
-                    <SymbolView
-                      name="31.square.fill"
-                      size={22}
-                      tintColor={theme.colors.accent}
-                    />
-                  </Pressable>
-                </Link.AppleZoom>
-              </Link>
+                <SymbolView
+                  name="31.square.fill"
+                  size={22}
+                  tintColor={theme.colors.accent}
+                />
+              </Pressable>
 
               {/* The library, reached from the Journal header (specs 7). */}
               <Pressable

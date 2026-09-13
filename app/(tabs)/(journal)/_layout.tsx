@@ -89,44 +89,31 @@ export default function JournalLayout() {
     >
       <Stack.Screen name="index" />
       {/*
-        PRESENTED, NOT PUSHED, AND THE DIFFERENCE IS THE GESTURE.
-        
-        It was briefly a push, to see whether the modal presentation was what
-        made the Journal scale back behind it. It was not — see the note below —
-        and the push cost the dismissal: a native stack's interactive gesture is
-        the horizontal edge swipe, so a downward drag had nothing to follow.
-        Presented, the zoom transition owns the drag and takes it back into the
-        button.
+        A TRANSPARENT MODAL, like every other window in this application.
 
-        `gestureEnabled` is what lets it. expo-router reads this very flag to
-        decide whether to allow the native zoom dismissal, so leaving it to a
-        default would be leaving the gesture to one.
+        It was a zoom transition for a while — the sheet coming out of the
+        calendar button, with an interactive dismissal that took it back in.
+        That was dropped: Apple's transition scales the presenting screen back
+        while the sheet is up, the API offers nothing to turn that off, and the
+        Journal shrinking behind with the window showing white above and below
+        it was worse to look at than the anchoring was good. See the note in
+        calendar-screen.tsx.
 
-        ## THE PRESENTING SCREEN SCALES BACK, AND NOTHING HERE CAN STOP IT
-        
-        Verified in the API rather than assumed: LinkZoomTransitionSource takes
-        `identifier`, `alignment` and `animateAspectRatioChange`, and nothing
-        else. The scale-back belongs to Apple's transition. Keeping the button
-        as the thing the screen comes out of and goes back into means keeping
-        it; the only way to be rid of it is to stop using Link.AppleZoom.
+        So: `animation: 'none'`, exactly like its siblings, because OverlayPanel
+        raises and folds the window itself. That is also what keeps the backdrop
+        darkening where it is instead of rising with the panel — every built-in
+        presentation moves the whole screen as one.
 
-        What shows in the strips above and below the scaled Journal is the
-        WINDOW, which is white because no background is set for it. That part is
-        fixable — app.config's backgroundColor, or expo-system-ui — and both are
-        native, so both cost a build.
-
-        NO `animation` OVERRIDE, UNLIKE EVERY OTHER WINDOW IN THIS APPLICATION.
-        The others set it to 'none' because OverlayPanel raises and folds them
-        itself. This one lets the NATIVE transition own both directions.
-
-        No header: the screen carries its own two buttons.
+        No header: the screen carries its own two buttons, and a bar above a
+        floating panel would make it look like a page again.
       */}
       <Stack.Screen
         name="calendar"
         options={{
           headerShown: false,
           presentation: 'transparentModal',
-          gestureEnabled: true,
+          contentStyle: { backgroundColor: 'transparent' },
+          animation: 'none',
         }}
       />
     </Stack>
