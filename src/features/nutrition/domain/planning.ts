@@ -98,3 +98,65 @@ export function readTargets(row: {
     kcal: targetKcal,
   };
 }
+
+export interface PlanMatch {
+  /** Pairs of indices: a meal of the day, and the plan meal it answers to. */
+  pairs: { day: number; plan: number }[];
+  /** Plan meals the day has nothing for. Indices into the plan. */
+  missing: number[];
+  /** Meals of the day no plan meal claimed. Indices into the day. */
+  unclaimed: number[];
+}
+
+/**
+ * Pairs a day's meals with a plan's, BY NAME rather than by position.
+ *
+ * ## POSITION WAS WRONG, AND A DELETION IS WHAT EXPOSES IT
+ *
+ * Applying a template used to match index to index. Delete the dinner from a
+ * day and everything after the gap shifts up: the plan's third meal lands on
+ * the day's fourth, so DINNER'S TARGETS ARE WRITTEN ONTO THE SNACK. Nothing
+ * about that is visible — the figures are plausible, they are simply the wrong
+ * ones — which is the only kind of wrong that matters.
+ *
+ * Names can carry this now, and could not before: they are a closed list of
+ * four, and a day holds at most one breakfast, one lunch and one dinner. So
+ * "the day's dinner" is a question with exactly one answer.
+ *
+ * ## SNACKS ARE PAIRED IN ORDER, AND THE REMAINDER IS THE ANSWER
+ *
+ * They are the one kind that repeats, so there is no single match to find.
+ * Taken in order and first come first served: a plan with three snacks against
+ * a day with one pairs the first, and the other two come back as missing. A day
+ * with three against a plan with one pairs the first and leaves two unclaimed.
+ *
+ * Greedy rather than clever, and that is deliberate — the caller adds what is
+ * missing and clears what is unclaimed, so any pairing that is consistent
+ * produces the same day at the end.
+ */
+export function matchMealsToPlan(
+  dayNames: readonly string[],
+  planNames: readonly string[],
+): PlanMatch {
+  const taken = new Set<number>();
+  const pairs: { day: number; plan: number }[] = [];
+  const missing: number[] = [];
+
+  planNames.forEach((name, plan) => {
+    const day = dayNames.findIndex((candidate, at) => !taken.has(at) && candidate === name);
+
+    if (day === -1) {
+      missing.push(plan);
+      return;
+    }
+
+    taken.add(day);
+    pairs.push({ day, plan });
+  });
+
+  const unclaimed = dayNames
+    .map((_, at) => at)
+    .filter((at) => !taken.has(at));
+
+  return { pairs, missing, unclaimed };
+}

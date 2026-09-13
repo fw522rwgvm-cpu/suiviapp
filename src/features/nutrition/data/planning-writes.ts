@@ -8,6 +8,7 @@ import {
   dayTemplateMeal,
   planningOverride,
   planningWeekday,
+  type DayMealId,
   type DayTemplateId,
   type DayTemplateMealId,
 } from '@/core/db/schema';
@@ -15,6 +16,7 @@ import { newId } from '@/core/id';
 import { SETTING_KEYS } from '@/features/settings/data/settings-reads';
 import { clearSetting, writeSetting } from '@/features/settings/data/settings-writes';
 import { readDayPlan, readDefaultTemplateId } from './planning-reads';
+import { matchMealsToPlan } from '../domain/planning';
 import type { Macros } from '../domain/macros';
 
 /**
@@ -249,16 +251,16 @@ export function setDefaultTemplate(db: AppDatabase, templateId: DayTemplateId | 
  *
  * ## WHAT IT TOUCHES, AND WHAT IT REFUSES TO TOUCH
  *
- * The four target columns, matched BY POSITION. Never the names, never the
- * number of meals, never an entry. A materialised day holds meals the user may
- * have renamed, added or deleted, and those meals hold entries: deleting one
- * to match the template would destroy data, and renaming one would overwrite a
- * choice. So the button says "apply the TARGETS of X" rather than "apply X",
- * and the promise is exactly what happens.
+ * The four target columns, matched BY NAME — and the meals of the plan the day
+ * no longer has, which come back.
  *
- * Meals beyond the template's count have their targets cleared rather than
- * left as they were. Applying a set of targets means the day carries that set
- * and no remnant of an earlier one.
+ * What it still refuses to touch: a name, an entry, and any meal of the day the
+ * plan does not mention. Deleting one to match the template would destroy data,
+ * and renaming one would overwrite a choice. A meal the plan has nothing for
+ * keeps everything and loses only its numbers.
+ *
+ * So the day ends up carrying the plan's targets and no remnant of an earlier
+ * set, with nothing of the user's own thrown away.
  */
 export function applyPlanTargetsToDay(db: AppDatabase, date: LocalDate): void {
   db.transaction((tx) => applyPlanTargets(tx, date));
@@ -288,15 +290,29 @@ function applyPlanTargets(tx: AppDatabase, date: LocalDate): void {
       throw new Error(`The planning designates no template for ${date}`);
     }
 
-    const planned = new Map(plan.meals.map((meal) => [meal.position, meal.targets]));
     const meals = tx
-      .select({ id: dayMeal.id, position: dayMeal.position })
+      .select({ id: dayMeal.id, position: dayMeal.position, name: dayMeal.name })
       .from(dayMeal)
       .where(eq(dayMeal.date, date))
+      .orderBy(dayMeal.position)
       .all();
 
-    for (const meal of meals) {
-      const targets = planned.get(meal.position) ?? null;
+    /**
+     * MATCHED BY NAME, NOT BY POSITION, and that is a correction rather than a
+     * refinement. Index-to-index meant that deleting the dinner shifted
+     * everything after the gap: the plan's dinner landed on the day's snack and
+     * wrote its targets there. Plausible figures, simply the wrong ones.
+     */
+    const match = matchMealsToPlan(
+      meals.map((meal) => meal.name),
+      plan.meals.map((meal) => meal.name),
+    );
+
+    for (const { day: at, plan: planAt } of match.pairs) {
+      const meal = meals[at];
+      const targets = plan.meals[planAt]?.targets ?? null;
+      if (meal === undefined) continue;
+
       tx.update(dayMeal)
         .set({
           targetProtein: targets?.protein ?? null,
@@ -305,6 +321,56 @@ function applyPlanTargets(tx: AppDatabase, date: LocalDate): void {
           targetKcal: targets?.kcal ?? null,
         })
         .where(eq(dayMeal.id, meal.id))
+        .run();
+    }
+
+    // A meal the plan has nothing for keeps its name, its entries and its
+    // place, and loses only its numbers: applying a set of targets means the
+    // day carries that set and no remnant of an earlier one.
+    for (const at of match.unclaimed) {
+      const meal = meals[at];
+      if (meal === undefined) continue;
+
+      tx.update(dayMeal)
+        .set({
+          targetProtein: null,
+          targetCarbs: null,
+          targetFat: null,
+          targetKcal: null,
+        })
+        .where(eq(dayMeal.id, meal.id))
+        .run();
+    }
+
+    /**
+     * A MEAL OF THE PLAN THE DAY NO LONGER HAS COMES BACK.
+     *
+     * Deleting the dinner and then applying a template that has one used to
+     * leave the day without it — the operation set targets and never added a
+     * row, so the template could not put back what the day had dropped.
+     *
+     * APPENDED, not inserted in the plan's order. Positions are what every
+     * write addresses a meal by, so slotting one into the middle would mean
+     * renumbering rows the user never asked to touch. A restored dinner
+     * therefore arrives last; that is the price, and it is paid once.
+     */
+    let position = meals.reduce((highest, meal) => Math.max(highest, meal.position), -1) + 1;
+
+    for (const at of match.missing) {
+      const planned = plan.meals[at];
+      if (planned === undefined) continue;
+
+      tx.insert(dayMeal)
+        .values({
+          id: newId<DayMealId>(),
+          date,
+          position: position++,
+          name: planned.name,
+          targetProtein: planned.targets?.protein ?? null,
+          targetCarbs: planned.targets?.carbs ?? null,
+          targetFat: planned.targets?.fat ?? null,
+          targetKcal: planned.targets?.kcal ?? null,
+        })
         .run();
     }
 

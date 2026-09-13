@@ -5,6 +5,7 @@ import { newId } from '../../src/core/id';
 import { readDay } from '../../src/features/nutrition/data/day-reads';
 import {
   addFreeEntry,
+  deleteMeal,
   updateMeal,
   updateMealTargets,
 } from '../../src/features/nutrition/data/day-writes';
@@ -482,13 +483,11 @@ describe('applying the planning targets to a day already materialised', () => {
     expect(view.meals[1]?.targets).toEqual({ protein: 50, carbs: 80, fat: 20, kcal: 700 });
   });
 
-  it('never touches a name, a meal count or an entry', () => {
-    // The promise the button makes — "apply the TARGETS of X" — is exactly
-    // what happens. A meal the user renamed keeps its name; a meal they added
-    // stays; the entries stay.
-    // Position 0 is a breakfast on the fallback day and on the template. Turned
-    // into a snack here, so that applying the template's targets would have to
-    // overwrite the name to get it wrong — which is the thing being tested.
+  it('never touches a name or an entry, and follows the NAME not the position', () => {
+    // The promise the control makes — apply this template's targets — with the
+    // half that changed: meals are matched by name. Position 0 is a breakfast
+    // on the fallback day and on the template; turned into a snack here, so it
+    // must take the SNACK's targets and not the breakfast's.
     updateMeal(fixture.db, { date: TUESDAY, mealPosition: 0, name: 'Collation', targets: null });
     addFreeEntry(fixture.db, {
       date: TUESDAY,
@@ -502,9 +501,12 @@ describe('applying the planning targets to a day already materialised', () => {
 
     const view = readDay(fixture.db, TUESDAY);
     expect(view.meals[0]?.name).toBe('Collation');
-    // And it did take the template's targets for that position.
-    expect(view.meals[0]?.targets).toEqual({ protein: 40, carbs: 60, fat: 15, kcal: 535 });
-    expect(view.meals).toHaveLength(DEFAULT_MEAL_NAMES.length);
+    // The template's snack carries no target, so neither does this meal. Under
+    // the old position matching it would have taken the breakfast's 535.
+    expect(view.meals[0]?.targets).toBeNull();
+    // And the breakfast the day no longer had comes back, appended.
+    expect(view.meals.at(-1)?.name).toBe('Petit-déjeuner');
+    expect(view.meals.at(-1)?.targets).toEqual({ protein: 40, carbs: 60, fat: 15, kcal: 535 });
     expect(countRows(fixture.raw, 'journal_entry')).toBe(1);
     // And the snapshot now names the template whose numbers the day carries.
     const row = fixture.raw
@@ -526,15 +528,24 @@ describe('applying the planning targets to a day already materialised', () => {
 
     const short = createTemplate(fixture.db, {
       name: 'Court',
-      meals: [{ name: 'Unique', targets: { protein: 5, carbs: 5, fat: 5, kcal: 85 } }],
+      meals: [{ name: 'Déjeuner', targets: { protein: 5, carbs: 5, fat: 5, kcal: 85 } }],
     });
     setOverride(fixture.db, TUESDAY, short);
     applyPlanTargetsToDay(fixture.db, TUESDAY);
 
     const view = readDay(fixture.db, TUESDAY);
-    expect(view.meals[0]?.targets).toEqual({ protein: 5, carbs: 5, fat: 5, kcal: 85 });
-    expect(view.meals[1]?.targets).toBeNull();
-    expect(view.meals[3]?.targets).toBeNull();
+    // The lunch takes the only target the template has; every other meal keeps
+    // its name and its entries and loses its numbers.
+    expect(view.meals.find((meal) => meal.name === 'Déjeuner')?.targets).toEqual({
+      protein: 5,
+      carbs: 5,
+      fat: 5,
+      kcal: 85,
+    });
+    expect(view.meals.find((meal) => meal.name === 'Petit-déjeuner')?.targets).toBeNull();
+    expect(view.meals.find((meal) => meal.name === 'Dîner')?.targets).toBeNull();
+    // And nothing was added: the template names nothing the day lacks.
+    expect(view.meals).toHaveLength(DEFAULT_MEAL_NAMES.length);
   });
 
   it('refuses a virtual day, which would be creating data by consultation', () => {
@@ -683,13 +694,24 @@ describe('saying which template one day follows', () => {
     setDayTemplate(fixture.db, { date: TUESDAY, templateId: rest });
 
     const view = readDay(fixture.db, TUESDAY);
-    expect(view.meals[0]?.targets).toEqual({ protein: 30, carbs: 40, fat: 12, kcal: 388 });
-    // Beyond the new template's single meal, the old targets are cleared
-    // rather than left as a remnant of a plan no longer in force.
-    expect(view.meals[1]?.targets).toBeNull();
+    // The rest template holds one lunch, so the day's LUNCH takes it — not the
+    // day's first meal, which is what position matching used to do.
+    expect(view.meals.find((meal) => meal.name === 'Déjeuner')?.targets).toEqual({
+      protein: 30,
+      carbs: 40,
+      fat: 12,
+      kcal: 388,
+    });
+    // Every other meal's targets are cleared rather than left as a remnant of
+    // a plan no longer in force.
+    expect(view.meals.find((meal) => meal.name === 'Petit-déjeuner')?.targets).toBeNull();
+    expect(view.meals.find((meal) => meal.name === 'Dîner')?.targets).toBeNull();
   });
 
-  it('never renames a meal or changes how many there are', () => {
+  it('never renames a meal, and adds only what the plan names and the day lacks', () => {
+    // Turning the breakfast into a snack leaves the day without a breakfast,
+    // so applying a template that has one brings it back — appended, and
+    // without touching the meal that took its place.
     updateMeal(fixture.db, {
       date: TUESDAY,
       mealPosition: 0,
@@ -702,7 +724,13 @@ describe('saying which template one day follows', () => {
 
     const view = readDay(fixture.db, TUESDAY);
     expect(view.meals[0]?.name).toBe('Collation');
-    expect(view.meals).toHaveLength(DEFAULT_MEAL_NAMES.length);
+    expect(view.meals.map((meal) => meal.name)).toEqual([
+      'Collation',
+      'Déjeuner',
+      'Dîner',
+      'Collation',
+      'Petit-déjeuner',
+    ]);
   });
 
   it('goes back to the planning when handed nothing', () => {
@@ -735,5 +763,113 @@ describe('saying which template one day follows', () => {
     setDayTemplate(fixture.db, { date: TUESDAY, templateId: null });
 
     expect(readDay(fixture.db, TUESDAY).meals[0]?.targets?.kcal).toBe(535);
+  });
+});
+
+describe('a meal deleted from the day, then a template applied', () => {
+  it('brings the missing meal back, with its targets', () => {
+    // The case asked for: delete the dinner, apply a template that has one, and
+    // the day gets it back rather than staying short of it for ever.
+    deleteMeal(fixture.db, { date: TUESDAY, mealPosition: 2 });
+    expect(readDay(fixture.db, TUESDAY).meals.map((meal) => meal.name)).toEqual([
+      'Petit-déjeuner',
+      'Déjeuner',
+      'Collation',
+    ]);
+
+    const training = trainingTemplate();
+    setDayTemplate(fixture.db, { date: TUESDAY, templateId: training });
+
+    const view = readDay(fixture.db, TUESDAY);
+    const dinner = view.meals.find((meal) => meal.name === 'Dîner');
+    expect(dinner?.targets).toEqual({ protein: 45, carbs: 55, fat: 18, kcal: 562 });
+  });
+
+  it('puts the right targets on the right meals, which position did not', () => {
+    // THE DEFECT THE REQUEST EXPOSED. With the dinner gone, index to index put
+    // the plan's dinner onto the day's snack: 562 kcal on a meal the template
+    // gives no target at all. Plausible figures, simply the wrong ones.
+    deleteMeal(fixture.db, { date: TUESDAY, mealPosition: 2 });
+
+    const training = trainingTemplate();
+    setDayTemplate(fixture.db, { date: TUESDAY, templateId: training });
+
+    const view = readDay(fixture.db, TUESDAY);
+    expect(view.meals.find((meal) => meal.name === 'Petit-déjeuner')?.targets?.kcal).toBe(535);
+    expect(view.meals.find((meal) => meal.name === 'Déjeuner')?.targets?.kcal).toBe(700);
+    // The snack carries no target in this template, and must carry none here.
+    expect(view.meals.find((meal) => meal.name === 'Collation')?.targets).toBeNull();
+  });
+
+  it('appends the restored meal rather than renumbering the others', () => {
+    // Positions are what every write addresses a meal by, so slotting one into
+    // the middle would renumber rows nobody asked to touch. The dinner comes
+    // back last; that is the price, and it is paid once.
+    deleteMeal(fixture.db, { date: TUESDAY, mealPosition: 2 });
+
+    const training = trainingTemplate();
+    setDayTemplate(fixture.db, { date: TUESDAY, templateId: training });
+
+    expect(readDay(fixture.db, TUESDAY).meals.map((meal) => meal.name)).toEqual([
+      'Petit-déjeuner',
+      'Déjeuner',
+      'Collation',
+      'Dîner',
+    ]);
+  });
+
+  it('keeps the entries of the meals that were still there', () => {
+    addFreeEntry(fixture.db, {
+      date: TUESDAY,
+      mealPosition: 0,
+      macros: { protein: 20, carbs: 30, fat: 10, kcal: 290 },
+    });
+    deleteMeal(fixture.db, { date: TUESDAY, mealPosition: 2 });
+
+    const training = trainingTemplate();
+    setDayTemplate(fixture.db, { date: TUESDAY, templateId: training });
+
+    expect(countRows(fixture.raw, 'journal_entry')).toBe(1);
+    expect(readDay(fixture.db, TUESDAY).meals[0]?.name).toBe('Petit-déjeuner');
+  });
+
+  it('adds nothing when the day already has every meal the plan names', () => {
+    const training = trainingTemplate();
+    addFreeEntry(fixture.db, {
+      date: TUESDAY,
+      mealPosition: 0,
+      macros: { protein: 1, carbs: 1, fat: 1, kcal: 17 },
+    });
+
+    setDayTemplate(fixture.db, { date: TUESDAY, templateId: training });
+    setDayTemplate(fixture.db, { date: TUESDAY, templateId: training });
+
+    // Applied twice: a meal must not be duplicated by an operation that is
+    // meant to be safe to repeat.
+    expect(readDay(fixture.db, TUESDAY).meals).toHaveLength(DEFAULT_MEAL_NAMES.length);
+  });
+
+  it('adds the snacks a plan has more of than the day', () => {
+    const many = createTemplate(fixture.db, {
+      name: 'Trois collations',
+      meals: [
+        { name: 'Collation', targets: { protein: 1, carbs: 1, fat: 1, kcal: 17 } },
+        { name: 'Collation', targets: { protein: 2, carbs: 2, fat: 2, kcal: 34 } },
+        { name: 'Collation', targets: { protein: 3, carbs: 3, fat: 3, kcal: 51 } },
+      ],
+    });
+    addFreeEntry(fixture.db, {
+      date: TUESDAY,
+      mealPosition: 0,
+      macros: { protein: 1, carbs: 1, fat: 1, kcal: 17 },
+    });
+
+    setDayTemplate(fixture.db, { date: TUESDAY, templateId: many });
+
+    const snacks = readDay(fixture.db, TUESDAY).meals.filter(
+      (meal) => meal.name === 'Collation',
+    );
+    expect(snacks).toHaveLength(3);
+    expect(snacks.map((meal) => meal.targets?.kcal)).toEqual([17, 34, 51]);
   });
 });
