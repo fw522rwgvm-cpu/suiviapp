@@ -11,12 +11,19 @@ import {
   type FoodId,
   type JournalEntryId,
   type JournalEntryKind,
+  type RecipeId,
+  type YieldType,
 } from '@/core/db/schema';
 import { newId } from '@/core/id';
 import { readDayPlan } from './planning-reads';
 import { canUseKind, isMealKind, type MealKind } from '../domain/meal-kinds';
 import type { Macros } from '../domain/macros';
 import type { QuantityChoice } from '../domain/portions';
+import {
+  RECIPE_PORTION_NAME,
+  usableLines,
+  type OccurrenceLine,
+} from '../domain/recipe-occurrence';
 import type { CompleteOffProduct } from '../off/off-product';
 import { readEntriesForReplay } from './day-reads';
 import { readFood } from './food-reads';
@@ -266,7 +273,32 @@ export type NewEntry =
    * through `kind: 'food'` with an id like any other, because by then the user
    * has saved it themselves.
    */
-  | { kind: 'off'; product: CompleteOffProduct; quantity: QuantityChoice };
+  | { kind: 'off'; product: CompleteOffProduct; quantity: QuantityChoice }
+  /**
+   * A recipe, as one grouped block (specs 8.6).
+   *
+   * IT CARRIES THE ADJUSTED LINES RATHER THAN A RECIPE IDENTIFIER TO RE-READ,
+   * and that is the whole of specs 8.6 points 2 and 3. The user scaled the
+   * recipe to what they ate and then edited the ingredients for this occasion;
+   * re-deriving them here would discard exactly that edit, and would mean
+   * confirming one set of figures and storing another.
+   *
+   * It is the opposite arrangement from `food`, where the entry IS built by
+   * reading the food back inside the transaction — and the difference is
+   * principled: a food entry freezes a REFERENCE that the database holds
+   * authoritatively, while an occurrence freezes a DECISION that exists only
+   * on the screen that made it.
+   */
+  | {
+      kind: 'recipe';
+      recipeId: RecipeId;
+      /** The recipe's name, frozen as the user saw it. */
+      name: string;
+      yieldType: YieldType;
+      /** Portions, or grams, matching yieldType. */
+      consumed: number;
+      lines: readonly OccurrenceLine[];
+    };
 
 /**
  * Logs one or more lines into a meal, materialising the day in the same
@@ -312,6 +344,15 @@ export function addEntries(
   input: { date: LocalDate; mealPosition: number; entries: readonly NewEntry[] },
 ): JournalEntryId[] {
   for (const entry of input.entries) {
+    if (entry.kind === 'recipe') {
+      // Its own shape of quantity: how much of the recipe, not base units. The
+      // lines are checked inside the transaction, where dropping the empty
+      // ones is part of the write rather than a precondition of it.
+      if (!Number.isFinite(entry.consumed) || entry.consumed <= 0) {
+        throw new Error('A logged recipe quantity must be positive');
+      }
+      continue;
+    }
     if (
       entry.kind !== 'free' &&
       (!Number.isFinite(entry.quantity.baseQuantity) || entry.quantity.baseQuantity <= 0)
@@ -344,6 +385,89 @@ export function addEntries(
         createdAt: now,
         updatedAt: now,
       };
+
+      if (entry.kind === 'recipe') {
+        /**
+         * A GROUPED BLOCK: one empty parent and the lines that carry
+         * everything (D5/R2, specs 8.6).
+         *
+         * The parent's macro columns are ALL NULL, which is what makes the
+         * clause-free SUM of readDayTotals right without a filter — double
+         * counting is structurally impossible rather than conditionally
+         * avoided.
+         *
+         * Its `quantity` is the one place in this schema where that column is
+         * not in base units: it says how much of the RECIPE was eaten, which
+         * nothing can derive afterwards (a recipe is a living object and may
+         * have changed its yield since). Safe only because the row carries no
+         * macros, so nothing ever multiplies it — and a test mutates it and
+         * demands that no total moves.
+         *
+         * The two yields land in different columns and both read naturally: a
+         * weight yield in base_unit and quantity, a portions yield in
+         * portion_name and quantity. portion_quantity stays NULL, because a
+         * portion of a recipe has no size in base units — that is precisely
+         * what a portions yield means.
+         */
+        const lines = usableLines(entry.lines);
+        if (lines.length === 0) {
+          throw new Error('A recipe block must carry at least one ingredient line');
+        }
+
+        const portions = entry.yieldType === 'portions';
+
+        tx.insert(journalEntry)
+          .values({
+            ...common,
+            kind: 'recipe',
+            sourceFoodId: null,
+            sourceRecipeId: entry.recipeId,
+            name: entry.name,
+            brand: null,
+            baseUnit: portions ? null : 'g',
+            quantity: entry.consumed,
+            portionName: portions ? RECIPE_PORTION_NAME : null,
+            portionQuantity: null,
+            protein100: null,
+            carbs100: null,
+            fat100: null,
+            kcal100: null,
+          })
+          .run();
+
+        // Positions of their own, starting at zero: a child's position orders
+        // it within its block and never within the meal, so it must not
+        // continue the meal's numbering.
+        lines.forEach((line, childPosition) => {
+          tx.insert(journalEntry)
+            .values({
+              id: newId<JournalEntryId>(),
+              dayMealId: meal.id,
+              date: input.date,
+              parentEntryId: id,
+              position: childPosition,
+              kind: 'recipe_item',
+              sourceFoodId: line.sourceFoodId,
+              sourceRecipeId: null,
+              name: line.name,
+              brand: null,
+              baseUnit: line.baseUnit,
+              quantity: line.quantity,
+              portionName: null,
+              portionQuantity: null,
+              protein100: line.reference.protein,
+              carbs100: line.reference.carbs,
+              fat100: line.reference.fat,
+              /** Kept as given, never recomputed from P/C/F (specs 5.1). */
+              kcal100: line.reference.kcal,
+              createdAt: now,
+              updatedAt: now,
+            })
+            .run();
+        });
+
+        continue;
+      }
 
       if (entry.kind === 'free') {
         const name = (entry.name ?? '').trim();

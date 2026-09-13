@@ -1,7 +1,8 @@
-import { asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, sql } from 'drizzle-orm';
 import type { AppDatabase } from '@/core/db/database';
 import {
   food,
+  journalEntry,
   recipe,
   recipeIngredient,
   recipeStep,
@@ -443,4 +444,62 @@ export function readRecipeDraft(db: AppDatabase, recipeId: RecipeId): RecipeDraf
     steps,
     ingredients,
   };
+}
+
+/**
+ * Recipes for quick access: favourites first, then recently logged (specs
+ * 8.4a).
+ *
+ * > Recettes : favorites d'abord, puis récentes
+ *
+ * WORD FOR WORD THE FOODS RULE, not the meals rule — 8.4a says "favoris
+ * d'abord, puis récents" of foods and only "récents" of meals. So recipes
+ * follow foods: choosing one fills the basket rather than writing and closing,
+ * and the exception slice 5 made for a recent meal does not extend here.
+ *
+ * "Recent" is ordered by when the BLOCK WAS WRITTEN, not by the day it belongs
+ * to — the rule slice 3 settled for foods and slice 5 reused for meals: logging
+ * yesterday's dinner this morning makes it the most recent thing you did.
+ * created_at is nullable in the frozen schema, so id is both the tie-break and
+ * the fallback, ULIDs sorting by creation time.
+ *
+ * A favourite that has never been logged still appears, at the top, with
+ * nothing said about when it last was. A recipe that is both is listed once:
+ * the favourites are removed from the recents rather than shown twice.
+ */
+export function readQuickAccessRecipes(
+  db: AppDatabase,
+  limit = 10,
+): { favorites: RecipeListItem[]; recents: RecipeListItem[] } {
+  const all = listRecipes(db);
+  const byId = new Map(all.map((item) => [item.id, item]));
+
+  const favorites = all.filter((item) => item.isFavorite);
+  const favoriteIds = new Set(favorites.map((item) => item.id));
+
+  const logged = db
+    .select({ recipeId: journalEntry.sourceRecipeId })
+    .from(journalEntry)
+    .where(
+      and(eq(journalEntry.kind, 'recipe'), isNotNull(journalEntry.sourceRecipeId)),
+    )
+    .groupBy(journalEntry.sourceRecipeId)
+    .orderBy(
+      sql`max(${journalEntry.createdAt}) desc`,
+      sql`max(${journalEntry.id}) desc`,
+    )
+    .all();
+
+  const recents: RecipeListItem[] = [];
+  for (const row of logged) {
+    if (row.recipeId === null || favoriteIds.has(row.recipeId)) continue;
+    const item = byId.get(row.recipeId);
+    // A block whose recipe has since been deleted: the entry survives (specs
+    // 5.2) but there is nothing to offer again.
+    if (item === undefined) continue;
+    recents.push(item);
+    if (recents.length >= limit) break;
+  }
+
+  return { favorites, recents };
 }

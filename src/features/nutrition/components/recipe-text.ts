@@ -1,6 +1,7 @@
 import { formatQuantity } from '@/core/format';
 import { formatPortionCount } from './portion-text';
 import type { RecipeYield } from '../domain/recipe-macros';
+import { RECIPE_PORTION_NAME } from '../domain/recipe-occurrence';
 
 /**
  * How recipes are worded on screen.
@@ -58,15 +59,6 @@ export function describeRecipeUses(
     ? `${subject} garde ses chiffres, mais ne suivra plus vos corrections de cet aliment.`
     : `${subject} gardent leurs chiffres, mais ne suivront plus vos corrections de cet aliment.`;
 }
-
-/**
- * The portion name a recipe yield counts in.
- *
- * One of the eight of specs 6.1, which is what lets formatPortionCount do the
- * pluralising here as it does everywhere else — and what lets a grouped
- * block's parent row store it in portion_name like any other entry.
- */
-export const RECIPE_PORTION_NAME = 'portion';
 
 /**
  * What a recipe makes: "4 portions" or "850 g".

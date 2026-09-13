@@ -9,7 +9,7 @@ import { useTheme } from '@/core/theme';
 import { GlassButton } from '@/core/ui/glass-button';
 import { OverlayPanel, useDismiss, usePanelHeading } from '@/core/ui/overlay-panel';
 import { SwipeBack } from '@/core/ui/swipe-back';
-import type { FoodId } from '@/core/db/schema';
+import type { FoodId, RecipeId } from '@/core/db/schema';
 import { useAddEntries } from '../data/day-queries';
 import {
   useFavoriteFoods,
@@ -30,6 +30,7 @@ import { ScanScreen } from '../off/scan-screen';
 import { OffResultRow } from '../components/off-result-row';
 import { OffNoticeBanner, type OffNotice } from '../components/off-notice';
 import { RecentMealsSection } from '../components/recent-meals-section';
+import { RecipesSection } from '../components/recipes-section';
 import { dedupeRemote, libraryBarcodes } from '../off/off-dedupe';
 import { useOffLookup, useOffSearch } from '../off/off-queries';
 import type { OffOutcome } from '../off/off-client';
@@ -48,6 +49,7 @@ import { SearchField } from '../components/search-field';
 import { formatChoiceWithBase } from '../components/portion-text';
 import { FreeEntryScreen } from './free-entry-screen';
 import { QuantityScreen } from './quantity-screen';
+import { RecipeOccurrenceScreen } from './recipe-occurrence-screen';
 import { ListSeparator } from '@/core/ui/list-separator';
 
 /**
@@ -123,6 +125,7 @@ export function AddEntryScreen({
   /** True while the viewfinder is open. A step, like every other one here. */
   const [scanning, setScanning] = useState(false);
   const [chosen, setChosen] = useState<FoodId | null>(null);
+  const [chosenRecipe, setChosenRecipe] = useState<RecipeId | null>(null);
   const [freeEntry, setFreeEntry] = useState(false);
   const [showBasket, setShowBasket] = useState(false);
   const [basket, setBasket] = useState<PendingEntry[]>([]);
@@ -213,6 +216,7 @@ export function AddEntryScreen({
 
   function backToList(): void {
     setChosen(null);
+    setChosenRecipe(null);
     setPicked(null);
     setScanning(false);
     setFreeEntry(false);
@@ -323,7 +327,9 @@ export function AddEntryScreen({
           ? 'scan'
           : freeEntry && mealPosition !== null
           ? 'free'
-          : chosen !== null
+          : chosenRecipe !== null
+            ? 'recipe'
+            : chosen !== null
             ? 'quantity'
             : pickedProduct !== null
               ? 'offQuantity'
@@ -507,6 +513,14 @@ export function AddEntryScreen({
                   the reading of 8.4a rather than an exception to 8.4.
                 */}
                 <RecentMealsSection date={date} mealPosition={mealPosition} />
+
+                {/*
+                  Last of the three lists, as specs 8.4a orders them: foods,
+                  then meals, then recipes. Unlike a recent meal it fills the
+                  basket — see the note in the component for why that is the
+                  reading of 8.4a rather than an exception to 8.4.
+                */}
+                <RecipesSection onPick={setChosenRecipe} />
               </>
             )}
           </ScrollView>
@@ -610,6 +624,22 @@ export function AddEntryScreen({
                 amend(amending, { kind: 'off', product: editing.product, quantity })
               }
             />
+          ) : editing.kind === 'recipe' ? (
+            /*
+              A RECIPE LINE IS CORRECTED BY REDOING THE OCCASION, from its
+              quantity down. Specs 8.4 v2.3 says touching a basket line reopens
+              the choice that made it, and for a recipe that choice is the two
+              steps of specs 8.6 — not a single figure.
+
+              The previous adjustment is deliberately NOT carried back in:
+              step one re-derives the lines from the recipe, which is the whole
+              reason the two steps are two (see RecipeOccurrenceScreen). A
+              correction starts from the recipe, as it did the first time.
+            */
+            <RecipeOccurrenceScreen
+              recipeId={editing.recipeId}
+              onCollect={(occurrence) => amend(amending, { kind: 'recipe', ...occurrence })}
+            />
           ) : (
             <FreeEntryScreen
               date={date}
@@ -679,6 +709,13 @@ export function AddEntryScreen({
             onCollect={(quantity) =>
               collect({ kind: 'off', product: pickedProduct, quantity })
             }
+          />
+        </SwipeBack>
+      ) : step === 'recipe' && chosenRecipe !== null ? (
+        <SwipeBack key={step} onBack={backToList} behind={picker}>
+          <RecipeOccurrenceScreen
+            recipeId={chosenRecipe}
+            onCollect={(occurrence) => collect({ kind: 'recipe', ...occurrence })}
           />
         </SwipeBack>
       ) : step === 'quantity' && chosen !== null ? (
@@ -768,6 +805,22 @@ function Confirm({
                     kind: 'off' as const,
                     product: entry.product,
                     quantity: entry.quantity,
+                  };
+                }
+                if (entry.kind === 'recipe') {
+                  /*
+                    A COPY, NOT A TRANSLATION. The basket already holds the
+                    adjusted lines — specs 8.6 has them edited before anything
+                    is written, and re-deriving them here would discard exactly
+                    that edit.
+                  */
+                  return {
+                    kind: 'recipe' as const,
+                    recipeId: entry.recipeId,
+                    name: entry.name,
+                    yieldType: entry.yieldType,
+                    consumed: entry.consumed,
+                    lines: entry.lines,
                   };
                 }
                 return {

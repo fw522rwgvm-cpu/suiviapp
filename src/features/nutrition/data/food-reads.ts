@@ -254,6 +254,21 @@ export function readFoodDraft(db: AppDatabase, foodId: FoodId): FoodDraft | null
  *
  * Entries with no quantity are excluded: a recipe parent carries none (D5/R2),
  * and it is not something anyone logged a quantity of.
+ *
+ * ## AND ONLY kind = 'food', WHICH SLICE 6 HAD TO ADD
+ *
+ * A recipe_item line carries a source_food_id and a quantity, so before this
+ * filter it was eligible to become "the last quantity for that food" — and it
+ * is nothing of the kind. It is thirty grams of onion INSIDE a bolognese,
+ * scaled by however much of the recipe was eaten and then adjusted by hand.
+ *
+ * Left alone, logging one recipe would have made every food it contains offer
+ * an ingredient's worth on the add screen: plausible, wrong, and invisible,
+ * since thirty grams of onion is a perfectly believable amount of onion.
+ *
+ * The same clause is on readLastEntryForFood, and the test that holds the two
+ * implementations to each other now generates blocks so the pair cannot drift
+ * apart on this either.
  */
 function lastEntriesByFood(db: AppDatabase): Map<FoodId, LastEntry> {
   const rows = db.all<{
@@ -276,6 +291,7 @@ function lastEntriesByFood(db: AppDatabase): Map<FoodId, LastEntry> {
       FROM ${journalEntry}
       WHERE ${journalEntry.sourceFoodId} IS NOT NULL
         AND ${journalEntry.quantity} IS NOT NULL
+        AND ${journalEntry.kind} = 'food'
     )
     WHERE rn = 1
   `);
@@ -410,6 +426,10 @@ export function readRecentFoods(db: AppDatabase, limit = 20): QuickAddFood[] {
  * handing back the oldest row instead of the newest. Identifiers are ULIDs and
  * therefore sort by creation time, so id is both a correct tie-breaker and a
  * working fallback when created_at says nothing.
+ *
+ * The kind clause is slice 6's, and it must match lastEntriesByFood character
+ * for character: an ingredient line inside a recipe is not a quantity anyone
+ * chose for that food. See the long note there.
  */
 export function readLastEntryForFood(db: AppDatabase, foodId: FoodId): LastEntry | null {
   const rows = db
@@ -419,7 +439,13 @@ export function readLastEntryForFood(db: AppDatabase, foodId: FoodId): LastEntry
       portionQuantity: journalEntry.portionQuantity,
     })
     .from(journalEntry)
-    .where(and(eq(journalEntry.sourceFoodId, foodId), isNotNull(journalEntry.quantity)))
+    .where(
+      and(
+        eq(journalEntry.sourceFoodId, foodId),
+        isNotNull(journalEntry.quantity),
+        eq(journalEntry.kind, 'food'),
+      ),
+    )
     .orderBy(desc(journalEntry.createdAt), desc(journalEntry.id))
     .limit(1)
     .all();

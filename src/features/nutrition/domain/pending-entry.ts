@@ -1,8 +1,10 @@
-import type { BaseUnit, FoodId } from '@/core/db/schema';
+import type { BaseUnit, FoodId, RecipeId, YieldType } from '@/core/db/schema';
 import { formatChoiceQuantity } from '../components/portion-text';
+import { describeConsumed } from '../components/recipe-text';
 import { macrosOf, type CompleteOffProduct } from '../off/off-product';
 import { describeMacros, totalOf, type Macros } from './macros';
 import type { QuantityChoice } from './portions';
+import { occurrenceTotal, type OccurrenceLine } from './recipe-occurrence';
 
 /**
  * A line chosen but not yet written (specs 8.4).
@@ -45,7 +47,26 @@ export type PendingEntry =
    * The display fields are derived from the product rather than copied beside
    * it — one statement of the name, not two that can drift.
    */
-  | { kind: 'off'; product: CompleteOffProduct; quantity: QuantityChoice };
+  | { kind: 'off'; product: CompleteOffProduct; quantity: QuantityChoice }
+  /**
+   * A recipe scaled and adjusted for this occasion (specs 8.6).
+   *
+   * It carries the LINES, not a recipe identifier, for the reason NewEntry
+   * does: the adjustment exists only on the screen that made it, and a basket
+   * that held an identifier would have to re-derive the occurrence to show
+   * what it holds — discarding exactly the edit the user came here to make.
+   *
+   * The shape is NewEntry's, deliberately, so confirming is a copy rather than
+   * a translation.
+   */
+  | {
+      kind: 'recipe';
+      recipeId: RecipeId;
+      name: string;
+      yieldType: YieldType;
+      consumed: number;
+      lines: readonly OccurrenceLine[];
+    };
 
 /**
  * What this line will actually contribute. Derived, never stored (D9).
@@ -56,6 +77,9 @@ export type PendingEntry =
  */
 export function pendingEntryMacros(entry: PendingEntry): Macros {
   if (entry.kind === 'free') return entry.macros;
+  // A block is the sum of its own lines, which is what its parent row will
+  // show once written: the parent carries no macros of its own (D5/R2).
+  if (entry.kind === 'recipe') return occurrenceTotal(entry.lines);
 
   return totalOf(referenceOf(entry), entry.quantity.baseQuantity);
 }
@@ -75,8 +99,15 @@ export function pendingEntryName(entry: PendingEntry): string {
   return entry.kind === 'off' ? entry.product.name : entry.name;
 }
 
+/** How many ingredient lines a recipe line is about to write. Null otherwise. */
+export function pendingEntryLineCount(entry: PendingEntry): number | null {
+  return entry.kind === 'recipe' ? entry.lines.length : null;
+}
+
 export function pendingEntryBrand(entry: PendingEntry): string | null {
   if (entry.kind === 'free') return null;
+  // A recipe has no brand, and never will: it is something you made.
+  if (entry.kind === 'recipe') return null;
   return entry.kind === 'off' ? entry.product.brand : entry.brand;
 }
 
@@ -99,6 +130,13 @@ export function pendingEntryKcal(entry: PendingEntry): number {
  */
 export function describePendingEntryQuantity(entry: PendingEntry): string | null {
   if (entry.kind === 'free') return null;
+
+  // A recipe says how much of ITSELF, in the terms its yield is stated in —
+  // the same wording the library row and the journal row use, so the three
+  // cannot disagree about what "2 portions" means.
+  if (entry.kind === 'recipe') {
+    return describeConsumed({ type: entry.yieldType, value: entry.consumed }, entry.consumed);
+  }
 
   // Grams for a remote product, always: Open Food Facts publishes per 100 g
   // for everything it holds, and reading that as millilitres would be a

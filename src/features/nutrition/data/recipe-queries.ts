@@ -2,6 +2,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { getAppDatabase } from '@/core/db/app-database';
 import {
   food,
+  journalEntry,
   recipe,
   recipeIngredient,
   recipeStep,
@@ -12,6 +13,7 @@ import { readsFrom } from '@/core/query';
 import {
   listRecipeTags,
   listRecipes,
+  readQuickAccessRecipes,
   readRecipe,
   readRecipeDraft,
 } from './recipe-reads';
@@ -47,6 +49,7 @@ export const recipeKeys = {
   tags: ['nutrition', 'recipe-tags'] as const,
   one: (recipeId: RecipeId | null) => ['nutrition', 'recipe', recipeId] as const,
   draft: (recipeId: RecipeId | null) => ['nutrition', 'recipe-draft', recipeId] as const,
+  quickAccess: ['nutrition', 'recipe-quick-access'] as const,
 };
 
 /** The tables a recipe's figures depend on, including the live foods. */
@@ -92,6 +95,21 @@ export function useRecipeDraft(recipeId: RecipeId | null) {
     queryFn: () => (recipeId === null ? null : readRecipeDraft(getAppDatabase(), recipeId)),
     enabled: recipeId !== null,
     meta: readsFrom(...RECIPE_TABLES),
+  });
+}
+
+/**
+ * Favourites then recents, for the add window (specs 8.4a).
+ *
+ * It declares journal_entry as well as the recipe tables, so logging a block
+ * reorders quick access on its own — with nothing at the write site knowing
+ * that quick access exists. The same arrangement useRecentFoods has.
+ */
+export function useQuickAccessRecipes() {
+  return useQuery({
+    queryKey: recipeKeys.quickAccess,
+    queryFn: () => readQuickAccessRecipes(getAppDatabase()),
+    meta: readsFrom(...RECIPE_TABLES, journalEntry),
   });
 }
 
