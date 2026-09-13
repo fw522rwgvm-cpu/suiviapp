@@ -9,6 +9,7 @@ import {
   type JournalEntryId,
 } from '@/core/db/schema';
 import { readsFrom } from '@/core/query';
+import { PLANNING_TABLES } from './planning-queries';
 import {
   readDay,
   readDayTotals,
@@ -48,12 +49,24 @@ export const journalKeys = {
   entry: (entryId: JournalEntryId | null) => ['nutrition', 'entry', entryId] as const,
 };
 
-/** The day, materialised or virtual. Reading it never creates it (specs 8.2). */
+/**
+ * The day, materialised or virtual. Reading it never creates it (specs 8.2).
+ *
+ * IT DECLARES THE PLANNING TABLES TOO, and it has to, even though a
+ * materialised day never reads them: the query cannot know which branch it
+ * will take before it runs. So editing a template invalidates every open day,
+ * the virtual ones re-resolve, and the materialised ones re-read and do not
+ * move — which is the correct outcome reached by the cheapest possible means,
+ * a refetch of a local synchronous query.
+ *
+ * This is also the whole of how a template edit reaches the Journal. No write
+ * site enumerates anything, and there is still not one onSuccess in this file.
+ */
 export function useDay(date: LocalDate) {
   return useQuery({
     queryKey: journalKeys.day(date),
     queryFn: () => readDay(getAppDatabase(), date),
-    meta: readsFrom(day, dayMeal),
+    meta: readsFrom(day, dayMeal, ...PLANNING_TABLES),
   });
 }
 
