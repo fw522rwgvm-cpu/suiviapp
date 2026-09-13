@@ -865,14 +865,17 @@ bêtas d'iOS 26 n'ont pas l'API et plantent** à la création d'une vue en verre
 Une vérification de version seule leur offrirait un crash. Le repli, lui,
 peint : ce n'est pas du verre.
 
-**Il n'y a pas de roue de selection dans le §5.** Un vrai rouleau est un
-`UIPickerView`, et le seul chemin vers lui est `@react-native-picker/picker`,
-dependance **native** hors du §5 — donc un evenement a valider, et un cycle de
-build sur un compte qui ne signe que sept jours. La molette de quantite est
-donc faite de listes qui s'aimantent : hauteur de rangee fixe, `snapToInterval`
-egal, deceleration rapide, bande dessinee au milieu pour dire ou se lit la
-reponse. Ce qui manque est la courbure et le son du systeme. A rouvrir si le
-rendu ne suffit pas.
+**`@react-native-picker/picker` est au §5 depuis la tranche 3, demandee et
+validee.** C'est la premiere dependance native ajoutee depuis la tranche 0, et
+elle porte la consequence de toutes : **le binaire doit etre reconstruit**. Le
+bundle JS ne contient pas son module natif, donc `npm run bundle:ios` reste
+vert pendant que l'ecran plante sur l'appareil, tant que GitHub Actions n'a pas
+refait un build de developpement.
+
+`Picker` sur iOS EST un `UIPickerView`. Mais **trois colonnes veulent dire
+trois vues** : un `UIPickerView` a bien plusieurs composants en son sein,
+aucune liaison React Native ne les expose, donc la bande de selection est
+dessinee trois fois au lieu d'une. Visible si on la cherche.
 
 **Un `InputAccessoryView` ne se partage pas entre plusieurs champs.** Sa
 documentation le presente comme une barre qu'on relie a plusieurs `TextInput`

@@ -756,6 +756,7 @@ CREATE INDEX ix_activity_date ON activity(date);
 | `zod` | Validation aux frontières | Import JSON, Open Food Facts (D7, D15) | non |
 | `ulid` | Identifiants triables | JavaScript pur (D4) | non |
 | `date-fns` | Formatage français | Sous le module `core/date`, jamais appelé directement | non |
+| `@react-native-picker/picker` | Molette de quantité | **[tranche 3]** `UIPickerView` réel pour le §8.4 : rien dans React Native n'y donne accès, et trois listes aimantées en restaient une imitation sans la courbure ni le son du système. Ajout **demandé et validé explicitement** | oui |
 | `react-native-gesture-handler` | Balayages | §8.3, §10.2 — déjà requis par expo-router | oui |
 | `react-native-reanimated` | Animations | Déjà requis par la navigation | oui |
 | `vitest` + `better-sqlite3` | Tests hors appareil | Fonctions pures, invariants, migrations (D15) | dev |
@@ -764,7 +765,7 @@ CREATE INDEX ix_activity_date ON activity(date);
 
 **Explicitement écartées :** toute bibliothèque de composants d'interface, NativeWind, toute bibliothèque d'internationalisation, `victory-native` / Skia, `op-sqlite`, WatermelonDB, Realm, toute bibliothèque de liste virtualisée spécialisée, Detox.
 
-**Règle d'ajout.** Toute nouvelle dépendance **native** exige une justification écrite dans ce document. Une dépendance JavaScript pure ne peut pas casser une compilation ; une dépendance native, si — et le diagnostic coûte un cycle CI.
+**Règle d'ajout.** Toute nouvelle dépendance **native** exige une justification écrite dans ce document. Ce qu'elle coûte, une fois pour mémoire : `@react-native-picker/picker` a été la première ajoutée après la tranche 0, et elle oblige à **reconstruire le binaire** — le bundle JS seul ne contient pas son module natif, donc rien ne marche sur l'appareil avant un passage par GitHub Actions. Une dépendance JavaScript pure ne peut pas casser une compilation ; une dépendance native, si — et le diagnostic coûte un cycle CI.
 
 ---
 

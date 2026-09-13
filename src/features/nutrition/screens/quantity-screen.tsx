@@ -17,12 +17,13 @@ import { useDismiss, usePanelHeading } from '@/core/ui/overlay-panel';
 import { FormRow, FormSection } from '@/core/ui/form-section';
 import { MacroRow } from '../components/macro-row';
 import { formatPortionCount } from '../components/portion-text';
+import { QuantityWheel } from '../components/quantity-wheel';
 import {
   amountOf,
-  FRACTIONS,
-  QuantityWheel,
+  nearestFraction,
   type WheelChoice,
-} from '../components/quantity-wheel';
+  type WheelUnit,
+} from '../domain/wheel-choice';
 
 /**
  * How much of this food (specs 8.4, D16).
@@ -196,8 +197,15 @@ function QuantityForm({
   const [wheel, setWheel] = useState<WheelChoice>({ whole: 100, fraction: 0, unit: 0 });
   const [loaded, setLoaded] = useState(false);
 
-  /** What it can be counted in: the base unit first, then this food's portions. */
-  const units = [baseUnit, ...portions.map((portion) => portion.name)];
+  /**
+   * What it can be counted in: the base unit first, then this food's portions.
+   * Each carries what one of it weighs, which is what lets the wheels convert
+   * when the unit changes.
+   */
+  const units: WheelUnit[] = [
+    { label: baseUnit, size: null },
+    ...portions.map((portion) => ({ label: portion.name, size: portion.quantity })),
+  ];
 
   useEffect(() => {
     // Set once, when the pre-fill arrives. Reapplying it on every render would
@@ -215,16 +223,8 @@ function QuantityForm({
     // wheels, and 0,37 of a slice is not one of their faces. A quantity in
     // base units lands on the dash, whole numbers being what it deals in.
     const whole = Math.floor(amount);
-    const rest = amount - whole;
-    const fraction = FRACTIONS.reduce(
-      (best, candidate, index) =>
-        Math.abs(candidate.value - rest) < Math.abs((FRACTIONS[best]?.value ?? 0) - rest)
-          ? index
-          : best,
-      0,
-    );
 
-    setWheel({ whole, fraction, unit });
+    setWheel({ whole, fraction: nearestFraction(amount - whole), unit });
     setLoaded(true);
   }, [initial, loaded, portions]);
 
