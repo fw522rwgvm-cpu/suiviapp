@@ -29,6 +29,27 @@ export const SETTING_KEYS = {
   lastExportAt: 'last_export_at',
   /** How many days before the Settings screen highlights it (specs 5.4). */
   exportReminderDays: 'export_reminder_days',
+  /**
+   * Instant until which remote Open Food Facts calls are suspended, epoch ms
+   * (D11, slice 4).
+   *
+   * THE ONE PIECE OF RATE-LIMITER STATE THAT IS PERSISTED, and it is here
+   * rather than in a table of its own because `setting` exists precisely so
+   * that remembering one value never costs a migration.
+   *
+   * Its counterpart — the per-minute sliding window — deliberately is NOT
+   * stored: it expires in sixty seconds, and one SQLite write per remote
+   * request to protect it would be a bad trade. This one is different because
+   * losing it has a cost outside the phone: the server has said stop, and an
+   * application killed and restarted that starts again is how an IP gets
+   * banned (specs 2.2 requires surviving a forced quit at any moment).
+   *
+   * It rides along in an export, `setting` being an exported table. Harmless:
+   * by the time an archive is imported the instant is long past, and a past
+   * instant reads as expired. rate-limit.ts also refuses one too far ahead to
+   * be anything but a clock that moved.
+   */
+  offSuspendedUntil: 'off_suspended_until',
 } as const;
 
 /**

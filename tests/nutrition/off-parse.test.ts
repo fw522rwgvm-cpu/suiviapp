@@ -337,6 +337,24 @@ describe('reading a search response', () => {
     expect(parsed.products.map((product) => product.barcode)).toEqual(['123']);
   });
 
+  it('accepts an explicit null nutriments block, which the search endpoint sends', () => {
+    // Observed on 13/09/2026: asking the search endpoint for a nutriment
+    // sub-field makes it answer "nutriments": null rather than restricting.
+    // Rejecting that as malformed would show an empty list for a search that
+    // worked perfectly well — and it is an explicit null, so a schema that
+    // only tolerates a missing key does not cover it.
+    const parsed = parseSearch({
+      hits: [{ code: '3017620422003', product_name: 'Nutella', nutriments: null }],
+    });
+
+    expect(parsed.outcome).toBe('results');
+    if (parsed.outcome !== 'results') return;
+    expect(parsed.products[0]?.name).toBe('Nutella');
+    // No macros, which is correct rather than a failure: a chosen result is
+    // looked up by barcode, and that is what supplies them.
+    expect(parsed.products[0]?.protein100).toBeNull();
+  });
+
   it('reads an empty result set as empty, not as a failure', () => {
     expect(parseSearch({ hits: [], count: 0 })).toEqual({
       outcome: 'results',

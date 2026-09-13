@@ -42,6 +42,11 @@ import type { OffProduct } from './off-product';
  *  6. Search endpoints on the main host answer with an HTML holding page. A
  *     200 that is not JSON is a real, current state of this API, not a
  *     theoretical one.
+ *  7. `fields=` DOES NOT behave the same on both endpoints. The product one
+ *     restricts down to a single nutriment; the search one answers
+ *     `"nutriments": null` if asked for a sub-field. So the two field lists
+ *     are written separately in off-client.ts rather than shared, and this
+ *     schema accepts an explicit null where a product carries no nutriments.
  *
  * ## THE ONE RULE THAT MATTERS MOST
  *
@@ -149,7 +154,16 @@ const productFieldsSchema = z.looseObject({
   code: z.unknown().optional(),
   product_name: z.unknown().optional(),
   brands: z.unknown().optional(),
-  nutriments: nutrimentsSchema.optional(),
+  /**
+   * NULLISH, not merely optional, and that distinction was found by probing.
+   *
+   * The search endpoint answers `"nutriments": null` — an explicit null, not
+   * an absent key — whenever `fields=` asks for a sub-field it does not
+   * support. A schema accepting only `undefined` would reject the whole
+   * response as malformed, which on screen is an empty result list for a
+   * search that actually worked.
+   */
+  nutriments: nutrimentsSchema.nullish(),
 });
 
 /** The product endpoint: /api/v2/product/<barcode>.json */
