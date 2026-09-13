@@ -1718,6 +1718,30 @@ soit une vingtaine de points au-dessus du bord sur une boîte de 186. La bande
 vide se lisait comme un espace entre le chiffre et les barres ; elle est reprise
 par une marge négative, avec l'arithmétique écrite à côté du nombre.
 
+**Une couleur de marque n'est pas une couleur de thème tant qu'elle n'a pas
+passé le contraste des deux surfaces.** `#08daa9` mesure **1,81:1 sur blanc** —
+sous le 4,5:1 d'une étiquette *et* sous le 3:1 d'une forme dessinée. En thème
+clair ce serait une jauge qu'on ne voit pas et un bouton qu'on ne lit pas. Elle
+est donc posée telle quelle sur la surface sombre, où elle atteint 9,60:1, et
+assombrie à teinte égale — `#058063`, 4,91:1 dans les deux sens — pour le clair.
+C'est l'inverse exact de ce que les couleurs de macro faisaient déjà dans
+l'autre direction.
+
+**Le commentaire de l'accent avait déjà payé ce conflit une fois.** Il disait :
+« It was a green before, and the green was the problem: it sat next to the teal
+of protein. » Le mint le ramène. La réponse est l'autre moitié de l'échange —
+**l'accent a libéré le bleu, la protéine l'a pris**. Les deux sont maintenant un
+vert et un bleu au lieu de deux verts, et le motif que l'ancienne note donnait
+pour éviter le vert ne s'applique plus. Sans ça, la barre de protéines et
+l'anneau du repas se seraient confondus sur la carte où ils se touchent.
+
+**Les calories portent l'accent lui-même, et c'est la seule macro qui en a le
+droit.** Elles sont ce que la jauge dessine et ce que le §8.3 rend lisible sans
+interaction : une seule couleur sur la jauge, la pastille et le chiffre dit
+qu'elles sont une seule chose. Le test de distinction des macros ne les couvrait
+déjà pas ; une assertion fixe désormais l'égalité pour que personne ne la
+« corrige » plus tard.
+
 ## Points ouverts après la tranche 5
 - ~~**Vérification iPhone en attente.**~~ **Faite pour l'essentiel** : la
   tranche 5 a tourné sur l'appareil et a rendu six retours d'interface, tous
@@ -1737,6 +1761,12 @@ par une marge négative, avec l'arithmétique écrite à côté du nombre.
   numéro se dérive de la journée entière, que cette liste ne charge pas — elle
   lit un repas par ligne. « Collation · 15 septembre » reste sans ambiguïté ;
   à rouvrir si deux collations du même jour s'y côtoient et se confondent.
+- **Le mint n'a été vu dans aucun des deux thèmes.** Les contrastes sont
+  calculés et testés, mais deux valeurs différentes pour une même couleur de
+  marque est précisément le genre de chose qui se juge à l'œil : le clair peut
+  paraître terne à côté du sombre. Si c'est le cas, la sortie n'est pas
+  d'éclaircir `#058063` — ce serait retomber sous le seuil — mais d'assombrir
+  la surface derrière la jauge.
 - **`carrot.fill` et les trois symboles météo ne sont pas vérifiés sur
   l'appareil.** Ce sont des SF Symbols standards et l'application vise iOS 18,
   mais un nom de symbole absent rend un carré vide, pas une erreur.
