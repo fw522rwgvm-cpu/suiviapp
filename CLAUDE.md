@@ -1718,9 +1718,9 @@ soit une vingtaine de points au-dessus du bord sur une boîte de 186. La bande
 vide se lisait comme un espace entre le chiffre et les barres ; elle est reprise
 par une marge négative, avec l'arithmétique écrite à côté du nombre.
 
-**Le mint est `#08daa9` dans les deux thèmes, et ce qu'il coûte est mesuré, pas
+**Le mint est `#08c99c` dans les deux thèmes, et ce qu'il coûte est mesuré, pas
 caché.** La variante assombrie a été essayée et refusée à vue : elle se lisait
-comme une autre couleur, plus terne, et non comme la même adaptée. Prix : **1,81:1
+comme une autre couleur, plus terne, et non comme la même adaptée. Prix : **2,13:1
 sur blanc**, sous le 4,5:1 d'une étiquette et sous le 3:1 d'une forme dessinée.
 En thème clair, tout ce qui porte l'accent est donc pâle. Sur le sombre il
 atteint 9,60:1.
@@ -1761,6 +1761,20 @@ Le vin est tenu à l'écart du rouge destructif **par la saturation et non par l
 teinte** — ce sont les deux seuls rouges d'une carte de repas, et l'un des deux
 veut dire « ça supprime ».
 
+**Deux entrées de menu pour une seule pensée, c'est une de trop.** « Changer de
+repas » et « modifier les objectifs » forçaient l'utilisateur à choisir quelle
+moitié d'une modification il voulait **avant** qu'on lui montre l'une ou
+l'autre. Fusionnées en « Modifier le repas », elles deviennent aussi
+**atomiques**, ce qu'elles n'étaient pas : deux écritures voulaient dire qu'un
+arrêt forcé entre les deux pouvait laisser un repas renommé avec ses anciens
+objectifs (§2.2). Le test qui compte n'est pas que la fusion marche — c'est
+qu'un changement refusé pour doublon n'ait **rien** bougé, chiffres compris.
+
+Corollaire de câblage : les repas voisins ne remontent plus du carrousel
+jusqu'à l'écran. La modale lit la journée elle-même et décide là quels types
+sont libres — un paramètre de moins à faire traverser trois composants pour
+répondre à une question que le destinataire pouvait poser lui-même.
+
 ## Points ouverts après la tranche 5
 - ~~**Vérification iPhone en attente.**~~ **Faite pour l'essentiel** : la
   tranche 5 a tourné sur l'appareil et a rendu six retours d'interface, tous
@@ -1780,7 +1794,7 @@ veut dire « ça supprime ».
   numéro se dérive de la journée entière, que cette liste ne charge pas — elle
   lit un repas par ligne. « Collation · 15 septembre » reste sans ambiguïté ;
   à rouvrir si deux collations du même jour s'y côtoient et se confondent.
-- **Le thème clair porte un accent à 1,81:1, et c'est une décision prise en
+- **Le thème clair porte un accent à 2,13:1, et c'est une décision prise en
   connaissance de cause.** Chevrons, « Enregistrer », le glyphe du bouton
   d'ajout et la jauge y sont pâles. Rien ne casse ; tout est moins lisible. La
   sortie, si ça gêne, est une surface plus sombre derrière l'accent — jamais un
