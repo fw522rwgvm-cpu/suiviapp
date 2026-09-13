@@ -1508,10 +1508,58 @@ compte.
 `ActionSheetIOS`, un vrai `UIAlertController` du cœur de React Native — la
 direction iOS 26 appliquée telle qu'écrite, le chrome appartient au système.
 
+## Ce que les retours d'appareil de la tranche 5 ont établi
+
+**Une dépendance native ne se juge pas sur sa légitimité mais sur l'écran qui
+la monte.** `react-native-svg` est au §5 et D13 en fait l'outil graphique
+unique : l'utiliser pour l'anneau n'enfreignait rien. Ce qui a décidé contre,
+c'est que le premier écran à le monter est le **Journal** — l'application
+cesserait de s'ouvrir jusqu'à un cycle CI et une réinstallation, et tout ce qui
+est livré à côté deviendrait intestable au même instant. `picker` et
+`expo-camera` avaient déjà facturé ça, les deux fois sur un écran qu'on pouvait
+éviter. Règle qui en sort : **avant d'ajouter du natif, demander quel écran le
+monte en premier.**
+
+**L'anneau en vues, et pourquoi ce n'est pas un second outil graphique.** Un
+cercle en `borderRadius`, deux demi-anneaux tournés, deux masques : cinquante
+lignes, une seule interface (`progress`, `size`, `thickness`, `color`). La
+tranche 7 le réécrit sur svg sans qu'un appelant bouge. La géométrie est
+reproduite en test — le composant ne se rend pas depuis Node, mais les deux
+rotations qu'il calcule, si.
+
+**Deux seuils de 10 % qui n'ont rien à voir.** `KCAL_DISCREPANCY_THRESHOLD`
+vérifie la cohérence interne d'un aliment (§5.1) ; `KCAL_OVERSHOOT_THRESHOLD`
+dit qu'on a mangé plus que prévu. Les confondre en une constante lierait une
+règle d'affichage à une règle nutritionnelle pour toujours. Un test fixe la
+séparation.
+
+**Les calories sont le seul chiffre qui a le droit d'élever la voix.** Anneau
+rouge au-delà de 10 %, ambre entre 0 et 10 % ; les trois barres de macros ne
+rougissent jamais, journée comme repas. Dépasser en glucides n'est pas le même
+genre d'événement que dépasser sur la journée, et une rangée de barres rouges
+dirait que si.
+
+**Une macro tronquée est pire qu'une petite.** Les points de suspension tombent
+là où un chiffre tomberait, donc la ligne se lit comme une valeur au lieu de se
+lire comme une valeur manquante. La ligne grise du journal est descendue à 10
+points, interlettrage resserré, avec dix points de largeur repris sur les
+marges de la rangée.
+
+**Anneau et bandeau de macros n'apparaissent que contre un objectif.** Un
+anneau sans rien à remplir n'est pas un anneau à zéro, c'est une forme qui a
+l'air cassée — et une journée sans modèle en empilerait quatre. Sur un repas
+sans objectif, l'en-tête reste exactement ce qu'il était avant la tranche 5.
+
 ## Points ouverts après la tranche 5
-- **Vérification iPhone en attente**, et c'est le point le plus important de
-  cette liste. Rien de l'interface de la tranche 5 n'a tourné sur l'appareil.
-  Aucun cycle CI n'est nécessaire : Metro sur le binaire dev suffit.
+- ~~**Vérification iPhone en attente.**~~ **Faite pour l'essentiel** : la
+  tranche 5 a tourné sur l'appareil et a rendu six retours d'interface, tous
+  traités. **Le bandeau et les cartes de repas remaniés n'ont pas encore été
+  revus sur l'appareil** — l'anneau en particulier, dont la géométrie est
+  testée en arithmétique mais dont le rendu ne l'est pas.
+- **L'anneau n'a jamais été peint.** Deux demi-anneaux tournés et clippés, c'est
+  la seule chose de cette tranche dont aucun test ne dit à quoi elle ressemble.
+  Ce qu'il faut regarder : l'arc à 0 (rien de visible), juste avant et juste
+  après la moitié (la jonction à 6 h), et à plein (la fermeture à 12 h).
 - **Le parcours à vérifier en premier**, parce qu'il est le critère de sortie :
   créer « Jour d'entraînement » avec quatre repas et leurs objectifs, l'affecter
   au mardi, surcharger une date depuis le Journal, et lire un vrai restant sur
@@ -1658,9 +1706,11 @@ direction iOS 26 appliquée telle qu'écrite, le chrome appartient au système.
   l'appareil.
 - L'heure de bascule de la journée n'est **pas lue** : `currentLocalDate()`
   utilise le défaut de minuit. Son réglage et sa lecture arrivent tranche 7.
-- Pas d'anneau de progression : il réclame `react-native-svg`, dépendance
-  native que le §7 place avec les primitives graphiques de la tranche 7. Sans
-  objectif avant la tranche 5, ce serait un cycle CI pour un cercle vide.
+- ~~Pas d'anneau de progression : il réclame `react-native-svg`.~~ **Livré en
+  tranche 5, dessiné en vues.** Le raisonnement tenait sauf sur un point : svg
+  est **natif**, et le premier écran qui le monterait est le Journal — donc
+  l'application cesserait de s'ouvrir jusqu'à un cycle CI. Voir
+  `progress-ring.tsx`, à réécrire sur svg en tranche 7 derrière les mêmes props.
 - **Hypothèse signalée** : le §5.1 parle d'un écart kcal de 10 % sans nommer le
   dénominateur. La valeur théorique est retenue. Faux positif connu et sans
   remède dans les specs : l'alcool fait 7 kcal/g et n'est pas une macro suivie,
