@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { toLocalDate, weekday } from '../../src/core/date';
+import { addDays, toLocalDate, weekday } from '../../src/core/date';
 import { setting, type DayTemplateId } from '../../src/core/db/schema';
 import { newId } from '../../src/core/id';
 import { readDay, readMealEntries } from '../../src/features/nutrition/data/day-reads';
@@ -924,5 +924,84 @@ describe('a meal deleted from the day, then a template applied', () => {
     );
     expect(snacks).toHaveLength(3);
     expect(snacks.map((meal) => meal.targets?.kcal)).toEqual([17, 34, 51]);
+  });
+});
+
+describe('the sequence reported from the device', () => {
+  /**
+   * Apply, delete a meal, apply THE SAME template again.
+   *
+   * Written from the steps as they were reported rather than from the ones the
+   * code suggests: re-applying an override that is already in force is the case
+   * a test derived from the implementation would not have thought to cover,
+   * since nothing about the planning changes between the two calls.
+   */
+  it('brings the breakfast back when the same template is applied twice', () => {
+    const training = trainingTemplate();
+
+    setDayTemplate(fixture.db, { date: TUESDAY, templateId: training });
+    deleteMeal(fixture.db, { date: TUESDAY, mealPosition: 0 });
+    expect(readDay(fixture.db, TUESDAY).meals.map((meal) => meal.name)).not.toContain(
+      'Petit-déjeuner',
+    );
+
+    setDayTemplate(fixture.db, { date: TUESDAY, templateId: training });
+
+    expect(readDay(fixture.db, TUESDAY).meals.map((meal) => meal.name)).toEqual([
+      'Petit-déjeuner',
+      'Déjeuner',
+      'Collation',
+      'Dîner',
+    ]);
+    expect(readDay(fixture.db, TUESDAY).meals[0]?.targets?.kcal).toBe(535);
+  });
+
+  it('brings it back when the day was materialised by the deletion itself', () => {
+    // The other way in: the first apply leaves the day virtual, and it is
+    // deleting a meal that writes it. The day then holds three meals and has
+    // never been through applyPlanTargets at all.
+    const training = trainingTemplate();
+
+    setDayTemplate(fixture.db, { date: TUESDAY, templateId: training });
+    expect(readDay(fixture.db, TUESDAY).materialized).toBe(false);
+
+    deleteMeal(fixture.db, { date: TUESDAY, mealPosition: 0 });
+    expect(readDay(fixture.db, TUESDAY).materialized).toBe(true);
+
+    setDayTemplate(fixture.db, { date: TUESDAY, templateId: training });
+
+    expect(readDay(fixture.db, TUESDAY).meals.map((meal) => meal.name)).toEqual([
+      'Petit-déjeuner',
+      'Déjeuner',
+      'Collation',
+      'Dîner',
+    ]);
+  });
+
+  it('survives the deletion and restoration of every meal in turn', () => {
+    // Each of the four, one at a time, on a fresh day. A single example proves
+    // the path; four prove that nothing about the matching depends on WHICH
+    // meal went missing — which is exactly what position-based matching got
+    // wrong.
+    const training = trainingTemplate();
+    const expected = ['Petit-déjeuner', 'Déjeuner', 'Collation', 'Dîner'];
+
+    for (const at of [0, 1, 2, 3]) {
+      const date = addDays(TUESDAY, at + 7);
+      setDayTemplate(fixture.db, { date, templateId: training });
+      // Materialise it, so the deletion has something to remove.
+      addFreeEntry(fixture.db, {
+        date,
+        mealPosition: 0,
+        macros: { protein: 1, carbs: 1, fat: 1, kcal: 17 },
+      });
+
+      deleteMeal(fixture.db, { date, mealPosition: at });
+      setDayTemplate(fixture.db, { date, templateId: training });
+
+      expect(readDay(fixture.db, date).meals.map((meal) => meal.name), `deleted ${at}`).toEqual(
+        expected,
+      );
+    }
   });
 });
