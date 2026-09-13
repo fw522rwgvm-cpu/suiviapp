@@ -174,9 +174,12 @@ describe('the destructive colour stays readable', () => {
   });
 
   it('clears AA under the label of a filled button, in both themes', () => {
-    // The swipe action paints `danger` and writes `onAccent` on it.
-    expect(contrast(colors.light.onAccent, colors.light.danger)).toBeGreaterThanOrEqual(4.5);
-    expect(contrast(colors.dark.onAccent, colors.dark.danger)).toBeGreaterThanOrEqual(4.5);
+    // The swipe action paints `danger` and writes `onDanger` on it — its own
+    // token since the accent became mint, because near-black reads on the mint
+    // and white reads on the red. One token serving both fills was how
+    // changing the green broke this button without touching it.
+    expect(contrast(colors.light.onDanger, colors.light.danger)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(colors.dark.onDanger, colors.dark.danger)).toBeGreaterThanOrEqual(4.5);
   });
 
   it('is VIVID rather than merely safe, which is the point of it', () => {
@@ -225,46 +228,58 @@ describe('the four meal colours', () => {
     }
   });
 
-  it('keeps night the one cool colour of the four', () => {
-    // Dinner is the only meal whose glyph is not warm, and the palette says so:
-    // it is the blue among three warm hues, which is what makes it findable in
-    // a column of meals without reading the shape.
+  it('keeps the wine clear of the destructive red', () => {
+    // The two are the only reds on a meal card, and one of them means "this
+    // deletes something". They are told apart by vividness rather than by hue:
+    // wine is a darker, far less saturated red than a button that destroys.
     for (const scheme of ['light', 'dark'] as const) {
-      expect(isCool(colors[scheme].mealDinner), scheme).toBe(true);
-      expect(isCool(colors[scheme].mealBreakfast), scheme).toBe(false);
-      expect(isCool(colors[scheme].mealLunch), scheme).toBe(false);
-      expect(isCool(colors[scheme].mealSnack), scheme).toBe(false);
+      expect(colors[scheme].mealDinner, scheme).not.toBe(colors[scheme].danger);
+      expect(
+        saturation(colors[scheme].mealDinner),
+        `${scheme} wine is quieter than danger`,
+      ).toBeLessThan(saturation(colors[scheme].danger));
     }
   });
 });
 
-/** Blue channel dominant: enough to tell a night colour from a daylight one. */
-function isCool(hex: string): boolean {
-  const red = parseInt(hex.slice(1, 3), 16);
-  const blue = parseInt(hex.slice(5, 7), 16);
-  return blue > red;
-}
-
 describe('the accent, now that it is the mint', () => {
-  it('is readable as a label on its own surface, in both themes', () => {
-    // It tints chevrons, "Enregistrer", the add button and every header. Below
-    // 4.5:1 those stop being readable, and #08daa9 as given measures 1.81:1 on
-    // white — which is why the light theme carries a darkened value of the same
-    // hue rather than the hex itself.
-    expect(contrast(colors.light.accent, colors.light.surface)).toBeGreaterThanOrEqual(4.5);
+  it('is the same hex in both themes, which was asked for by name', () => {
+    // A darkened light-theme variant was tried and rejected on sight: it read
+    // as a different, duller colour rather than as the same one adapted.
+    expect(colors.light.accent).toBe('#08daa9');
+    expect(colors.dark.accent).toBe('#08daa9');
+  });
+
+  it('is readable as a label on the DARK surface', () => {
+    // Where it is exemplary: 9.6:1. It tints chevrons, "Enregistrer", the add
+    // button and every header.
     expect(contrast(colors.dark.accent, colors.dark.surface)).toBeGreaterThanOrEqual(4.5);
   });
 
-  it('is readable under the label of a filled button, in both themes', () => {
-    // The save buttons paint the accent and write onAccent on top of it.
-    expect(contrast(colors.light.onAccent, colors.light.accent)).toBeGreaterThanOrEqual(4.5);
-    expect(contrast(colors.dark.onAccent, colors.dark.accent)).toBeGreaterThanOrEqual(4.5);
+  /**
+   * THE LIGHT THEME DOES NOT CLEAR IT, AND THAT IS A DECISION.
+   *
+   * Recorded as a measurement rather than asserted as a threshold, because the
+   * palette no longer meets one and pretending otherwise would either delete
+   * the knowledge or fail the build over something already decided. What this
+   * guards instead is the direction: if the figure ever moves, this test says
+   * so, and it names the way out.
+   */
+  it('records what the mint costs on white rather than hiding it', () => {
+    const measured = contrast(colors.light.accent, colors.light.surface);
+
+    // Below 3:1, the threshold for a drawn shape, let alone the 4.5:1 a label
+    // needs. The way out is a darker SURFACE, never a darker green.
+    expect(measured).toBeLessThan(3);
+    expect(measured).toBeCloseTo(1.81, 2);
   });
 
-  it('keeps the hex that was asked for, on the surface it works on', () => {
-    // Asked for by name. It reaches 9.60:1 on the dark surface, so it is used
-    // exactly as given there; the light theme is the compromise, not this.
-    expect(colors.dark.accent).toBe('#08daa9');
+  it('keeps a filled button readable, which the colour did not decide', () => {
+    // White on this mint is 1.81:1; near-black on it is 10.43:1. Every save
+    // button writes onAccent on an accent fill, so this had to move with the
+    // green without being a compromise on it.
+    expect(contrast(colors.light.onAccent, colors.light.accent)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(colors.dark.onAccent, colors.dark.accent)).toBeGreaterThanOrEqual(4.5);
   });
 
   it('gives calories the accent itself, which is deliberate', () => {

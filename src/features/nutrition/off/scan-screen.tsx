@@ -123,7 +123,14 @@ export function ScanScreen({ onScanned }: { onScanned: (barcode: string) => void
           that feels unreliable.
         */}
         <View style={styles.frame} pointerEvents="none">
-          <View style={[styles.reticle, { borderColor: theme.colors.onAccent }]} />
+          {/*
+            WHITE, AND NOT A THEME COLOUR. It is drawn over a live camera, not
+            over a surface this application paints: the theme knows nothing
+            about what is behind it. It borrowed onAccent while that happened to
+            be white, and went nearly black the day the accent became mint —
+            invisible against exactly the dark shelf a barcode is usually on.
+          */}
+          <View style={[styles.reticle, styles.reticleEdge]} />
         </View>
       </View>
 
@@ -160,6 +167,8 @@ export function ScanScreen({ onScanned }: { onScanned: (barcode: string) => void
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   viewfinder: { flex: 1, overflow: 'hidden', borderRadius: 18, margin: 16 },
+  // Over a camera feed, where white is the only colour that always reads.
+  reticleEdge: { borderColor: '#ffffff' },
   frame: {
     position: 'absolute',
     top: 0,

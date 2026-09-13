@@ -83,15 +83,17 @@ export function RemainingBanner({
         ? 'kcal restantes'
         : 'kcal au-dessus';
 
-  // Three states, decided in the domain (D9): under, over, and more than 10%
-  // over. Amber for the first slip, the theme's red past the threshold.
+  /**
+   * Three states, decided in the domain (D9): under, over, and more than 10%
+   * over. Amber for the first slip, the theme's red past the threshold.
+   *
+   * THE ARC CARRIES ALL THREE; THE FIGURE CARRIES NONE. The number stays in
+   * the text colour whatever the standing, because it is the one thing specs
+   * 8.3 requires to be legible without any interaction — and a red numeral on
+   * a card is read as an error before it is read as a quantity. The ring
+   * around it already says the state, in the place where a state belongs.
+   */
   const standing = targetStanding(consumed.kcal, target?.kcal ?? null);
-  const kcalColor =
-    standing === 'far_over'
-      ? theme.colors.danger
-      : standing === 'over'
-        ? theme.colors.warning
-        : theme.colors.text;
 
   return (
     <View
@@ -139,7 +141,7 @@ export function RemainingBanner({
                 : theme.colors.accent
           }
         >
-          <Text style={[styles.figure, { color: kcalColor }]}>
+          <Text style={[styles.figure, { color: theme.colors.text }]}>
             {formatKcal(Math.abs(headlineValue))}
           </Text>
           <Text style={[styles.figureLabel, { color: theme.colors.textMuted }]}>

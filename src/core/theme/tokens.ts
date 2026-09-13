@@ -50,18 +50,43 @@ export interface ColorTokens {
    * are now a green and a blue rather than two greens, and the reason the old
    * note gave for avoiding green no longer applies.
    *
-   * ## THE HEX IS THE DARK VALUE, NOT BOTH
+   * ## THE SAME HEX IN BOTH THEMES, AND WHAT THAT COSTS
    *
-   * #08daa9 measures 1.81:1 on white. That is below the 4.5:1 a label needs
-   * and below even the 3:1 a drawn shape needs, so in the light theme it would
-   * be a gauge you cannot see and a button you cannot read. It is therefore
-   * used exactly as given on the dark surface, where it reaches 9.60:1, and
-   * darkened to the same hue for the light one — the inverse of what the macro
-   * colours already do in the other direction.
+   * A darkened variant was tried for the light theme and rejected on sight: it
+   * read as a different, duller colour rather than as the same one adapted.
+   * The brand colour is the brand colour, so #08daa9 is used as given on both
+   * surfaces. Decision recorded rather than inferred.
+   *
+   * The price, measured: 1.81:1 against white. That is below the 4.5:1 a label
+   * needs and below even the 3:1 a drawn shape needs. So in the LIGHT theme
+   * everything tinted with the accent — the chevrons, "Enregistrer", the add
+   * button's glyph — is faint, and the gauge is a pale ring on a white card.
+   * On the dark surface it reaches 9.60:1 and is exemplary.
+   *
+   * If that becomes a problem in use, the way out is NOT a darker green, which
+   * is the thing that was rejected: it is a darker surface behind the accent —
+   * a tinted card under the gauge, or a dark-only application. The tests below
+   * record the measurement instead of asserting a threshold the palette no
+   * longer meets, so the number is visible rather than lost.
+   *
+   * `onAccent` is the one thing that had to move with it, and it is not a
+   * compromise on the colour: white on this mint is 1.81:1, near-black on it
+   * is 10.43:1. Every filled button writes onAccent, so leaving it white would
+   * have made the save buttons unreadable while changing nothing about the
+   * green itself.
    */
   accent: string;
   /** Text drawn on top of accent. */
   onAccent: string;
+  /**
+   * Text drawn on top of danger.
+   *
+   * Its own token since the accent became mint. The two fills no longer take
+   * the same label colour — near-black reads on the mint and white reads on
+   * the red — and one token serving both was how changing the green broke the
+   * delete button without touching it.
+   */
+  onDanger: string;
   /** Non-blocking warnings, such as the 10% kcal discrepancy (specs 5.1). */
   warning: string;
   /** Destructive actions. */
@@ -102,7 +127,7 @@ export interface ColorTokens {
 
   /**
    * One colour per meal, chosen to agree with WHAT ITS ICON DEPICTS rather
-   * than to fill out a palette: a dawn sky, midday sun, night, a carrot.
+   * than to fill out a palette: coffee, cutlery, wine, a carrot.
    *
    * They are allowed to sit near the macro hues, and that is not an oversight.
    * A meal is identified by the SHAPE of its glyph and a macro bar by the
@@ -130,8 +155,9 @@ const light: ColorTokens = {
   text: '#111113',
   textMuted: '#65656d',
   textFaint: '#9a9aa3',
-  accent: '#058063',
-  onAccent: '#ffffff',
+  accent: '#08daa9',
+  onAccent: '#0f0f11',
+  onDanger: '#ffffff',
   warning: '#8a5a00',
   /**
    * Destructive, and deliberately bright.
@@ -148,16 +174,16 @@ const light: ColorTokens = {
    * clears the bar — 4.60:1, pinned by a test.
    */
   danger: '#e02d1f',
-  macroKcal: '#058063',
+  macroKcal: '#08daa9',
   macroProtein: '#3457c5',
   macroCarbs: '#d98324',
   macroFat: '#8a5cc4',
-  /** The rose of a sky at dawn, not the orange of the sun that is still rising. */
-  mealBreakfast: '#d14d72',
-  /** Midday gold, darkened until it clears its threshold on white. */
-  mealLunch: '#a8780a',
-  /** Night: the one cool colour of the four, which is what sets it apart. */
-  mealDinner: '#4c5fc0',
+  /** Coffee. */
+  mealBreakfast: '#7a4e24',
+  /** Cutlery: the one neutral of the four, and the only one that is not food. */
+  mealLunch: '#6b6257',
+  /** Wine, kept well clear of the destructive red — darker and far less vivid. */
+  mealDinner: '#9b2242',
   /** A carrot, and nothing else this colour needs to mean. */
   mealSnack: '#cc5a0a',
 };
@@ -171,6 +197,7 @@ const dark: ColorTokens = {
   textFaint: '#6b6b74',
   accent: '#08daa9',
   onAccent: '#0f0f11',
+  onDanger: '#0f0f11',
   warning: '#e0a942',
   /**
    * iOS systemRed for dark mode, exactly.
@@ -192,9 +219,9 @@ const dark: ColorTokens = {
   macroFat: '#b18ce0',
   // Lifted like the macros: a colour that reads on white disappears on near
   // black, and a glyph nobody can make out is a glyph with no colour at all.
-  mealBreakfast: '#f2839f',
-  mealLunch: '#f2c14e',
-  mealDinner: '#93a5f5',
+  mealBreakfast: '#d0a173',
+  mealLunch: '#b5aa9a',
+  mealDinner: '#e8718f',
   mealSnack: '#ff9b45',
 };
 

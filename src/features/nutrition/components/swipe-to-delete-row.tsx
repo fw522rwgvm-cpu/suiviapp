@@ -263,7 +263,7 @@ export function SwipeToDeleteRow({
             accessibilityLabel={actionLabel}
           >
             <Text
-              style={[styles.actionLabel, { color: theme.colors.onAccent }]}
+              style={[styles.actionLabel, { color: theme.colors.onDanger }]}
               numberOfLines={1}
             >
               {actionLabel}
