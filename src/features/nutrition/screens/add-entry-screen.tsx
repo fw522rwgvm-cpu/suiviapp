@@ -827,24 +827,23 @@ function Basket({
               wherever it is — and it cannot be confused with the back gesture,
               which travels the other way and only from the edge.
             */}
-            <SwipeToDeleteRow actionLabel="Retirer" onDelete={() => onRemove(index)}>
-              {/*
-                Touching a line reopens the choice that made it -- a quantity,
-                or four figures. A line waiting to be written is still a
-                decision being taken, and taking it back should not mean
-                removing it and starting over.
+            {/*
+              Touching a line reopens the choice that made it -- a quantity, or
+              four figures. A line waiting to be written is still a decision
+              being taken, and taking it back should not mean removing it and
+              starting over.
 
-                The press reaches this only while the row is at rest: an open
-                row takes the touch itself and closes, exactly as a row does
-                in Files.
-              */}
-              <Pressable
-                onPress={() => onEdit(index)}
-                accessibilityRole="button"
-                accessibilityLabel={`Modifier ${pendingEntryName(entry)}`}
-              >
-                <PendingEntryRow entry={entry} />
-              </Pressable>
+              The press is handed to the row rather than wrapped around the
+              content: a Pressable here could not tell a tap from the release
+              of a swipe, and uncovering "Retirer" opened this very screen.
+            */}
+            <SwipeToDeleteRow
+              actionLabel="Retirer"
+              onDelete={() => onRemove(index)}
+              onPress={() => onEdit(index)}
+              accessibilityLabel={`Modifier ${pendingEntryName(entry)}`}
+            >
+              <PendingEntryRow entry={entry} />
             </SwipeToDeleteRow>
           </View>
         ))}

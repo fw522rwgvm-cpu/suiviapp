@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { formatKcal } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import type { JournalEntryView } from '../data/day-reads';
@@ -31,13 +31,17 @@ import { formatEntryQuantity } from './portion-text';
  * No calculation of its own: the total arrives already derived from the read
  * layer (D9 — nothing in a component).
  */
-export function EntryRow({
-  entry,
-  onPress,
-}: {
-  entry: JournalEntryView;
-  onPress: () => void;
-}) {
+/**
+ * IT NO LONGER CARRIES ITS OWN PRESS, and that is not a simplification.
+ *
+ * A Pressable here could not tell a tap from the release of a swipe:
+ * gesture-handler's pan and React Native's responder system do not arbitrate
+ * with each other, so swiping a row open and letting go over it fired the
+ * press. SwipeToDeleteRow owns the tap now — where it races the pan and loses
+ * to it, which is the arbitration that was missing — and the pressed highlight
+ * comes from there too.
+ */
+export function EntryRow({ entry }: { entry: JournalEntryView }) {
   const theme = useTheme();
   const total = entry.total;
 
@@ -60,14 +64,9 @@ export function EntryRow({
     .join(' · ');
 
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      style={({ pressed }) => [
-        styles.row,
-        { backgroundColor: pressed ? theme.colors.background : theme.colors.surface },
-      ]}
-    >
+    // No background of its own: the swipe row paints it, so the highlight can
+    // follow the finger on the UI thread rather than through React state.
+    <View style={styles.row}>
       <View style={styles.identity}>
         <Text style={[styles.name, { color: theme.colors.text }]} numberOfLines={1}>
           {entry.name}
@@ -90,7 +89,7 @@ export function EntryRow({
           <Text style={[styles.warning, { color: theme.colors.warning }]}>écart kcal</Text>
         ) : null}
       </View>
-    </Pressable>
+    </View>
   );
 }
 

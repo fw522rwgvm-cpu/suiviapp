@@ -54,7 +54,9 @@ export function PendingEntryRow({ entry }: { entry: PendingEntry }) {
   }
 
   return (
-    <View style={[styles.row, { backgroundColor: theme.colors.surface }]}>
+    // No background of its own: the swipe row paints it, so its pressed
+    // highlight is not hidden by an opaque child.
+    <View style={styles.row}>
       <View style={styles.identity}>
         <View style={styles.heading}>
           <Text

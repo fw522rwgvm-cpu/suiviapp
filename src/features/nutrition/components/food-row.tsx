@@ -1,5 +1,4 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { formatKcal } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import { GlassButton } from '@/core/ui/glass-button';
 import type { FoodListItem } from '../data/food-reads';
@@ -98,26 +97,6 @@ export function FoodRow({
           </Text>
         )}
 
-        {/*
-          ONE CALORIE FIGURE PER ROW, and which one depends on what the row is
-          for.
-        
-          Where the row offers to add itself, the figure that matters is what
-          the tap costs — shown beside the button. Stating "265 kcal / 100 g"
-          underneath as well put two calorie numbers on one card, neither of
-          which was obviously the one being read.
-        
-          Where there is no button — the library — the per-100 figure is the
-          only one there is, and it is the one worth having: it is stated
-          against the same quantity on every line, which is what lets two foods
-          be compared at a glance. That is also why it is never scaled by
-          display_ref_qty (D9).
-        */}
-        {kcal !== undefined ? null : (
-          <Text style={[styles.detail, { color: theme.colors.textMuted }]} numberOfLines={1}>
-            {formatKcal(food.reference.kcal)} kcal / 100 {food.baseUnit}
-          </Text>
-        )}
       </View>
 
       {kcal === undefined ? null : (
@@ -207,5 +186,4 @@ const styles = StyleSheet.create({
   // Between the name and the figures in weight as well as in place: it says
   // which food this is, not what it is worth.
   brand: { fontSize: 13 },
-  detail: { fontSize: 12 },
 });

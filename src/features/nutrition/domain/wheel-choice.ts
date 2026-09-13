@@ -1,3 +1,4 @@
+import type { QuantityChoice } from './portions';
 /**
  * What the three wheels of the quantity screen are showing, and the two rules
  * that keep what they show meaningful.
@@ -105,4 +106,39 @@ export function settleWheel(
   return next.whole === previous.whole
     ? { ...next, whole: 1 }
     : { ...next, fraction: SOME };
+}
+
+/**
+ * Where the three wheels must stand to show a quantity.
+ *
+ * PURE, AND CALLED AT MOUNT RATHER THAN IN AN EFFECT — that distinction is the
+ * whole reason it exists as a function. It used to live inside a useEffect: the
+ * wheels mounted on a default of 100 and were moved to the real value once the
+ * query answered, one render later, which on the device is visible. The wheels
+ * spun into place every time the screen opened.
+ *
+ * An effect runs after its render has been painted, so no arrangement of
+ * effects can fix that; the value has to be known before the wheels exist.
+ * Callers therefore hold the screen until they have it, and this turns it into
+ * an initial state.
+ *
+ * The unit is resolved against the portions the food offers TODAY. One renamed
+ * or dropped since falls back to base units, which is the same answer the
+ * pre-fill chain gives for the same reason.
+ */
+export function wheelFor(
+  choice: QuantityChoice,
+  portions: readonly { name: string }[],
+): WheelChoice {
+  const amount = choice.portion === null ? choice.baseQuantity : choice.portion.count;
+  const named = choice.portion?.name ?? null;
+  const found = portions.findIndex((portion) => portion.name === named);
+  const unit = named === null || found < 0 ? 0 : found + 1;
+
+  // The NEAREST face the wheel has, not the exact remainder: these are wheels,
+  // and 0,37 of a slice is not one of their faces. A quantity in base units
+  // lands on the dash, whole numbers being what it deals in.
+  const whole = Math.floor(amount);
+
+  return { whole, fraction: nearestFraction(amount - whole), unit };
 }

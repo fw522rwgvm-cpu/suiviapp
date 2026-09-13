@@ -4,9 +4,14 @@ import {
   FRACTIONS,
   nearestFraction,
   settleWheel,
+  wheelFor,
   type WheelChoice,
   type WheelUnit,
 } from '../../src/features/nutrition/domain/wheel-choice';
+import {
+  baseQuantity,
+  portionQuantity,
+} from '../../src/features/nutrition/domain/portions';
 
 /**
  * The two rules that keep the quantity wheels showing something meaningful
@@ -91,5 +96,51 @@ describe('reading a stored quantity back onto the wheels', () => {
     expect(FRACTIONS[nearestFraction(0.37)]?.label).toBe('1/3');
     expect(FRACTIONS[nearestFraction(0)]?.label).toBe('—');
     expect(FRACTIONS[nearestFraction(0.51)]?.label).toBe('1/2');
+  });
+});
+
+describe('where the wheels stand when the screen opens', () => {
+  /**
+   * Extracted from a useEffect, which is the whole point of it being a
+   * function.
+   *
+   * The wheels used to mount on a default of 100 and be moved to the real
+   * quantity once the query answered — one render later, after the frame had
+   * been painted. On the device that is a visible spin, every time the screen
+   * opens. No arrangement of effects fixes it: an effect runs after its render,
+   * so the value has to exist before the wheels do.
+   */
+  it('puts a base quantity on the whole wheel and no fraction', () => {
+    expect(wheelFor(baseQuantity(60), [])).toEqual({ whole: 60, fraction: 0, unit: 0 });
+  });
+
+  it('selects the portion the quantity was expressed in', () => {
+    const portions = [{ name: 'tranche' }, { name: 'bol' }];
+    // Unit 0 is the base unit, so a portion is its index plus one.
+    expect(wheelFor(portionQuantity({ name: 'bol', quantity: 250 }, 2), portions)).toEqual({
+      whole: 2,
+      fraction: 0,
+      unit: 2,
+    });
+  });
+
+  it('falls back to base units for a portion the food no longer offers', () => {
+    // Renamed or dropped since. The same answer the pre-fill chain gives, and
+    // for the same reason: what was eaten is not re-interpreted.
+    expect(
+      wheelFor(portionQuantity({ name: 'tranche', quantity: 25 }, 2), [{ name: 'bol' }]),
+    ).toEqual({ whole: 2, fraction: 0, unit: 0 });
+  });
+
+  it('lands a fractional count on the nearest face the wheel has', () => {
+    // 2,4 slices is not a face. Of the eight the wheel carries, 1/3 (0,333)
+    // is nearer to 0,4 than 1/2 is — which is the point of asking for the
+    // nearest rather than rounding up.
+    const wheel = wheelFor(portionQuantity({ name: 'tranche', quantity: 25 }, 2.4), [
+      { name: 'tranche' },
+    ]);
+    expect(wheel.whole).toBe(2);
+    expect(wheel.unit).toBe(1);
+    expect(FRACTIONS[wheel.fraction]?.value).toBeCloseTo(1 / 3, 5);
   });
 });

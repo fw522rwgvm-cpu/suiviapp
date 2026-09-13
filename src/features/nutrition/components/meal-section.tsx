@@ -135,8 +135,18 @@ export function MealSection({
                 {index === 0 ? null : (
                   <ListSeparator />
                 )}
-                <SwipeToDeleteRow onDelete={() => onDeleteEntry(entry)}>
-                  <EntryRow entry={entry} onPress={() => onEditEntry(entry)} />
+                {/*
+                  The press goes to the swipe row, not to the entry: the two
+                  recognisers do not arbitrate with each other, so a Pressable
+                  inside fired on the release of a swipe — the same defect the
+                  basket showed, on the screen that is used most.
+                */}
+                <SwipeToDeleteRow
+                  onDelete={() => onDeleteEntry(entry)}
+                  onPress={() => onEditEntry(entry)}
+                  accessibilityLabel={`Modifier ${entry.name}`}
+                >
+                  <EntryRow entry={entry} />
                 </SwipeToDeleteRow>
               </View>
             ))

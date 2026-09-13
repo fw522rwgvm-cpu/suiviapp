@@ -2,6 +2,7 @@ import { SymbolView } from 'expo-symbols';
 import { Stack, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { formatKcal } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import { useFoods, useSetFoodFavorite } from '../data/food-queries';
 import { searchFoods } from '../domain/food-search';
@@ -96,6 +97,14 @@ export function LibraryScreen() {
                 )}
                 <FoodRow
                   food={food}
+                  /*
+                    The per-100 figure, now beside the star instead of on a
+                    line of its own. It is the only calorie number this screen
+                    has, and it is stated against the same quantity on every
+                    row — which is what lets two foods be compared at a glance,
+                    and why it is never scaled by display_ref_qty (D9).
+                  */
+                  kcal={`${formatKcal(food.reference.kcal)} kcal`}
                   onPress={() =>
                     router.push(`/(tabs)/(journal)/library/food/${food.id}`)
                   }

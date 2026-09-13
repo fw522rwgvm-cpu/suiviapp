@@ -69,9 +69,28 @@ import { ACTION_WIDTH, settleSwipe } from './swipe-settle';
  *     finger and in motion. The reference puts the pan on the still container
  *     and only the tap on the moving layer.
  *
- * The tap is a gesture too, not a Pressable: it is armed ONLY while the row is
- * open, so it closes an open row without swallowing a press on a row at rest
- * -- the Journal's rows are pressable, this component's second user.
+ * ## THE TAP BELONGS HERE, AND THAT IS A CORRECTION
+ *
+ * It used to be armed only while the row was open — it closed an open row, and
+ * a row at rest passed its touches through to a Pressable inside the content.
+ * That looked right and was wrong on the device: swiping a closed row open and
+ * releasing WITHOUT lifting off the row fired that Pressable, so uncovering
+ * "Retirer" on a basket line opened the quantity screen instead.
+ *
+ * The cause is the one this file already warns about one paragraph up: React
+ * Native's responder system and gesture-handler are two recognisers that do
+ * not arbitrate with each other. The pan activating does not cancel a
+ * Pressable underneath it, so the release reads as a press.
+ *
+ * So the press is a gesture too, and it lives here. A Tap and a Pan in the
+ * same detector RACE — gesture-handler makes them exclusive by default — and a
+ * pan that activates makes the tap fail, which is exactly the arbitration that
+ * was missing. Callers hand over `onPress` instead of wrapping their content
+ * in a Pressable.
+ *
+ * What that costs, and it is worth stating: a gesture has no pressed state, so
+ * a row that highlighted under the finger no longer does. Bought back where it
+ * mattered — see `pressed` below — rather than everywhere by default.
  */
 
 /** How much of the drag survives past the resting position. */
@@ -85,10 +104,32 @@ const EXIT = { duration: 180 } as const;
 export function SwipeToDeleteRow({
   children,
   onDelete,
+  onPress,
+  accessibilityLabel,
   actionLabel = 'Supprimer',
 }: {
   children: ReactNode;
   onDelete: () => void;
+  /**
+   * What a tap on the row means, when the row is at rest.
+   *
+   * Handed here rather than to a Pressable inside `children`: see the note
+   * above. A row with nothing to open simply omits it, and taps then do
+   * nothing at all — which is the honest behaviour for a row that is only ever
+   * swiped.
+   */
+  onPress?: () => void;
+  /**
+   * What the row announces, now that the press no longer lives on a Pressable
+   * that carried its own role.
+   *
+   * Taking the tap into a gesture took accessibility with it: a gesture is
+   * invisible to VoiceOver. The role and the label are declared here instead,
+   * so the row is still a button to someone who cannot see it — and the swipe
+   * itself remains what it has always been, a gesture with no spoken
+   * equivalent, which specs 14.4 already records as a reservation.
+   */
+  accessibilityLabel?: string;
   actionLabel?: string;
 }) {
   const theme = useTheme();
@@ -97,6 +138,16 @@ export function SwipeToDeleteRow({
   // Negative, always: 0 closed, -ACTION_WIDTH open, -width gone.
   const offset = useSharedValue(0);
   const start = useSharedValue(0);
+  /**
+   * Under the finger, right now.
+   *
+   * A shared value rather than React state, and driven from onBegin /
+   * onFinalize rather than onStart: the highlight has to appear on touch-down
+   * and survive until the gesture is settled, which is what a Pressable did
+   * for free and a Tap does not. On the UI thread, so it cannot lag behind the
+   * finger the way a state round trip would.
+   */
+  const pressed = useSharedValue(false);
   // Mirrored in React state because it arms the tap and closes the content to
   // touches -- neither of which a shared value can do.
   const [open, setOpen] = useState(false);
@@ -156,18 +207,37 @@ export function SwipeToDeleteRow({
       runOnJS(setOpen)(opening);
     });
 
-  // Armed only while the row is open, so a row at rest passes taps through to
-  // whatever it contains.
+  /**
+   * ALWAYS ARMED, and in a race with the pan.
+   *
+   * Open, it closes the row — the way a row in Files takes the touch itself
+   * rather than acting on something the finger cannot fully see. At rest, it
+   * is the row's press.
+   *
+   * Being armed at rest is what fixes the bug: the pan and the tap are
+   * exclusive, so a swipe that activates makes the tap fail, and a release
+   * over the row after a swipe is no longer a press.
+   */
   const tap = Gesture.Tap()
-    .enabled(open)
     .shouldCancelWhenOutside(true)
+    .onBegin(() => {
+      if (!open) pressed.value = true;
+    })
+    .onFinalize(() => {
+      pressed.value = false;
+    })
     .onStart(() => {
-      offset.value = withSpring(0, SPRING);
-      runOnJS(setOpen)(false);
+      if (open) {
+        offset.value = withSpring(0, SPRING);
+        runOnJS(setOpen)(false);
+        return;
+      }
+      if (onPress !== undefined) runOnJS(onPress)();
     });
 
   const rowStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: offset.value }],
+    backgroundColor: pressed.value ? theme.colors.background : theme.colors.surface,
   }));
 
   // Exactly the strip uncovered, so the red grows from the edge with the drag.
@@ -204,8 +274,15 @@ export function SwipeToDeleteRow({
           <Animated.View
             // Open, the layer itself takes the touch: a press meant for the row
             // would otherwise act on a row the finger cannot fully see.
-            pointerEvents={open ? 'box-only' : 'auto'}
-            style={[{ backgroundColor: theme.colors.surface }, rowStyle]}
+            // box-only throughout now: the row's own tap is what handles a
+            // press, so nothing inside needs to receive one — and a Pressable
+            // that slipped back into the content would reintroduce the very
+            // arbitration failure this component was fixed for.
+            pointerEvents="box-only"
+            accessible={onPress !== undefined}
+            accessibilityRole={onPress === undefined ? undefined : 'button'}
+            accessibilityLabel={accessibilityLabel}
+            style={rowStyle}
           >
             {children}
           </Animated.View>

@@ -53,9 +53,14 @@ L'application doit tolérer un arrêt forcé à tout moment sans perte.
 ---
 
 ## État du projet
-Tranches 0 à 4 livrées. **Tranche 4 (Open Food Facts et scan) écrite, typée,
-testée et bundlée ; rien de son interface n'a encore tourné sur l'appareil**,
-et le scan ne le peut pas avant un build — voir ci-dessous.
+Tranches 0 à 4 livrées. **L'interface de la tranche 4 a commencé à tourner sur
+l'appareil** et y a déjà fait remonter deux défauts que rien n'aurait trouvés
+autrement — un balayage qui déclenchait le press de sa rangée, et des molettes
+qui tournaient en s'ouvrant. Les deux sont corrigés ; voir « Deux défauts
+trouvés sur l'appareil ».
+
+**Le scan, lui, n'a pas encore pu tourner** : `expo-camera` est native et
+attend un build.
 
 **L'aller-retour export / import avec `food` et `food_portion` est vérifié**
 (13/09/2026). Le filet tient avec les tables de la tranche 3 dedans.
@@ -1200,20 +1205,19 @@ jamais que cette quantité a été mangée — elle énonce ce que le bouton ajo
 ce qui est vrai à chaque étape. Retirer le bouton aurait coupé la liste des
 favoris en deux selon un critère invisible.
 
-**Un seul chiffre de calories par ligne, et lequel dépend de ce que la ligne
-sert.** Là où elle offre de s'ajouter, le chiffre qui compte est le prix du
-toucher, montré près du bouton ; énoncer « 265 kcal / 100 g » en dessous
-mettait deux nombres de calories sur une carte sans que l'un soit manifestement
-celui qu'on lit. Là où il n'y a pas de bouton — la bibliothèque — le chiffre
-pour 100 est le seul, et c'est le bon : il est énoncé contre la même quantité
-sur chaque ligne, ce qui est précisément ce qui rend une liste comparable.
+**Un seul chiffre de calories par ligne, toujours au même endroit, et ce qu'il
+veut dire appartient à l'écran.** L'écran d'ajout y met le prix du toucher —
+les calories de la quantité que le « + » enregistrerait ; la bibliothèque y met
+ce que l'aliment **est**, ses calories pour 100. Il y en avait un second sous
+le nom : deux nombres de calories sur une carte, sans que l'un soit
+manifestement celui qu'on lit.
 
 **Conséquence assumée** : les listes de l'écran d'ajout cessent d'être
 comparables entre elles, chaque ligne étant désormais énoncée contre sa propre
-quantité. C'est correct pour un écran où l'on logue plutôt qu'où l'on compare,
-et c'est exactement ce que le commentaire de `FoodRow` interdisait quand la
-ligne ne portait pas d'action — la règle n'a pas été enfreinte, son motif a
-cessé de s'appliquer.
+quantité. C'est correct pour un écran où l'on logue plutôt qu'où l'on compare —
+et c'est pour ça que la bibliothèque, elle, garde le chiffre pour 100, qui est
+ce qui la rend comparable. La règle de `FoodRow` n'a pas été enfreinte : son
+motif a cessé de s'appliquer d'un côté et continue de l'autre.
 
 **L'en-tête de l'écran d'ajout ne défile pas.** Les deux entrées rapides et le
 champ restent à l'écran ; seules les listes bougent. Atteindre le scanner ne
@@ -1253,6 +1257,50 @@ balayage, et le compteur de l'en-tête change aussitôt pour dire que le toucher
 a porté. Un ajout direct au journal aurait réclamé une confirmation ; une ligne
 au panier n'en réclame aucune. C'est la même propriété qui rend le geste rapide
 et qui le rend rattrapable.
+
+### Deux défauts trouvés sur l'appareil, et ce qu'ils enseignent
+
+**Un balayage qui se termine sur la rangée déclenchait son press.** Découvrir
+« Retirer » sur une ligne du panier ouvrait l'écran de quantité. La cause est
+celle que `swipe-to-delete-row.tsx` mettait déjà en garde un paragraphe plus
+haut, sans en tirer toutes les conséquences : **le système de responder de
+React Native et gesture-handler sont deux reconnaisseurs qui n'arbitrent pas
+entre eux.** Un `Pan` qui s'active n'annule pas un `Pressable` en dessous,
+donc le relâchement se lit comme un appui.
+
+Le remède n'est pas un verrou temporel mais un déplacement : **le press est un
+geste, et il vit dans le composant de balayage.** Un `Tap` et un `Pan` dans le
+même détecteur sont en **course** — gesture-handler les rend exclusifs par
+défaut — donc un pan qui s'active fait échouer le tap. C'est exactement
+l'arbitrage qui manquait. Les appelants passent `onPress` au lieu d'envelopper
+leur contenu.
+
+Le Journal avait le même défaut, sur l'écran le plus utilisé. Il est corrigé
+par la même bascule.
+
+Deux prix à payer, et ils sont payés plutôt que subis : un geste n'a pas d'état
+« pressé », donc la surbrillance est reconstruite sur une valeur partagée pilotée
+par `onBegin` / `onFinalize` — sur le fil d'interface, donc sans le retard d'un
+aller-retour d'état ; et un geste est invisible à VoiceOver, donc le rôle et le
+libellé sont déclarés sur la rangée. **Corollaire : plus aucun enfant ne doit
+peindre son fond**, sinon il masque la surbrillance du parent.
+
+**Les molettes de quantité tournaient en s'ouvrant.** Elles se montaient sur un
+défaut de 100, et un effet les déplaçait quand la requête répondait. **Un effet
+tourne APRÈS que son rendu a été peint** — c'est la même leçon que le carrousel
+de la tranche 3 avait apprise sur son `key` — donc aucune disposition d'effets
+ne pouvait le corriger : la valeur doit exister avant les molettes.
+
+Le formulaire est donc scindé. La `ScrollView` reste la même dans les deux
+états — échanger une `View` contre une `ScrollView` est ce qui faisait sauter la
+page de journée — et seul le **corps**, qui porte les molettes, attend d'avoir
+une quantité. Il l'obtient par `wheelFor`, fonction pure appelée à
+l'initialisation de l'état et non dans un effet.
+
+Piège au passage : `null` veut dire **« pas encore »**, jamais « aucune ». Un
+écran qui n'a rien à attendre — un produit Open Food Facts porte tout — énonce
+sa valeur de départ, sinon il attendrait pour toujours sur le seul chemin qui
+n'a pas de requête.
 
 ## Ce que la mise au point de la tranche 3 a laissé derrière elle
 

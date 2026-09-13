@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import { formatQuantity } from '@/core/format';
 import { useTheme } from '@/core/theme';
@@ -21,10 +21,11 @@ import { formatPortionCount } from '../components/portion-text';
 import { QuantityWheel } from '../components/quantity-wheel';
 import {
   amountOf,
-  nearestFraction,
+  wheelFor,
   type WheelChoice,
   type WheelUnit,
 } from '../domain/wheel-choice';
+import { LoadingDots } from '@/core/ui/loading-dots';
 
 /**
  * How much of this food (specs 8.4, D16).
@@ -135,7 +136,14 @@ function CollectOffQuantity({
       baseUnit="g"
       reference={macrosOf(product)}
       portions={[]}
-      initial={amending ?? null}
+      /*
+        NEVER null here, and that matters now that null means "not loaded yet".
+        A remote product has nothing to wait for — everything travels on the
+        product — so the fourth step of the pre-fill chain is stated outright
+        rather than arrived at: 100, which is where a food never logged ends up
+        anyway (specs 8.4).
+      */
+      initial={amending ?? baseQuantity(100)}
       action={amending === undefined ? 'Ajouter' : 'Enregistrer'}
       onSubmit={onCollect}
     />
@@ -229,6 +237,13 @@ function QuantityForm({
   baseUnit: string;
   reference: Macros | null;
   portions: readonly FoodPortionView[];
+  /**
+   * The quantity to open on, or null while it is still being read.
+   *
+   * NULL MEANS "NOT YET", never "none": a screen with nothing to wait for
+   * passes the value it starts on. Conflating the two would hold the wheels
+   * back for ever on the one path that has no query.
+   */
   initial: QuantityChoice | null;
   action: string;
   onSubmit: (quantity: QuantityChoice) => void;
@@ -241,17 +256,75 @@ function QuantityForm({
   usePanelHeading(title, subtitle);
 
   /**
+   * ONE ScrollView IN BOTH STATES, and the wheels mounted only once there is a
+   * quantity to mount them on.
+   *
+   * The wheels used to appear straight away, standing on a default of 100, and
+   * an effect moved them once the query answered. An effect runs AFTER its
+   * render has been painted, so that is a frame of wrong value followed by a
+   * visible spin — every single time the screen opened.
+   *
+   * Holding the body back until `initial` is known makes the wheels' first
+   * frame their right one. And the scroll view stays the same element in both
+   * states on purpose: swapping a View for a ScrollView is what made the
+   * Journal's day page jump, because UIKit recomputes a fresh scroll view's
+   * content inset from nothing.
+   */
+  return (
+    <ScrollView
+      style={{ backgroundColor: theme.colors.background }}
+      contentContainerStyle={styles.content}
+      contentInsetAdjustmentBehavior="automatic"
+    >
+      {initial === null ? (
+        <LoadingDots />
+      ) : (
+        <QuantityBody
+          baseUnit={baseUnit}
+          reference={reference}
+          portions={portions}
+          initial={initial}
+          action={action}
+          onSubmit={onSubmit}
+        />
+      )}
+    </ScrollView>
+  );
+}
+
+/**
+ * The wheels and what they are worth.
+ *
+ * Mounted only with a quantity in hand, so its state is right from the first
+ * frame and no effect has to correct it afterwards.
+ */
+function QuantityBody({
+  baseUnit,
+  reference,
+  portions,
+  initial,
+  action,
+  onSubmit,
+}: {
+  baseUnit: string;
+  reference: Macros | null;
+  portions: readonly FoodPortionView[];
+  initial: QuantityChoice;
+  action: string;
+  onSubmit: (quantity: QuantityChoice) => void;
+}) {
+  const theme = useTheme();
+
+  /**
    * WHAT THE WHEELS ARE ON, and the only state this screen keeps.
    *
    * A whole number, a fraction of one, and which unit — the three answers the
    * three wheels give. Everything else is derived from them (D9): what it
    * comes to in base units, and what that is worth.
    *
-   * A hundred to start with, which is also where the pre-fill chain ends when
-   * a food has never been logged (specs 8.4).
+   * Computed at mount from the quantity handed in, never in an effect.
    */
-  const [wheel, setWheel] = useState<WheelChoice>({ whole: 100, fraction: 0, unit: 0 });
-  const [loaded, setLoaded] = useState(false);
+  const [wheel, setWheel] = useState<WheelChoice>(() => wheelFor(initial, portions));
 
   /**
    * What it can be counted in: the base unit first, then this food's portions.
@@ -263,27 +336,6 @@ function QuantityForm({
     ...portions.map((portion) => ({ label: portion.name, size: portion.quantity })),
   ];
 
-  useEffect(() => {
-    // Set once, when the pre-fill arrives. Reapplying it on every render would
-    // spin the wheels out from under the finger.
-    if (loaded || initial === null) return;
-
-    const amount = initial.portion === null ? initial.baseQuantity : initial.portion.count;
-    const named = initial.portion?.name ?? null;
-    const found = portions.findIndex((portion) => portion.name === named);
-    // Its portion may have been renamed or dropped since; base units are the
-    // honest fallback, as they are everywhere else in this chain.
-    const unit = named === null || found < 0 ? 0 : found + 1;
-
-    // The NEAREST face the wheel has, not the exact remainder: these are
-    // wheels, and 0,37 of a slice is not one of their faces. A quantity in
-    // base units lands on the dash, whole numbers being what it deals in.
-    const whole = Math.floor(amount);
-
-    setWheel({ whole, fraction: nearestFraction(amount - whole), unit });
-    setLoaded(true);
-  }, [initial, loaded, portions]);
-
   const amount = amountOf(wheel);
   const chosen = wheel.unit === 0 ? null : (portions[wheel.unit - 1] ?? null);
 
@@ -294,11 +346,7 @@ function QuantityForm({
     choice === null || reference === null ? null : totalOf(reference, choice.baseQuantity);
 
   return (
-    <ScrollView
-      style={{ backgroundColor: theme.colors.background }}
-      contentContainerStyle={styles.content}
-      contentInsetAdjustmentBehavior="automatic"
-    >
+    <>
       {/*
         WHAT IT IS WORTH COMES FIRST, and the wheels under it.
 
@@ -370,7 +418,7 @@ function QuantityForm({
           {action}
         </Text>
       </Pressable>
-    </ScrollView>
+    </>
   );
 }
 
