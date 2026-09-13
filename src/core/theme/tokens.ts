@@ -30,7 +30,20 @@ export interface ColorTokens {
   textMuted: string;
   /** Disabled or placeholder text. */
   textFaint: string;
-  /** Interactive elements and selected states. */
+  /**
+   * Interactive elements and selected states.
+   *
+   * IT IS A BLUE BECAUSE EVERYTHING ELSE WAS TAKEN. Four nutrients hold orange,
+   * teal, violet and magenta; red means something has gone wrong and amber
+   * means something is worth a second look. What was left, once those six are
+   * spoken for, is the band between them -- and it happens to be the one hue
+   * iOS itself uses for "you can touch this", which is not a coincidence worth
+   * fighting.
+   *
+   * It was a green before, and the green was the problem: it sat next to the
+   * teal of protein, so an accent and a figure could be mistaken for each
+   * other on the one screen where both appear at once.
+   */
   accent: string;
   /** Text drawn on top of accent. */
   onAccent: string;
@@ -76,7 +89,7 @@ const light: ColorTokens = {
   text: '#111113',
   textMuted: '#65656d',
   textFaint: '#9a9aa3',
-  accent: '#2f6f4e',
+  accent: '#3b5bdb',
   onAccent: '#ffffff',
   warning: '#8a5a00',
   danger: '#a8291f',
@@ -93,7 +106,7 @@ const dark: ColorTokens = {
   text: '#f2f2f4',
   textMuted: '#a0a0a9',
   textFaint: '#6b6b74',
-  accent: '#6bbd8f',
+  accent: '#8ea8ff',
   onAccent: '#0f0f11',
   warning: '#e0a942',
   danger: '#e8796e',
