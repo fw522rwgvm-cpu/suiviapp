@@ -310,6 +310,72 @@ export function AddEntryScreen({
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
           >
+            {/*
+              THE TWO FASTEST WAYS IN, ABOVE THE SEARCH FIELD.
+
+              Both are one tap — specs 8.4d makes free entry a single tap, and
+              specs 8.5 budgets the whole scan at five seconds — so neither can
+              sit a level down. They are also the two that do not involve
+              reading anything: scanning aims the phone, free entry types four
+              figures, and searching is the one that asks you to think of a
+              word first.
+
+              Above the field rather than under it, so their position depends
+              on nothing at all. Under it they were already immune to the
+              library filling up; they were still the second thing on screen,
+              and a keyboard opening under the field pushed the reach further.
+            */}
+            <View style={styles.entryPoints}>
+              <Pressable
+                onPress={() => setScanning(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Scanner un code-barres"
+                style={[
+                  styles.freeEntry,
+                  styles.entryPoint,
+                  {
+                    backgroundColor: theme.colors.surface,
+                    borderColor: theme.colors.border,
+                    borderRadius: theme.radius.lg,
+                  },
+                  theme.shadow,
+                ]}
+              >
+                <SymbolView
+                  name="barcode.viewfinder"
+                  size={18}
+                  tintColor={theme.colors.accent}
+                />
+                <Text style={[styles.freeEntryLabel, { color: theme.colors.accent }]}>
+                  Scanner
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => setFreeEntry(true)}
+                accessibilityRole="button"
+                style={[
+                  styles.freeEntry,
+                  styles.entryPoint,
+                  {
+                    backgroundColor: theme.colors.surface,
+                    borderColor: theme.colors.border,
+                    borderRadius: theme.radius.lg,
+                  },
+                  theme.shadow,
+                ]}
+              >
+                <SymbolView
+                  name="square.and.pencil"
+                  size={18}
+                  tintColor={theme.colors.accent}
+                />
+                <Text style={[styles.freeEntryLabel, { color: theme.colors.accent }]}>
+                  Saisie libre
+                </Text>
+              </Pressable>
+            </View>
+
             <SearchField
               value={term}
               onChange={setTerm}
@@ -321,66 +387,13 @@ export function AddEntryScreen({
               onSubmit={() => setSubmitted(term.trim() === '' ? null : term.trim())}
             />
 
+            {/*
+              Directly under the field, because that is what it explains: a
+              remote list that is missing or old. It follows the field rather
+              than heading the screen, so an offline phone does not announce
+              itself before being asked anything.
+            */}
             {notice === null ? null : <OffNoticeBanner notice={notice} now={Date.now()} />}
-
-            {/*
-              One tap, from the screen shown by default (specs 8.4d). It stays
-              at the top rather than at the bottom of a list that grows: the
-              fastest path must not move as the food database fills up.
-            */}
-            {/*
-              Two ways in, side by side and both one tap: specs 8.4d makes free
-              entry a single tap, and specs 8.5 budgets the whole scan at five
-              seconds. Neither can be a level down, and neither may move as the
-              library fills up — so they sit above the lists rather than after
-              them.
-            */}
-            <View style={styles.entryPoints}>
-            <Pressable
-              onPress={() => setScanning(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Scanner un code-barres"
-              style={[
-                styles.freeEntry,
-                styles.entryPoint,
-                {
-                  backgroundColor: theme.colors.surface,
-                  borderColor: theme.colors.border,
-                  borderRadius: theme.radius.lg,
-                },
-                theme.shadow,
-              ]}
-            >
-              <SymbolView name="barcode.viewfinder" size={18} tintColor={theme.colors.accent} />
-              <Text style={[styles.freeEntryLabel, { color: theme.colors.accent }]}>
-                Scanner
-              </Text>
-            </Pressable>
-
-            <Pressable
-              onPress={() => setFreeEntry(true)}
-              accessibilityRole="button"
-              style={[
-                styles.freeEntry,
-                styles.entryPoint,
-                {
-                  backgroundColor: theme.colors.surface,
-                  borderColor: theme.colors.border,
-                  borderRadius: theme.radius.lg,
-                },
-                theme.shadow,
-              ]}
-            >
-              <SymbolView
-                name="square.and.pencil"
-                size={18}
-                tintColor={theme.colors.accent}
-              />
-              <Text style={[styles.freeEntryLabel, { color: theme.colors.accent }]}>
-                Saisie libre
-              </Text>
-            </Pressable>
-            </View>
 
             {!searching &&
             (favorites.data?.length ?? 0) === 0 &&
