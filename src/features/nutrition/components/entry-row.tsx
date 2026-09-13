@@ -1,3 +1,4 @@
+import { SymbolView } from 'expo-symbols';
 import { StyleSheet, View } from 'react-native';
 import { Text } from '@/core/ui/text';
 import { formatKcal } from '@/core/format';
@@ -5,6 +6,7 @@ import { useTheme } from '@/core/theme';
 import type { JournalEntryView } from '../data/day-reads';
 import { describeMacros, hasKcalWarning } from '../domain/macros';
 import { formatEntryQuantity } from './portion-text';
+import { describeBlockQuantity } from './recipe-text';
 
 /**
  * One line of the journal.
@@ -42,16 +44,46 @@ import { formatEntryQuantity } from './portion-text';
  * to it, which is the arbitration that was missing — and the pressed highlight
  * comes from there too.
  */
-export function EntryRow({ entry }: { entry: JournalEntryView }) {
+export function EntryRow({
+  entry,
+  expanded,
+}: {
+  entry: JournalEntryView;
+  /**
+   * Whether a grouped block is open. Undefined for a leaf, which has nothing
+   * to fold.
+   *
+   * A CHEVRON, NOT A BUTTON. It is drawn inside a row whose tap belongs to the
+   * swipe gesture, and a Pressable here would be React Native's responder
+   * system inside a gesture subtree — the documented trap this file's own note
+   * records having already been paid for once.
+   */
+  expanded?: boolean;
+}) {
   const theme = useTheme();
   const total = entry.total;
+
+  /**
+   * A GROUPED BLOCK STATES HOW MUCH OF THE RECIPE, not a weight of ingredients.
+   *
+   * "2 portions", or "250 g" for a recipe whose yield is a weight. It comes
+   * from the row's own stored columns rather than from the recipe, because an
+   * entry is a closed capsule (D5/R1) and the recipe is a living object that
+   * may since have changed its yield or been deleted.
+   *
+   * The quantity on a parent is the one place in the schema where that column
+   * does not mean base units — safe only because the row carries no macros, so
+   * nothing ever multiplies it (see the note in JournalEntryView).
+   */
+  const block = entry.children.length > 0;
 
   // A food logged as a portion says so: "2 tranches · 50 g". Showing only the
   // grams would be showing the storage form. A free entry has no quantity
   // anyone typed — that is the one concession above — so it starts at the
   // macros.
-  const quantity =
-    entry.kind === 'free' || entry.quantity === null || entry.baseUnit === null
+  const quantity = block
+    ? describeBlockQuantity(entry.quantity, entry.baseUnit, entry.portionName)
+    : entry.kind === 'free' || entry.quantity === null || entry.baseUnit === null
       ? null
       : formatEntryQuantity(
           entry.quantity,
@@ -68,8 +100,19 @@ export function EntryRow({ entry }: { entry: JournalEntryView }) {
     // No background of its own: the swipe row paints it, so the highlight can
     // follow the finger on the UI thread rather than through React state.
     <View style={styles.row}>
+      {expanded === undefined ? null : (
+        <SymbolView
+          name={expanded ? 'chevron.down' : 'chevron.right'}
+          size={11}
+          tintColor={theme.colors.textFaint}
+        />
+      )}
+
       <View style={styles.identity}>
-        <Text style={[styles.name, { color: theme.colors.text }]} numberOfLines={1}>
+        <Text
+          style={[styles.name, block ? styles.blockName : null, { color: theme.colors.text }]}
+          numberOfLines={1}
+        >
           {entry.name}
           {entry.brand === null ? '' : ` · ${entry.brand}`}
         </Text>
@@ -121,6 +164,8 @@ const styles = StyleSheet.create({
   },
   identity: { flex: 1, gap: 1 },
   name: { fontSize: 14 },
+  // A block names a meal rather than an ingredient, so it leads its own list.
+  blockName: { fontWeight: '600' },
   /**
    * Smaller again than the name, because it carries two things and is read
    * second -- and never so small that the figures stop being figures.

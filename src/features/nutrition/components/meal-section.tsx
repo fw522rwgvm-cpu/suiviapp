@@ -11,6 +11,7 @@ import { progressRatio, targetStanding, ZERO_MACROS, type Macros } from '../doma
 import { EntryRow } from './entry-row';
 import { mealColor, mealSymbol } from './meal-symbol';
 import { ProgressRing } from './progress-ring';
+import { RecipeBlockRow } from './recipe-block-row';
 import { SwipeToDeleteRow } from './swipe-to-delete-row';
 import { ListSeparator } from '@/core/ui/list-separator';
 
@@ -220,14 +221,26 @@ export function MealSection({
                   recognisers do not arbitrate with each other, so a Pressable
                   inside fired on the release of a swipe — the same defect the
                   basket showed, on the screen that is used most.
+
+                  A grouped recipe block takes the whole arrangement over: its
+                  own tap folds rather than edits, and its ingredient lines
+                  hang under it instead of beside it (specs 8.6).
                 */}
-                <SwipeToDeleteRow
-                  onDelete={() => onDeleteEntry(entry)}
-                  onPress={() => onEditEntry(entry)}
-                  accessibilityLabel={`Modifier ${entry.name}`}
-                >
-                  <EntryRow entry={entry} />
-                </SwipeToDeleteRow>
+                {entry.children.length > 0 ? (
+                  <RecipeBlockRow
+                    entry={entry}
+                    onDelete={() => onDeleteEntry(entry)}
+                    onAdjust={() => onEditEntry(entry)}
+                  />
+                ) : (
+                  <SwipeToDeleteRow
+                    onDelete={() => onDeleteEntry(entry)}
+                    onPress={() => onEditEntry(entry)}
+                    accessibilityLabel={`Modifier ${entry.name}`}
+                  >
+                    <EntryRow entry={entry} />
+                  </SwipeToDeleteRow>
+                )}
               </View>
             ))
           )}

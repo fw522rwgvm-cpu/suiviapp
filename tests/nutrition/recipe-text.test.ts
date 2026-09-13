@@ -15,12 +15,17 @@ import { searchFoods } from '../../src/features/nutrition/domain/food-search';
  */
 
 describe('what a recipe makes', () => {
-  it('counts portions, and agrees in number', () => {
-    expect(describeYield({ type: 'portions', value: 4 })).toBe('4 portions');
-    expect(describeYield({ type: 'portions', value: 1 })).toBe('1 portion');
-    // Below one is still singular: "0,5 portions" would be a plural of nothing.
-    expect(describeYield({ type: 'portions', value: 0.5 })).toBe('0,5 portion');
-    expect(describeYield({ type: 'portions', value: 2.5 })).toBe('2,5 portions');
+  it('counts portions through the ONE pluralisation rule', () => {
+    // formatPortionCount, the same one the journal row and the basket use.
+    // The first draft of describeYield had a rule of its own — "more than 1" —
+    // beside portion-text's "2 or more", and the two disagree on exactly the
+    // values a half-portion produces. This asserts the survivor.
+    expect(describeYield({ type: 'portions', value: 4 })).toBe('4\u00A0portions');
+    expect(describeYield({ type: 'portions', value: 1 })).toBe('1\u00A0portion');
+    // French pluralises from 2, so 1,5 stays singular.
+    expect(describeYield({ type: 'portions', value: 1.5 })).toBe('1,5\u00A0portion');
+    expect(describeYield({ type: 'portions', value: 0.5 })).toBe('0,5\u00A0portion');
+    expect(describeYield({ type: 'portions', value: 2.5 })).toBe('2,5\u00A0portions');
   });
 
   it('states a weight yield in grams, with no unit to choose', () => {
@@ -52,7 +57,7 @@ describe('how much of a recipe is being eaten', () => {
   it('is worded exactly like the yield it is read against', () => {
     // "2 portions" under a recipe that makes "4 portions" is a fraction anyone
     // can see. Two wordings of one unit would have to be decoded instead.
-    expect(describeConsumed({ type: 'portions', value: 4 }, 2)).toBe('2 portions');
+    expect(describeConsumed({ type: 'portions', value: 4 }, 2)).toBe('2\u00A0portions');
     expect(describeConsumed({ type: 'weight', value: 850 }, 250)).toBe('250\u00A0g');
   });
 });

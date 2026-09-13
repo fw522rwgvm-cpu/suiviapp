@@ -815,7 +815,9 @@ export function addRecentMeal(
           position: position++,
           kind: entry.kind,
           sourceFoodId: entry.sourceFoodId,
-          sourceRecipeId: null,
+          // Carried, where slice 5 wrote a hard null: a replayed block that no
+          // longer knew its recipe would be correct and silently anonymous.
+          sourceRecipeId: entry.sourceRecipeId,
           name: refreshed.name,
           brand: refreshed.brand,
           baseUnit: entry.baseUnit,

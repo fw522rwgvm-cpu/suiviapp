@@ -1,4 +1,5 @@
 import { formatQuantity } from '@/core/format';
+import { formatPortionCount } from './portion-text';
 import type { RecipeYield } from '../domain/recipe-macros';
 
 /**
@@ -59,19 +60,53 @@ export function describeRecipeUses(
 }
 
 /**
+ * The portion name a recipe yield counts in.
+ *
+ * One of the eight of specs 6.1, which is what lets formatPortionCount do the
+ * pluralising here as it does everywhere else — and what lets a grouped
+ * block's parent row store it in portion_name like any other entry.
+ */
+export const RECIPE_PORTION_NAME = 'portion';
+
+/**
  * What a recipe makes: "4 portions" or "850 g".
  *
  * A weight yield is always grams — the note on YIELD_TYPES in the schema says
  * why — so there is no unit to carry alongside and none to get wrong.
+ *
+ * THE PLURAL IS NOT SPELLED HERE. It goes through formatPortionCount, which
+ * the journal row and the basket already use, because a second pluralisation
+ * rule is a second answer to one question: the first draft of this function
+ * had one ("more than 1") beside portion-text's ("2 or more"), and they
+ * disagree on exactly the values a half-portion produces.
  */
 export function describeYield(recipeYield: RecipeYield): string {
-  if (recipeYield.type === 'weight') return formatQuantity(recipeYield.value, 'g');
+  return recipeYield.type === 'weight'
+    ? formatQuantity(recipeYield.value, 'g')
+    : formatPortionCount(recipeYield.value, RECIPE_PORTION_NAME);
+}
 
-  // Two decimals at most: a yield of 4 is "4 portions", one of 2.5 is
-  // "2,5 portions", and nothing here ever needs more precision than a half.
-  const rounded = Math.round(recipeYield.value * 100) / 100;
-  const plural = rounded > 1 ? 'portions' : 'portion';
-  return `${String(rounded).replace('.', ',')} ${plural}`;
+/**
+ * What a grouped block's parent row says it was: "2 portions" or "250 g".
+ *
+ * Read back from the STORED columns rather than from the recipe, because a
+ * journal entry is a closed capsule (D5/R1) and the recipe it came from is a
+ * living object that may since have changed its yield — or been deleted.
+ *
+ * The two shapes are the two yields, as addEntries writes them: a weight yield
+ * lands in base_unit and quantity, a portions yield in portion_name and
+ * quantity. Null when the row is not a block, so the caller leaves the slot
+ * out rather than rendering a gap.
+ */
+export function describeBlockQuantity(
+  quantity: number | null,
+  baseUnit: string | null,
+  portionName: string | null,
+): string | null {
+  if (quantity === null) return null;
+  if (baseUnit !== null) return formatQuantity(quantity, baseUnit);
+  if (portionName !== null) return formatPortionCount(quantity, portionName);
+  return null;
 }
 
 /**
