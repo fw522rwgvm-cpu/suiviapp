@@ -96,6 +96,15 @@ export default function JournalLayout() {
 
         No header either: the screen carries its own two buttons, and a bar
         above a floating panel would make it look like a page again.
+
+        AND NO `animation` OVERRIDE, UNLIKE EVERY OTHER WINDOW IN THIS
+        APPLICATION. The others set it to 'none' because OverlayPanel raises
+        and folds them itself. This one is reached through Link.AppleZoom, so
+        the NATIVE transition owns both directions — it grows the screen out of
+        the header button and shrinks it back into it, with an interactive
+        dismissal along the way. Silencing the animation here, or letting the
+        screen animate itself, is what made it leave downwards while it had
+        arrived from the header.
       */}
       <Stack.Screen
         name="calendar"
