@@ -1,4 +1,5 @@
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet } from 'react-native';
+import { Text } from '@/core/ui/text';
 import { FormInput, FormRow } from '@/core/ui/form-section';
 import { useTheme } from '@/core/theme';
 

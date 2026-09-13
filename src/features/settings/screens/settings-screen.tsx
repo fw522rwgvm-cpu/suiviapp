@@ -1,7 +1,8 @@
 import Constants from 'expo-constants';
 import { SymbolView } from 'expo-symbols';
 import { useRouter } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '@/core/ui/text';
 import { useStartupReport } from '@/core/db/database-gate';
 import { useTheme } from '@/core/theme';
 import { DataSection } from '@/features/backup/components/data-section';

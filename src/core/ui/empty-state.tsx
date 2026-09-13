@@ -1,6 +1,7 @@
 import { SymbolView } from 'expo-symbols';
 import type { SFSymbol } from 'expo-symbols';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '@/core/ui/text';
 import { useTheme } from '@/core/theme';
 
 /**

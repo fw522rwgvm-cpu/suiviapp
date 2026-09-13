@@ -1,4 +1,5 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { Text } from '@/core/ui/text';
 import { formatKcal, formatMacroWhole } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import { progressRatio, remainingMacros, targetStanding, type Macros } from '../domain/macros';
@@ -205,7 +206,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     gap: 2,
   },
-  ringRow: { alignItems: 'center', paddingVertical: 6 },
+  /**
+   * The gauge box is square, but a three-quarter gauge only paints the top of
+   * it: the arc ends at 135° and 225°, so its lowest point sits at
+   * cos(45°) × radius below centre — about twenty points short of the bottom
+   * edge on a 186-point box. That empty band was reading as a gap between the
+   * figure and the bars, so it is pulled back out.
+   *
+   * If the gauge is ever resized, this moves with it: it is 0.11 × size,
+   * rounded. Nothing computes it, because a magic number with its arithmetic
+   * written down beside it is easier to change than a formula.
+   */
+  ringRow: { alignItems: 'center', marginBottom: -20 },
   figure: {
     fontSize: 40,
     fontWeight: '700',
@@ -219,7 +231,9 @@ const styles = StyleSheet.create({
   figureLabel: { fontSize: 12, textAlign: 'center' },
   note: { fontSize: 12, textAlign: 'center', marginTop: 8 },
   // Side by side rather than stacked: three macros are one glance, not three.
-  columns: { flexDirection: 'row', gap: 14, marginTop: 20 },
+  // The top margin is small because ringRow has already given back the gauge's
+  // empty bottom; between them they leave a normal gap rather than two.
+  columns: { flexDirection: 'row', gap: 14, marginTop: 10 },
   column: { flex: 1, gap: 7 },
   // Centred over their bar, both of them: the bar is the column's axis, and
   // text ranged left against a centred shape reads as three things that do not

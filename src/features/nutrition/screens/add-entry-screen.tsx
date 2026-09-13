@@ -1,7 +1,8 @@
 import { SymbolView } from 'expo-symbols';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '@/core/ui/text';
 import type { LocalDate } from '@/core/date';
 import { formatKcal } from '@/core/format';
 import { useTheme } from '@/core/theme';

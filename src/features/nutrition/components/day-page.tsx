@@ -1,6 +1,7 @@
 import { useHeaderHeight } from 'expo-router/build/react-navigation/elements';
 import { useEffect, useRef } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '@/core/ui/text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { LocalDate } from '@/core/date';
 import { useTheme } from '@/core/theme';

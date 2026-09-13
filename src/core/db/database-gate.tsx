@@ -1,6 +1,7 @@
 import Constants from 'expo-constants';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '@/core/ui/text';
 import { prepareDatabase, type StartupReport, type StartupState } from './startup';
 
 const StartupContext = createContext<StartupReport | null>(null);

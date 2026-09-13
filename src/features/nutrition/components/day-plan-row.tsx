@@ -1,5 +1,6 @@
 import { SymbolView } from 'expo-symbols';
-import { ActionSheetIOS, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActionSheetIOS, Pressable, StyleSheet, View } from 'react-native';
+import { Text } from '@/core/ui/text';
 import type { LocalDate } from '@/core/date';
 import type { DayTemplateId } from '@/core/db/schema';
 import { useTheme } from '@/core/theme';

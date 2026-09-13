@@ -1,5 +1,6 @@
 import { SymbolView } from 'expo-symbols';
-import { Alert, Pressable, StyleSheet, Text } from 'react-native';
+import { Alert, Pressable, StyleSheet } from 'react-native';
+import { Text } from '@/core/ui/text';
 import { formatQuantity, parseDecimal } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import { FormInput, FormRow, FormSection } from '@/core/ui/form-section';

@@ -257,10 +257,29 @@ export interface Theme {
   radius: typeof radius;
   typography: typeof typography;
   shadow: ShadowTokens;
+  /**
+   * Whether Nunito is registered yet.
+   *
+   * On the theme because a typeface is part of how the application looks, and
+   * because every Text already reads the theme — a second context would be a
+   * second subscription on the most numerous component in the tree.
+   *
+   * False is a working state, not a failure: core/ui/text falls back to the
+   * system face, which is what shipped for five slices.
+   */
+  fontsLoaded: boolean;
 }
 
-export function themeFor(scheme: ColorScheme): Theme {
-  return { scheme, colors: colors[scheme], spacing, radius, typography, shadow: shadows[scheme] };
+export function themeFor(scheme: ColorScheme, fontsLoaded = false): Theme {
+  return {
+    scheme,
+    colors: colors[scheme],
+    spacing,
+    radius,
+    typography,
+    shadow: shadows[scheme],
+    fontsLoaded,
+  };
 }
 
 /**

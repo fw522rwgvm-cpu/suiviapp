@@ -16,12 +16,12 @@ import {
   Keyboard,
   Pressable,
   StyleSheet,
-  Text,
   TextInput,
   View,
   type TextInputProps,
 } from 'react-native';
-import { useTheme } from '@/core/theme';
+import { Text } from '@/core/ui/text';
+import { fontFamilyFor, useTheme } from '@/core/theme';
 import { ListSeparator } from './list-separator';
 
 /**
@@ -234,7 +234,14 @@ export function FormInput({ style, ref, ...props }: TextInputProps & { ref?: Ref
         inputAccessoryViewID={navigation === null ? undefined : accessoryId}
         placeholderTextColor={theme.colors.textFaint}
         {...props}
-        style={[styles.input, { color: theme.colors.text }, style]}
+        style={[
+          styles.input,
+          // A TextInput is not a Text, so core/ui/text does not reach it: a
+          // field left in the system face beside a label in Nunito is the one
+          // place the swap would be visible as a mistake.
+          { color: theme.colors.text, fontFamily: fontFamilyFor('normal', theme.fontsLoaded) },
+          style,
+        ]}
       />
 
       {/*

@@ -1,6 +1,7 @@
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { Text } from '@/core/ui/text';
 import { currentLocalDate, type LocalDate } from '@/core/date';
 import { formatDayShort, formatKcal } from '@/core/format';
 import { useTheme } from '@/core/theme';

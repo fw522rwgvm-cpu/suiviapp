@@ -1,6 +1,7 @@
 import { SymbolView } from 'expo-symbols';
 import { Stack, useRouter } from 'expo-router';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '@/core/ui/text';
 import { useTheme } from '@/core/theme';
 import { EmptyState } from '@/core/ui/empty-state';
 import { ListSeparator } from '@/core/ui/list-separator';

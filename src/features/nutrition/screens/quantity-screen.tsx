@@ -5,10 +5,10 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   TextInput,
   View,
 } from 'react-native';
+import { Text } from '@/core/ui/text';
 import { formatQuantity, parseDecimal } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import type { FoodId, JournalEntryId } from '@/core/db/schema';

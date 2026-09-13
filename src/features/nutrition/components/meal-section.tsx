@@ -1,6 +1,7 @@
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { Text } from '@/core/ui/text';
 import { formatKcal, formatMacroWhole } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import { useMealEntries } from '../data/day-queries';

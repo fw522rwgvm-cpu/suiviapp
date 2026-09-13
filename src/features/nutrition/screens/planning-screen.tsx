@@ -1,6 +1,7 @@
 import { SymbolView } from 'expo-symbols';
 import { Stack, useRouter } from 'expo-router';
-import { ActionSheetIOS, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActionSheetIOS, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '@/core/ui/text';
 import { formatLongDate, weekdayNameOf } from '@/core/format';
 import type { DayTemplateId } from '@/core/db/schema';
 import { useTheme } from '@/core/theme';

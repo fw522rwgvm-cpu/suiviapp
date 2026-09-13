@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { Text } from '@/core/ui/text';
 import { useTheme } from '@/core/theme';
 import type { BaseUnit } from '@/core/db/schema';
 

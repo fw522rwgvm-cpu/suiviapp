@@ -1,7 +1,8 @@
 import { SymbolView } from 'expo-symbols';
 import { Stack, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActionSheetIOS, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActionSheetIOS, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '@/core/ui/text';
 import { formatKcal, formatMacroWhole } from '@/core/format';
 import type { DayTemplateId } from '@/core/db/schema';
 import { useTheme } from '@/core/theme';

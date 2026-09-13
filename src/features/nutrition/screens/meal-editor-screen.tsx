@@ -1,9 +1,11 @@
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useState } from 'react';
-import { ActionSheetIOS, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '@/core/ui/text';
 import type { LocalDate } from '@/core/date';
 import { useTheme } from '@/core/theme';
 import { FormInput, FormNavigation, FormRow, FormSection } from '@/core/ui/form-section';
+import { ListSeparator } from '@/core/ui/list-separator';
 import { useDismiss, usePanelHeading } from '@/core/ui/overlay-panel';
 import { useAddMeal, useDay, useUpdateMealTargets } from '../data/day-queries';
 import { MACRO_FIELDS } from '../components/macro-fields';
@@ -25,17 +27,18 @@ import {
  * follows: browsing is a push, adding is a modal. Correcting a meal's goals is
  * done ON the day, which stays visible behind the panel.
  *
- * ## THE NAME IS A CHOICE BETWEEN FOUR, ON AN ACTION SHEET
+ * ## THE NAME IS A CHOICE BETWEEN FOUR, LAID OUT IN THE FORM
  *
- * A UIPickerView was tried here and taken back out. A wheel is the right
- * control for a QUANTITY, where the value is continuous and the turning IS the
- * adjustment; it is the wrong one for four fixed words — it costs a scroll to
- * reach what could have been a tap, and it eats a hundred and fifty points of
- * a panel whose four target fields are the whole point.
+ * Two controls were tried here before this one, and both were the wrong shape.
+ * A UIPickerView costs a scroll to reach what could be a tap, and eats a
+ * hundred and fifty points of a panel whose four target fields are the whole
+ * point. An action sheet then asked a second question — Annuler — for a choice
+ * with nothing to cancel: the value already has one, the sheet only changes it.
  *
- * ActionSheetIOS is a real UIAlertController from React Native's core: no
- * dependency, nothing drawn in JavaScript, and the system's own idiom for
- * choosing one of a short list.
+ * So the options are rows, one per line, in the form itself, with a tick on the
+ * one in force. That is the Settings idiom for a short exclusive choice, it
+ * needs no dismissal, and the whole set is legible without touching anything —
+ * which is what makes "only these four" visible rather than merely true.
  *
  * The list is short precisely because a day may hold only one breakfast, one
  * lunch and one dinner. Offering a kind the day already has and then refusing
@@ -107,19 +110,6 @@ export function MealEditorScreen({
     mealPosition === null ? null : (existing?.label ?? null),
   );
 
-  function chooseKind(): void {
-    if (offered.length === 0) return;
-
-    const options = [...offered, 'Annuler'];
-    ActionSheetIOS.showActionSheetWithOptions(
-      { title: 'Repas', options, cancelButtonIndex: options.length - 1 },
-      (index) => {
-        const picked = offered[index];
-        if (picked !== undefined) setKind(picked);
-      },
-    );
-  }
-
   const targets = readDraftTargets(draft);
   // undefined is "partly filled", which is the one state that cannot be saved.
   const partial = targets === undefined;
@@ -157,25 +147,37 @@ export function MealEditorScreen({
       >
         {mealPosition === null ? (
           <FormSection caption="Repas">
-            <FormRow label="Type">
-              <Pressable onPress={chooseKind} accessibilityRole="button" style={styles.kind}>
-                {kind === null ? null : (
+            {offered.map((option, index) => (
+              <View key={option}>
+                {index === 0 ? null : <ListSeparator />}
+                <Pressable
+                  onPress={() => setKind(option)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: kind === option }}
+                  style={styles.option}
+                >
                   <SymbolView
-                    name={mealSymbol(kind)}
-                    size={16}
-                    tintColor={mealColor(kind, theme.colors)}
+                    name={mealSymbol(option)}
+                    size={17}
+                    tintColor={mealColor(option, theme.colors)}
                   />
-                )}
-                <Text style={[styles.kindLabel, { color: theme.colors.text }]}>
-                  {kind ?? 'Choisir'}
-                </Text>
-                <SymbolView
-                  name="chevron.up.chevron.down"
-                  size={11}
-                  tintColor={theme.colors.textFaint}
-                />
-              </Pressable>
-            </FormRow>
+                  <Text style={[styles.optionLabel, { color: theme.colors.text }]}>
+                    {option}
+                  </Text>
+                  {/*
+                    A tick, and nothing where there is no tick: a row of empty
+                    circles would draw four controls where there is one choice.
+                  */}
+                  {kind === option ? (
+                    <SymbolView
+                      name="checkmark"
+                      size={15}
+                      tintColor={theme.colors.accent}
+                    />
+                  ) : null}
+                </Pressable>
+              </View>
+            ))}
           </FormSection>
         ) : null}
 
@@ -237,8 +239,14 @@ function fieldOf(value: number | undefined): string {
 
 const styles = StyleSheet.create({
   container: { padding: 16, paddingBottom: 32, gap: 16 },
-  kind: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  kindLabel: { fontSize: 17 },
+  option: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 16,
+    minHeight: 44,
+  },
+  optionLabel: { fontSize: 17, flex: 1 },
   unit: { fontSize: 15 },
   note: { fontSize: 12, lineHeight: 17, marginHorizontal: 4 },
   save: { borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
