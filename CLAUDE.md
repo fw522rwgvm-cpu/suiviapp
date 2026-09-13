@@ -1550,6 +1550,59 @@ anneau sans rien à remplir n'est pas un anneau à zéro, c'est une forme qui a
 l'air cassée — et une journée sans modèle en empilerait quatre. Sur un repas
 sans objectif, l'en-tête reste exactement ce qu'il était avant la tranche 5.
 
+**Un vocabulaire fermé de quatre noms de repas, et un numéro qui n'est pas
+stocké.** Petit-déjeuner, Déjeuner, Dîner, Collation. Un seul de chacun des
+trois premiers par journée et par modèle ; les collations se répètent, et ce
+sont les seules à avoir jamais besoin d'un numéro.
+
+Le numéro est **dérivé à chaque lecture**, jamais écrit. D9 interdit de stocker
+ce qui se dérive, et c'est le cas qui montre pourquoi ça compte au lieu d'être
+seulement propre : stockée, « Collation 2 » survivrait à la suppression de
+« Collation 1 » et resterait là à nommer un rang qui n'existe plus. Dérivée, la
+survivante redevient « Collation » toute seule. Une seule collation n'est pas
+numérotée — le numéro sert à en distinguer plusieurs.
+
+D'où `DayMealView.name` (ce qui est **stocké**, ce qu'une écriture adresse) et
+`DayMealView.label` (ce qui s'**affiche**). Le libellé vit sur la vue et non
+dans les composants parce qu'il ne se dérive pas d'un repas : il dépend de la
+journée entière, et deux composants le calculant seraient deux façons de
+numéroter.
+
+**Aucune contrainte SQL, et c'est la position tenue.** `day_meal` est gelée
+depuis `0001`, donc une `CHECK` demanderait de reconstruire la table dont pend
+tout le journal. L'index unique partiel, lui, **serait** ajoutable — les index
+sont la seule partie d'une migration qui le reste — et il est refusé quand même :
+une base en service porte déjà des repas nommés comme leur propriétaire les a
+tapés, une archive aussi, donc l'index échouerait à se construire sur exactement
+les données qu'il existe pour protéger. La règle vit à la frontière d'écriture,
+où elle peut nommer ce qu'elle refuse. Même arbitrage que `food_portion.name` en
+tranche 3.
+
+**Les lignes écrites avant la règle la gardent.** Renuméroter la vieille journée
+de quelqu'un serait réécrire l'historique pour satisfaire une règle qui
+n'existait pas quand il l'a faite (§5.2). Un nom hors liste s'affiche tel quel
+et ne bloque aucun ajout : n'étant pas l'un des quatre, il ne peut pas être
+l'occurrence unique de l'un d'eux.
+
+**La liste fermée devait atteindre les modèles.** Une journée copie ses repas de
+son modèle à la matérialisation : un modèle libre de nommer n'importe quoi
+poserait n'importe quoi sur une journée, et la règle tiendrait partout sauf à
+l'endroit qui décide de quoi une journée a l'air.
+
+**L'icône reste, l'anneau part.** Le glyphe dit quel repas c'est et reste vrai
+qu'un objectif ait été posé ou non. L'anneau est une proportion, et une
+proportion de rien n'est pas un anneau à zéro : c'est une forme qui a l'air
+cassée. Les trois repas fixes se distinguent par l'**heure** — lever, midi,
+nuit — et non par la nourriture, parce qu'une fourchette dirait « repas » sur
+les quatre ; la collation prend le seul glyphe de nourriture, ce qui la fait
+lire comme l'intruse qu'elle est.
+
+**Ajouter un repas est passé d'un `Alert.prompt` à une modale**, et le prompt
+n'aurait pas pu survivre au changement : un repas n'est plus un nom tapé mais un
+choix entre quatre, avec quatre objectifs facultatifs à côté. Une alerte porte
+un champ de texte et rien d'autre. Les objectifs se modifient par la même
+modale, depuis l'appui long — et ça touche la journée, jamais le modèle.
+
 ## Points ouverts après la tranche 5
 - ~~**Vérification iPhone en attente.**~~ **Faite pour l'essentiel** : la
   tranche 5 a tourné sur l'appareil et a rendu six retours d'interface, tous
@@ -1560,6 +1613,17 @@ sans objectif, l'en-tête reste exactement ce qu'il était avant la tranche 5.
   la seule chose de cette tranche dont aucun test ne dit à quoi elle ressemble.
   Ce qu'il faut regarder : l'arc à 0 (rien de visible), juste avant et juste
   après la moitié (la jonction à 6 h), et à plein (la fermeture à 12 h).
+- **Les repas récents affichent le nom stocké, sans numéro de collation.** Le
+  numéro se dérive de la journée entière, que cette liste ne charge pas — elle
+  lit un repas par ligne. « Collation · 15 septembre » reste sans ambiguïté ;
+  à rouvrir si deux collations du même jour s'y côtoient et se confondent.
+- **`carrot.fill` et les trois symboles météo ne sont pas vérifiés sur
+  l'appareil.** Ce sont des SF Symbols standards et l'application vise iOS 18,
+  mais un nom de symbole absent rend un carré vide, pas une erreur.
+- **Un repas nommé librement avant la règle reste tel quel, et c'est voulu**
+  (§5.2). Conséquence à connaître : sa fiche ne propose que les types encore
+  libres, donc un tel repas ne peut pas être « corrigé » vers un type déjà pris
+  sans supprimer l'autre d'abord.
 - **Le parcours à vérifier en premier**, parce qu'il est le critère de sortie :
   créer « Jour d'entraînement » avec quatre repas et leurs objectifs, l'affecter
   au mardi, surcharger une date depuis le Journal, et lire un vrai restant sur
