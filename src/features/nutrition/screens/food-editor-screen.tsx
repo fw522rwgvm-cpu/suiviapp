@@ -27,6 +27,7 @@ import {
   type FoodDraft,
 } from '../domain/food-draft';
 import { hasKcalWarning, theoreticalKcal } from '../domain/macros';
+import { IMPOSSIBLE_KCAL_PER_100, isImpossibleEnergy } from '../off/off-product';
 import { toCanonical } from '../domain/food-macros';
 import { FormInput, FormNavigation, FormRow, FormSection } from '@/core/ui/form-section';
 import { MACRO_FIELDS, MacroFieldRow, type MacroKey } from '../components/macro-fields';
@@ -68,11 +69,36 @@ function show(value: number): string {
   return value === 0 ? '' : String(value).replace('.', ',');
 }
 
-export function FoodEditorScreen({ foodId }: { foodId: FoodId | null }) {
+export function FoodEditorScreen({
+  foodId,
+  initial,
+  presentation = 'stack',
+  onSaved,
+}: {
+  foodId: FoodId | null;
+  /**
+   * A pre-filled draft, for the detour of specs 8.5: an Open Food Facts
+   * product missing one of the four macros. Ignored when `foodId` is set,
+   * where the stored food is the source of truth.
+   */
+  initial?: FoodDraft;
+  /**
+   * Where this screen is being shown.
+   *
+   * 'stack' is the library: a native header carries the title and the star,
+   * and leaving means router.back(). 'panel' is a STEP INSIDE THE ADD WINDOW,
+   * where there is no native header to configure and going back is the
+   * window's own affair — the same distinction the quantity screen makes
+   * between a route and a state.
+   */
+  presentation?: 'stack' | 'panel';
+  /** Called instead of navigating back, with the id that was just written. */
+  onSaved?: (foodId: FoodId) => void;
+}) {
   const theme = useTheme();
   const router = useRouter();
 
-  const [draft, setDraft] = useState<FoodDraft>(emptyFoodDraft);
+  const [draft, setDraft] = useState<FoodDraft>(() => initial ?? emptyFoodDraft());
   const [loaded, setLoaded] = useState(false);
 
   const stored = useFoodDraft(foodId);
@@ -132,6 +158,24 @@ export function FoodEditorScreen({ foodId }: { foodId: FoodId | null }) {
   const valid = isValidFoodDraft(draft);
   const theoretical = theoreticalKcal(draft.macros);
   const warn = hasKcalWarning(draft.macros);
+  /**
+   * Physically impossible energy (specs 8.5), which slice 3 left out of scope
+   * because it is written for THIS journey.
+   *
+   * > values that are physically impossible (beyond 900 kcal per 100 g) marked
+   * > before validation
+   *
+   * It follows exactly the path the 10% discrepancy already took: computed in
+   * the domain, shown beside the field, and never gating the button. Making it
+   * a FoodProblem would block a save, and specs 8.5 requires Open Food Facts
+   * values to be "marked and editable, never refused" — the same refusal that
+   * kept a CHECK off the macro columns in slice 3.
+   *
+   * Read against what is TYPED rather than the canonical form. They are the
+   * same number now that the reference is always 100, and stating it against
+   * what is on screen is what makes the message checkable.
+   */
+  const impossible = isImpossibleEnergy(draft.macros.kcal);
 
   // Navigation waits for the write rather than racing it, as the free-entry
   // screen does: the write is synchronous, but "probably fine" is the wrong
@@ -141,9 +185,19 @@ export function FoodEditorScreen({ foodId }: { foodId: FoodId | null }) {
   function save(): void {
     if (!valid) return;
     if (foodId === null) {
-      create.mutate(draft, close);
+      /*
+        THE ID IS HANDED BACK RATHER THAN DISCARDED when a caller asked for it.
+        The detour of specs 8.5 continues into the quantity step for the food
+        just created, and it cannot look the food up by name afterwards — two
+        foods may share one. Creating and then logging are two acts here, and
+        they are separated on purpose: what was saved is the user's explicit
+        act, what follows is theirs to confirm.
+      */
+      create.mutate(draft, {
+        onSuccess: (newId) => (onSaved === undefined ? router.back() : onSaved(newId)),
+      });
     } else {
-      update.mutate({ foodId, draft }, close);
+      update.mutate({ foodId, draft }, onSaved === undefined ? close : { onSuccess: () => onSaved(foodId) });
     }
   }
 
@@ -175,6 +229,13 @@ export function FoodEditorScreen({ foodId }: { foodId: FoodId | null }) {
 
   return (
     <>
+      {/*
+        Configured only in a stack. Inside the add window there is no native
+        header to configure: the window carries its own heading, and rendering
+        a Stack.Screen from a step would reach for the Journal's stack, which
+        is behind the window rather than under it.
+      */}
+      {presentation === 'stack' ? (
       <Stack.Screen
         options={{
           title: foodId === null ? 'Nouvel aliment' : 'Modifier l’aliment',
@@ -204,6 +265,7 @@ export function FoodEditorScreen({ foodId }: { foodId: FoodId | null }) {
           ),
         }}
       />
+      ) : null}
 
       <FormNavigation>
       <KeyboardAvoidingView behavior="padding" style={styles.flex}>
@@ -271,6 +333,22 @@ export function FoodEditorScreen({ foodId }: { foodId: FoodId | null }) {
                 <Text style={[styles.warning, { color: theme.colors.warning }]}>
                   Les macros saisies donnent {formatKcal(theoretical)} kcal, soit plus
                   de 10 % d’écart. La valeur saisie est conservée telle quelle.
+                </Text>
+              </FormRow>
+            ) : null}
+
+            {/*
+              Marked, never refused (specs 8.5). Shown alongside the 10% check
+              rather than instead of it: they answer different questions — one
+              says the four figures disagree with each other, this one says the
+              energy is not achievable by any food at all.
+            */}
+            {impossible ? (
+              <FormRow>
+                <Text style={[styles.warning, { color: theme.colors.warning }]}>
+                  Au-delà de {IMPOSSIBLE_KCAL_PER_100} kcal pour 100 {draft.baseUnit},
+                  cette valeur est physiquement impossible. Elle est conservée telle
+                  quelle ; vérifiez l’étiquette.
                 </Text>
               </FormRow>
             ) : null}

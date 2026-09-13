@@ -6,7 +6,7 @@ import type { LocalDate } from '@/core/date';
 import { formatKcal } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import { GlassButton } from '@/core/ui/glass-button';
-import { OverlayPanel, useDismiss } from '@/core/ui/overlay-panel';
+import { OverlayPanel, useDismiss, usePanelHeading } from '@/core/ui/overlay-panel';
 import { SwipeBack } from '@/core/ui/swipe-back';
 import type { FoodId } from '@/core/db/schema';
 import { useAddEntries } from '../data/day-queries';
@@ -25,7 +25,14 @@ import { dedupeRemote, libraryBarcodes } from '../off/off-dedupe';
 import { useOffLookup, useOffSearch } from '../off/off-queries';
 import type { OffOutcome } from '../off/off-client';
 import type { LookupResult } from '../off/off-lookup';
-import { isCompleteProduct, type CompleteOffProduct, type OffProduct } from '../off/off-product';
+import {
+  isCompleteProduct,
+  missingMacroLabels,
+  type CompleteOffProduct,
+  type OffProduct,
+} from '../off/off-product';
+import { draftFromProduct } from '../off/off-draft';
+import { FoodEditorScreen } from './food-editor-screen';
 import { PendingEntryRow } from '../components/pending-entry-row';
 import { SwipeToDeleteRow } from '../components/swipe-to-delete-row';
 import { SearchField } from '../components/search-field';
@@ -196,6 +203,26 @@ export function AddEntryScreen({
       ? lookup.data.product
       : null;
 
+  /**
+   * A product found but INCOMPLETE, which specs 8.5 diverts out of the fast
+   * path and into a pre-filled form.
+   *
+   * > The absence of a SINGLE ONE of the four takes you out of the fast path
+   * > and switches to creating a personal food, pre-filled with everything
+   * > Open Food Facts supplied. Only the missing fields are left to complete.
+   * > This path assumedly leaves the 5-second target: the food is then copied
+   * > into the personal database, so the cost is paid only once.
+   *
+   * The detour is a STEP OF THIS WINDOW, not a route, for the reason that
+   * governs every other step here: pushing to the library would take the
+   * window with it, and the basket with the window. It stays exactly where it
+   * was — it is this screen's state, and a step does not touch it.
+   */
+  const incompleteProduct: OffProduct | null =
+    lookup.data?.status === 'found' && !isCompleteProduct(lookup.data.product)
+      ? lookup.data.product
+      : null;
+
   const step =
     editing !== undefined
       ? 'amend'
@@ -207,7 +234,9 @@ export function AddEntryScreen({
             ? 'quantity'
             : pickedProduct !== null
               ? 'offQuantity'
-              : 'list';
+              : incompleteProduct !== null
+                ? 'offDraft'
+                : 'list';
 
   /**
    * The screen shown by default (specs 8.4a), built once and used twice:
@@ -431,6 +460,24 @@ export function AddEntryScreen({
             onCollect={(entry) =>
               collect({ kind: 'free', name: entry.name.trim(), macros: entry.macros })
             }
+          />
+        </SwipeBack>
+      ) : step === 'offDraft' && incompleteProduct !== null ? (
+        <SwipeBack key={step} onBack={backToList} behind={picker}>
+          <OffDraftStep
+            product={incompleteProduct}
+            onCreated={(foodId) => {
+              /*
+                Created, then chosen — two acts, in that order. The food now
+                exists because the user filled a form in and pressed the
+                button, which is the explicit save the copy rule allows; the
+                line still has to be confirmed like any other. Clearing the
+                pick is what moves the window on, since the lookup that
+                produced it would otherwise re-open this same form.
+              */
+              setPicked(null);
+              setChosen(foodId);
+            }}
           />
         </SwipeBack>
       ) : step === 'offQuantity' && pickedProduct !== null ? (
@@ -728,6 +775,52 @@ function noticeFor(
 }
 
 /**
+ * The pre-filled form of specs 8.5, as a step of the add window.
+ *
+ * It says WHY it appeared before showing the form. A screen that simply
+ * replaced the wheels with a form would read as a bug — the user tapped a
+ * product and got a questionnaire — where one line turns it into an
+ * explanation: this product does not publish everything, so it is worth
+ * thirty seconds once.
+ */
+function OffDraftStep({
+  product,
+  onCreated,
+}: {
+  product: OffProduct;
+  onCreated: (foodId: FoodId) => void;
+}) {
+  const theme = useTheme();
+  const missing = missingMacroLabels(product);
+  usePanelHeading(product.name ?? 'Nouvel aliment', 'À compléter');
+
+  return (
+    <View style={styles.fill}>
+      <Text style={[styles.detour, { color: theme.colors.textMuted }]}>
+        {missing.length === 0
+          ? 'Ce produit n’a pas de nom sur Open Food Facts. Complétez-le pour l’ajouter.'
+          : `Open Food Facts ne donne pas ${listFrench(missing)} pour ce produit. Complétez${
+              missing.length === 1 ? '-la' : '-les'
+            } pour l’ajouter.`}
+      </Text>
+
+      <FoodEditorScreen
+        foodId={null}
+        presentation="panel"
+        initial={draftFromProduct(product)}
+        onSaved={onCreated}
+      />
+    </View>
+  );
+}
+
+/** "les protéines et les calories" rather than a comma-separated list. */
+function listFrench(items: readonly string[]): string {
+  if (items.length <= 1) return items[0] ?? '';
+  return `${items.slice(0, -1).join(', ')} et ${items[items.length - 1]}`;
+}
+
+/**
  * The Open Food Facts half of the unified search (specs 8.4b).
  *
  * It exists as a section even before anything is asked for, and that is the
@@ -834,6 +927,7 @@ const styles = StyleSheet.create({
   },
   list: { borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
   empty: { fontSize: 15, lineHeight: 21 },
+  detour: { fontSize: 15, lineHeight: 21, paddingHorizontal: 16, paddingBottom: 4 },
   confirmBar: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 8 },
   confirm: { borderRadius: 18, paddingVertical: 16, alignItems: 'center' },
   confirmLabel: { fontSize: 17, fontWeight: '600' },
