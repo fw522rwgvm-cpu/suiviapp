@@ -1,4 +1,4 @@
-import { asc, eq, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import type { LocalDate } from '@/core/date';
 import type { AppDatabase } from '@/core/db/database';
 import {
@@ -353,7 +353,32 @@ export interface RecentMeal {
   mealId: DayMealId;
   date: LocalDate;
   name: string;
+  /**
+   * How many lines the meal holds — DERIVED FROM entryNames, never counted
+   * separately.
+   *
+   * It was a count(*) over the join until slice 6, and that quietly stopped
+   * being the same number: the join sees the ingredient rows of a grouped
+   * block, the names do not. A meal of "Amorce + Curry" was reported as four
+   * lines while naming two, and the accessibility label read the
+   * contradiction out loud.
+   *
+   * One source, so they cannot disagree again.
+   */
   entryCount: number;
+  /**
+   * What is IN the meal, in the order it was logged.
+   *
+   * TOP-LEVEL LINES ONLY: a grouped recipe block contributes its own name, not
+   * its ingredients. A meal is made of the things that were chosen, and the
+   * ingredients of a recipe were not chosen one by one — listing them would
+   * make a three-line meal read as an eleven-line one.
+   *
+   * The row shows these instead of a count, because "8 lignes" says how much
+   * there is and never what it is: two meals of eight lines are told apart by
+   * nothing at all, which is the one thing a recents list has to do.
+   */
+  entryNames: string[];
   /** What the meal came to, derived here and never stored (D9). */
   kcal: number;
 }
@@ -382,12 +407,15 @@ export interface RecentMeal {
  * sorting by creation time and created_at being nullable in the frozen schema.
  */
 export function readRecentMeals(db: AppDatabase, limit = 10): RecentMeal[] {
-  return db
+  const rows = db
     .select({
       mealId: dayMeal.id,
       date: dayMeal.date,
       name: dayMeal.name,
-      entryCount: sql<number>`count(${journalEntry.id})`,
+      // Over EVERY row, children included: the parent of a block carries NULL
+      // macros and SUM ignores it, so this is the clause-free expression the
+      // whole schema rests on (D5/R2). It is the count, not the sum, that had
+      // to learn about the tree.
       kcal: sql<number | null>`sum(${journalEntry.quantity} * ${journalEntry.kcal100} / 100.0)`,
     })
     .from(dayMeal)
@@ -398,14 +426,60 @@ export function readRecentMeals(db: AppDatabase, limit = 10): RecentMeal[] {
       sql`max(${journalEntry.id}) desc`,
     )
     .limit(limit)
-    .all()
-    .map((row) => ({
+    .all();
+
+  const names = entryNamesByMeal(
+    db,
+    rows.map((row) => row.mealId),
+  );
+
+  return rows.map((row) => {
+    const entryNames = names.get(row.mealId) ?? [];
+    return {
       mealId: row.mealId,
       date: row.date,
       name: row.name,
-      entryCount: row.entryCount,
+      entryCount: entryNames.length,
+      entryNames,
       kcal: row.kcal ?? 0,
-    }));
+    };
+  });
+}
+
+/**
+ * The top-level line names of several meals, in ONE query, keyed by meal.
+ *
+ * One query rather than one per meal: the list is capped at ten today, and a
+ * read per row is the cost slice 4 already refused when it extended the
+ * quantity from the recents to a whole library. The shape is the one
+ * tagsByRecipe and portionsByFood already use.
+ *
+ * parent_entry_id IS NULL is the whole of "top-level": it drops the ingredient
+ * lines of a grouped block and keeps the block itself (D5/R2).
+ */
+function entryNamesByMeal(
+  db: AppDatabase,
+  mealIds: readonly DayMealId[],
+): Map<DayMealId, string[]> {
+  const byMeal = new Map<DayMealId, string[]>();
+  if (mealIds.length === 0) return byMeal;
+
+  const rows = db
+    .select({ mealId: journalEntry.dayMealId, name: journalEntry.name })
+    .from(journalEntry)
+    .where(
+      and(inArray(journalEntry.dayMealId, [...mealIds]), isNull(journalEntry.parentEntryId)),
+    )
+    .orderBy(asc(journalEntry.position), asc(journalEntry.id))
+    .all();
+
+  for (const row of rows) {
+    const existing = byMeal.get(row.mealId);
+    if (existing === undefined) byMeal.set(row.mealId, [row.name]);
+    else existing.push(row.name);
+  }
+
+  return byMeal;
 }
 
 /**

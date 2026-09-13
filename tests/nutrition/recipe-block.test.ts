@@ -14,6 +14,7 @@ import {
   readEntry,
   readMealEntries,
   readMealTotals,
+  readRecentMeals,
 } from '../../src/features/nutrition/data/day-reads';
 import { addFreeEntry, addRecentMeal, deleteEntry } from '../../src/features/nutrition/data/day-writes';
 import { countRows, openTestDatabase, type TestDatabase } from '../helpers/database';
@@ -314,5 +315,50 @@ describe('replaying a meal that holds a block', () => {
 
     expect(line?.sourceFoodId).toBeNull();
     expect(line?.kcal100).toBe(265.5);
+  });
+});
+
+describe('what a recent meal says it contains', () => {
+  it('names the top-level lines, in the order they were logged', () => {
+    // "8 lignes" says how big the meal was and never what it was: two meals of
+    // eight lines are told apart by nothing at all, which is the one thing a
+    // recents list has to do.
+    const mealId = firstMeal();
+    writeBlock(mealId);
+
+    const meal = readRecentMeals(database.db).find((row) => row.mealId === mealId);
+
+    expect(meal?.entryNames).toEqual(['Amorce', 'Curry de pois chiches']);
+  });
+
+  it('gives a grouped block its own name, never its ingredients', () => {
+    // THE ASSERTION THAT DECIDES THE SHAPE. A meal is made of the things that
+    // were CHOSEN, and the ingredients of a recipe were not chosen one by one:
+    // listing them would make a two-line meal read as a four-line one, and the
+    // count beside it would then disagree with the names it is standing in for
+    // when the line is cut.
+    const mealId = firstMeal();
+    writeBlock(mealId);
+
+    const meal = readRecentMeals(database.db).find((row) => row.mealId === mealId);
+
+    expect(meal?.entryNames).not.toContain('Pois chiches');
+    expect(meal?.entryNames).not.toContain('Crème de coco');
+    expect(meal?.entryNames).toHaveLength(meal?.entryCount ?? -1);
+  });
+
+  it('keeps the names of one meal out of another', () => {
+    const mealId = firstMeal();
+    addFreeEntry(database.db, {
+      date: DATE,
+      mealPosition: 1,
+      name: 'Autre repas',
+      macros: { protein: 1, carbs: 1, fat: 1, kcal: 10 },
+    });
+
+    const meals = readRecentMeals(database.db);
+
+    expect(meals.find((row) => row.mealId === mealId)?.entryNames).toEqual(['Amorce']);
+    expect(meals.find((row) => row.mealId !== mealId)?.entryNames).toEqual(['Autre repas']);
   });
 });

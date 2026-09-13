@@ -93,14 +93,14 @@ import { ListSeparator } from '@/core/ui/list-separator';
  * screen D16 budgets in taps rather than in milliseconds.
  *
  * A segmented filter under the search field now selects which, always exactly
- * one, foods by default. The field narrows whichever is showing, and the three
- * do not answer it the same way — which is a fact about them rather than an
- * inconsistency:
+ * one, foods by default.
  *
- *  - foods and recipes swap QUICK ACCESS for THE WHOLE LIBRARY once a term is
- *    typed, because the thing you type the name of is usually the thing quick
- *    access does not hold;
- *  - a recent meal is a PAST MEAL, so a term can only narrow what is there.
+ * The field does not govern all three. Foods and recipes both swap QUICK
+ * ACCESS for THE WHOLE LIBRARY once a term is typed — the thing you type the
+ * name of is usually the thing quick access does not hold. The meals have NO
+ * library behind them: a recent meal is a past meal, so the field is inert
+ * there rather than filtering ten rows already on screen, which would be a way
+ * of hiding some of them rather than a search.
  *
  * And the remote search belongs to the foods alone: submitting under another
  * filter does nothing at all, because a request against the quota of D11 that
@@ -472,6 +472,16 @@ export function AddEntryScreen({
             <SearchField
               value={term}
               onChange={setTerm}
+              // Inert under the meals, which have no library to look through.
+              // The term survives in state, so coming back restores it.
+              disabled={listFilter === 'meals'}
+              placeholder={
+                listFilter === 'meals'
+                  ? 'Les repas récents ne se cherchent pas'
+                  : listFilter === 'recipes'
+                    ? 'Rechercher une recette'
+                    : 'Rechercher un aliment'
+              }
               /*
                 Submitting the field IS the explicit trigger specs 8.4b asks
                 for. The search key on the keyboard already says "rechercher",
@@ -607,12 +617,15 @@ export function AddEntryScreen({
             {/*
               It writes and closes rather than filling the basket — again, the
               note in the component says why that is the reading of 8.4a rather
-              than an exception to 8.4. A term can only narrow what is there: a
-              recent meal is a past meal, and there is no wider library behind
-              it to fall back on.
+              than an exception to 8.4.
+
+              NOTHING TO SEARCH: the field above is inert here. A recent meal
+              is a PAST meal, so there is no library behind it to look through,
+              and filtering ten rows already on screen is not a search — it is
+              a way of hiding some of them.
             */}
             {listFilter === 'meals' ? (
-              <RecentMealsSection date={date} mealPosition={mealPosition} term={term} />
+              <RecentMealsSection date={date} mealPosition={mealPosition} />
             ) : null}
           </ScrollView>
 

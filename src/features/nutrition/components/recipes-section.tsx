@@ -4,6 +4,7 @@ import { Text } from '@/core/ui/text';
 import { useTheme } from '@/core/theme';
 import { ListSeparator } from '@/core/ui/list-separator';
 import type { RecipeId } from '@/core/db/schema';
+import type { RecipeListItem } from '../data/recipe-reads';
 import { useQuickAccessRecipes, useRecipes } from '../data/recipe-queries';
 import { searchFoods } from '../domain/food-search';
 import { RecipeRow } from './recipe-row';
@@ -12,6 +13,15 @@ import { RecipeRow } from './recipe-row';
  * Recipes in the add window: favourites first, then recents (specs 8.4a).
  *
  * > Recettes : favorites d'abord, puis récentes
+ *
+ * ## TWO SECTIONS, EXACTLY AS THE FOODS HAVE
+ *
+ * 8.4a words this line identically for both, so they are shown identically:
+ * "Favoris" and "Récents" as two headed groups, not one merged list. Merging
+ * them was tried first, on the argument that the star already says which half
+ * a row is in — and that is true of a row read on its own, and false of a list
+ * read as a shape. What the heading buys is knowing where the favourites STOP,
+ * which no per-row mark can say.
  *
  * ## IT FOLLOWS THE FOODS RULE, NOT THE MEALS RULE
  *
@@ -34,9 +44,10 @@ import { RecipeRow } from './recipe-row';
  *
  * ## A TERM SWITCHES THE LIST IT IS SHOWING
  *
- * The same arrangement the foods already have on this screen, and it is worth
- * stating because it is not obvious from either half: with no term, quick
- * access — favourites then recents. With one, THE WHOLE LIBRARY, ranked.
+ * The same arrangement the foods already have on this screen: with no term,
+ * quick access in two groups. With one, a single "Mes recettes" over THE WHOLE
+ * LIBRARY — because at that point the split has nothing to say, the ranking is
+ * the order and a favourite is wherever the match puts it.
  *
  * Searching inside quick access would be the plausible alternative and it is
  * wrong: a recipe you have never logged and never starred is exactly the one
@@ -56,34 +67,81 @@ export function RecipesSection({
   const all = useRecipes();
 
   const searching = term.trim() !== '';
+  const results = useMemo(
+    () => (searching ? searchFoods(all.data ?? [], term) : []),
+    [searching, term, all.data],
+  );
 
-  const shown = useMemo(() => {
-    if (searching) return searchFoods(all.data ?? [], term);
-    const favorites = quick.data?.favorites ?? [];
-    const recents = quick.data?.recents ?? [];
-    return [...favorites, ...recents];
-  }, [searching, term, all.data, quick.data]);
-
+  const favorites = quick.data?.favorites ?? [];
+  const recents = quick.data?.recents ?? [];
   const library = all.data ?? [];
 
-  if (shown.length === 0) {
+  if (searching) {
+    return (
+      <Group
+        title="Mes recettes"
+        recipes={results}
+        onPick={onPick}
+        emptyText={`Aucune recette pour « ${term.trim()} ».`}
+      />
+    );
+  }
+
+  if (library.length === 0) {
     return (
       <Text style={[styles.empty, { color: theme.colors.textMuted }]}>
-        {library.length === 0
-          ? 'Aucune recette. Créez-en une depuis l’icône de bibliothèque du Journal : elle calcule ses macros depuis ses ingrédients.'
-          : searching
-            ? `Aucune recette pour « ${term.trim()} ».`
-            : 'Aucune recette favorite ni récente. Cherchez par son nom, ou marquez-en une d’une étoile.'}
+        Aucune recette. Créez-en une depuis l’icône de bibliothèque du Journal :
+        elle calcule ses macros depuis ses ingrédients.
+      </Text>
+    );
+  }
+
+  if (favorites.length === 0 && recents.length === 0) {
+    return (
+      <Text style={[styles.empty, { color: theme.colors.textMuted }]}>
+        Aucune recette favorite ni récente. Cherchez-la par son nom, ou
+        marquez-en une d’une étoile.
       </Text>
     );
   }
 
   return (
-    // NO HEADING OF ITS OWN: the filter above already says "Recettes", and a
-    // card headed by the name of the tab that selected it is the same word
-    // twice in the space of an inch. The foods keep theirs because they are
-    // two groups — favourites and recents — under one tab.
+    <>
+      <Group title="Favoris" recipes={favorites} onPick={onPick} />
+      <Group title="Récents" recipes={recents} onPick={onPick} />
+    </>
+  );
+}
+
+/**
+ * One headed card of recipes.
+ *
+ * Renders NOTHING when empty and given no message — the shape the foods'
+ * Section already has on this screen, so a user with favourites and no recents
+ * sees one card rather than one card and an explanation of the other.
+ */
+function Group({
+  title,
+  recipes,
+  onPick,
+  emptyText,
+}: {
+  title: string;
+  recipes: readonly RecipeListItem[];
+  onPick: (recipeId: RecipeId) => void;
+  emptyText?: string;
+}) {
+  const theme = useTheme();
+
+  if (recipes.length === 0) {
+    if (emptyText === undefined) return null;
+    return <Text style={[styles.empty, { color: theme.colors.textMuted }]}>{emptyText}</Text>;
+  }
+
+  return (
     <View style={styles.section}>
+      <Text style={[styles.title, { color: theme.colors.textMuted }]}>{title}</Text>
+
       <View
         style={[
           styles.list,
@@ -95,13 +153,7 @@ export function RecipesSection({
           theme.shadow,
         ]}
       >
-        {/*
-          One list, favourites at the top, with no second heading between them.
-          8.4a describes an ORDER within one group, not two groups — and the
-          star on each row already says which half a row is in, so a divider
-          would be saying it twice.
-        */}
-        {shown.map((item, index) => (
+        {recipes.map((item, index) => (
           <View key={item.id}>
             {index === 0 ? null : <ListSeparator />}
             <RecipeRow recipe={item} onPress={() => onPick(item.id)} />
@@ -113,8 +165,12 @@ export function RecipesSection({
 }
 
 const styles = StyleSheet.create({
-  section: { gap: 8 },
-  title: { fontSize: 17, fontWeight: '700' },
+  section: { gap: 9 },
+  /**
+   * The foods' own heading metrics, copied exactly so the groups of the two
+   * filters read as one grammar rather than two.
+   */
+  title: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.6 },
   list: { borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
   empty: { fontSize: 15, lineHeight: 21 },
 });

@@ -8,7 +8,6 @@ import { useTheme } from '@/core/theme';
 import { ListSeparator } from '@/core/ui/list-separator';
 import { useDismiss } from '@/core/ui/overlay-panel';
 import { useAddRecentMeal, useRecentMeals } from '../data/day-queries';
-import { searchFoods } from '../domain/food-search';
 
 /**
  * Recent meals, on the quick-access screen (specs 8.4a).
@@ -32,21 +31,10 @@ import { searchFoods } from '../domain/food-search';
 export function RecentMealsSection({
   date,
   mealPosition,
-  term = '',
 }: {
   date: LocalDate;
   /** Null while no meal is targeted; the section then renders nothing. */
   mealPosition: number | null;
-  /**
-   * Narrows the list by name.
-   *
-   * A recent meal is a PAST MEAL, so there is no wider library to fall back on
-   * the way the foods and the recipes have one: searching here can only filter
-   * what is already there. Said plainly because the other two lists behave
-   * differently under the same field, and the difference is a fact about meals
-   * rather than an inconsistency.
-   */
-  term?: string;
 }) {
   const theme = useTheme();
   // Read once and frozen for the life of the panel, as the Journal does: one
@@ -59,20 +47,14 @@ export function RecentMealsSection({
   const recents = useRecentMeals();
   const add = useAddRecentMeal();
 
-  const all = recents.data ?? [];
-  // Through the same pure function the foods and the recipes use, so "matches"
-  // means one thing on this screen. A meal has no brand, which the searchable
-  // shape has allowed since slice 6.
-  const meals = term.trim() === '' ? all : searchFoods(all, term);
+  const meals = recents.data ?? [];
 
   if (mealPosition === null) return null;
 
   if (meals.length === 0) {
     return (
       <Text style={[styles.emptyText, { color: theme.colors.textMuted }]}>
-        {all.length === 0
-          ? 'Aucun repas récent. Ils apparaissent ici dès qu’un repas a été enregistré.'
-          : `Aucun repas récent pour « ${term.trim()} ».`}
+        Aucun repas récent. Ils apparaissent ici dès qu’un repas a été enregistré.
       </Text>
     );
   }
@@ -103,9 +85,14 @@ export function RecentMealsSection({
                 )
               }
               accessibilityRole="button"
+              // VoiceOver gets the COUNT as well as the names: it reads the
+              // whole label whatever the width, so nothing is cut here and
+              // "huit lignes" is the summary the sighted reader gets from the
+              // ellipsis.
               accessibilityLabel={
                 `${meal.name} du ${formatDayShort(meal.date, today)}, ` +
-                `${meal.entryCount} lignes, ${formatKcal(meal.kcal)} kcal`
+                `${meal.entryCount} ${meal.entryCount === 1 ? 'ligne' : 'lignes'} : ` +
+                `${describeMealContents(meal)}, ${formatKcal(meal.kcal)} kcal`
               }
               style={styles.row}
             >
@@ -113,9 +100,21 @@ export function RecentMealsSection({
                 <Text style={[styles.name, { color: theme.colors.text }]} numberOfLines={1}>
                   {meal.name}
                 </Text>
+                {/*
+                  WHAT IS IN IT, not how much of it there is.
+                  
+                  "8 lignes" says how big the meal was and never what it was:
+                  two meals of eight lines are told apart by nothing at all,
+                  which is the one thing this list has to do. The names are
+                  what was chosen — a grouped recipe contributes its own name
+                  rather than its ingredients.
+
+                  ONE LINE, cut by the platform. Nothing measures it: a list
+                  that fits is rare and a list that is cut still names the
+                  first two or three things, which is what identifies the meal.
+                */}
                 <Text style={[styles.detail, { color: theme.colors.textMuted }]} numberOfLines={1}>
-                  {`${formatDayShort(meal.date, today)} · ` +
-                    `${meal.entryCount === 1 ? '1 ligne' : `${meal.entryCount} lignes`}`}
+                  {`${formatDayShort(meal.date, today)} · ${describeMealContents(meal)}`}
                 </Text>
               </View>
 
@@ -135,6 +134,24 @@ export function RecentMealsSection({
       </Text>
     </View>
   );
+}
+
+/**
+ * The things a meal was made of, as one line.
+ *
+ * Joined with a comma because they are a list of peers, where the "·" of the
+ * rows elsewhere separates facts of different kinds — here the date is the
+ * other kind and keeps the dot.
+ *
+ * Falls back to the count when there is nothing to name, which cannot happen
+ * for a meal the query returned (it joins on at least one entry) but would
+ * otherwise render a dangling separator.
+ */
+function describeMealContents(meal: { entryNames: readonly string[]; entryCount: number }): string {
+  if (meal.entryNames.length === 0) {
+    return meal.entryCount === 1 ? '1 ligne' : `${meal.entryCount} lignes`;
+  }
+  return meal.entryNames.join(', ');
 }
 
 const styles = StyleSheet.create({

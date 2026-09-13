@@ -2224,6 +2224,44 @@ l'écran.
 gardent les leurs — « Favoris », « Récents » — parce que ce sont deux groupes
 sous un seul onglet, ce qui est autre chose.
 
+**Les recettes ont leurs deux sections, comme les aliments.** « Favoris » et
+« Récents » séparés, pas une liste fusionnée. La fusion a été essayée d'abord,
+sur l'argument que l'étoile de chaque rangée dit déjà dans quelle moitié elle
+est — vrai d'une rangée lue seule, faux d'une liste lue comme une forme. Ce que
+le titre achète est de savoir **où les favoris s'arrêtent**, ce qu'aucune marque
+par rangée ne peut dire. Un terme tapé les refond en une seule « Mes recettes »,
+parce qu'à ce moment le partage n'a plus rien à dire : le classement est
+l'ordre, et un favori est là où la correspondance le met.
+
+**Une rangée de repas dit ce qu'il y a dedans, pas combien il y en a.**
+« 8 lignes » dit la taille du repas et jamais ce qu'il était : deux repas de
+huit lignes ne se distinguent par rien, ce qui est la seule chose que cette
+liste ait à faire. Une ligne, coupée par la plateforme — rien ne la mesure, une
+liste qui rentre est rare et une liste coupée nomme quand même les deux ou
+trois premières choses, ce qui identifie le repas.
+
+**Un bloc de recette y donne SON nom, jamais ses ingrédients.** Un repas est
+fait de ce qui a été **choisi**, et les ingrédients d'une recette ne l'ont pas
+été un par un.
+
+**Et ça a découvert deux réponses à une question.** `entryCount` était un
+`count(*)` sur la jointure ; les noms ne comptent que les lignes de tête. Un
+repas « Amorce + Curry » était donc rapporté à **quatre** lignes tout en en
+nommant deux, et l'étiquette VoiceOver lisait la contradiction à voix haute. Le
+compte est désormais **dérivé** des noms — une seule source, plus de désaccord
+possible. C'est le test écrit pour la nouvelle ligne qui l'a trouvé, pas une
+relecture.
+
+**La recherche est inerte sous Repas, et désactivée plutôt que cachée.** Un
+repas récent **est** un repas passé : il n'y a aucune bibliothèque derrière lui,
+et filtrer dix rangées déjà à l'écran n'est pas une recherche mais une façon
+d'en cacher certaines. Désactivée et non retirée parce que le filtre est
+directement en dessous — un contrôle qui saute quand le choix change est pire
+qu'un contrôle qui a visiblement rien à faire. Et le champ s'affiche **vide**
+pendant qu'il est inerte plutôt que de montrer un terme qu'il n'applique pas :
+un « poulet » grisé au-dessus d'une liste qui l'ignore serait un mensonge. Le
+terme survit dans l'état, donc revenir le restaure.
+
 **Le « + » de la bibliothèque crée le type affiché au lieu de demander lequel.**
 Il posait une question à deux réponses dans une feuille d'action ; le filtre
 vient de rendre la réponse **visible à l'écran**, donc la reposer serait
