@@ -219,6 +219,19 @@ rien : chaque écran affiche les chiffres d'hier, sans le dire.
   Et la seule vérification qui vaille est celle que fait la CI :
   `rm -rf node_modules && npm ci --ignore-scripts`. `npm test` ne la remplace
   pas — il ne lit jamais le lockfile.
+
+  **Mordu une quatrième fois en tranche 5, et cette fois tout était écrit
+  ci-dessus.** `expo-font` ajoutée au `package.json`, lockfile mis à jour avec
+  **`npm install --package-lock-only`** — qui résout l'arbre sans l'installer et
+  laisse tomber les paquets de plateforme à tous les coups. Puis le mauvais
+  `grep`, celui que le paragraphe précédent déclare faux, qui a rendu quinze
+  pour quinze déclarations et zéro paquet. `npm ci` local est passé, la CI a
+  échoué.
+
+  Deux conséquences. **Ne jamais mettre un lockfile à jour autrement que par un
+  vrai `npm install`.** Et savoir qu'un piège est documenté ne suffit pas : la
+  seule chose qui l'attrape est de rejouer la commande de la CI, pas de compter
+  quoi que ce soit.
 - Un dépôt fraîchement cloné n'a pas de `node_modules` : `npm ci --ignore-scripts`.
 - **`ulid` lève une exception sur l'appareil si on le laisse choisir son
   générateur.** Il cherche `crypto.getRandomValues` sur l'objet global et
