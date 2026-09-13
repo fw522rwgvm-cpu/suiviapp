@@ -94,6 +94,19 @@ export interface DayView {
   date: LocalDate;
   /** False while nothing has been written for this date. */
   materialized: boolean;
+  /**
+   * The template this day SHOWS, which is two different facts under one name.
+   *
+   * On a materialised day it is template_name_snapshot: the template as it was
+   * called on the day this one was frozen, and possibly a template that no
+   * longer exists. On a virtual day it is the template the planning resolves
+   * to right now.
+   *
+   * That is not a conflation, it is the same question answered in the two
+   * regimes specs 8.2 defines — "where do these meals come from" — and the
+   * screen needs exactly one answer to show. Null when neither applies.
+   */
+  templateName: string | null;
   meals: DayMealView[];
 }
 
@@ -110,6 +123,7 @@ export function virtualDay(date: LocalDate, plan: DayPlan = fallbackDayPlan()): 
   return {
     date,
     materialized: false,
+    templateName: plan.templateName,
     meals: plan.meals.map((meal) => ({ id: null, ...meal })),
   };
 }

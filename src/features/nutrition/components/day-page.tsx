@@ -10,6 +10,7 @@ import { useDay, useDayTotals, useMealTotals } from '../data/day-queries';
 import type { JournalEntryView } from '../data/day-reads';
 import { dayTargets, type DayMealView } from '../domain/day-plan';
 import { ZERO_MACROS } from '../domain/macros';
+import { DayPlanRow } from './day-plan-row';
 import { MealSection } from './meal-section';
 import { RemainingBanner } from './remaining-banner';
 
@@ -168,6 +169,23 @@ export function DayPage({
         scrollEnabled={!showDots}
       >
         <RemainingBanner consumed={totals.data ?? ZERO_MACROS} target={dayTargets(meals)} />
+
+        {/*
+          Where this day's meals come from — the planning on a virtual day, the
+          snapshot on a materialised one, and an offer to apply today's targets
+          to a day that was frozen before templates existed. Only the active
+          page renders it: the neighbours are drawn for the swipe and an action
+          on a page nobody is looking at would be a tap waiting to be made by
+          accident.
+        */}
+        {active ? (
+          <DayPlanRow
+            date={date}
+            materialized={day.data?.materialized ?? false}
+            hasTargets={meals.some((meal) => meal.targets !== null)}
+            templateName={day.data?.templateName ?? null}
+          />
+        ) : null}
 
         {meals.map((meal) => (
           <MealSection

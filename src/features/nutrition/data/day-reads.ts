@@ -77,8 +77,14 @@ function toMacros(row: MacroSumRow | undefined): Macros {
  * silence.
  */
 export function readDay(db: AppDatabase, date: LocalDate): DayView {
-  const rows = db.select({ date: day.date }).from(day).where(eq(day.date, date)).all();
-  if (rows.length === 0) return virtualDay(date, readDayPlan(db, date));
+  const rows = db
+    .select({ date: day.date, templateName: day.templateNameSnapshot })
+    .from(day)
+    .where(eq(day.date, date))
+    .all();
+
+  const row = rows[0];
+  if (row === undefined) return virtualDay(date, readDayPlan(db, date));
 
   const meals = db
     .select({
@@ -98,6 +104,9 @@ export function readDay(db: AppDatabase, date: LocalDate): DayView {
   return {
     date,
     materialized: true,
+    // The snapshot, not the planning: this names the template this day was
+    // frozen from, which may since have been renamed or deleted (specs 5.2).
+    templateName: row.templateName,
     meals: meals.map((meal) => ({
       id: meal.id,
       position: meal.position,

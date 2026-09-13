@@ -568,3 +568,50 @@ describe('the planning as the settings screen reads it', () => {
     ]);
   });
 });
+
+describe('the name the day shows for its template', () => {
+  it('is the planning\'s on a virtual day, and the snapshot\'s once frozen', () => {
+    const training = trainingTemplate();
+    assignWeekday(fixture.db, weekday(TUESDAY), training);
+
+    expect(readDay(fixture.db, TUESDAY).templateName).toBe("Jour d'entraînement");
+
+    addFreeEntry(fixture.db, {
+      date: TUESDAY,
+      mealPosition: 0,
+      macros: { protein: 1, carbs: 1, fat: 1, kcal: 17 },
+    });
+    updateTemplate(fixture.db, training, { name: 'Renommé', meals: [] });
+
+    // THE ANSWER TO "I edited my template, why has my day not changed". The
+    // day keeps naming the template as it was called when it was frozen, which
+    // is what a snapshot is for (specs 5.2).
+    expect(readDay(fixture.db, TUESDAY).templateName).toBe("Jour d'entraînement");
+    // And a still-virtual day shows the new name.
+    expect(readDay(fixture.db, toLocalDate('2026-09-22')).templateName).toBe('Renommé');
+  });
+
+  it('survives the deletion of the template it names', () => {
+    const training = trainingTemplate();
+    assignWeekday(fixture.db, weekday(TUESDAY), training);
+    addFreeEntry(fixture.db, {
+      date: TUESDAY,
+      mealPosition: 0,
+      macros: { protein: 1, carbs: 1, fat: 1, kcal: 17 },
+    });
+
+    deleteTemplate(fixture.db, training);
+
+    expect(readDay(fixture.db, TUESDAY).templateName).toBe("Jour d'entraînement");
+  });
+
+  it('is null on a day frozen before any template existed', () => {
+    addFreeEntry(fixture.db, {
+      date: TUESDAY,
+      mealPosition: 0,
+      macros: { protein: 1, carbs: 1, fat: 1, kcal: 17 },
+    });
+
+    expect(readDay(fixture.db, TUESDAY).templateName).toBeNull();
+  });
+});
