@@ -199,7 +199,11 @@ export function JournalScreen() {
   }
 
   function promptAddMeal(pageDate: LocalDate): void {
-    Alert.prompt('Nouveau repas', 'Son nom', (name) => {
+    // No message under the title: the second argument of Alert.prompt is a
+    // MESSAGE, not a placeholder, so "Son nom" sat as a line of prose above a
+    // field that is self-evidently for a name. Renaming a meal already passed
+    // undefined here; this was the odd one out.
+    Alert.prompt('Nouveau repas', undefined, (name) => {
       const trimmed = name.trim();
       if (trimmed !== '') addMeal.mutate({ date: pageDate, name: trimmed });
     });
