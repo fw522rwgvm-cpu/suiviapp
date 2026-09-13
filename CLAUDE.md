@@ -1527,15 +1527,16 @@ tranche 7 le réécrit sur svg sans qu'un appelant bouge. La géométrie est
 reproduite en test — le composant ne se rend pas depuis Node, mais les deux
 rotations qu'il calcule, si.
 
-**Deux seuils de 10 % qui n'ont rien à voir.** `KCAL_DISCREPANCY_THRESHOLD`
-vérifie la cohérence interne d'un aliment (§5.1) ; `KCAL_OVERSHOOT_THRESHOLD`
-dit qu'on a mangé plus que prévu. Les confondre en une constante lierait une
-règle d'affichage à une règle nutritionnelle pour toujours. Un test fixe la
-séparation.
+~~**Deux seuils de 10 % qui n'ont rien à voir.**~~ **Un seul désormais.**
+`KCAL_OVERSHOOT_THRESHOLD` a été supprimé : la règle est passée à « une jauge
+pleine est rouge », et la bande ambre entre l'objectif et 10 % au-delà n'avait
+plus où vivre. `KCAL_DISCREPANCY_THRESHOLD`, qui vérifie la cohérence interne
+d'un aliment (§5.1), reste — et le fait d'avoir refusé de les confondre est ce
+qui a permis d'en retirer un sans toucher l'autre.
 
 **Les calories sont le seul chiffre qui a le droit d'élever la voix.** Anneau
-rouge au-delà de 10 %, ambre entre 0 et 10 % ; les trois barres de macros ne
-rougissent jamais, journée comme repas. Dépasser en glucides n'est pas le même
+rouge dès qu'il est plein ; les trois barres de macros ne rougissent jamais,
+journée comme repas. Dépasser en glucides n'est pas le même
 genre d'événement que dépasser sur la journée, et une rangée de barres rouges
 dirait que si.
 
@@ -1774,6 +1775,30 @@ Corollaire de câblage : les repas voisins ne remontent plus du carrousel
 jusqu'à l'écran. La modale lit la journée elle-même et décide là quels types
 sont libres — un paramètre de moins à faire traverser trois composants pour
 répondre à une question que le destinataire pouvait poser lui-même.
+
+**Une jauge pleine est rouge, et la couleur change au moment où la forme se
+ferme.** Un événement, dit deux fois, des deux façons dont un anneau peut dire
+quoi que ce soit. Conséquence à connaître : l'anneau vire au rouge à **100 %
+pile**, c'est-à-dire à l'objectif *atteint* et non manqué. Ça se lit « il ne
+reste rien ». Si un jour ça se lit comme une erreur, le changement est une
+comparaison — rouge juste *après* l'objectif plutôt qu'à l'objectif.
+
+**Deux cercles sur une rangée doivent faire la même taille, ou ils cessent
+d'être une paire.** L'anneau du repas et le bouton d'ajout sont aux deux bouts
+de la même ligne, et l'œil lit une paire avant de lire l'un ou l'autre. À 34
+contre 54, c'étaient une petite chose et une grande qui se trouvaient toutes
+deux rondes. Une seule constante sert les deux, pour qu'ils ne divergent pas à
+la prochaine retouche.
+
+**Un compromis de contraste doit rester un seul compromis.** L'étiquette blanche
+sur le mint est à 2,13:1 — exactement ce que l'accent coûte déjà contre une
+carte blanche. Le quasi-noir aurait été lisible (8,98:1) et a été refusé à vue :
+il se lisait comme une étiquette noire sur un bouton vif plutôt que comme un
+contrôle plein. Le test ne vérifie donc pas un seuil mais **que le compromis ne
+s'aggrave pas** : l'étiquette sur l'accent n'est jamais pire que l'accent sur
+du blanc. Et la même valeur dans les deux thèmes, parce que le fond est le même
+hex dans les deux : un bouton d'une seule couleur ne peut pas porter deux
+étiquettes selon un réglage qui ne le change pas.
 
 ## Points ouverts après la tranche 5
 - ~~**Vérification iPhone en attente.**~~ **Faite pour l'essentiel** : la
