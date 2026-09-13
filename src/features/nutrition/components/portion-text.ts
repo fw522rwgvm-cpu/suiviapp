@@ -1,4 +1,5 @@
 import { formatQuantity } from '@/core/format';
+import type { QuantityChoice } from '../domain/portions';
 
 /**
  * French wording for portions (D10: no internationalisation library).
@@ -56,4 +57,23 @@ export function formatEntryQuantity(
 
   const count = formatPortionCount(quantity / portionQuantity, portionName);
   return `${count} · ${formatQuantity(quantity, baseUnit)}`;
+}
+
+/**
+ * A quantity as it was CHOSEN, in one phrase.
+ *
+ * The portion alone when there is one: "2 tranches" is the decision, "50 g" is
+ * what it came to, and the two together say one fact twice in a place that has
+ * room for one. That is the basket's rule, and it applies wherever a quantity
+ * is shown as something about to happen rather than as something already in
+ * the journal — where formatEntryQuantity shows both, because an entry has to
+ * be readable against a total.
+ *
+ * Written once here rather than in each caller: the basket row and the recents
+ * row ask exactly the same question, and two spellings of it would drift.
+ */
+export function formatChoiceQuantity(choice: QuantityChoice, baseUnit: string): string {
+  return choice.portion === null
+    ? formatQuantity(choice.baseQuantity, baseUnit)
+    : formatPortionCount(choice.portion.count, choice.portion.name);
 }

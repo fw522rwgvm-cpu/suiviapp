@@ -42,6 +42,7 @@ import { FoodEditorScreen } from './food-editor-screen';
 import { PendingEntryRow } from '../components/pending-entry-row';
 import { SwipeToDeleteRow } from '../components/swipe-to-delete-row';
 import { SearchField } from '../components/search-field';
+import { formatChoiceQuantity } from '../components/portion-text';
 import { FreeEntryScreen } from './free-entry-screen';
 import { QuantityScreen } from './quantity-screen';
 import { ListSeparator } from '@/core/ui/list-separator';
@@ -432,7 +433,35 @@ export function AddEntryScreen({
             ) : (
               <>
                 <Section title="Favoris" foods={favorites.data ?? []} onPick={setChosen} />
-                <Section title="Récents" foods={recents.data ?? []} onPick={setChosen} />
+                <Section
+                  title="Récents"
+                  foods={recents.data ?? []}
+                  onPick={setChosen}
+                  /*
+                    THE ONLY LIST THAT CAN REPEAT ITSELF. Every row here has a
+                    last quantity by construction — recents are derived from
+                    journal entries — so the lookup below never misses, and the
+                    quantity it carries is the one readQuantityPrefill would
+                    hand the quantity screen. One value, produced once, in the
+                    read layer (D9): this screen does no arithmetic.
+                  */
+                  quickAdd={(recent) => ({
+                    label: formatChoiceQuantity(recent.lastQuantity, recent.baseUnit),
+                    onAdd: () =>
+                      collect({
+                        kind: 'food',
+                        foodId: recent.id,
+                        name: recent.name,
+                        brand: recent.brand,
+                        baseUnit: recent.baseUnit,
+                        reference: recent.reference,
+                        // The very value the row is showing, and the one the
+                        // quantity screen would have opened on. Not recomputed
+                        // here: this screen does no arithmetic (D9).
+                        quantity: recent.lastQuantity,
+                      }),
+                  })}
+                />
               </>
             )}
           </ScrollView>
@@ -789,16 +818,33 @@ function Basket({
   );
 }
 
-function Section({
+/**
+ * Generic over the row type, so a list that knows more about its rows can say
+ * so without the section having to.
+ *
+ * Recents carry a last quantity; favourites and search results do not. Without
+ * the parameter, `quickAdd` would receive a plain FoodListItem and have to find
+ * its own row back by id — a lookup per row, for an object already in hand.
+ */
+function Section<T extends FoodListItem>({
   title,
   foods,
   onPick,
   emptyText,
+  quickAdd,
 }: {
   title: string;
-  foods: readonly FoodListItem[];
+  foods: readonly T[];
   onPick: (foodId: FoodId) => void;
   emptyText?: string;
+  /**
+   * How a row repeats itself in one tap, when it can (specs 8.4a).
+   *
+   * Passed only by Recents, which is the only list whose rows have a "last
+   * time": a favourite never logged has nothing to repeat, and a search result
+   * is not yet a habit. Absent, the section renders exactly as before.
+   */
+  quickAdd?: (food: T) => { label: string; onAdd: () => void };
 }) {
   const theme = useTheme();
 
@@ -822,15 +868,28 @@ function Section({
             theme.shadow,
           ]}
         >
-          {foods.map((food, index) => (
-            <View key={food.id}>
-              {index === 0 ? null : (
-                <ListSeparator />
-              )}
-              {/* One tap. The next one is "Ajouter" (specs 8.4, D16). */}
-              <FoodRow food={food} onPress={() => onPick(food.id)} />
-            </View>
-          ))}
+          {foods.map((food, index) => {
+            // Asked once per row: it builds a closure, and asking twice would
+            // make two of them for one question.
+            const repeat = quickAdd?.(food);
+
+            return (
+              <View key={food.id}>
+                {index === 0 ? null : <ListSeparator />}
+                {/*
+                  One tap to choose, and — in Recents — one tap to repeat. The
+                  row itself still opens the quantity screen, so changing the
+                  amount costs exactly what it always did.
+                */}
+                <FoodRow
+                  food={food}
+                  onPress={() => onPick(food.id)}
+                  quantity={repeat?.label}
+                  onQuickAdd={repeat?.onAdd}
+                />
+              </View>
+            );
+          })}
         </View>
       )}
     </View>

@@ -1181,6 +1181,33 @@ restant verte. Le seul contrôle qui vaille reste
 `rm -rf node_modules && npm ci --ignore-scripts`, et le seul comptage qui veuille
 dire quelque chose reste `grep -c '"node_modules/@rolldown/binding-'`.
 
+**Un récent se répète en un toucher, et la quantité affichée EST celle qui sera
+ajoutée.** Pas « la même à peu près » : la ligne, le bouton et l'écran de
+quantité tirent la valeur de `prefillQuantity`, une seule fonction pure, une
+seule fois. Deux chemins vers « la dernière quantité » s'accorderaient presque
+toujours — et le jour où ils divergeraient, la ligne mentirait sur ce que fait
+son propre bouton, sans que rien ne se voie : les deux chiffres sont
+plausibles. Chaque test l'assert contre `readQuantityPrefill`, jamais contre un
+littéral.
+
+Le cas qui décide reste celui du pré-remplissage : une tranche à 25 g quand
+« 2 tranches » a été logué, à 30 g aujourd'hui → le bouton ajoute **50 g**, pas
+60. Une seconde implémentation se serait trompée là.
+
+**Le coût est assumé et écrit : une lecture indexée par récent.** La sortie
+élégante serait une fonction de fenêtre, mais l'ordre est `(created_at, id)` et
+une colonne nue à côté d'un agrégat est choisie arbitrairement par SQLite —
+donc la réécrire avec un ordre plus lâche donnerait précisément la seconde
+vérité qu'on refuse. Les portions, elles, sont chargées pour toute la page en
+une requête. Si ça se mesure un jour, D16 dit « sur mesure, pas sur intuition ».
+
+**Et c'est sans danger uniquement parce que le panier existe.** Rien n'est
+écrit avant « Confirmer », une ligne ajoutée par erreur se retire d'un
+balayage, et le compteur de l'en-tête change aussitôt pour dire que le toucher
+a porté. Un ajout direct au journal aurait réclamé une confirmation ; une ligne
+au panier n'en réclame aucune. C'est la même propriété qui rend le geste rapide
+et qui le rend rattrapable.
+
 ## Ce que la mise au point de la tranche 3 a laissé derrière elle
 
 Des pièces partagées, nées d'une demande précise et devenues la façon dont

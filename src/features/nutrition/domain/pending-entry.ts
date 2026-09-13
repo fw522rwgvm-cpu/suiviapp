@@ -1,6 +1,5 @@
 import type { BaseUnit, FoodId } from '@/core/db/schema';
-import { formatQuantity } from '@/core/format';
-import { formatPortionCount } from '../components/portion-text';
+import { formatChoiceQuantity } from '../components/portion-text';
 import { macrosOf, type CompleteOffProduct } from '../off/off-product';
 import { describeMacros, totalOf, type Macros } from './macros';
 import type { QuantityChoice } from './portions';
@@ -101,15 +100,12 @@ export function pendingEntryKcal(entry: PendingEntry): number {
 export function describePendingEntryQuantity(entry: PendingEntry): string | null {
   if (entry.kind === 'free') return null;
 
-  const { baseQuantity, portion } = entry.quantity;
   // Grams for a remote product, always: Open Food Facts publishes per 100 g
   // for everything it holds, and reading that as millilitres would be a
   // density of 1 where specs 5.1 allows none.
   const unit: BaseUnit = entry.kind === 'off' ? 'g' : entry.baseUnit;
 
-  return portion === null
-    ? formatQuantity(baseQuantity, unit)
-    : formatPortionCount(portion.count, portion.name);
+  return formatChoiceQuantity(entry.quantity, unit);
 }
 
 /**

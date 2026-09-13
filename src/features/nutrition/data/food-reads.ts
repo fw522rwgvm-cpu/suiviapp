@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNotNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import type { AppDatabase } from '@/core/db/database';
 import {
   food,
@@ -53,6 +53,21 @@ export interface FoodListItem {
 export interface FoodPortionView extends Portion {
   id: FoodPortionId;
   position: number;
+}
+
+/**
+ * A recent food, plus the quantity a one-tap add would log (specs 8.4a, D16).
+ *
+ * The quantity is NOT a second answer to "how much": it comes from
+ * prefillQuantity, the same pure function the quantity screen opens on. That
+ * is the whole point of carrying it here rather than recomputing it — the
+ * figure shown on the row, the figure the + button adds, and the figure the
+ * quantity screen would propose are one value produced once. Two paths to it
+ * would agree almost always, and the day they disagreed the row would lie
+ * about what its own button does.
+ */
+export interface RecentFoodItem extends FoodListItem {
+  lastQuantity: QuantityChoice;
 }
 
 export interface FoodView extends FoodListItem {
@@ -229,9 +244,13 @@ export function readFavoriteFoods(db: AppDatabase): FoodListItem[] {
  * the same food reached two ways, not a duplicate. Filtering it out of recents
  * would make the second list shift about depending on what is starred.
  */
-export function readRecentFoods(db: AppDatabase, limit = 20): FoodListItem[] {
-  return db
-    .select({ ...listColumns, lastAt: sql<number | null>`max(${journalEntry.createdAt})` })
+export function readRecentFoods(db: AppDatabase, limit = 20): RecentFoodItem[] {
+  const rows = db
+    .select({
+      ...listColumns,
+      displayRefQty: food.displayRefQty,
+      lastAt: sql<number | null>`max(${journalEntry.createdAt})`,
+    })
     .from(journalEntry)
     .innerJoin(food, eq(food.id, journalEntry.sourceFoodId))
     .where(isNotNull(journalEntry.sourceFoodId))
@@ -247,8 +266,58 @@ export function readRecentFoods(db: AppDatabase, limit = 20): FoodListItem[] {
       sql`max(${journalEntry.id}) desc`,
     )
     .limit(limit)
-    .all()
-    .map(toListItem);
+    .all();
+
+  if (rows.length === 0) return [];
+
+  /**
+   * Portions for the whole page in ONE query, keyed by food.
+   *
+   * They are needed because step two of the pre-fill chain asks whether the
+   * portion a quantity was logged in still exists AND is still the same size
+   * — a slice redefined from 25 g to 30 g must not silently turn a 50 g habit
+   * into 60 g. Fetching them per food would be a query each; fetching them
+   * here is one.
+   */
+  const ids = rows.map((row) => row.id);
+  const portionsByFood = new Map<FoodId, Portion[]>();
+  for (const portion of db
+    .select({
+      foodId: foodPortion.foodId,
+      name: foodPortion.name,
+      quantity: foodPortion.quantity,
+    })
+    .from(foodPortion)
+    .where(inArray(foodPortion.foodId, ids))
+    .orderBy(asc(foodPortion.position), asc(foodPortion.id))
+    .all()) {
+    const existing = portionsByFood.get(portion.foodId);
+    if (existing === undefined) {
+      portionsByFood.set(portion.foodId, [{ name: portion.name, quantity: portion.quantity }]);
+    } else {
+      existing.push({ name: portion.name, quantity: portion.quantity });
+    }
+  }
+
+  /**
+   * The last entry is read PER FOOD, deliberately, and the cost is stated
+   * rather than hidden: one indexed lookup each, capped by `limit`.
+   *
+   * The alternative — one grouped query — cannot express "the last row" the
+   * way readLastEntryForFood does without a window function, because the order
+   * is (created_at, id) and a bare column beside an aggregate is one SQLite
+   * picks arbitrarily. Reimplementing it with a looser ordering would give a
+   * SECOND answer to "what was the last quantity", free to disagree with the
+   * quantity screen's. Correctness first; D16 says full text and its like are
+   * switched on to a measurement, not to a hunch, and the same applies here.
+   */
+  return rows.map((row) => ({
+    ...toListItem(row),
+    lastQuantity: prefillQuantity(readLastEntryForFood(db, row.id), {
+      portions: portionsByFood.get(row.id) ?? [],
+      displayRefQty: row.displayRefQty,
+    }),
+  }));
 }
 
 /**
