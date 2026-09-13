@@ -53,15 +53,21 @@ L'application doit tolérer un arrêt forcé à tout moment sans perte.
 ---
 
 ## État du projet
-Tranches 0 à 3 livrées. **Tranche 3 (base d'aliments personnelle) vérifiée sur
-l'iPhone**, interface comprise : la mise au point de son interface a duré plus
-longtemps que son écriture, et c'est de là que vient la moitié de ce fichier.
+Tranches 0 à 4 livrées. **Tranche 4 (Open Food Facts et scan) écrite, typée,
+testée et bundlée ; rien de son interface n'a encore tourné sur l'appareil**,
+et le scan ne le peut pas avant un build — voir ci-dessous.
 
-Ce qui n'a **pas** été vérifié sur l'appareil et reste ouvert : la recherche
-sans accent (« creme » doit trouver « Crème fraîche », donc Hermes doit porter
-`String.prototype.normalize` ou le repli doit prendre la main), et
-l'aller-retour export / import avec les tables `food` et `food_portion`
-dedans.
+**L'aller-retour export / import avec `food` et `food_portion` est vérifié**
+(13/09/2026). Le filet tient avec les tables de la tranche 3 dedans.
+
+**Le binaire de développement doit être reconstruit avant de toucher au scan.**
+`expo-camera` est la première dépendance native ajoutée depuis
+`@react-native-picker/picker`, et elle porte la même conséquence : le bundle JS
+ne contient pas son module natif, donc `npm run bundle:ios` reste vert pendant
+que l'écran de scan plante sur l'appareil. Tout le reste de la tranche —
+recherche distante, bandeau, panier, bascule vers le formulaire — est
+vérifiable par Metro **sans** reconstruire. C'est pour ça que le scan est la
+dernière étape : un seul cycle CI au lieu de plusieurs.
 
 **Base de départ, résolue.** La tranche 2 a été fusionnée sur `main` le
 12/09/2026 (PR #3). `tranche-3-food` partait de `tranche-2-export` et contient
@@ -173,6 +179,12 @@ rien : chaque écran affiche les chiffres d'hier, sans le dire.
   après l'ajout du picker : la suite locale restait verte — `node_modules` était
   correct, seul le lockfile était amputé — et la CI a échoué sur `npm ci` avec
   quinze « Missing: @rolldown/binding-… from lock file ».
+
+  **Mordu deux fois de plus en tranche 4** : après `npm install --save zod`,
+  puis après `npx expo install expo-camera`. Ce n'est donc pas lié à `expo
+  install` en particulier — c'est lié à TOUT mouvement de l'arbre. La règle
+  pratique : après la moindre installation, compter, et si le compte est faux,
+  reconstruire.
 
   Et le contrôle évident est faux. Compter `grep -c rolldown package-lock.json`
   ou chercher les noms des liaisons trouve les **déclarations** de `rolldown`,
@@ -992,6 +1004,183 @@ l'attente commencée** — sans quoi chaque journée déjà en cache serait reta
 d'une seconde au nom de la fluidité, ce que personne ne veut. Et seul le
 **reste** est attendu, donc ça ne peut jamais ralentir une journée lente.
 
+## Ce que la tranche 4 a établi
+
+**Sonder l'API a changé la conception quatre fois, et aucune de ces quatre
+choses n'était dans la documentation.** Huit requêtes le 13/09/2026 :
+
+- **Une consultation répond HTTP 200 que le produit existe ou non.** Le signal
+  est `status: 0` dans le corps. Un client branché sur le code HTTP rapporte un
+  produit là où il n'y en a pas.
+- **`nutriments_estimated` revient qu'on le demande ou non**, volumineux, et il
+  est rempli *précisément* pour les produits dont les nutriments déclarés
+  manquent — ce sont des estimations calculées depuis la liste d'ingrédients.
+  C'est le champ le plus dangereux de la réponse : le lire comblerait
+  exactement les trous censés faire basculer vers le formulaire, avec des
+  chiffres que personne n'a déclarés. Il n'est **pas dans le schéma zod**, donc
+  il ne peut pas être lu par accident, et un test l'envoie seul pour le prouver.
+- **La recherche texte vit sur un autre hôte.** `cgi/search.pl` et
+  `/api/v2/search` répondent aujourd'hui par une page HTML d'indisponibilité
+  sous un 200 ; seul `search.openfoodfacts.org/search?q=` fonctionne. Donc une
+  réponse illisible n'est pas un cas théorique : c'est l'état courant de deux
+  points d'entrée de cette API.
+- **`fields=` ne se comporte pas pareil sur les deux.** La consultation
+  restreint jusqu'au nutriment ; la recherche répond `nutriments: null` si on
+  lui demande un sous-champ. Deux listes de champs écrites séparément, donc —
+  une seule partagée coûterait ses macros à la recherche.
+
+Et un cinquième constat qui abîme une garantie existante : sur un produit
+testé, OFF donne `energy-kcal_100g` **égal à la valeur théorique** 4P+4G+9L.
+L'avertissement d'écart de 10 % du §5.1 est donc structurellement muet sur ces
+produits-là, exactement là où les données sont les plus douteuses. Constaté sur
+un produit, pas mesuré sur un échantillon.
+
+**ABSENT NE DOIT JAMAIS DEVENIR ZÉRO, et c'est la règle centrale de la
+tranche.** `Number('')` vaut 0, `Number(null)` vaut 0, `Number([])` vaut 0 — et
+`z.coerce.number()` appelle exactement `Number()`. Un produit qui ne déclare pas
+ses protéines deviendrait un produit *sans* protéines : plausible, faux,
+invisible, et **complet**, donc engagé dans le parcours rapide au lieu du
+formulaire pré-rempli que le §8.5 exige. Une mutation vers la coercion naïve
+fait rougir cinq tests ; c'est la seule preuve qui vaille.
+
+Une seule exception, et elle est sûre parce qu'elle est terminale : le
+formulaire pré-rempli affiche 0 pour une macro absente. Un champ ne sait pas
+porter l'absence, l'utilisateur est sur le point d'écrire par-dessus, et tout
+l'amont a gardé le `null` — donc la décision de dévier a été prise sur la
+vérité.
+
+**La copie automatique a lieu à « Confirmer », et `ensureOffFood` n'est pas
+exportée.** Même forme et même motif qu'`ensureMaterialized` : appelable seule,
+un arrêt forcé entre elle et l'action qui la justifie laisserait un aliment que
+personne n'a validé. La règle que les deux partagent, énoncée une fois : **ce
+que l'utilisateur enregistre explicitement s'écrit ; ce qu'il se contente de
+choisir non.** Le formulaire pré-rempli écrit avant confirmation et n'y fait
+pas exception — quelqu'un a rempli un formulaire et appuyé sur Enregistrer.
+
+Elle ne **réécrit** jamais un aliment existant : trouvé par code-barres, rendu
+tel quel. C'est un get-or-create, jamais un insert-or-replace, parce qu'une
+correction est « le mécanisme principal de compensation de la qualité inégale
+de la source » (§8.5) et que recopier par-dessus l'annulerait en silence, sur
+le chemin où l'utilisateur s'y attend le moins.
+
+**Un index unique est la première chose qui puisse faire échouer un INSERT dans
+`food`** — et la tranche 3 avait écarté toute CHECK sur les macros pour que la
+copie automatique ne puisse jamais échouer. `ux_food_barcode` rouvre cette
+porte : deux produits peuvent partager un EAN, et deux lignes du même produit
+neuf dans un panier collisionnent avec elles-mêmes. La réponse n'est pas de
+renoncer à l'index, c'est que le chemin de copie lise d'abord. **Corollaire non
+évident : une chaîne vide n'est pas un code-barres.** Les NULL sont distincts
+dans un index unique, pas les chaînes vides — une seule prendrait la place et
+refuserait tous les aliments suivants qui n'en ont pas, c'est-à-dire presque
+toute la bibliothèque.
+
+**Le cache et la base personnelle ne se rencontrent jamais.** Le
+rafraîchissement opportuniste réécrit `off_cache.payload` et rien d'autre ;
+aucun chemin de code ne va de là à `food`. C'est la réponse entière à « que
+devient une correction au rafraîchissement » : rien, structurellement plutôt
+que par prudence. Deux tests le fixent, parce que la modification tentante —
+« le rafraîchissement devrait tenir la bibliothèque à jour » — tient en une
+ligne.
+
+Corollaire qui redimensionne le cache : **une fois le produit copié, la copie
+fait autorité pour toujours**, et le dédoublonnage fait que la recherche ne le
+consulte même plus. Ce qui reste au cache est le produit scanné puis
+**abandonné**, et la latence d'un second scan avant confirmation. Réel, utile,
+et beaucoup plus étroit qu'il n'y paraît — de quoi ne pas sur-investir dedans.
+
+**Le limiteur est en deux morceaux, et un seul survit à un arrêt forcé.** La
+fenêtre glissante d'une minute vit en mémoire : elle expire en soixante
+secondes, et la persister coûterait une écriture SQLite **par requête réseau**.
+La suspension consécutive à un 429 va dans `setting` — c'est le seul état dont
+la perte a un coût *hors* du téléphone, le bannissement par IP.
+
+Et **l'horloge n'est pas crue** : une échéance plus lointaine qu'une heure est
+lue comme expirée, parce que reculer l'heure du téléphone suspendrait sinon
+l'application indéfiniment, sans rien à l'écran pour l'expliquer. Même
+raisonnement pour un horodatage d'appel situé dans le futur. La règle, dans les
+deux sens : être un peu trop permissif coûte une requête refusée, être trop
+strict coûte une fonctionnalité qui ne remarche jamais.
+
+**La retry unique n'est pas dépensée sur un délai d'attente.** Un timeout a
+déjà reçu toutes les millisecondes qu'on était prêt à attendre ; réessayer
+double une attente déjà jugée trop longue, en magasin, le téléphone à la main.
+Un refus immédiat n'a rien coûté et est la panne la plus probablement
+passagère : c'est lui qui vaut la seconde tentative. **Les deux tentatives
+comptent dans le budget**, parce que le serveur les a vues.
+
+**`badResponse` n'est JAMAIS `offline`.** Le serveur a parlé, donc le téléphone
+est connecté, et un bandeau « hors ligne » serait un mensonge que l'utilisateur
+ne peut pas vérifier. C'est la distinction qu'un `catch` distrait efface, et
+une mutation le confirme : replier le corps illisible sur l'échec réseau fait
+rougir deux tests.
+
+**Deux registres de message, et le choix n'est pas affaire de goût.** Hors
+ligne est la circonstance de l'utilisateur, qu'il voit lui-même : discret. Un
+quota signalé par le **serveur** est quelque chose qu'il ne peut pas voir,
+qu'il aggraverait en réessayant, et qui risque un bannissement : c'est le seul
+message de l'application qui interrompt. Notre propre fenêtre préventive ne
+l'obtient pas.
+
+**Le bandeau appartient à la fenêtre, pas au champ de recherche**, et il
+apparaît sur l'échec d'une requête, jamais sur l'absence de réseau. Détecter
+celle-ci demanderait une dépendance hors du §5 ; la réponse serait fausse
+derrière un portail captif ; et D11 range déjà le bandeau dans son paragraphe
+« Échecs ». Conséquence assumée : rien ne s'affiche tant que rien n'a été
+demandé.
+
+**Un résultat de recherche ne suffit pas à construire un aliment.** Il peut ne
+porter que des kilojoules là où la consultation fournit les kcal. Choisir un
+résultat coûte donc une consultation par code-barres — qui est aussi l'appel
+que D11 met en cache durablement, et celui que le scan partage. Les kilojoules,
+eux, ne sont pas convertis : le §5.1 conserve la valeur d'une source telle
+quelle. **Réserve consignée** : si le formulaire s'ouvre trop souvent à
+l'usage, la conversion est le premier remède et tient en une ligne.
+
+**Pas d'anti-rebond sur la recherche distante, un submit.** Un anti-rebond
+serait une façon de chercher au fil d'une frappe lente : il respecterait la
+limite de dix par minute sans respecter l'interdiction, qui porte sur
+l'intention et non sur la fréquence. Deux états — ce qu'on tape, ce qu'on a
+demandé — et React Query **est** le cache mémoire que D11 réclame pour les
+recherches texte, donc il n'y a pas de seconde table à écrire.
+
+**Le dédoublonnage masque, sans rien proposer**, y compris quand les macros
+distantes diffèrent désormais des locales. Un écran de comparaison sur ce
+parcours aurait toujours la même réponse : celle que l'utilisateur a corrigée.
+
+**Le scan lit une fois, et le verrou est une `ref`.** `onBarcodeScanned` se
+déclenche plusieurs fois par seconde tant qu'un code est dans le cadre : sans
+verrou, des dizaines de consultations contre un budget de quinze par minute —
+un bannissement, pas un défaut d'affichage. Une `ref` et non un état, parce
+qu'il doit agir à l'événement suivant et non au rendu suivant.
+
+**`zod` ne sert qu'à la frontière étrangère, et un test le garde.** La charge
+utile d'export n'est pas étrangère — Drizzle la décrit — donc `validate-payload`
+reste écrit à la main. La première chose qu'on voudra faire avec zod dans
+l'arbre est de « ranger » ce validateur, ce qui déferait la décision de la
+tranche 2 en silence : `tests/conventions/zod-boundary.test.ts` fait échouer le
+build en nommant le fichier fautif.
+
+**Un produit Open Food Facts est toujours en grammes, sans heuristique.** L'API
+publie des valeurs pour 100 g y compris pour les liquides — c'est littéralement
+ce qu'elle mesure. Les lire comme « pour 100 ml » appliquerait une densité de 1,
+que le §5.1 exclut. Deviner depuis une étiquette « 1 L » serait la même
+conversion avec une supposition devant. Qui veut des millilitres corrige
+l'aliment, ce que le §8.5 prévoit expressément.
+
+**Le greffon `expo-camera` est déclaré, pas laissé à l'autolinking**, parce
+qu'il écrit `NSCameraUsageDescription` dans l'`Info.plist`. iOS tue une
+application qui ouvre l'appareil photo sans elle : l'alternative n'est pas une
+chaîne manquante, c'est un plantage que le bundle JS ne sait pas reproduire.
+Vérifié par le pré-vol `expo prebuild` puis lecture de l'`Info.plist`, pas
+supposé.
+
+**Le piège du lockfile a mordu deux fois dans la même tranche**, une fois après
+`npm install --save zod` et une fois après `npx expo install expo-camera` — les
+quinze liaisons rolldown disparues du lockfile à chaque fois, la suite locale
+restant verte. Le seul contrôle qui vaille reste
+`rm -rf node_modules && npm ci --ignore-scripts`, et le seul comptage qui veuille
+dire quelque chose reste `grep -c '"node_modules/@rolldown/binding-'`.
+
 ## Ce que la mise au point de la tranche 3 a laissé derrière elle
 
 Des pièces partagées, nées d'une demande précise et devenues la façon dont
@@ -1016,12 +1205,57 @@ au système, le contenu est à nous.** Un `GlassButton` dans un en-tête natif e
 du verre dans du verre ; une étoile dans une rangée de liste est du contenu et
 doit porter son propre matériau.
 
+## Points ouverts après la tranche 4
+- **Vérification iPhone entièrement en attente.** Le code est complet, typé,
+  testé et bundlé ; rien de l'interface n'a tourné sur l'appareil. Et le scan
+  ne le peut pas avant un build : `expo-camera` est native.
+- **Ce qu'aucun test ne couvre, par construction** : l'API réelle. Le client est
+  exercé contre un `fetch` injecté, donc ce qui est vérifié est la *taxonomie*
+  des réponses, pas qu'Open Food Facts les produise encore. Les sept constats
+  du 13/09/2026 sont datés pour cette raison — le §13.8 des specs prévoyait que
+  les limites bougent ; ce sont les points d'entrée eux-mêmes qui ont bougé.
+- **Hypothèse signalée : la fréquence réelle des produits sans `energy-kcal`.**
+  Un seul produit observé en manquait, et la consultation par code-barres la
+  fournissait. Si le formulaire pré-rempli s'ouvre trop souvent à l'usage, la
+  conversion kJ → kcal est le remède et tient en une ligne — mais elle diverge
+  du §5.1, donc elle passera par un amendement et non par un correctif.
+- **Le délai d'attente vaut 5 s et la suspension par défaut 5 min.** Deux
+  nombres choisis, pas mesurés. La façon de savoir qu'ils sont faux est
+  d'utiliser l'application dans un magasin.
+- **Aucune purge du cache n'est appelée.** `sweepCache` existe, est testée, et
+  n'a pas de site d'appel : il n'y a rien à balayer sur un téléphone qui ne
+  sert pas, et la faire tourner pendant un scan dépenserait des millisecondes
+  promises ailleurs. À brancher quand la table aura une taille observable —
+  probablement au démarrage, après la migration.
+- **`food.barcode` n'a pas de règle de validation à l'import.** Une archive
+  réparée à la main pourrait y poser une chaîne vide, qui prendrait la place
+  dans `ux_food_barcode` et refuserait tout autre aliment sans code-barres. Le
+  chemin d'écriture s'en protège (vide → `NULL`) ; l'import non. Ce serait un
+  type de règle de plus (`non_empty`) dans le catalogue. Non fait : le
+  catalogue assume que ses règles peuvent être incomplètes, ce qui ne rend la
+  validation que plus faible, jamais fausse.
+- **La bibliothèque n'interroge pas Open Food Facts**, seul l'écran d'ajout le
+  fait. Tranché ainsi : la bibliothèque est « ma base », et y verser un
+  catalogue mondial en ferait autre chose. À rouvrir si chercher un produit
+  pour le corriger, sans l'ajouter, devient un besoin.
+- **Aucune action « mettre à jour depuis Open Food Facts »** sur la fiche d'un
+  aliment `source = 'off'`. Elle se défendrait — un acte explicite, jamais une
+  suggestion sur le parcours de saisie — mais le §7 ne la mentionne pas.
+- **Les portions d'un produit distant ne sont jamais devinées.** Les tailles de
+  portion d'Open Food Facts sont du texte libre et les huit noms du §6.1 une
+  liste fermée. Elles s'ajoutent à la main après coup.
+- **L'instrumentation des quatre transitions du parcours critique (D16) n'existe
+  toujours pas.** La cible des 5 s du scan est donc un vœu, pas une mesure —
+  c'est le bon moment pour que ça cesse, la tranche 4 étant la première à faire
+  du réseau sur le chemin critique.
+
 ## Points ouverts après la tranche 3
 - ~~Vérification iPhone en cours.~~ **Faite pour l'interface.** L'application
   démarre, la migration `0002` s'applique, et tout ce qui se touche a été repris
-  à l'usage. Restent à confirmer, faute d'avoir été exercés : la recherche sans
-  accent (Hermes et `String.prototype.normalize`) et l'aller-retour export /
-  import avec les nouvelles tables.
+  à l'usage. ~~Restent à confirmer : la recherche sans accent et l'aller-retour
+  export / import avec les nouvelles tables.~~ **L'aller-retour est vérifié
+  (13/09/2026).** La recherche sans accent a désormais un porteur : une section
+  de diagnostic dans les Réglages dev dit quel chemin de pliage s'exécute.
 - **L'écran de quantité n'a plus de champ de saisie.** Une quantité se choisit
   à la molette, donc taper 137 g demande de faire tourner une roue. C'est le
   prix accepté d'un choix qui rend les fractions de portion possibles ; à
@@ -1031,8 +1265,13 @@ doit porter son propre matériau.
   `display_ref_qty` reste en base et vaut 100, donc le champ peut revenir sans
   migration.
 - **Hypothèse signalée** : `String.prototype.normalize` sur Hermes. Sonde
-  écrite, repli écrit, les deux testés en Node — mais lequel s'exécute sur
-  l'appareil ne se sait qu'en le regardant.
+  écrite, repli écrit, les deux testés en Node. **La tranche 4 a rendu la
+  question observable** — Réglages dev, section « Recherche sans accent » — et a
+  corrigé la sonde au passage : elle demandait `typeof`, ce qui ne voit qu'une
+  des trois façons d'échouer (absente, inerte, ou levant). Elle appelle
+  désormais la fonction dans un `try`. Le témoin décisif est « Phở » : la table
+  de repli ne le connaît pas, donc lire « pho » prouve que le moteur
+  décompose. Reste à le regarder sur l'appareil.
 - ~~Depuis l'écran d'ajout, « Saisie libre » fait un `router.replace ».~~
   **Résolu.** C'est une étape en place, comme celle de la quantité : le retour
   revient à la liste d'aliments et le parcours « ajouter quelque chose » tient
@@ -1043,10 +1282,9 @@ doit porter son propre matériau.
   toucher du code livré sans autre motif que la cohérence.
 - **Hors périmètre, décidé** : les repas récents du §8.4a (le §7 cadre la
   tranche 3 sur les aliments ; ils iront en tranche 5, où un repas a un sens),
-  le seuil « au-delà de 900 kcal pour 100 g » du §8.5 (écrit pour le parcours
-  Open Food Facts), et `barcode` avec son index unique partiel — nullable, sans
-  CHECK, sans utilisateur avant le scan, donc ajoutable par `ALTER TABLE` en
-  tranche 4.
+  ~~le seuil « au-delà de 900 kcal pour 100 g »~~ **livré en tranche 4**, et
+  ~~`barcode` avec son index unique partiel~~ **livrés par `0003`, en un ALTER
+  TABLE et un CREATE INDEX — le report a tenu exactement ce qu'il promettait.**
 - L'avertissement d'écart kcal de 10 % est maintenant devant l'utilisateur dans
   l'éditeur d'aliment. Le dénominateur reste la valeur théorique et l'alcool
   reste un faux positif structurel (voir tranche 1). Nouveau et gratuit : un

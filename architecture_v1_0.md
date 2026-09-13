@@ -247,6 +247,22 @@ Les écrans les plus importants sont tous sur mesure — anneau de progression, 
 
 **Échecs.** Délai d'attente court, une seule nouvelle tentative, repli silencieux sur le local avec bandeau discret. **Exception : un dépassement de quota n'est pas une panne réseau.** Il suspend les appels distants plusieurs minutes avec un message explicite, sous peine de bannissement par adresse IP.
 
+**[tranche 4] Ce que l'API fait réellement, constaté le 13/09/2026 et non lu.** Huit requêtes à l'API publique. Sept constats, dont quatre ont changé la conception :
+
+| № | Constat | Conséquence |
+| --- | --- | --- |
+| 1 | Une consultation répond **HTTP 200** que le produit existe ou non ; « introuvable » est `status: 0` dans le corps | Le 404 n'est pas le signal |
+| 2 | `fields=` restreint jusqu'au nutriment individuel, sur la consultation | D11 « restreint explicitement » est tenable au niveau fin |
+| 3 | **`nutriments_estimated` revient qu'on le demande ou non**, volumineux, et il est rempli précisément quand les nutriments déclarés manquent | Champ le plus dangereux de la réponse : il comblerait exactement les trous censés faire basculer vers le formulaire. Il n'est pas dans le schéma, donc il ne peut pas être lu par accident |
+| 4 | `brands` est une **chaîne** en consultation, un **tableau** en recherche | La normalisation absorbe les deux |
+| 5 | Un résultat de recherche peut ne porter que **`energy-kj_100g`** là où la consultation fournit `energy-kcal_100g`, calculé côté serveur | **Un résultat de recherche ne suffit pas à construire un aliment** : le choisir déclenche une consultation par code-barres |
+| 6 | `cgi/search.pl` et `/api/v2/search` répondent par une **page HTML** d'indisponibilité sous un 200 ; seul `search.openfoodfacts.org/search?q=` fait une vraie recherche texte | **Deux hôtes.** Et une réponse illisible est un cas réel, pas théorique |
+| 7 | **Aucun en-tête de quota** n'est renvoyé | Le quota restant est inconnaissable : le limiteur est aveugle et le 429 est l'unique signal |
+
+**[tranche 4] Le limiteur est en deux morceaux, et un seul est persisté.** La fenêtre glissante d'une minute vit en mémoire — elle expire en soixante secondes, et la persister coûterait une écriture SQLite par requête réseau. La suspension consécutive à un 429 va dans `setting`, clé `off_suspended_until` : c'est le seul état dont la perte a un coût hors du téléphone, et le §2.2 exige de survivre à un arrêt forcé à tout moment. Une échéance plus lointaine qu'une heure est lue comme expirée, parce qu'une horloge reculée suspendrait sinon l'application indéfiniment.
+
+**[tranche 4] La retry unique n'est pas dépensée sur un délai d'attente.** Un timeout a déjà reçu toutes les millisecondes qu'on était prêt à attendre ; réessayer double une attente déjà jugée trop longue, sur un parcours budgété à cinq secondes. Un refus immédiat, lui, n'a rien coûté et est la panne la plus probablement passagère.
+
 **Qualité des données.** Champs manquants signalés ; écart kcal supérieur à 10 % signalé ; valeurs physiquement impossibles marquées. **L'absence d'un seul des quatre macros** fait basculer sur la création d'un aliment personnel **pré-rempli** de tout ce qui a été fourni.
 
 ---
@@ -368,18 +384,21 @@ setting(key TEXT PRIMARY KEY, value TEXT NOT NULL)
 ### 2.2 Nutrition (V1)
 
 ```sql
--- [tranche 3] Livré par 0002_food. `barcode` et ux_food_barcode sont DIFFÉRÉS
+-- [tranche 3] Livré par 0002_food. `barcode` et ux_food_barcode ont été DIFFÉRÉS
 -- en tranche 4, avec le scan : une migration porte ce qui ne peut pas être
 -- ajouté plus tard, et diffère ce qui le peut. SQLite sait ALTER TABLE ADD
 -- COLUMN (nullable, ou NOT NULL avec défaut) et CREATE/DROP INDEX ; il ne sait
 -- pas ajouter une CHECK ni une FK sans reconstruire la table. `source` est donc
 -- là trois tranches avant son premier utilisateur, `barcode` non.
+-- [tranche 4] Le pari est encaissé : 0003 est un ALTER TABLE et un CREATE INDEX
+-- sur une table qui porte de vraies données, sans rien reconstruire.
 food(
   id TEXT PK,
   name TEXT NOT NULL,
   source TEXT NOT NULL,            -- CHECK ck_food_source : 'perso' | 'off'
   base_unit TEXT NOT NULL,         -- CHECK ck_food_base_unit : 'g' | 'ml'
   brand TEXT,
+  barcode TEXT,                    -- [tranche 4] nullable, SANS CHECK
   protein_100 REAL NOT NULL,       -- forme canonique, pour 100 unités de base
   carbs_100   REAL NOT NULL,
   fat_100     REAL NOT NULL,
@@ -394,6 +413,21 @@ food(
 -- case_sensitive_like. La recherche est une fonction pure sur une liste en
 -- cache — seul moyen d'ignorer les accents sans stocker une colonne repliée.
 CREATE INDEX ix_food_name ON food(name COLLATE NOCASE);
+
+-- [tranche 4] Un aliment par code-barres : c'est ce qui fait du dédoublonnage
+-- du §8.5 une garantie de la base plutôt qu'une discipline d'écran. PARTIEL, et
+-- la clause est de la documentation plus que de la mécanique — SQLite traite
+-- déjà les NULL comme distincts, donc tout aliment sans code-barres coexiste de
+-- toute façon ; elle dit l'intention et limite l'index aux lignes concernées.
+--
+-- Ce qu'un unique réintroduit, et comment on y répond : c'est la première chose
+-- de cette table qui puisse faire échouer un INSERT, alors que la tranche 3
+-- avait écarté toute CHECK sur les macros pour que la copie automatique ne
+-- puisse jamais échouer. Deux produits peuvent partager un EAN, et le même
+-- produit logué deux fois entrerait en collision avec lui-même. La réponse
+-- n'est pas de renoncer à l'index : le chemin de copie lit par code-barres et
+-- réutilise, dans sa transaction, au lieu d'insérer à l'aveugle.
+CREATE UNIQUE INDEX ux_food_barcode ON food(barcode) WHERE barcode IS NOT NULL;
 
 -- AUCUNE CHECK sur les macros, et c'est un refus : le §8.5 exige que les
 -- valeurs Open Food Facts soient signalées et éditables, jamais refusées, et la
@@ -508,11 +542,22 @@ CREATE INDEX ix_entry_source_food ON journal_entry(source_food_id, created_at);
 
 ```sql
 off_cache(
-  barcode TEXT PRIMARY KEY,
+  barcode TEXT PRIMARY KEY,           -- [tranche 4] le code DEMANDÉ, pas celui renvoyé
   payload TEXT NOT NULL,              -- réponse normalisée, champs restreints
   fetched_at INTEGER NOT NULL
 )
+-- [tranche 4] Aucun index : la purge balaie quelques centaines de lignes, et un
+-- index est la seule chose d'une migration qui puisse encore être ajoutée après.
+-- Aucune CHECK non plus : rien ici n'a d'ensemble fermé à contraindre.
 ```
+
+**[tranche 4] Trois précisions constatées à l'écriture.**
+
+1. **La clé est le code-barres demandé, jamais celui que l'API renvoie.** Elle normalise ce qu'on lui donne — une consultation de `0000000000017` répond `code: "00000017"` — donc indexer sur l'écho rangerait les lignes sous un code que le scanner ne produit jamais.
+2. **`payload` porte NOTRE forme normalisée, pas la réponse brute.** La réponse traîne `nutriments_estimated`, un bloc volumineux de valeurs estimées depuis la liste d'ingrédients, qui arrive qu'on le demande ou non. Le stocker ferait entrer dans la base des chiffres que personne n'a déclarés. Corollaire : la lecture valide aussi bien que l'écriture — cette colonne survit à une montée de binaire, donc c'est une frontière dans le temps — et une ligne devenue illisible est traitée comme absente.
+3. **Seuls les produits TROUVÉS y entrent.** Mettre en cache un « code inconnu » pendant trente jours masquerait un produit ajouté entre-temps chez Open Food Facts, et ne pas le cacher coûte une requête, plafonnée par le limiteur.
+
+**[tranche 4] Le rafraîchissement opportuniste n'écrit QUE dans cette table.** Il ne touche jamais `food`. C'est la réponse entière à « que devient une correction au rafraîchissement » : rien, parce qu'aucun chemin de code ne va d'ici à cette table. Le §8.5 place le rafraîchissement sous *Open Food Facts* et la libre correction d'un aliment copié sous *Base personnelle* ; les deux rubriques ne se rencontrent pas.
 
 ### 2.5 Poids (V2)
 
@@ -746,14 +791,14 @@ CREATE INDEX ix_activity_date ON activity(date);
 | `drizzle-orm` | Requêtes et schéma | Intégration `expo-sqlite`, **zéro surface native** (D2) | non |
 | `drizzle-kit` | Migrations générées | Migrations SQL versionnées et relisibles (D6) | dev |
 | `@tanstack/react-query` | Couche de requête | Locale et réseau, invalidation par le bus (D8) | non |
-| `expo-camera` | Scan de code-barres | §8.5 | oui |
+| `expo-camera` | Scan de code-barres | §8.5. **[tranche 4] Installée**, et son greffon de configuration est **déclaré** — contrairement à `expo-sharing`, laissé à l'autolinking — parce qu'il écrit `NSCameraUsageDescription` dans l'`Info.plist`, ce que l'autolinking ne fait pas. Sans elle, iOS tue l'application à l'ouverture de l'appareil photo : l'alternative n'est pas une chaîne manquante, c'est un plantage que le bundle JS ne sait pas reproduire | oui |
 | `expo-notifications` | Notifications locales | §9.3, minuteur de repos (D14) | oui |
 | `expo-file-system` | Fichiers, sauvegardes | Export, copies pré-migration (D6, D7) | oui |
 | `expo-sharing` | Feuille de partage | Export (§5.4) | oui |
 | `expo-secure-store` | Trousseau | Clé intervals.icu, V4 (§11.1) | oui |
 | `react-native-svg` | Graphiques, carte corporelle | Un seul outil graphique (D13) | oui |
 | `d3-scale`, `d3-shape` | Échelles et tracés | JavaScript pur, quelques kilo-octets (D13) | non |
-| `zod` | Validation aux frontières | Import JSON, Open Food Facts (D7, D15) | non |
+| `zod` | Validation aux frontières | **[tranche 4] En service, et à UNE seule frontière.** L'import JSON ne l'utilise pas et ne l'utilisera pas : sa charge utile est déjà décrite par les objets Drizzle, un schéma zod en serait une seconde déclaration libre de diverger. Celle d'Open Food Facts est vraiment étrangère. Un test refuse tout import de `zod` hors de `features/nutrition/off/` | non |
 | `ulid` | Identifiants triables | JavaScript pur (D4) | non |
 | `date-fns` | Formatage français | Sous le module `core/date`, jamais appelé directement | non |
 | `@react-native-picker/picker` | Molette de quantité | **[tranche 3]** `UIPickerView` réel pour le §8.4 : rien dans React Native n'y donne accès, et trois listes aimantées en restaient une imitation sans la courbure ni le son du système. Ajout **demandé et validé explicitement** | oui |
@@ -889,3 +934,18 @@ divergence vivre dans le code.
 | 5 | §3 | La bibliotheque passe de `app/library/` a `app/(tabs)/(journal)/library/` | A la racine elle recouvrirait la barre d'onglets ; le §7 la decrit comme un endroit ou le Journal mene. Regle qui en sort : consulter est un empilement, ajouter est une modale |
 | 6 | §3 | S'ajoutent hors arborescence initiale : `core/db/version-guard.ts`, `database-gate.tsx`, `database.ts`, `app-database.ts`, `core/id/`, `core/format/`, `core/query/` | G3 exige un refus de demarrage avec message, il lui faut un porteur |
 
+### 9.4 Tranche 4 (13/09/2026)
+
+| No | Section | Amendement | Motif |
+| --- | --- | --- | --- |
+| 1 | §2.2 | `barcode TEXT` et `ux_food_barcode`, index unique **partiel**, ajoutes par `0003` | Le report de la tranche 3 est encaisse : un ALTER TABLE et un CREATE INDEX sur une table qui porte de vraies donnees, sans rien reconstruire. La clause WHERE dit l'intention, SQLite traitant deja les NULL comme distincts |
+| 2 | §2.2 | La copie automatique lit par code-barres et **reutilise**, elle n'insere jamais a l'aveugle | Un index unique est la premiere chose de cette table qui puisse faire echouer un INSERT, alors que la tranche 3 avait ecarte toute CHECK sur les macros pour que ce chemin ne puisse jamais echouer |
+| 3 | §2.4 | La cle est le code-barres **demande** ; `payload` porte la forme normalisee maison ; seuls les produits trouves y entrent ; aucun index, aucune CHECK | L'API normalise ce qu'on lui donne, et sa reponse brute traine des valeurs estimees depuis les ingredients |
+| 4 | §2.1 | Cle `off_suspended_until` ajoutee aux reglages connus | C'est le seul etat du limiteur dont la perte a un cout hors du telephone |
+| 5 | D11 | Sept constats sur l'API reelle, dont : **deux hotes** (la recherche texte vit sur `search.openfoodfacts.org`), le 404 n'est pas le signal, et `nutriments_estimated` arrive non demande | Constate le 13/09/2026 par huit requetes, non lu dans une documentation |
+| 6 | D11 | La retry unique n'est **pas** depensee sur un delai d'attente, seulement sur un refus immediat | Un timeout a deja recu tout le temps qu'on avait ; reessayer double une attente jugee trop longue sur un parcours budgete a cinq secondes |
+| 7 | D11 | Le limiteur est en deux morceaux : fenetre glissante en memoire, suspension persistee | Une minute d'expiration ne justifie pas une ecriture SQLite par requete ; un 429 oublie apres un arret force fait bannir |
+| 8 | §5 | `zod` **en service**, restreint par un test a `features/nutrition/off/` ; `expo-camera` **installee**, greffon declare | L'import JSON garde sa validation derivee du schema (decision de la tranche 2) ; le greffon ecrit une cle d'Info.plist que l'autolinking ne produit pas |
+| 9 | §3 | `features/nutrition/off/` peuple : `off-parse`, `off-product`, `off-client`, `off-gateway`, `rate-limit`, `off-cache`, `off-lookup`, `off-dedupe`, `off-draft`, `off-queries`, `scan-screen` | Le §3 prevoyait le dossier sans en detailler le decoupage ; il suit celui de `core/db` — pur d'un cote, natif de l'autre, `off-gateway` etant le seul a nommer une vraie dependance |
+| 10 | §5.1 | Un produit Open Food Facts a **toujours** `base_unit = 'g'`, sans heuristique | L'API publie des valeurs `_100g` pour tout ce qu'elle contient, liquides compris. Les lire comme « pour 100 ml » serait appliquer une densite de 1, que le §5.1 exclut. Qui veut des millilitres corrige l'aliment |
+| 11 | §5.1 | Les **kilojoules ne sont pas convertis** en kcal | « La valeur calorique d'une source est conservee telle quelle ». La consultation par code-barres fournit les kcal de toute facon, calculees cote serveur. Reserve : si le formulaire s'ouvre trop souvent a l'usage, la conversion est le premier remede et tient en une ligne |

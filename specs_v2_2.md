@@ -408,6 +408,8 @@ Les onglets non pourvus dans une version donnée sont **présents et affichent u
 
 **Scan de code-barres**
 - Enchaînement : scan → recherche (personnelle, puis cache, puis Open Food Facts) → écran de quantité → validation. **Cible : moins de 5 secondes.**
+- **[v2.4] « Validation » veut dire la ligne posée au panier, pas l'écriture au journal.** Cette phrase a été écrite avant le panier du §8.4 v2.3, qui interpose un « Confirmer » entre le choix et l'écriture. La cible des 5 secondes se mesure donc du scan jusqu'à la ligne en attente ; confirmer un repas est un geste de plus, partagé par toutes les façons d'ajouter.
+- **[v2.4] La recherche personnelle est vraiment première, et elle suffit le plus souvent.** Un produit déjà scanné a été copié en base par la confirmation qui l'a logué : le scan suivant coûte une lecture indexée et aucune requête. C'est l'essentiel de la façon dont la cible est tenue.
 - **Code-barres inconnu** : proposition de créer un aliment personnel pré-rempli
 - **[v2.2] Produit trouvé mais incomplet** : l'absence d'un seul des quatre — protéines, glucides, lipides, kcal — **fait sortir du parcours rapide** et bascule sur la création d'un aliment personnel, **pré-rempli** de tout ce qu'Open Food Facts a fourni (nom, marque, code-barres, macros présentes). Seuls les champs manquants sont à compléter. Ce chemin sort assumément de la cible des 5 secondes : l'aliment étant ensuite copié en base personnelle, le coût n'est payé qu'une fois.
 
@@ -760,3 +762,22 @@ une collection view. Ce qui est copie est la forme et les proportions : suivi
 du doigt, resistance passee la position de repos, sortie complete au-dela d'un
 seuil, ressort au relachement, parallaxe d'un tiers sur la couche qui arrive.
 L'ecart restant est un ecart de rendu, non de comportement, et il est assume.
+
+### 14.5 Modifications issues de la tranche 4 (13/09/2026)
+
+Meme regle qu'en 14.4 : une demande ou un constat qui diverge des specs modifie
+les specs, de facon signalee.
+
+| No | Section | Modification | Motif |
+| --- | --- | --- | --- |
+| 1 | §8.5 | La **copie automatique a lieu a « Confirmer »**, dans la transaction qui ecrit les entrees, jamais a la selection | Un produit choisi puis abandonne ne doit rien laisser. Scanner trois choses en rayon, en retirer une du panier et fermer laisserait sinon des aliments que personne n'a valides — de la donnee creee par consultation, ce que le §8.2 interdit deja pour les journees. Regle commune : ce qu'on enregistre explicitement s'ecrit, ce qu'on se contente de choisir non |
+| 2 | §8.5 | Le dedoublonnage **masque**, sans fusionner ni proposer de choix — y compris quand les macros distantes different desormais des locales | La correction locale est « le mecanisme principal de compensation de la qualite inegale de la source ». Reafficher a cote la version non corrigee reproposerait a chaque recherche ce que l'utilisateur a delibere de remplacer ; et un ecran de comparaison sur ce parcours aurait toujours la meme reponse |
+| 3 | §8.5 | Le **bandeau hors ligne apparait sur l'echec d'une requete**, jamais sur l'absence de reseau, et seulement sur la fenetre d'ajout | Detecter l'absence de reseau demanderait une dependance hors du §5 ; la reponse serait fausse derriere un portail captif ; et D11 range deja le bandeau dans son paragraphe « Echecs ». Consequence assumee : rien ne s'affiche tant que rien n'a ete demande |
+| 4 | §8.5 | **Deux registres distincts** : hors ligne et reponse illisible sont discrets, un quota signale par le SERVEUR interrompt. Notre propre fenetre preventive reste discrete | D11 reserve le message explicite au depassement signale par le serveur. Une reponse illisible n'est jamais formulee « hors ligne » : le telephone est demontrablement connecte |
+| 5 | §8.5 | **L'absence de nom fait basculer** vers le formulaire pre-rempli, comme l'absence d'une macro | `food.name` est NOT NULL : un produit sans nom ne peut pas etre ecrit. Le §8.5 dit deja « seuls les champs manquants sont a completer », et un nom est un champ |
+| 6 | §8.5 | Un **code-barres inconnu** ouvre le meme formulaire, pre-rempli du seul code-barres | Ce n'est pas rien : c'est ce qui fera se dedoublonner l'aliment le jour ou le produit sera ajoute chez Open Food Facts. Un formulaire au code-barres vide laisserait ce rayon inscannable pour toujours |
+| 7 | §8.5, §6.1 | Un produit Open Food Facts a **toujours `g`** comme unite de base | L'API publie des valeurs pour 100 g y compris pour les liquides. Les lire comme « pour 100 ml » appliquerait une densite de 1, que le §5.1 exclut. La libre correction du §8.5 couvre le cas |
+| 8 | §8.5 | Les **kilojoules ne sont pas convertis** : un produit sans `energy-kcal` est incomplet et bascule | Le §5.1 conserve la valeur d'une source telle quelle. Reserve consignee : la consultation par code-barres fournit les kcal dans les cas observes, mais si le formulaire s'ouvre trop souvent a l'usage, la conversion est le premier remede |
+| 9 | §8.4b | La recherche distante part sur une **validation du champ**, sans anti-rebond | Un anti-rebond serait une facon de chercher au fil d'une frappe lente : il respecterait la limite de dix par minute sans respecter l'interdiction, qui porte sur l'intention |
+| 10 | §8.5 | Le seuil des **900 kcal pour 100** est un avertissement affiche a cote du champ, strictement au-dessus de 900, et un seul seuil pour les deux unites | En faire un blocage contredirait « signalees et editables, jamais refusees ». La graisse pure vaut 900 pile : un avertissement qui se declenche sur l'huile d'olive ne se lit pas deux fois |
+| 11 | §13.8 | Les points d'entree ont change : **la recherche texte vit sur `search.openfoodfacts.org`**, `cgi/search.pl` et `/api/v2/search` repondant par une page HTML | Constate le 13/09/2026. Le point ouvert n° 8 prevoyait que les limites evoluent ; ce sont les points d'entree eux-memes qui ont bouge |
