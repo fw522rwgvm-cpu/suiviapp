@@ -49,11 +49,7 @@ export function DayPage({
   onAdd: (date: LocalDate, meal: DayMealView) => void;
   onEditEntry: (date: LocalDate, entry: JournalEntryView) => void;
   onDeleteEntry: (entry: JournalEntryView) => void;
-  onMealActions: (
-    date: LocalDate,
-    meal: DayMealView,
-    siblings: readonly DayMealView[],
-  ) => void;
+  onMealActions: (date: LocalDate, meal: DayMealView) => void;
   onAddMeal: (date: LocalDate) => void;
 }) {
   const theme = useTheme();
@@ -200,7 +196,7 @@ export function DayPage({
             onAdd={() => onAdd(date, meal)}
             onEditEntry={(entry) => onEditEntry(date, entry)}
             onDeleteEntry={onDeleteEntry}
-            onLongPress={() => onMealActions(date, meal, meals)}
+            onLongPress={() => onMealActions(date, meal)}
           />
         ))}
 

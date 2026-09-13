@@ -2,7 +2,6 @@ import { SymbolView } from 'expo-symbols';
 import { Link, Stack, useRouter } from 'expo-router';
 import { useEffect, useLayoutEffect, useState } from 'react';
 import {
-  ActionSheetIOS,
   Alert,
   Pressable,
   StyleSheet,
@@ -24,13 +23,11 @@ import {
   useAddMeal,
   useDeleteEntry,
   useDeleteMeal,
-  useRenameMeal,
 } from '../data/day-queries';
 import type { JournalEntryView } from '../data/day-reads';
 import { DayPage } from '../components/day-page';
 import { useRequestedDate } from '../hooks/requested-date';
 import type { DayMealView } from '../domain/day-plan';
-import { canUseKind, MEAL_KINDS } from '../domain/meal-kinds';
 
 /**
  * The Journal (specs 8.3).
@@ -105,7 +102,6 @@ export function JournalScreen() {
   }, [requested, clear]);
 
   const addMeal = useAddMeal();
-  const renameMeal = useRenameMeal();
   const deleteMeal = useDeleteMeal();
   const deleteEntry = useDeleteEntry();
 
@@ -210,70 +206,35 @@ export function JournalScreen() {
     router.push({ pathname: '/(modals)/meal', params: { date: pageDate } });
   }
 
-  function promptMealActions(
-    pageDate: LocalDate,
-    meal: DayMealView,
-    siblings: readonly DayMealView[],
-  ): void {
-    /**
-     * Only the kinds the day does not already hold, plus this meal's own.
-     *
-     * A day may hold one breakfast, one lunch and one dinner; offering a kind
-     * that is taken and then refusing it at the write would be asking a
-     * question whose answer is already known. Snacks are always offered.
-     *
-     * The siblings are handed in by the page that is showing them rather than
-     * fetched again here: it already holds the day, and a second read could
-     * answer differently from what is on screen.
-     */
-    const names = siblings.map((entry) => entry.name);
-    const index = siblings.findIndex((entry) => entry.position === meal.position);
-    const kinds = MEAL_KINDS.filter(
-      (kind) => kind !== meal.name && canUseKind(names, index, kind),
-    );
-
+  /**
+   * ONE ENTRY WHERE THERE WERE TWO.
+   *
+   * "Changer de repas" and "modifier les objectifs" were separate rows here,
+   * and they are one thought: this meal is not what it says, or not aiming
+   * where it should. Splitting them made the user pick which half of an edit
+   * they wanted before being shown either — and backed it with two writes, so
+   * a forced quit between them could rename a meal and leave its old targets.
+   *
+   * The siblings are no longer needed: the screen behind the modal reads the
+   * day itself, and decides there which kinds are still free.
+   */
+  function promptMealActions(pageDate: LocalDate, meal: DayMealView): void {
     Alert.alert(meal.label, undefined, [
       { text: 'Annuler', style: 'cancel' },
       {
-        text: 'Modifier les objectifs',
+        text: 'Modifier le repas',
         onPress: () =>
           router.push({
             pathname: '/(modals)/meal',
             params: { date: pageDate, mealPosition: String(meal.position) },
           }),
       },
-      // Absent rather than disabled when every other kind is taken: a greyed
-      // row in an alert is a row you try to press.
-      ...(kinds.length === 0
-        ? []
-        : [
-            {
-              text: 'Changer de repas',
-              onPress: () => promptMealKind(pageDate, meal, kinds),
-            },
-          ]),
       {
         text: 'Supprimer le repas',
-        style: 'destructive' as const,
+        style: 'destructive',
         onPress: () => deleteMeal.mutate({ date: pageDate, mealPosition: meal.position }),
       },
     ]);
-  }
-
-  function promptMealKind(
-    pageDate: LocalDate,
-    meal: DayMealView,
-    kinds: readonly string[],
-  ): void {
-    const options = [...kinds, 'Annuler'];
-    ActionSheetIOS.showActionSheetWithOptions(
-      { title: 'Changer de repas', options, cancelButtonIndex: options.length - 1 },
-      (chosen) => {
-        const name = kinds[chosen];
-        if (name === undefined) return;
-        renameMeal.mutate({ date: pageDate, mealPosition: meal.position, name });
-      },
-    );
   }
 
   const pageProps = {

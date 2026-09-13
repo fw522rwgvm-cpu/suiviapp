@@ -5,7 +5,7 @@ import { newId } from '../../src/core/id';
 import { readDay } from '../../src/features/nutrition/data/day-reads';
 import {
   addFreeEntry,
-  renameMeal,
+  updateMeal,
   updateMealTargets,
 } from '../../src/features/nutrition/data/day-writes';
 import {
@@ -488,7 +488,7 @@ describe('applying the planning targets to a day already materialised', () => {
     // Position 0 is a breakfast on the fallback day and on the template. Turned
     // into a snack here, so that applying the template's targets would have to
     // overwrite the name to get it wrong — which is the thing being tested.
-    renameMeal(fixture.db, { date: TUESDAY, mealPosition: 0, name: 'Collation' });
+    updateMeal(fixture.db, { date: TUESDAY, mealPosition: 0, name: 'Collation', targets: null });
     addFreeEntry(fixture.db, {
       date: TUESDAY,
       mealPosition: 0,

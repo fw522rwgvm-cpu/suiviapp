@@ -246,8 +246,8 @@ describe('the accent, now that it is the mint', () => {
   it('is the same hex in both themes, which was asked for by name', () => {
     // A darkened light-theme variant was tried and rejected on sight: it read
     // as a different, duller colour rather than as the same one adapted.
-    expect(colors.light.accent).toBe('#08daa9');
-    expect(colors.dark.accent).toBe('#08daa9');
+    expect(colors.light.accent).toBe('#08c99c');
+    expect(colors.dark.accent).toBe('#08c99c');
   });
 
   it('is readable as a label on the DARK surface', () => {
@@ -271,7 +271,7 @@ describe('the accent, now that it is the mint', () => {
     // Below 3:1, the threshold for a drawn shape, let alone the 4.5:1 a label
     // needs. The way out is a darker SURFACE, never a darker green.
     expect(measured).toBeLessThan(3);
-    expect(measured).toBeCloseTo(1.81, 2);
+    expect(measured).toBeCloseTo(2.13, 2);
   });
 
   it('keeps a filled button readable, which the colour did not decide', () => {

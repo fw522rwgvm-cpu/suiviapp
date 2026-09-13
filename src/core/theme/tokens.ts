@@ -44,7 +44,7 @@ export interface ColorTokens {
    * next to the teal of protein, and an accent and a figure could be mistaken
    * for each other on the one screen where both appear at once.
    *
-   * It is now a mint green — #08daa9, asked for by name as the application's
+   * It is now a mint green — #08c99c, asked for by name as the application's
    * colour. Which brings that exact collision back, so the answer is the other
    * half of the trade: THE ACCENT VACATED BLUE, AND PROTEIN TOOK IT. The two
    * are now a green and a blue rather than two greens, and the reason the old
@@ -54,10 +54,10 @@ export interface ColorTokens {
    *
    * A darkened variant was tried for the light theme and rejected on sight: it
    * read as a different, duller colour rather than as the same one adapted.
-   * The brand colour is the brand colour, so #08daa9 is used as given on both
+   * The brand colour is the brand colour, so #08c99c is used as given on both
    * surfaces. Decision recorded rather than inferred.
    *
-   * The price, measured: 1.81:1 against white. That is below the 4.5:1 a label
+   * The price, measured: 2.13:1 against white. That is below the 4.5:1 a label
    * needs and below even the 3:1 a drawn shape needs. So in the LIGHT theme
    * everything tinted with the accent — the chevrons, "Enregistrer", the add
    * button's glyph — is faint, and the gauge is a pale ring on a white card.
@@ -155,7 +155,7 @@ const light: ColorTokens = {
   text: '#111113',
   textMuted: '#65656d',
   textFaint: '#9a9aa3',
-  accent: '#08daa9',
+  accent: '#08c99c',
   onAccent: '#0f0f11',
   onDanger: '#ffffff',
   warning: '#8a5a00',
@@ -174,7 +174,7 @@ const light: ColorTokens = {
    * clears the bar — 4.60:1, pinned by a test.
    */
   danger: '#e02d1f',
-  macroKcal: '#08daa9',
+  macroKcal: '#08c99c',
   macroProtein: '#3457c5',
   macroCarbs: '#d98324',
   macroFat: '#8a5cc4',
@@ -195,7 +195,7 @@ const dark: ColorTokens = {
   text: '#f2f2f4',
   textMuted: '#a0a0a9',
   textFaint: '#6b6b74',
-  accent: '#08daa9',
+  accent: '#08c99c',
   onAccent: '#0f0f11',
   onDanger: '#0f0f11',
   warning: '#e0a942',
@@ -213,7 +213,7 @@ const dark: ColorTokens = {
   danger: '#ff453a',
   // Lifted, not the same hex: a colour that reads on white disappears on near
   // black, and the point of giving each macro a colour is that it be readable.
-  macroKcal: '#08daa9',
+  macroKcal: '#08c99c',
   macroProtein: '#7f9cf5',
   macroCarbs: '#f0a94c',
   macroFat: '#b18ce0',

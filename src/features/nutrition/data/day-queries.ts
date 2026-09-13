@@ -26,10 +26,10 @@ import {
   addRecentMeal,
   deleteEntry,
   deleteMeal,
-  renameMeal,
   updateFoodEntryQuantity,
   updateMealTargets,
   updateFreeEntry,
+  updateMeal,
 } from './day-writes';
 
 /**
@@ -210,10 +210,17 @@ export function useUpdateMealTargets() {
   });
 }
 
-export function useRenameMeal() {
+/**
+ * Changes what a meal is and what it aims at, together (specs 8.3).
+ *
+ * One mutation because it is one transaction: the two used to be separate
+ * writes behind separate menu entries, and a forced quit between them could
+ * leave a meal renamed with its old targets.
+ */
+export function useUpdateMeal() {
   return useMutation({
-    mutationFn: (input: Parameters<typeof renameMeal>[1]) =>
-      Promise.resolve(renameMeal(getAppDatabase(), input)),
+    mutationFn: (input: Parameters<typeof updateMeal>[1]) =>
+      Promise.resolve(updateMeal(getAppDatabase(), input)),
   });
 }
 

@@ -12,7 +12,7 @@ import {
   deleteEntry,
   deleteMeal,
   FREE_ENTRY_DEFAULT_NAME,
-  renameMeal,
+  updateMeal,
   updateFreeEntry,
 } from '../../src/features/nutrition/data/day-writes';
 import { DEFAULT_MEAL_NAMES, virtualDay } from '../../src/features/nutrition/domain/day-plan';
@@ -281,7 +281,7 @@ describe('meals of a day', () => {
   it('changes which of the four a meal is, materialising the day on the way', () => {
     // The fallback day is one of each, so the only move available is turning a
     // singular meal into a snack: everything else is already taken.
-    renameMeal(fixture.db, { date: DATE, mealPosition: 0, name: 'Collation' });
+    updateMeal(fixture.db, { date: DATE, mealPosition: 0, name: 'Collation', targets: null });
 
     expect(countRows(fixture.raw, 'day')).toBe(1);
     expect(readDay(fixture.db, DATE).meals[0]?.name).toBe('Collation');
@@ -292,7 +292,7 @@ describe('meals of a day', () => {
     // been frozen since 0001, and a closed display vocabulary is the weaker
     // thing to constrain in SQL anyway (see domain/meal-kinds.ts).
     expect(() =>
-      renameMeal(fixture.db, { date: DATE, mealPosition: 3, name: 'Collation du soir' }),
+      updateMeal(fixture.db, { date: DATE, mealPosition: 3, name: 'Collation du soir', targets: null }),
     ).toThrow();
     expect(() => addMeal(fixture.db, { date: DATE, name: 'Pré-entraînement' })).toThrow();
   });
@@ -375,5 +375,101 @@ describe('days do not leak into each other', () => {
       fat: 1,
       kcal: 10,
     });
+  });
+});
+
+describe('changing what a meal is and what it aims at, together', () => {
+  it('writes the kind and the targets in one go', () => {
+    updateMeal(fixture.db, {
+      date: DATE,
+      mealPosition: 0,
+      name: 'Collation',
+      targets: { protein: 10, carbs: 20, fat: 5, kcal: 165 },
+    });
+
+    const meal = readDay(fixture.db, DATE).meals[0];
+    expect(meal?.name).toBe('Collation');
+    expect(meal?.targets).toEqual({ protein: 10, carbs: 20, fat: 5, kcal: 165 });
+  });
+
+  it('lets a meal keep the kind it already has', () => {
+    // A meal is not in conflict with itself. Editing only the targets of a
+    // breakfast must not be refused because the day has a breakfast.
+    expect(() =>
+      updateMeal(fixture.db, {
+        date: DATE,
+        mealPosition: 0,
+        name: 'Petit-déjeuner',
+        targets: { protein: 1, carbs: 1, fat: 1, kcal: 17 },
+      }),
+    ).not.toThrow();
+    expect(readDay(fixture.db, DATE).meals[0]?.targets?.kcal).toBe(17);
+  });
+
+  it('refuses a kind another meal of the day holds, and writes nothing', () => {
+    updateMeal(fixture.db, {
+      date: DATE,
+      mealPosition: 0,
+      name: 'Petit-déjeuner',
+      targets: { protein: 9, carbs: 9, fat: 9, kcal: 153 },
+    });
+
+    expect(() =>
+      updateMeal(fixture.db, {
+        date: DATE,
+        mealPosition: 0,
+        name: 'Déjeuner',
+        targets: { protein: 1, carbs: 1, fat: 1, kcal: 17 },
+      }),
+    ).toThrow();
+
+    // THE HALF THAT MATTERS: the targets did not move either. Two separate
+    // writes would have left the day carrying the new numbers under the old
+    // name.
+    const meal = readDay(fixture.db, DATE).meals[0];
+    expect(meal?.name).toBe('Petit-déjeuner');
+    expect(meal?.targets?.kcal).toBe(153);
+  });
+
+  it('clears the targets when handed none', () => {
+    updateMeal(fixture.db, {
+      date: DATE,
+      mealPosition: 0,
+      name: 'Petit-déjeuner',
+      targets: { protein: 1, carbs: 1, fat: 1, kcal: 17 },
+    });
+    updateMeal(fixture.db, {
+      date: DATE,
+      mealPosition: 0,
+      name: 'Petit-déjeuner',
+      targets: null,
+    });
+
+    expect(readDay(fixture.db, DATE).meals[0]?.targets).toBeNull();
+  });
+
+  it('refuses a name outside the four', () => {
+    expect(() =>
+      updateMeal(fixture.db, {
+        date: DATE,
+        mealPosition: 0,
+        name: 'Brunch',
+        targets: null,
+      }),
+    ).toThrow();
+  });
+
+  it('leaves every other meal of the day alone', () => {
+    updateMeal(fixture.db, {
+      date: DATE,
+      mealPosition: 1,
+      name: 'Collation',
+      targets: { protein: 3, carbs: 3, fat: 3, kcal: 51 },
+    });
+
+    const meals = readDay(fixture.db, DATE).meals;
+    expect(meals[0]?.name).toBe('Petit-déjeuner');
+    expect(meals[2]?.name).toBe('Dîner');
+    expect(meals.filter((meal) => meal.targets !== null)).toHaveLength(1);
   });
 });

@@ -592,15 +592,36 @@ function requireKind(name: string): MealKind {
 }
 
 /**
- * Changes which of the four a meal is (specs 8.3), materialising the day.
+ * Changes what a meal IS and what it aims at, in one transaction (specs 8.3).
  *
- * No longer free text: the name is one of a closed list, so what used to be a
- * rename is now a choice between kinds. The old signature took any string, and
- * the rows it wrote keep their names — see the note in domain/meal-kinds.ts.
+ * ## THE TWO USED TO BE SEPARATE ACTIONS, AND THAT WAS THE BUG
+ *
+ * The journal offered "changer de repas" and "modifier les objectifs" as two
+ * entries in a long-press menu, backed by two writes. They are one thought —
+ * this meal is not what it says, or not aiming where it should — and splitting
+ * them made the user choose which half of an edit they wanted before being
+ * shown either.
+ *
+ * Merged, they also become atomic, which they were not. Two writes meant a
+ * forced quit between them could leave a meal renamed with its old targets, and
+ * specs 2.2 says the application can be killed at any moment.
+ *
+ * The name is one of the four, and the day may hold only one breakfast, one
+ * lunch and one dinner — checked here against the day as it will be written,
+ * not as some screen last saw it.
+ *
+ * Targets are all four or none, and null clears them: that is how a meal goes
+ * back to having no goal, and why the argument is a whole Macros rather than
+ * four optional numbers.
  */
-export function renameMeal(
+export function updateMeal(
   db: AppDatabase,
-  input: { date: LocalDate; mealPosition: number; name: string },
+  input: {
+    date: LocalDate;
+    mealPosition: number;
+    name: string;
+    targets: Macros | null;
+  },
 ): void {
   const kind = requireKind(input.name);
 
@@ -609,7 +630,18 @@ export function renameMeal(
     const meal = requireMeal(meals, input.mealPosition);
     requireUsableKind(tx, input.date, kind, meals.indexOf(meal));
 
-    tx.update(dayMeal).set({ name: kind }).where(eq(dayMeal.id, meal.id)).run();
+    const { targets } = input;
+
+    tx.update(dayMeal)
+      .set({
+        name: kind,
+        targetProtein: targets?.protein ?? null,
+        targetCarbs: targets?.carbs ?? null,
+        targetFat: targets?.fat ?? null,
+        targetKcal: targets?.kcal ?? null,
+      })
+      .where(eq(dayMeal.id, meal.id))
+      .run();
   });
 }
 

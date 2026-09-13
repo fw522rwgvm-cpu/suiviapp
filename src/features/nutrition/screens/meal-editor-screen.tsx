@@ -7,10 +7,10 @@ import { useTheme } from '@/core/theme';
 import { FormInput, FormNavigation, FormRow, FormSection } from '@/core/ui/form-section';
 import { ListSeparator } from '@/core/ui/list-separator';
 import { useDismiss, usePanelHeading } from '@/core/ui/overlay-panel';
-import { useAddMeal, useDay, useUpdateMealTargets } from '../data/day-queries';
+import { useAddMeal, useDay, useUpdateMeal } from '../data/day-queries';
 import { MACRO_FIELDS } from '../components/macro-fields';
 import { mealColor, mealSymbol } from '../components/meal-symbol';
-import { availableKinds, canUseKind, isMealKind, type MealKind } from '../domain/meal-kinds';
+import { canUseKind, isMealKind, MEAL_KINDS, type MealKind } from '../domain/meal-kinds';
 import {
   emptyTemplateMealDraft,
   readDraftTargets,
@@ -18,7 +18,7 @@ import {
 } from '../domain/template-draft';
 
 /**
- * Creating a meal on a day, or changing the targets of one (specs 8.3).
+ * Creating a meal on a day, or changing one (specs 8.3).
  *
  * > Adding, renaming and deleting meals is free, without impact on the source
  * > template, with the targets recalculated.
@@ -44,9 +44,14 @@ import {
  * lunch and one dinner. Offering a kind the day already has and then refusing
  * it at the write would be asking a question whose answer is already known.
  *
- * Editing an EXISTING meal does not offer the kind at all. Changing what a
- * meal is, once it holds entries, is a different act from setting its goals,
- * and the journal already has it under a long press.
+ * THE SAME SCREEN EDITS AN EXISTING MEAL, kind included. It used to offer only
+ * the targets, with the kind hidden behind a second entry in the long-press
+ * menu — which made the user pick which half of an edit they wanted before
+ * being shown either. One screen, one transaction, both halves.
+ *
+ * When editing, the meal's OWN kind is always among the choices: a meal is not
+ * in conflict with itself, which is what canUseKind knows and this does not
+ * have to.
  *
  * ## THE FOUR TARGETS GO TOGETHER OR NOT AT ALL
  *
@@ -68,14 +73,25 @@ export function MealEditorScreen({
 
   const day = useDay(date);
   const addMeal = useAddMeal();
-  const updateTargets = useUpdateMealTargets();
+  const updateMeal = useUpdateMeal();
 
   const meals = day.data?.meals ?? [];
   const existing = mealPosition === null
     ? undefined
     : meals.find((meal) => meal.position === mealPosition);
 
-  const offered = availableKinds(meals.map((meal) => meal.name));
+  /**
+   * The kinds this meal may take, its own included when it already has one.
+   *
+   * One expression for both modes: creating asks about a meal that does not
+   * exist yet, which is the position past the end.
+   */
+  const names = meals.map((meal) => meal.name);
+  const index =
+    mealPosition === null
+      ? names.length
+      : meals.findIndex((meal) => meal.position === mealPosition);
+  const offered = MEAL_KINDS.filter((option) => canUseKind(names, index, option));
   const [kind, setKind] = useState<MealKind | null>(null);
   const [draft, setDraft] = useState<TemplateMealDraft>(() => emptyTemplateMealDraft());
   const [loaded, setLoaded] = useState(false);
@@ -106,14 +122,14 @@ export function MealEditorScreen({
   }, [existing, loaded, mealPosition, offered]);
 
   usePanelHeading(
-    mealPosition === null ? 'Nouveau repas' : 'Objectifs du repas',
+    mealPosition === null ? 'Nouveau repas' : 'Modifier le repas',
     mealPosition === null ? null : (existing?.label ?? null),
   );
 
   const targets = readDraftTargets(draft);
   // undefined is "partly filled", which is the one state that cannot be saved.
   const partial = targets === undefined;
-  const canSave = !partial && (mealPosition !== null || kind !== null);
+  const canSave = !partial && kind !== null;
 
   function save(): void {
     if (!canSave || targets === undefined) return;
@@ -124,7 +140,8 @@ export function MealEditorScreen({
       return;
     }
 
-    updateTargets.mutate({ date, mealPosition, targets }, { onSuccess: dismiss });
+    if (kind === null) return;
+    updateMeal.mutate({ date, mealPosition, name: kind, targets }, { onSuccess: dismiss });
   }
 
   if (mealPosition === null && offered.length === 0) {
@@ -145,41 +162,35 @@ export function MealEditorScreen({
         contentContainerStyle={styles.container}
         keyboardShouldPersistTaps="handled"
       >
-        {mealPosition === null ? (
-          <FormSection caption="Repas">
-            {offered.map((option, index) => (
-              <View key={option}>
-                {index === 0 ? null : <ListSeparator />}
-                <Pressable
-                  onPress={() => setKind(option)}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected: kind === option }}
-                  style={styles.option}
-                >
-                  <SymbolView
-                    name={mealSymbol(option)}
-                    size={17}
-                    tintColor={mealColor(option, theme.colors)}
-                  />
-                  <Text style={[styles.optionLabel, { color: theme.colors.text }]}>
-                    {option}
-                  </Text>
-                  {/*
-                    A tick, and nothing where there is no tick: a row of empty
-                    circles would draw four controls where there is one choice.
-                  */}
-                  {kind === option ? (
-                    <SymbolView
-                      name="checkmark"
-                      size={15}
-                      tintColor={theme.colors.accent}
-                    />
-                  ) : null}
-                </Pressable>
-              </View>
-            ))}
-          </FormSection>
-        ) : null}
+        <FormSection caption="Repas">
+          {offered.map((option, at) => (
+            <View key={option}>
+              {at === 0 ? null : <ListSeparator />}
+              <Pressable
+                onPress={() => setKind(option)}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: kind === option }}
+                style={styles.option}
+              >
+                <SymbolView
+                  name={mealSymbol(option)}
+                  size={17}
+                  tintColor={mealColor(option, theme.colors)}
+                />
+                <Text style={[styles.optionLabel, { color: theme.colors.text }]}>
+                  {option}
+                </Text>
+                {/*
+                  A tick, and nothing where there is no tick: a row of empty
+                  circles would draw four controls where there is one choice.
+                */}
+                {kind === option ? (
+                  <SymbolView name="checkmark" size={15} tintColor={theme.colors.accent} />
+                ) : null}
+              </Pressable>
+            </View>
+          ))}
+        </FormSection>
 
         <FormSection caption="Objectifs du repas">
           {MACRO_FIELDS.map((field) => (
