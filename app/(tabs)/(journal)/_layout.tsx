@@ -89,32 +89,35 @@ export default function JournalLayout() {
     >
       <Stack.Screen name="index" />
       {/*
-        A PUSH, AND IT USED TO BE A TRANSPARENT MODAL.
+        PRESENTED, NOT PUSHED, AND THE DIFFERENCE IS THE GESTURE.
         
-        The transparency existed to show the Journal behind a floating panel.
-        Once the calendar became a full-width sheet running to the bottom edge,
-        it covered everything anyway — so the presentation was buying nothing
-        and charging for it: a modal is presented ON THE WINDOW, iOS scales the
-        presenting screen back behind it, and what showed in the strips above
-        and below was the window itself, white. The dim backdrop had been
-        hiding that for as long as OverlayPanel drew one.
+        It was briefly a push, to see whether the modal presentation was what
+        made the Journal scale back behind it. It was not — see the note below —
+        and the push cost the dismissal: a native stack's interactive gesture is
+        the horizontal edge swipe, so a downward drag had nothing to follow.
+        Presented, the zoom transition owns the drag and takes it back into the
+        button.
 
-        Pushed, the screen belongs to this stack: nothing is presented over the
-        window, nothing scales, and no window shows through.
+        `gestureEnabled` is what lets it. expo-router reads this very flag to
+        decide whether to allow the native zoom dismissal, so leaving it to a
+        default would be leaving the gesture to one.
 
-        `gestureEnabled` is what makes the drag dismiss it. Under Link.AppleZoom
-        the native interactive dismissal follows the finger back into the button
-        rather than sliding the screen away — and expo-router reads this very
-        flag to decide whether to allow it, so leaving it to a default would be
-        leaving the gesture to one.
+        ## THE PRESENTING SCREEN SCALES BACK, AND NOTHING HERE CAN STOP IT
+        
+        Verified in the API rather than assumed: LinkZoomTransitionSource takes
+        `identifier`, `alignment` and `animateAspectRatioChange`, and nothing
+        else. The scale-back belongs to Apple's transition. Keeping the button
+        as the thing the screen comes out of and goes back into means keeping
+        it; the only way to be rid of it is to stop using Link.AppleZoom.
+
+        What shows in the strips above and below the scaled Journal is the
+        WINDOW, which is white because no background is set for it. That part is
+        fixable — app.config's backgroundColor, or expo-system-ui — and both are
+        native, so both cost a build.
 
         NO `animation` OVERRIDE, UNLIKE EVERY OTHER WINDOW IN THIS APPLICATION.
         The others set it to 'none' because OverlayPanel raises and folds them
-        itself. This one is reached through Link.AppleZoom, so the NATIVE
-        transition owns both directions — it grows the screen out of the header
-        button and shrinks it back into it. Silencing the animation here, or
-        letting the screen animate itself, is what made it leave downwards while
-        it had arrived from the header.
+        itself. This one lets the NATIVE transition own both directions.
 
         No header: the screen carries its own two buttons.
       */}
@@ -122,6 +125,7 @@ export default function JournalLayout() {
         name="calendar"
         options={{
           headerShown: false,
+          presentation: 'transparentModal',
           gestureEnabled: true,
         }}
       />
