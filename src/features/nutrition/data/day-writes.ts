@@ -4,6 +4,7 @@ import type { AppDatabase } from '@/core/db/database';
 import {
   day,
   dayMeal,
+  food,
   journalEntry,
   type DayMealId,
   type FoodId,
@@ -13,7 +14,9 @@ import { newId } from '@/core/id';
 import { defaultDayMeals } from '../domain/day-plan';
 import type { Macros } from '../domain/macros';
 import type { QuantityChoice } from '../domain/portions';
+import type { CompleteOffProduct } from '../off/off-product';
 import { readFood } from './food-reads';
+import { findFoodByBarcode } from './food-writes';
 
 /**
  * Writes to the journal (D8).
@@ -45,6 +48,85 @@ export const FREE_ENTRY_DEFAULT_NAME = 'Saisie libre';
 interface MealRef {
   id: DayMealId;
   position: number;
+}
+
+/**
+ * Copies an Open Food Facts product into the personal database, or finds the
+ * one already there (specs 8.5).
+ *
+ * > Automatic copy into the personal database: EVERY product added to the
+ * > journal is systematically copied into the personal database, barcode and
+ * > origin kept.
+ *
+ * ## DELIBERATELY NOT EXPORTED, for the same reason as ensureMaterialized
+ *
+ * The copy happens at "Confirmer" and nowhere else, inside the transaction
+ * that writes the entries. A product CHOSEN but not confirmed must not exist
+ * in the library: scanning three things in an aisle, removing one from the
+ * basket by swipe and then closing the panel would otherwise leave foods
+ * nobody validated behind — data created by browsing, which is exactly what
+ * specs 8.2 forbids for days and what keeping ensureMaterialized private
+ * defends there.
+ *
+ * The rule the two share, stated once: WHAT THE USER EXPLICITLY SAVES IS
+ * WRITTEN; WHAT THEY MERELY CHOOSE IS NOT. The pre-filled form of specs 8.5
+ * writes before confirmation and is not an exception to it — someone filled a
+ * form in and pressed Enregistrer.
+ *
+ * ## IT NEVER OVERWRITES AN EXISTING FOOD
+ *
+ * Found by barcode, returned as it stands. A food copied from Open Food Facts
+ * is freely correctable and that correction is "the main mechanism for
+ * compensating for the uneven quality of the source" (specs 8.5); re-copying
+ * over it on the next scan would undo the correction silently, on the path the
+ * user least expects it. So this is get-or-create, never insert-or-replace.
+ *
+ * It is reached at all only in the rare cases the deduplication misses — two
+ * lines for the same new product in one basket, or a library list cached a
+ * moment before the copy. Which is precisely why it must be safe.
+ */
+function ensureOffFood(tx: AppDatabase, product: CompleteOffProduct, now: number): FoodId {
+  const existing = findFoodByBarcode(tx, product.barcode);
+  if (existing !== null) return existing;
+
+  const id = newId<FoodId>();
+
+  tx.insert(food)
+    .values({
+      id,
+      name: product.name,
+      brand: product.brand,
+      barcode: product.barcode,
+      source: 'off',
+      /**
+       * ALWAYS GRAMS, with no heuristic and no density.
+       *
+       * Open Food Facts publishes `_100g` values for everything it holds,
+       * liquids included — that is literally what it measures. Reading them as
+       * "per 100 ml" for a drink would be applying a density of 1, and specs
+       * 5.1 makes the units watertight: "no conversion, no density". Guessing
+       * from a "1 L" label would be the same conversion with a guess in front
+       * of it.
+       *
+       * A user who wants millilitres corrects the food, which is exactly the
+       * free correctability specs 8.5 provides for.
+       */
+      baseUnit: 'g',
+      protein100: product.protein100,
+      carbs100: product.carbs100,
+      fat100: product.fat100,
+      /** Kept as given, never recomputed from P/C/F (specs 5.1). */
+      kcal100: product.kcal100,
+      // Open Food Facts publishes per 100, so the canonical form IS the
+      // display preference here. No conversion on this path at all.
+      displayRefQty: 100,
+      isFavorite: 0,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run();
+
+  return id;
 }
 
 /**
@@ -148,7 +230,20 @@ export interface AddFoodEntryInput {
  */
 export type NewEntry =
   | { kind: 'food'; foodId: FoodId; quantity: QuantityChoice }
-  | { kind: 'free'; name?: string; macros: Macros };
+  | { kind: 'free'; name?: string; macros: Macros }
+  /**
+   * A product chosen from Open Food Facts and not yet in the library.
+   *
+   * It carries the PRODUCT rather than an id, because there is no id: nothing
+   * has been written. The copy happens here, in this transaction, at
+   * "Confirmer" — see ensureOffFood.
+   *
+   * Only a COMPLETE product can take this path. One missing any of the four
+   * macros is diverted to a pre-filled form by specs 8.5, and comes back
+   * through `kind: 'food'` with an id like any other, because by then the user
+   * has saved it themselves.
+   */
+  | { kind: 'off'; product: CompleteOffProduct; quantity: QuantityChoice };
 
 /**
  * Logs one or more lines into a meal, materialising the day in the same
@@ -195,7 +290,7 @@ export function addEntries(
 ): JournalEntryId[] {
   for (const entry of input.entries) {
     if (
-      entry.kind === 'food' &&
+      entry.kind !== 'free' &&
       (!Number.isFinite(entry.quantity.baseQuantity) || entry.quantity.baseQuantity <= 0)
     ) {
       throw new Error('A logged quantity must be a positive number of base units');
@@ -249,12 +344,30 @@ export function addEntries(
         continue;
       }
 
+      /**
+       * An Open Food Facts product is copied into the library FIRST, in this
+       * same transaction, and then logged exactly like any other food.
+       *
+       * Doing it here rather than earlier is the whole of the decision: the
+       * copy and the journal entry that justifies it land together or not at
+       * all. A forced quit between them — which specs 2.2 says can happen at
+       * any moment — cannot leave a food nobody asked for, and cannot leave an
+       * entry pointing at a food that was never written.
+       *
+       * From the next line on there is no Open Food Facts case left. The entry
+       * is built by reading the food back, so it freezes what was actually
+       * stored rather than what arrived over the network, and the two can
+       * never disagree.
+       */
+      const foodId =
+        entry.kind === 'off' ? ensureOffFood(tx, entry.product, now) : entry.foodId;
+
       // Read inside the transaction, so a food deleted between the screen
       // opening and this call rolls the whole basket back rather than leaving
       // a meal half written.
-      const source = readFood(tx, entry.foodId);
+      const source = readFood(tx, foodId);
       if (source === null) {
-        throw new Error(`No food ${entry.foodId} to log`);
+        throw new Error(`No food ${foodId} to log`);
       }
 
       const { baseQuantity, portion } = entry.quantity;
@@ -263,7 +376,7 @@ export function addEntries(
         .values({
           ...common,
           kind: 'food',
-          sourceFoodId: entry.foodId,
+          sourceFoodId: foodId,
           name: source.name,
           brand: source.brand,
           baseUnit: source.baseUnit,

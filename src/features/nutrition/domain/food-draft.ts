@@ -33,6 +33,19 @@ export interface PortionDraft {
 export interface FoodDraft {
   name: string;
   brand: string | null;
+  /**
+   * The product's barcode, when it has one (slice 4).
+   *
+   * Set by the pre-filled form specs 8.5 diverts to when an Open Food Facts
+   * product is missing one of the four macros, so that the food created there
+   * deduplicates against the search afterwards exactly as a copied one does.
+   * Null for a food typed in from scratch, which is most of them.
+   *
+   * NOT VALIDATED as a barcode. There is no closed set to check against and no
+   * format worth refusing: a barcode is whatever the scanner read. The one
+   * constraint is uniqueness, which the database owns (ux_food_barcode).
+   */
+  barcode: string | null;
   source: FoodSource;
   baseUnit: BaseUnit;
   /**
@@ -128,6 +141,7 @@ export function emptyFoodDraft(): FoodDraft {
   return {
     name: '',
     brand: null,
+    barcode: null,
     source: 'perso',
     baseUnit: 'g',
     macros: { protein: 0, carbs: 0, fat: 0, kcal: 0 },

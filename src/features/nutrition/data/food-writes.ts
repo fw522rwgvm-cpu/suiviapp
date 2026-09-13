@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, ne } from 'drizzle-orm';
 import type { AppDatabase } from '@/core/db/database';
 import { food, foodPortion, type FoodId, type FoodPortionId } from '@/core/db/schema';
 import { newId } from '@/core/id';
@@ -92,12 +92,20 @@ function replacePortions(tx: AppDatabase, foodId: FoodId, draft: FoodDraft): voi
 function columnsOf(draft: FoodDraft) {
   const canonical = canonicalMacrosOf(draft);
   const brand = (draft.brand ?? '').trim();
+  const barcode = (draft.barcode ?? '').trim();
 
   return {
     name: draft.name.trim(),
     // Empty and absent are the same thing to a reader and two different things
     // in the database. Absent is the honest one.
     brand: brand === '' ? null : brand,
+    /**
+     * The same rule, and here it is load-bearing rather than tidy: ONE empty
+     * string would take the slot in ux_food_barcode and refuse every later
+     * food that also had none. NULLs are distinct in a unique index; empty
+     * strings are not.
+     */
+    barcode: barcode === '' ? null : barcode,
     source: draft.source,
     baseUnit: draft.baseUnit,
     protein100: canonical.protein,
@@ -108,12 +116,63 @@ function columnsOf(draft: FoodDraft) {
   };
 }
 
+/**
+ * The id of the food already holding this barcode, if any.
+ *
+ * Read inside the caller's transaction so the answer cannot go stale between
+ * the check and the write.
+ */
+export function findFoodByBarcode(
+  tx: AppDatabase,
+  barcode: string,
+  exceptId: FoodId | null = null,
+): FoodId | null {
+  const rows = tx
+    .select({ id: food.id })
+    .from(food)
+    .where(
+      exceptId === null
+        ? eq(food.barcode, barcode)
+        : and(eq(food.barcode, barcode), ne(food.id, exceptId)),
+    )
+    .all();
+
+  return rows[0]?.id ?? null;
+}
+
+/**
+ * Refuses a second food for one barcode, BEFORE the index does.
+ *
+ * ux_food_barcode already makes this impossible, and that is the point: left
+ * to the index, the failure is a SQLite error naming a constraint, thrown from
+ * inside a basket transaction that then rolls a whole meal back. Checking
+ * first gives a sentence about the actual problem.
+ *
+ * This is a genuine conflict rather than an odd value, so it throws where the
+ * macros deliberately do not. Specs 8.5 requires unreliable VALUES to be
+ * marked and never refused; it says nothing about two foods claiming the same
+ * product, which is simply wrong.
+ */
+function requireFreeBarcode(
+  tx: AppDatabase,
+  barcode: string | null,
+  exceptId: FoodId | null,
+): void {
+  if (barcode === null) return;
+
+  const taken = findFoodByBarcode(tx, barcode, exceptId);
+  if (taken !== null) {
+    throw new Error(`Barcode ${barcode} already belongs to food ${taken}`);
+  }
+}
+
 export function createFood(db: AppDatabase, draft: FoodDraft): FoodId {
   requireValid(draft);
 
   return db.transaction((tx) => {
     const id = newId<FoodId>();
     const now = Date.now();
+    requireFreeBarcode(tx, columnsOf(draft).barcode, null);
 
     tx.insert(food)
       .values({
@@ -144,6 +203,10 @@ export function updateFood(db: AppDatabase, foodId: FoodId, draft: FoodDraft): v
   requireValid(draft);
 
   db.transaction((tx) => {
+    // Excluding this food itself: saving a form without touching the barcode
+    // must not report the food as conflicting with itself.
+    requireFreeBarcode(tx, columnsOf(draft).barcode, foodId);
+
     const updated = tx
       .update(food)
       .set({ ...columnsOf(draft), updatedAt: Date.now() })

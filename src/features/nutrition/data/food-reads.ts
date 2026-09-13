@@ -34,6 +34,16 @@ export interface FoodListItem {
   id: FoodId;
   name: string;
   brand: string | null;
+  /**
+   * The product's barcode, when it has one (slice 4).
+   *
+   * Carried on the LIST item rather than only on the detail view because the
+   * deduplication of specs 8.5 needs every barcode the library holds, on every
+   * keystroke, to decide which remote results to hide. Fetching them
+   * separately would be a second query answering a question this one already
+   * has the rows for.
+   */
+  barcode: string | null;
   baseUnit: BaseUnit;
   isFavorite: boolean;
   /** For 100 base units, as stored. Never scaled by display_ref_qty. */
@@ -56,6 +66,7 @@ const listColumns = {
   id: food.id,
   name: food.name,
   brand: food.brand,
+  barcode: food.barcode,
   baseUnit: food.baseUnit,
   isFavorite: food.isFavorite,
   protein100: food.protein100,
@@ -68,6 +79,7 @@ interface ListRow {
   id: FoodId;
   name: string;
   brand: string | null;
+  barcode: string | null;
   baseUnit: BaseUnit;
   isFavorite: number;
   protein100: number;
@@ -81,6 +93,7 @@ function toListItem(row: ListRow): FoodListItem {
     id: row.id,
     name: row.name,
     brand: row.brand,
+    barcode: row.barcode,
     baseUnit: row.baseUnit,
     // 0/1 in the database (schema section 2); a boolean from here on. This is
     // the boundary where that conversion belongs, and the only one.
@@ -155,6 +168,10 @@ export function readFoodDraft(db: AppDatabase, foodId: FoodId): FoodDraft | null
   return {
     name: view.name,
     brand: view.brand,
+    // Carried through the editor untouched. A food copied from Open Food Facts
+    // is freely correctable (specs 8.5), but correcting its name must not cost
+    // it the barcode that lets the search deduplicate it afterwards.
+    barcode: view.barcode,
     source: view.source,
     baseUnit: view.baseUnit,
     macros: fromCanonical(view.reference, view.displayRefQty),
