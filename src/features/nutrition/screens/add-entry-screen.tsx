@@ -28,6 +28,7 @@ import { FoodRow } from '../components/food-row';
 import { ScanScreen } from '../off/scan-screen';
 import { OffResultRow } from '../components/off-result-row';
 import { OffNoticeBanner, type OffNotice } from '../components/off-notice';
+import { RecentMealsSection } from '../components/recent-meals-section';
 import { dedupeRemote, libraryBarcodes } from '../off/off-dedupe';
 import { useOffLookup, useOffSearch } from '../off/off-queries';
 import type { OffOutcome } from '../off/off-client';
@@ -497,6 +498,14 @@ export function AddEntryScreen({
                   onPick={setChosen}
                   quickAdd={repeatable}
                 />
+
+                {/*
+                  Below the foods, as specs 8.4a orders them: foods, then
+                  meals, then recipes. It writes and closes rather than filling
+                  the basket — see the note in the component for why that is
+                  the reading of 8.4a rather than an exception to 8.4.
+                */}
+                <RecentMealsSection date={date} mealPosition={mealPosition} />
               </>
             )}
           </ScrollView>

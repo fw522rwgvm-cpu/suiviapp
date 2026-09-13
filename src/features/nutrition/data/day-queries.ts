@@ -16,12 +16,14 @@ import {
   readEntry,
   readMealEntries,
   readMealTotals,
+  readRecentMeals,
 } from './day-reads';
 import {
   addEntries,
   addFoodEntry,
   addFreeEntry,
   addMeal,
+  addRecentMeal,
   deleteEntry,
   deleteMeal,
   renameMeal,
@@ -47,6 +49,7 @@ export const journalKeys = {
   mealTotals: (date: LocalDate) => ['nutrition', 'meal-totals', date] as const,
   mealEntries: (mealId: DayMealId | null) => ['nutrition', 'meal-entries', mealId] as const,
   entry: (entryId: JournalEntryId | null) => ['nutrition', 'entry', entryId] as const,
+  recentMeals: () => ['nutrition', 'recent-meals'] as const,
 };
 
 /**
@@ -111,6 +114,29 @@ export function useEntry(entryId: JournalEntryId | null) {
     queryFn: () => (entryId === null ? null : readEntry(getAppDatabase(), entryId)),
     enabled: entryId !== null,
     meta: readsFrom(journalEntry),
+  });
+}
+
+/**
+ * Meals logged recently, for the quick-access screen (specs 8.4a).
+ *
+ * It reads both tables, and it has to: a meal's name lives in day_meal and
+ * what makes it recent lives in journal_entry. So logging anything refreshes
+ * the list, which is the correct behaviour reached for free.
+ */
+export function useRecentMeals() {
+  return useQuery({
+    queryKey: journalKeys.recentMeals(),
+    queryFn: () => readRecentMeals(getAppDatabase()),
+    meta: readsFrom(dayMeal, journalEntry),
+  });
+}
+
+/** A whole past meal, replayed into another (specs 8.4a). */
+export function useAddRecentMeal() {
+  return useMutation({
+    mutationFn: (input: Parameters<typeof addRecentMeal>[1]) =>
+      Promise.resolve(addRecentMeal(getAppDatabase(), input)),
   });
 }
 

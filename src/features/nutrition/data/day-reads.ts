@@ -241,3 +241,114 @@ function selectEntries(db: AppDatabase, where: SQL | undefined): JournalEntryVie
     };
   });
 }
+
+export interface RecentMeal {
+  mealId: DayMealId;
+  date: LocalDate;
+  name: string;
+  entryCount: number;
+  /** What the meal came to, derived here and never stored (D9). */
+  kcal: number;
+}
+
+/**
+ * Meals logged recently, for the quick-access screen (specs 8.4a).
+ *
+ * > Meals: recent ones. Selecting a recent meal adds all of its entries at once
+ * > to the target meal.
+ *
+ * ## WHAT A "RECENT MEAL" IS, WHICH 8.4a DOES NOT SAY
+ *
+ * A CONCRETE PAST MEAL — "Déjeuner, 15 septembre, 4 lignes" — and not a
+ * grouping of meals that share a name. The specs give no window, no identity
+ * and no deduplication rule, and grouping by name would need one: deciding
+ * when two "Déjeuner" are the same meal is a question nobody has asked, and
+ * every answer would be invented. A past meal is unambiguous and needs none.
+ *
+ * Only meals holding at least one entry appear: an empty meal is a row in a
+ * template, not something that was eaten.
+ *
+ * Ordered by when the entries were WRITTEN, not by the day they belong to —
+ * the rule slice 3 settled for foods, for the same reason: logging yesterday's
+ * dinner this morning makes it the most recent thing you did. Both terms are
+ * aggregated, and max(id) is both the tie-break and the fallback, ULIDs
+ * sorting by creation time and created_at being nullable in the frozen schema.
+ */
+export function readRecentMeals(db: AppDatabase, limit = 10): RecentMeal[] {
+  return db
+    .select({
+      mealId: dayMeal.id,
+      date: dayMeal.date,
+      name: dayMeal.name,
+      entryCount: sql<number>`count(${journalEntry.id})`,
+      kcal: sql<number | null>`sum(${journalEntry.quantity} * ${journalEntry.kcal100} / 100.0)`,
+    })
+    .from(dayMeal)
+    .innerJoin(journalEntry, eq(journalEntry.dayMealId, dayMeal.id))
+    .groupBy(dayMeal.id)
+    .orderBy(
+      sql`max(${journalEntry.createdAt}) desc`,
+      sql`max(${journalEntry.id}) desc`,
+    )
+    .limit(limit)
+    .all()
+    .map((row) => ({
+      mealId: row.mealId,
+      date: row.date,
+      name: row.name,
+      entryCount: row.entryCount,
+      kcal: row.kcal ?? 0,
+    }));
+}
+
+/**
+ * Every entry of a meal, in the raw columns a replay needs (specs 8.4a).
+ *
+ * Deliberately NOT JournalEntryView: that shape is built for display and drops
+ * the tree — parent_entry_id, kind, the frozen reference as stored. Replaying
+ * a meal needs the rows as they are.
+ */
+export interface ReplayableEntry {
+  id: JournalEntryId;
+  parentEntryId: JournalEntryId | null;
+  position: number;
+  kind: JournalEntryKind;
+  sourceFoodId: FoodId | null;
+  name: string;
+  brand: string | null;
+  baseUnit: BaseUnit | null;
+  quantity: number | null;
+  portionName: string | null;
+  portionQuantity: number | null;
+  protein100: number | null;
+  carbs100: number | null;
+  fat100: number | null;
+  kcal100: number | null;
+}
+
+export function readEntriesForReplay(db: AppDatabase, mealId: DayMealId): ReplayableEntry[] {
+  return db
+    .select({
+      id: journalEntry.id,
+      parentEntryId: journalEntry.parentEntryId,
+      position: journalEntry.position,
+      kind: journalEntry.kind,
+      sourceFoodId: journalEntry.sourceFoodId,
+      name: journalEntry.name,
+      brand: journalEntry.brand,
+      baseUnit: journalEntry.baseUnit,
+      quantity: journalEntry.quantity,
+      portionName: journalEntry.portionName,
+      portionQuantity: journalEntry.portionQuantity,
+      protein100: journalEntry.protein100,
+      carbs100: journalEntry.carbs100,
+      fat100: journalEntry.fat100,
+      kcal100: journalEntry.kcal100,
+    })
+    .from(journalEntry)
+    .where(eq(journalEntry.dayMealId, mealId))
+    // Parents before children, so a replay can map old identifiers to new ones
+    // in a single pass.
+    .orderBy(asc(journalEntry.parentEntryId), asc(journalEntry.position), asc(journalEntry.id))
+    .all();
+}

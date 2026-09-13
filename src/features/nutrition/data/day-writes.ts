@@ -6,15 +6,18 @@ import {
   dayMeal,
   food,
   journalEntry,
+  type BaseUnit,
   type DayMealId,
   type FoodId,
   type JournalEntryId,
+  type JournalEntryKind,
 } from '@/core/db/schema';
 import { newId } from '@/core/id';
 import { readDayPlan } from './planning-reads';
 import type { Macros } from '../domain/macros';
 import type { QuantityChoice } from '../domain/portions';
 import type { CompleteOffProduct } from '../off/off-product';
+import { readEntriesForReplay } from './day-reads';
 import { readFood } from './food-reads';
 import { findFoodByBarcode } from './food-writes';
 
@@ -591,4 +594,153 @@ export function deleteMeal(
     const meal = requireMeal(ensureMaterialized(tx, input.date), input.mealPosition);
     tx.delete(dayMeal).where(eq(dayMeal.id, meal.id)).run();
   });
+}
+
+/**
+ * Adds every line of a past meal to another meal, in one transaction
+ * (specs 8.4a).
+ *
+ * > Selecting a recent meal adds all of its entries at once to the target
+ * > meal.
+ *
+ * ## IT REPLAYS THE CHOICES, NOT THE FIGURES
+ *
+ * The frozen capsule of an old entry is what was eaten THEN. Adding a meal
+ * today is an addition today, so each line goes back through the food it came
+ * from and freezes what that food says now. The case that settles it: specs
+ * 8.5 makes correcting a copied Open Food Facts product "the main mechanism
+ * for compensating for the uneven quality of the source" — replaying the
+ * capsule would silently re-import the error the user just corrected, on a
+ * path built for repeating habits.
+ *
+ * What always comes from the OLD entry is the QUANTITY and the way it was
+ * expressed. That is what "the same meal" means, and it is the same ruling
+ * slice 3 made for the pre-filled quantity: the frozen portion size wins, so
+ * that a tranche redefined from 25 g to 30 g does not quietly turn a 50 g
+ * habit into 60 g.
+ *
+ * ## THREE LINES DO NOT GO BACK TO A FOOD, AND EACH FOR ITS OWN REASON
+ *
+ *  - a FREE entry never had one: its macros ARE the choice (D5/R2);
+ *  - a food DELETED since cannot be read, and specs 5.3 says deleting a food
+ *    leaves past entries intact — making the user lose the line would charge
+ *    them for a deletion the specs call free;
+ *  - a food whose BASE UNIT has changed since would pair macros per 100 ml
+ *    with a quantity counted in grams. Falling back is one condition and it
+ *    removes the case entirely; re-reading anyway would be a wrong figure that
+ *    looks plausible, which is the only kind that matters.
+ *
+ * Recipe blocks copy verbatim, parent and children, with the tree rebuilt
+ * through an identifier map. They cannot occur before slice 6 — kind is only
+ * ever 'food' or 'free' today — and a block is an adjusted composition
+ * (specs 8.6), not a reference to re-read.
+ */
+export function addRecentMeal(
+  db: AppDatabase,
+  input: { date: LocalDate; mealPosition: number; sourceMealId: DayMealId },
+): JournalEntryId[] {
+  return db.transaction((tx) => {
+    const source = readEntriesForReplay(tx, input.sourceMealId);
+    // Nothing to add, and therefore nothing to materialise: an empty meal must
+    // not create a day (specs 8.2).
+    if (source.length === 0) return [];
+
+    const target = requireMeal(ensureMaterialized(tx, input.date), input.mealPosition);
+    const now = Date.now();
+    let position = nextPosition(tx, target.id);
+
+    /** Old identifier to new, so a recipe block keeps its shape. */
+    const remapped = new Map<JournalEntryId, JournalEntryId>();
+    const ids: JournalEntryId[] = [];
+
+    for (const entry of source) {
+      const id = newId<JournalEntryId>();
+      remapped.set(entry.id, id);
+      ids.push(id);
+
+      // A child whose parent is not in this meal would point outside it; the
+      // query returns a whole meal, so this only guards the impossible.
+      const parentEntryId =
+        entry.parentEntryId === null ? null : (remapped.get(entry.parentEntryId) ?? null);
+
+      const refreshed = refreshedReference(tx, entry);
+
+      tx.insert(journalEntry)
+        .values({
+          id,
+          dayMealId: target.id,
+          date: input.date,
+          parentEntryId,
+          position: position++,
+          kind: entry.kind,
+          sourceFoodId: entry.sourceFoodId,
+          sourceRecipeId: null,
+          name: refreshed.name,
+          brand: refreshed.brand,
+          baseUnit: entry.baseUnit,
+          quantity: entry.quantity,
+          portionName: entry.portionName,
+          portionQuantity: entry.portionQuantity,
+          protein100: refreshed.protein100,
+          carbs100: refreshed.carbs100,
+          fat100: refreshed.fat100,
+          kcal100: refreshed.kcal100,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run();
+    }
+
+    return ids;
+  });
+}
+
+interface FrozenReference {
+  name: string;
+  brand: string | null;
+  protein100: number | null;
+  carbs100: number | null;
+  fat100: number | null;
+  kcal100: number | null;
+}
+
+/** The food as it reads today, or the old capsule when it cannot be read. */
+function refreshedReference(
+  tx: AppDatabase,
+  entry: {
+    kind: JournalEntryKind;
+    sourceFoodId: FoodId | null;
+    baseUnit: BaseUnit | null;
+    name: string;
+    brand: string | null;
+    protein100: number | null;
+    carbs100: number | null;
+    fat100: number | null;
+    kcal100: number | null;
+  },
+): FrozenReference {
+  const capsule: FrozenReference = {
+    name: entry.name,
+    brand: entry.brand,
+    protein100: entry.protein100,
+    carbs100: entry.carbs100,
+    fat100: entry.fat100,
+    kcal100: entry.kcal100,
+  };
+
+  if (entry.kind !== 'food' || entry.sourceFoodId === null) return capsule;
+
+  const food = readFood(tx, entry.sourceFoodId);
+  if (food === null) return capsule;
+  // See the note above: matching units or nothing.
+  if (food.baseUnit !== entry.baseUnit) return capsule;
+
+  return {
+    name: food.name,
+    brand: food.brand,
+    protein100: food.reference.protein,
+    carbs100: food.reference.carbs,
+    fat100: food.reference.fat,
+    kcal100: food.reference.kcal,
+  };
 }
