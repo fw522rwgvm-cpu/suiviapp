@@ -1603,16 +1603,58 @@ choix entre quatre, avec quatre objectifs facultatifs à côté. Une alerte port
 un champ de texte et rien d'autre. Les objectifs se modifient par la même
 modale, depuis l'appui long — et ça touche la journée, jamais le modèle.
 
+**Une route modale non déclarée retombe sur une poussée latérale, en silence.**
+`(modals)/meal` manquait au `Stack` racine, donc elle prenait le défaut — une
+carte opaque venue de la **droite** — pendant que ses trois sœurs montaient du
+bas. `OverlayPanel` la levait déjà correctement ; personne ne l'a jamais vu,
+parce que l'écran qui la portait était poussé. Règle qui en sort : **toute route
+ajoutée sous `(modals)/` doit être déclarée**, et l'oubli ne produit ni erreur
+ni avertissement.
+
+**Les embouts arrondis sont des pastilles, et c'est exact plutôt
+qu'approchant.** SVG les donnerait par `strokeLinecap="round"`. Ici chaque
+extrémité est un cercle dont le **diamètre est l'épaisseur du trait**, centré
+sur la ligne médiane de l'arc — géométriquement la même forme qu'un embout
+rond. Un test le vérifie à 37°, un angle qu'aucun axe ne traverse : la distance
+au centre doit valoir le rayon de la médiane. Ils sont omis là où ils seraient
+faux et non seulement inutiles : un arc vide n'a pas d'extrémités à arrondir, un
+cercle fermé n'en a pas du tout.
+
+**Une jauge est le même arc, tourné.** `sweep` le raccourcit, `startAngle`
+tourne le cadre entier : trois quarts = 270° à partir de 225°, soit un vide de
+90° centré sur six heures. Une forme ouverte a deux bouts, et les bouts sont ce
+qui dit dans quel sens elle se remplit — un cercle fermé à 95 % et un à 5 % ne
+diffèrent que par l'endroit de la couture. **Les enfants restent hors de la
+rotation**, sinon le chiffre au centre pendrait de travers.
+
+**Une icône ne prend pas la couleur de ce qui l'entoure.** Le glyphe dit *quel*
+repas c'est ; l'anneau dit *comment* ce repas se passe. Les teinter ensemble
+faisait colorer un fait par l'autre — une collation virant à l'ambre avait l'air
+d'une autre collation — et faisait passer l'icône par trois couleurs là où la
+même icône, sur un repas sans objectif, restait grise.
+
+**Une molette native plutôt qu'une feuille d'action, pour une valeur que le
+formulaire porte.** `Picker` sur iOS **est** un `UIPickerView`, déjà au §5 et
+déjà dans le binaire, donc aucune reconstruction. Il est en ligne et montre tous
+les choix à la fois : une feuille est une décision qu'on prend et qu'on congédie,
+une molette est une valeur sur laquelle on peut revenir pendant que les quatre
+champs d'objectif sont encore devant soi.
+
 ## Points ouverts après la tranche 5
 - ~~**Vérification iPhone en attente.**~~ **Faite pour l'essentiel** : la
   tranche 5 a tourné sur l'appareil et a rendu six retours d'interface, tous
   traités. **Le bandeau et les cartes de repas remaniés n'ont pas encore été
   revus sur l'appareil** — l'anneau en particulier, dont la géométrie est
   testée en arithmétique mais dont le rendu ne l'est pas.
-- **L'anneau n'a jamais été peint.** Deux demi-anneaux tournés et clippés, c'est
-  la seule chose de cette tranche dont aucun test ne dit à quoi elle ressemble.
-  Ce qu'il faut regarder : l'arc à 0 (rien de visible), juste avant et juste
-  après la moitié (la jonction à 6 h), et à plein (la fermeture à 12 h).
+- **La jauge n'a jamais été peinte.** Deux demi-anneaux tournés, clippés, dans
+  un cadre lui-même tourné de 225°, plus deux pastilles placées par
+  trigonométrie : c'est la seule chose de cette tranche dont aucun test ne dit à
+  quoi elle ressemble. Ce qu'il faut regarder : l'arc à 0 (rien, pas même une
+  pastille), la jonction à mi-course, le raccord des deux bouts sur le vide du
+  bas, et l'alignement des pastilles sur l'épaisseur du trait.
+- **Le vide de la jauge est à six heures, et le chiffre est dedans.** Si le
+  texte déborde sur les arcs, c'est la taille du cadre (186) qu'il faut monter,
+  pas celle du chiffre — le rayon et l'épaisseur sont liés au premier.
 - **Les repas récents affichent le nom stocké, sans numéro de collation.** Le
   numéro se dérive de la journée entière, que cette liste ne charge pas — elle
   lit un repas par ligne. « Collation · 15 septembre » reste sans ambiguïté ;
