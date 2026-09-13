@@ -161,11 +161,24 @@ export function FormSection({
  * control spanning the row needs -- a segmented control, or a line of figures
  * that belong together.
  */
-export function FormRow({ label, children }: { label?: string; children: ReactNode }) {
+export function FormRow({
+  label,
+  flush,
+  children,
+}: {
+  label?: string;
+  /**
+   * Drops the row's side padding, for a control that needs every point of the
+   * card -- a wheel whose words are cut rather than shrunk, say. Its own
+   * insets then stand in for the row's.
+   */
+  flush?: boolean;
+  children: ReactNode;
+}) {
   const theme = useTheme();
 
   return (
-    <View style={styles.row}>
+    <View style={[styles.row, flush === true ? styles.flush : null]}>
       {label === undefined ? null : (
         <Text style={[styles.label, { color: theme.colors.text }]} numberOfLines={1}>
           {label}
@@ -328,6 +341,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
     paddingVertical: 7,
   },
+  flush: { paddingHorizontal: 0 },
   label: { fontSize: 17 },
   // A row, not a column: a value is often a figure AND its unit, or a field
   // and the thing it is counted in, and those sit side by side.

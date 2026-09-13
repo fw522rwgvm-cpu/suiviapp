@@ -261,8 +261,15 @@ function QuantityForm({
 
       <FormSection caption="Quantité">
         {/*
-          The answer in words, above the wheels that make it. Two parts, as
-          they are chosen: how many, and of what.
+          The answer in words, above the wheels that make it — and beside it,
+          in brackets, what a portion comes to.
+
+          That figure has to be there: it is what is STORED and what every
+          total is made of, and "2 tranches" says nothing about how much food
+          that is unless the slice is already known. It is bracketed rather
+          than given a row of its own, because it is the same answer said
+          again, not a second one. In base units it is left out entirely: the
+          brackets would repeat the words in front of them.
         */}
         <FormRow label="Quantité">
           <Text style={[styles.amount, { color: theme.colors.text }]}>
@@ -270,24 +277,21 @@ function QuantityForm({
               ? '—'
               : chosen === null
                 ? formatQuantity(choice.baseQuantity, baseUnit)
-                : formatPortionCount(choice.portion?.count ?? 0, chosen.name)}
+                : `${formatPortionCount(choice.portion?.count ?? 0, chosen.name)} (${formatQuantity(
+                    choice.baseQuantity,
+                    baseUnit,
+                  )})`}
           </Text>
         </FormRow>
 
-        <FormRow>
+        {/*
+          Flush with the card's edges: a picker CUTS its labels rather than
+          shrinking them, so every point the row would have kept for itself is
+          a point of a portion's name.
+        */}
+        <FormRow flush>
           <QuantityWheel units={units} choice={wheel} onChange={setWheel} />
         </FormRow>
-
-        {choice !== null && chosen !== null ? (
-          // A portion says what it comes to, because that is what is stored
-          // and what a total is made of. In base units it would say the same
-          // thing twice.
-          <FormRow label="Soit">
-            <Text style={[styles.equivalent, { color: theme.colors.textMuted }]}>
-              {formatQuantity(choice.baseQuantity, baseUnit)}
-            </Text>
-          </FormRow>
-        ) : null}
       </FormSection>
 
       <Pressable

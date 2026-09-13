@@ -66,7 +66,11 @@ export function QuantityWheel({
     [],
   );
 
-  const item = { color: theme.colors.text, fontSize: 20 };
+  // Seventeen, not twenty. A UIPickerView cuts a label that does not fit and
+  // never shrinks it, so the size has to be chosen for the narrowest column
+  // rather than for the widest -- and four digits in a quarter of a card is
+  // the narrowest thing here.
+  const item = { color: theme.colors.text, fontSize: 17 };
 
   function move(next: WheelChoice): void {
     onChange(settleWheel(choice, next, units));
@@ -78,7 +82,7 @@ export function QuantityWheel({
         selectedValue={choice.whole}
         onValueChange={(whole) => move({ ...choice, whole: Number(whole) })}
         itemStyle={item}
-        style={styles.column}
+        style={styles.number}
         accessibilityLabel="Nombre"
       >
         {wholes}
@@ -88,7 +92,7 @@ export function QuantityWheel({
         selectedValue={choice.fraction}
         onValueChange={(fraction) => move({ ...choice, fraction: Number(fraction) })}
         itemStyle={item}
-        style={styles.column}
+        style={styles.number}
         accessibilityLabel="Fraction"
       >
         {FRACTIONS.map((fraction, index) => (
@@ -100,7 +104,7 @@ export function QuantityWheel({
         selectedValue={choice.unit}
         onValueChange={(unit) => move({ ...choice, unit: Number(unit) })}
         itemStyle={item}
-        style={styles.column}
+        style={styles.unit}
         accessibilityLabel="Unité"
       >
         {units.map((unit, index) => (
@@ -115,5 +119,10 @@ const styles = StyleSheet.create({
   // The height iOS gives a picker in a sheet. Left to itself in a row it would
   // collapse, having no intrinsic height of its own here.
   wheel: { flexDirection: 'row', height: 180 },
-  column: { flex: 1 },
+  // The two figure wheels share one half and the names take the other. A
+  // picker does not shrink its text to fit -- it cuts it -- and "cuillere a
+  // soupe" cut in the middle is not a unit anyone can choose with confidence.
+  // Four digits and a fraction need far less room than a word does.
+  number: { flex: 1 },
+  unit: { flex: 2 },
 });
