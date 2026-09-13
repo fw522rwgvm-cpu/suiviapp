@@ -2395,6 +2395,91 @@ n'est pas négociable : D15 donne au générateur la tâche de « vérifier les
 performances sur de longs historiques », et la rétrécir pour tenir dans un délai
 supprimerait le seul endroit où ça se fait. C'est le budget qui bouge.
 
+## Le « + » des trois listes, et le repas qui se déplie (14/09/2026)
+
+**Le bouton refusé est devenu honnête, et c'est l'obstacle qui a disparu — pas
+la règle.** Le §8.4a v2.4 exige que la quantité affichée **soit** celle
+qu'ajoute le bouton, et une recette n'en avait aucune à afficher : le §8.6 fait
+de la quantité consommée sa première question. Le pré-remplissage lui en donne
+une, donc la promesse redevient tenable.
+
+La rangée, le bouton et l'écran d'occurrence lisent tous
+`prefillRecipeQuantity` — **une valeur produite une fois**, portée sur
+`RecipeListItem`. Deux chemins vers elle s'accorderaient presque toujours, et
+le jour où ils divergeraient la rangée mentirait sur ce que fait son propre
+bouton. Un test l'assert contre la fonction, jamais contre un littéral.
+
+**La liste porte désormais les ingrédients, et c'est ce qui rend le toucher
+unique possible.** Une requête pour toute la bibliothèque, sur le patron de
+`tagsByRecipe`, plutôt qu'une lecture par rangée — le coût que la tranche 4
+avait déjà refusé en étendant la quantité aux favoris et à la recherche. Le
+bouton échelonne ces lignes-là, donc le chiffre affiché est le chiffre déposé.
+
+Un test tient `recipeTotal` sur ces ingrédients contre le `total` que SQL somme,
+dans **le même objet** : les deux implémentations du même nombre y sont
+désormais côte à côte, ce qui rend leur désaccord immédiat au lieu d'être
+lointain.
+
+**Une rangée de recette dit deux choses différentes selon l'écran.** C'est la
+règle de la tranche 4 appliquée : un seul chiffre de calories par rangée,
+toujours au même endroit, et ce qu'il veut dire appartient à l'écran. À l'ajout
+c'est **le prix du toucher** — la dernière quantité loguée et ses calories. Dans
+la bibliothèque c'est ce que la recette **est**, par unité de rendement, parce
+que c'est ce qui la rend comparable. Le composant retombe sur la seconde forme
+quand l'appelant ne lui donne rien, donc la bibliothèque n'a rien à dire.
+
+**Le repas se déplie au panier, une ligne par entrée de tête.** Il était une
+ligne unique portant l'identifiant du repas source, rejouée dans la transaction
+d'écriture (`specs §14.10 n° 1`). Ce que le dépliage change n'est pas le moment
+mais ce que l'utilisateur peut faire : **un repas qui arrive en quatre lignes
+peut en perdre une, ou en corriger une, avant que quoi que ce soit ne soit
+écrit.** En une ligne c'était tout ou rien — ce que le panier existe
+précisément pour éviter.
+
+Une recette groupée à l'intérieur reste **une** ligne. Elle est une des choses
+qui ont été choisies ; ses ingrédients ne l'ont jamais été un par un.
+
+**`refreshedReference` a déménagé dans les lectures, et `replayMeal` a
+disparu.** La fonction répond à « que dit cet aliment maintenant », ce qui est
+une lecture, et son seul appelant était le rejeu. Plus rien dans la couche
+d'écriture ne relit un aliment pour le rafraîchir : une ligne rejouée arrive
+**déjà résolue** et s'écrit telle quelle.
+
+Prix nommé : les macros sont lues **quelques secondes plus tôt**, au toucher
+plutôt qu'à « Confirmer ». Le §14.6 n° 6 demande les valeurs d'*aujourd'hui*
+plutôt que la capsule figée — quelques secondes ne sont pas la distinction
+qu'il trace. Ce que ça rachète est la promesse du panier elle-même : une ligne
+montre exactement ce qu'elle écrira.
+
+**Les trois replis du §14.6 n° 7 ont survécu au déménagement** — saisie libre,
+aliment supprimé, unité de base changée. Même règle, même raisonnement ; seul
+son porteur a bougé.
+
+**Un comportement a fait l'aller-retour, et la troisième lecture est la
+bonne.** Un repas vidé entre le moment où la liste est dessinée et le toucher :
+
+1. Rejeu autonome — ne matérialisait pas, « un repas vide est un panier vide ».
+2. Une ligne au panier — matérialisait, parce que le panier n'était **pas**
+   vide : l'utilisateur y avait mis une ligne et confirmé.
+3. Déplié au toucher — ne matérialise pas, parce qu'il ne produit **aucune
+   ligne**. Il n'y a rien à confirmer et rien à créer, sans aucun cas
+   particulier.
+
+La troisième est la meilleure parce qu'elle ne décide rien : ce que
+l'utilisateur confirme est ce que le panier contient, et le panier contient ce
+qu'on lui a montré.
+
+**Une ligne rejouée ne se corrige pas**, elle se retire. Le §8.4 v2.3 dit que
+toucher une ligne rouvre le choix qui l'a faite ; celle-ci n'a pas été
+*choisie*, elle a été **levée** d'un repas passé, et il n'y a aucun écran
+derrière elle à rouvrir.
+
+**Et le « + » d'un repas fait exactement ce que fait la rangée.** Il n'y a pas
+d'écran de quantité derrière un repas, donc rien d'autre que la rangée pourrait
+vouloir dire. Il est là parce que les trois listes se lisent maintenant comme
+une seule grammaire — et parce qu'un « plus » décoratif entre deux vrais serait
+celui qui ne répond pas.
+
 ## Points ouverts après la tranche 6
 - **Vérification iPhone en attente.** Rien de l'interface des recettes n'a été
   touché sur l'appareil. À regarder en premier : le bloc groupé du Journal — le
@@ -2425,11 +2510,11 @@ supprimerait le seul endroit où ça se fait. C'est le budget qui bouge.
   et la marque sont classés ; un tag ne se trouve qu'en touchant sa puce. C'est
   la conséquence directe du refus de fondre les deux filtres, et la réserve est
   que quelqu'un tapera « végétarien » dans le champ avant de voir la puce.
-- **Aucun pré-remplissage de quantité pour une recette.** Un aliment a sa chaîne
-  à quatre temps, une recette s'ouvre sur un champ vide. Le remède tient sans
-  changement de schéma — la fonction de fenêtre de `lastEntriesByFood` se
-  généralise à `source_recipe_id` — mais demande un index, et les index sont la
-  partie réversible.
+- ~~**Aucun pré-remplissage de quantité pour une recette.**~~ **Fait**, et il a
+  levé la réserve sur le bouton « + ». L'index reste différé : la fonction de
+  fenêtre tourne sans lui, et ajouter une migration par symétrie avec
+  `ix_entry_source_food` est ce que ce projet décline. Le jour où un vrai
+  historique le rend mesurable, c'est un `CREATE INDEX`.
 - **Le bloc ne dit pas combien d'ingrédients il contient quand il est replié.**
   Le nom, la quantité et le total, rien de plus. Trois touchers pour compter.
   Non fait parce qu'aucune spec ne le demande et que la rangée porte déjà cinq

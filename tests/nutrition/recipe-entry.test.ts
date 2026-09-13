@@ -18,6 +18,8 @@ import {
   readRecipeOccurrencePrefill,
 } from '../../src/features/nutrition/data/recipe-reads';
 import { createRecipe, deleteRecipe } from '../../src/features/nutrition/data/recipe-writes';
+import { listRecipes } from '../../src/features/nutrition/data/recipe-reads';
+import { recipeTotal } from '../../src/features/nutrition/domain/recipe-macros';
 import { emptyFoodDraft, type FoodDraft } from '../../src/features/nutrition/domain/food-draft';
 import { emptyRecipeDraft } from '../../src/features/nutrition/domain/recipe-draft';
 import {
@@ -545,5 +547,91 @@ describe('scaling the lines instead of re-deriving them', () => {
     // unchanged would silently freeze them at the old amount.
     expect(rescaleLines(lines, 0, 2)).toBeNull();
     expect(rescaleLines(lines, Number.NaN, 2)).toBeNull();
+  });
+});
+
+describe('what a recipe row promises and its button does', () => {
+  it('states the last logged quantity, or one portion', () => {
+    // Specs 8.4a v2.4: the quantity a row SHOWS is what its button ADDS. The
+    // row carries lastQuantity, which comes from prefillRecipeQuantity — the
+    // same pure function the occurrence screen opens on, so the row, the
+    // button and the screen are one value produced once.
+    const { recipeId } = buildRecipe();
+
+    expect(listRecipes(database.db).find((item) => item.id === recipeId)?.lastQuantity).toBe(1);
+
+    addEntries(database.db, {
+      date: DATE,
+      mealPosition: 0,
+      entries: [occurrence(recipeId, 3)],
+    });
+
+    expect(listRecipes(database.db).find((item) => item.id === recipeId)?.lastQuantity).toBe(3);
+  });
+
+  it('agrees with the single read, which is how the two cannot drift', () => {
+    // A window function over the whole library and a single read per recipe,
+    // the pair slice 4 had to hold in step for the foods. The ORDER BY is the
+    // same character for character, so rn = 1 selects exactly the row the
+    // single read returns.
+    const first = buildRecipe();
+    const second = buildRecipe();
+
+    addEntries(database.db, {
+      date: DATE,
+      mealPosition: 0,
+      entries: [occurrence(first.recipeId, 2), occurrence(second.recipeId, 1.5)],
+    });
+    addEntries(database.db, {
+      date: DATE,
+      mealPosition: 1,
+      entries: [occurrence(first.recipeId, 4)],
+    });
+
+    for (const item of listRecipes(database.db)) {
+      expect(item.lastQuantity).toBe(
+        prefillRecipeQuantity(
+          readLastRecipeQuantity(database.db, item.id),
+          item.yield.type,
+        ),
+      );
+    }
+  });
+
+  it('carries the ingredients, so one tap can scale them without a read', () => {
+    const { recipeId } = buildRecipe();
+    const item = listRecipes(database.db).find((entry) => entry.id === recipeId);
+
+    expect(item?.ingredients.map((line) => line.name)).toEqual([
+      'Pois chiches',
+      'Crème de coco',
+    ]);
+    // And they sum to the figure the list states, which is what keeps the two
+    // computations of one number from drifting.
+    expect(recipeTotal(item?.ingredients ?? []).kcal).toBeCloseTo(item?.total.kcal ?? -1, 9);
+  });
+
+  it('stages exactly what the row showed', () => {
+    // THE ASSERTION THE BUTTON EXISTS FOR. The row words lastQuantity, the
+    // button scales the ingredients at lastQuantity, and the two must be the
+    // same amount — asserted against the function rather than a literal, so a
+    // second implementation would fail here.
+    const { recipeId } = buildRecipe();
+    addEntries(database.db, {
+      date: DATE,
+      mealPosition: 0,
+      entries: [occurrence(recipeId, 2)],
+    });
+
+    const item = listRecipes(database.db).find((entry) => entry.id === recipeId);
+    if (item === undefined) throw new Error('no recipe');
+
+    const staged = occurrenceLines(item, item.lastQuantity);
+    const throughTheScreen = occurrence(recipeId, item.lastQuantity);
+
+    expect(occurrenceTotal(staged).kcal).toBeCloseTo(
+      occurrenceTotal(throughTheScreen.lines).kcal,
+      9,
+    );
   });
 });

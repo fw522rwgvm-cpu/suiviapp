@@ -8,6 +8,9 @@ import type { RecipeListItem } from '../data/recipe-reads';
 import { useQuickAccessRecipes, useRecipes } from '../data/recipe-queries';
 import { searchFoods } from '../domain/food-search';
 import { RecipeRow } from './recipe-row';
+import { describeConsumed } from './recipe-text';
+import { occurrenceLines, occurrenceTotal } from '../domain/recipe-occurrence';
+import { formatKcal } from '@/core/format';
 
 /**
  * Recipes in the add window: favourites first, then recents (specs 8.4a).
@@ -31,16 +34,23 @@ import { RecipeRow } from './recipe-row';
  * meal — the exception slice 5 made for a meal was justified by a meal being
  * "un repas entier en un geste", which a recipe is not.
  *
- * ## AND IT HAS NO "+" BUTTON, WHICH IS THE ASYMMETRY WORTH NAMING
+ * ## THE "+" IS HERE NOW, AND IT ONLY BECAME HONEST WITH THE PRE-FILL
  *
- * Every food row here carries one, because specs 8.4a v2.4 promises the shown
- * quantity IS what the button adds, and a food has the four-step pre-fill
- * chain behind it. A recipe has no equivalent: specs 8.6 makes the consumed
- * quantity its FIRST question, and there is no "last time" to fall back on.
+ * It was refused at first: specs 8.4a v2.4 promises that the quantity a row
+ * SHOWS is what its button ADDS, and a recipe had no quantity to show — specs
+ * 8.6 makes the consumed amount its first question, with no "last time" behind
+ * it. A button would have had to invent an amount or open a screen, and both
+ * break the promise the food rows above it just made.
  *
- * So touching the row opens the two steps of specs 8.6. Adding a "+" would
- * mean either inventing a quantity or opening a screen anyway, and both undo
- * the promise the rows above it just made.
+ * The pre-fill removed the obstacle rather than the promise. The row shows the
+ * last amount logged (or one portion), the button stages exactly that, and the
+ * occurrence screen opens on the same figure — ONE value, from
+ * prefillRecipeQuantity, read once and carried on the list item. Two paths to
+ * it would agree almost always, and the day they disagreed the row would lie
+ * about what its own button does.
+ *
+ * Touching the row still opens the two steps of specs 8.6, so changing the
+ * amount costs exactly what it cost before.
  *
  * ## A TERM SWITCHES THE LIST IT IS SHOWING
  *
@@ -56,9 +66,12 @@ import { RecipeRow } from './recipe-row';
  */
 export function RecipesSection({
   onPick,
+  onQuickAdd,
   term = '',
 }: {
   onPick: (recipeId: RecipeId) => void;
+  /** Stages the row's own quantity, opening nothing (specs 8.4a v2.4). */
+  onQuickAdd: (recipe: RecipeListItem) => void;
   /** Empty means quick access; anything else searches the whole library. */
   term?: string;
 }) {
@@ -82,6 +95,7 @@ export function RecipesSection({
         title="Mes recettes"
         recipes={results}
         onPick={onPick}
+        onQuickAdd={onQuickAdd}
         emptyText={`Aucune recette pour « ${term.trim()} ».`}
       />
     );
@@ -107,8 +121,8 @@ export function RecipesSection({
 
   return (
     <>
-      <Group title="Favoris" recipes={favorites} onPick={onPick} />
-      <Group title="Récents" recipes={recents} onPick={onPick} />
+      <Group title="Favoris" recipes={favorites} onPick={onPick} onQuickAdd={onQuickAdd} />
+      <Group title="Récents" recipes={recents} onPick={onPick} onQuickAdd={onQuickAdd} />
     </>
   );
 }
@@ -124,11 +138,13 @@ function Group({
   title,
   recipes,
   onPick,
+  onQuickAdd,
   emptyText,
 }: {
   title: string;
   recipes: readonly RecipeListItem[];
   onPick: (recipeId: RecipeId) => void;
+  onQuickAdd: (recipe: RecipeListItem) => void;
   emptyText?: string;
 }) {
   const theme = useTheme();
@@ -153,12 +169,25 @@ function Group({
           theme.shadow,
         ]}
       >
-        {recipes.map((item, index) => (
-          <View key={item.id}>
-            {index === 0 ? null : <ListSeparator />}
-            <RecipeRow recipe={item} onPress={() => onPick(item.id)} />
-          </View>
-        ))}
+        {recipes.map((item, index) => {
+          // ONE value, read once: the row's words, the button's amount and the
+          // occurrence screen's opening figure all come from lastQuantity.
+          const quantity = describeConsumed(item.yield, item.lastQuantity);
+          const staged = occurrenceLines(item, item.lastQuantity);
+
+          return (
+            <View key={item.id}>
+              {index === 0 ? null : <ListSeparator />}
+              <RecipeRow
+                recipe={item}
+                quantity={quantity}
+                kcal={`${formatKcal(occurrenceTotal(staged).kcal)} kcal`}
+                onPress={() => onPick(item.id)}
+                onQuickAdd={() => onQuickAdd(item)}
+              />
+            </View>
+          );
+        })}
       </View>
     </View>
   );

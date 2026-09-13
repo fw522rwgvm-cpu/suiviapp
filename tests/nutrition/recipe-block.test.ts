@@ -17,6 +17,7 @@ import {
   readRecentMeals,
 } from '../../src/features/nutrition/data/day-reads';
 import { addEntries, addFreeEntry, deleteEntry } from '../../src/features/nutrition/data/day-writes';
+import { readMealLines } from '../../src/features/nutrition/data/meal-lines';
 import { countRows, openTestDatabase, type TestDatabase } from '../helpers/database';
 
 /**
@@ -281,7 +282,7 @@ describe('replaying a meal that holds a block', () => {
     addEntries(database.db, {
       date: tomorrow,
       mealPosition: 0,
-      entries: [{ kind: 'meal', sourceMealId: mealId }],
+      entries: readMealLines(database.db, mealId),
     });
 
     const copiedMeal = requireMealId(readDay(database.db, tomorrow).meals[0]?.id);
@@ -300,7 +301,7 @@ describe('replaying a meal that holds a block', () => {
     addEntries(database.db, {
       date: tomorrow,
       mealPosition: 0,
-      entries: [{ kind: 'meal', sourceMealId: mealId }],
+      entries: readMealLines(database.db, mealId),
     });
 
     const copiedMeal = requireMealId(readDay(database.db, tomorrow).meals[0]?.id);
@@ -368,5 +369,90 @@ describe('what a recent meal says it contains', () => {
 
     expect(meals.find((row) => row.mealId === mealId)?.entryNames).toEqual(['Amorce']);
     expect(meals.find((row) => row.mealId !== mealId)?.entryNames).toEqual(['Autre repas']);
+  });
+});
+
+describe('expanding a past meal into basket lines', () => {
+  it('gives one line per top-level entry, a block staying one', () => {
+    // "Each food individually" means the meal's OWN lines. A grouped recipe is
+    // one of the things that were chosen; its ingredients were never chosen
+    // one by one, so expanding them would turn a two-line meal into a
+    // four-line one.
+    const mealId = firstMeal();
+    writeBlock(mealId);
+
+    const lines = readMealLines(database.db, mealId);
+
+    expect(lines).toHaveLength(2);
+    expect(lines[0]?.kind).toBe('replay');
+    expect(lines[1]?.kind).toBe('recipe');
+  });
+
+  it('rebuilds the block with its ingredients and its consumed amount', () => {
+    const mealId = firstMeal();
+    writeBlock(mealId, { consumed: 3 });
+
+    const block = readMealLines(database.db, mealId).find((line) => line.kind === 'recipe');
+
+    expect(block?.kind).toBe('recipe');
+    if (block?.kind !== 'recipe') return;
+    expect(block.consumed).toBe(3);
+    expect(block.yieldType).toBe('portions');
+    expect(block.lines.map((line) => line.name)).toEqual(['Pois chiches', 'Crème de coco']);
+  });
+
+  it('reads a weight yield back off the parent rather than off the recipe', () => {
+    // The recipe may have changed its yield since, or be gone. The two yields
+    // land in different columns, and reading them back is how the block says
+    // which it was.
+    const mealId = firstMeal();
+    writeBlock(mealId, { yield: 'weight', consumed: 250 });
+
+    const block = readMealLines(database.db, mealId).find((line) => line.kind === 'recipe');
+
+    expect(block?.kind).toBe('recipe');
+    if (block?.kind !== 'recipe') return;
+    expect(block.yieldType).toBe('weight');
+    expect(block.consumed).toBe(250);
+  });
+
+  it('comes to the same total once staged and written', () => {
+    // The basket's own promise: the figures shown ARE the figures written.
+    const mealId = firstMeal();
+    writeBlock(mealId);
+    const before = readDayTotals(database.db, DATE);
+
+    const tomorrow = toLocalDate('2026-09-12');
+    addEntries(database.db, {
+      date: tomorrow,
+      mealPosition: 0,
+      entries: readMealLines(database.db, mealId),
+    });
+
+    expect(readDayTotals(database.db, tomorrow).kcal).toBeCloseTo(before.kcal, 9);
+  });
+
+  it('falls back to individual lines when a block cannot be rebuilt', () => {
+    // It takes a hand-repaired archive to reach — the recipe link would have
+    // to be missing — and losing the calories silently is the one outcome
+    // worth refusing outright.
+    const mealId = firstMeal();
+    const parentId = writeBlock(mealId);
+    database.raw
+      .prepare('UPDATE journal_entry SET source_recipe_id = NULL WHERE id = ?')
+      .run(parentId);
+
+    const lines = readMealLines(database.db, mealId);
+
+    // The primer, then the block's two ingredients as ordinary lines.
+    expect(lines).toHaveLength(3);
+    expect(lines.every((line) => line.kind === 'replay')).toBe(true);
+
+    const tomorrow = toLocalDate('2026-09-12');
+    addEntries(database.db, { date: tomorrow, mealPosition: 0, entries: lines });
+    expect(readDayTotals(database.db, tomorrow).kcal).toBeCloseTo(
+      readDayTotals(database.db, DATE).kcal,
+      9,
+    );
   });
 });

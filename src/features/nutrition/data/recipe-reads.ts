@@ -128,6 +128,31 @@ export interface RecipeListItem {
   hasFrozenIngredient: boolean;
   /** The whole recipe, summed in SQL. Derived, never stored (D9). */
   total: Macros;
+  /**
+   * The lines, so a one-tap add can scale them without a second read.
+   *
+   * Carried on the LIST item rather than fetched per row, for the reason the
+   * barcodes are: the add window needs them for every recipe it shows, on
+   * every tap, and a read per row is the cost slice 4 already refused. One
+   * query for the whole library, keyed here.
+   *
+   * They are also what keeps the "+" honest: the row, the button and the
+   * occurrence screen all scale THESE lines, so the figure shown is the figure
+   * staged. A test holds recipeTotal over them against `total` above.
+   */
+  ingredients: RecipeIngredientView[];
+  /**
+   * How much of it was logged last, in the terms of its yield — or the default
+   * (specs 8.4 v2.2, applied to 8.6).
+   *
+   * NOT a second answer to "how much": it comes from prefillRecipeQuantity,
+   * the same pure function the occurrence screen opens on. That is the whole
+   * point of carrying it here rather than recomputing it — the figure shown on
+   * the row, the figure the "+" stages and the figure the screen proposes are
+   * one value produced once. Two paths to it would agree almost always, and
+   * the day they disagreed the row would lie about what its own button does.
+   */
+  lastQuantity: number;
 }
 
 /**
@@ -165,6 +190,8 @@ export function listRecipes(db: AppDatabase): RecipeListItem[] {
     .all();
 
   const tags = tagsByRecipe(db);
+  const ingredients = ingredientsByRecipe(db);
+  const lastQuantities = lastQuantityByRecipe(db);
 
   return rows.map((row) => ({
     id: row.id,
@@ -176,7 +203,71 @@ export function listRecipes(db: AppDatabase): RecipeListItem[] {
     ingredientCount: row.ingredientCount,
     hasFrozenIngredient: (row.frozenCount ?? 0) > 0,
     total: toMacros(row),
+    ingredients: ingredients.get(row.id) ?? [],
+    lastQuantity: prefillRecipeQuantity(lastQuantities.get(row.id) ?? null, row.yieldType),
   }));
+}
+
+/**
+ * Every ingredient of every recipe, in ONE query, keyed by recipe.
+ *
+ * The shape tagsByRecipe already uses, one table along. It is what lets a
+ * one-tap add scale the lines without a read of its own — and a read per row
+ * over a whole library is the cost slice 4 refused when it extended the
+ * quantity from twenty recents to every food.
+ */
+function ingredientsByRecipe(db: AppDatabase): Map<RecipeId, RecipeIngredientView[]> {
+  const byRecipe = new Map<RecipeId, RecipeIngredientView[]>();
+
+  const rows = db
+    .select({ recipeId: recipeIngredient.recipeId, ...ingredientColumns })
+    .from(recipeIngredient)
+    .leftJoin(food, eq(food.id, recipeIngredient.foodId))
+    .orderBy(asc(recipeIngredient.position), asc(recipeIngredient.id))
+    .all();
+
+  for (const row of rows) {
+    const view = toIngredientView(row);
+    if (view === null) continue;
+    const existing = byRecipe.get(row.recipeId);
+    if (existing === undefined) byRecipe.set(row.recipeId, [view]);
+    else existing.push(view);
+  }
+
+  return byRecipe;
+}
+
+/**
+ * The last amount logged for every recipe, in ONE query, keyed by recipe.
+ *
+ * A window function, exactly as lastEntriesByFood is and for the same reason:
+ * the library can hold any number of recipes, and one read each would be a
+ * cost the user controls on a path D16 budgets in tenths of a second.
+ *
+ * The ORDER BY is readLastRecipeQuantity's, character for character, so `rn = 1`
+ * selects precisely the row that function returns — the discipline slice 4
+ * established when it had to keep a window function and a single read in step.
+ */
+function lastQuantityByRecipe(db: AppDatabase): Map<RecipeId, number> {
+  const rows = db.all<{ source_recipe_id: RecipeId; quantity: number }>(sql`
+    SELECT source_recipe_id, quantity
+    FROM (
+      SELECT
+        ${journalEntry.sourceRecipeId} AS source_recipe_id,
+        ${journalEntry.quantity} AS quantity,
+        ROW_NUMBER() OVER (
+          PARTITION BY ${journalEntry.sourceRecipeId}
+          ORDER BY ${journalEntry.createdAt} DESC, ${journalEntry.id} DESC
+        ) AS rn
+      FROM ${journalEntry}
+      WHERE ${journalEntry.sourceRecipeId} IS NOT NULL
+        AND ${journalEntry.quantity} IS NOT NULL
+        AND ${journalEntry.kind} = 'recipe'
+    )
+    WHERE rn = 1
+  `);
+
+  return new Map(rows.map((row) => [row.source_recipe_id, row.quantity]));
 }
 
 /** Tags for every recipe, in one query, keyed by recipe. */

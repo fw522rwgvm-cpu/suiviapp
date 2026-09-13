@@ -15,54 +15,69 @@ import { describeYield, describeYieldUnit } from './recipe-text';
  * second visual grammar would make the library two screens stacked. Same
  * layout, same star, same single calorie figure on the right.
  *
- * ## NO "+" BUTTON, AND THAT IS A DELIBERATE ASYMMETRY
+ * ## IT SAYS TWO DIFFERENT THINGS ON THE TWO SCREENS, AND THAT IS THE RULE
  *
- * Specs 8.4a v2.4 promises that the quantity a row shows IS the quantity its
- * button adds. A food can honour that: it has the four-step pre-fill chain of
- * specs 8.4 behind it. A recipe has no equivalent — specs 8.6 makes the
- * consumed quantity the FIRST thing it asks for, and there is no "last time"
- * to fall back on.
+ * One calorie figure per row, always on the right, and what it means belongs
+ * to the screen — the ruling slice 4 made for foods, applied here:
  *
- * So a "+" here would either invent a quantity or open a screen, and both
- * break the promise the food rows just made. Touching the row opens the
- * quantity step instead, which is what the recipe journey needs anyway.
+ *  - THE LIBRARY states what the recipe IS: the calories of one yield unit,
+ *    with the yield beside it. That is what lets two recipes be compared,
+ *    which is the one thing a library is for.
+ *  - THE ADD WINDOW states the PRICE OF THE TAP: the calories of the quantity
+ *    the "+" would stage, with that quantity beside it.
  *
- * Reserve recorded: if a recipe pre-fill is ever wanted, the window function
- * behind lastEntriesByFood generalises to source_recipe_id with no schema
- * change — only an index, and indexes are the reversible part.
+ * The caller passes `quantity` and `kcal` already worded to get the second.
+ * Without them the row falls back to the first, so the library needs to say
+ * nothing at all.
  *
- * ## THE CALORIE FIGURE, AND WHAT IT IS STATED AGAINST
- *
- * One number, on the right, like every other row in the application. Here it
- * is what ONE YIELD UNIT is worth — one portion, or 100 g — and the line under
- * the name says which. A recipe's whole total would be a bigger number that
- * nobody eats, and a figure with no denominator beside it cannot be compared
- * with the row above.
- *
- * The division happens in macrosPerYieldUnit, the domain's only one; the row
- * calculates nothing (D9).
+ * Consequence, accepted and the same one slice 4 accepted: the rows of the add
+ * window stop being comparable with each other, each being stated against its
+ * own amount. That is correct for a screen where one LOGS rather than
+ * compares, and it is why the library keeps the per-unit figure.
  */
 export function RecipeRow({
   recipe,
   onPress,
   onToggleFavorite,
+  quantity,
+  kcal,
+  onQuickAdd,
 }: {
   recipe: RecipeListItem;
   onPress: () => void;
   onToggleFavorite?: () => void;
+  /**
+   * The amount a one-tap add would stage, already worded (specs 8.4a v2.4).
+   *
+   * A string rather than a number: the row shows it and does not reason about
+   * it, and the wording is the one describeYield gives everywhere else. No
+   * calculation in a component (D9).
+   */
+  quantity?: string;
+  /** What `quantity` comes to in calories, already worded. */
+  kcal?: string;
+  /** Stages `quantity` straight into the basket, opening nothing. */
+  onQuickAdd?: () => void;
 }) {
   const theme = useTheme();
-  const perUnit = macrosPerYieldUnit(recipe.total, recipe.yield);
 
   /**
-   * "4 portions · par portion" — what it makes, then what the figure means.
-   *
-   * The tags are deliberately not here. They are a filter, shown as chips
-   * above the list, and repeating them on every row would spend the width that
-   * makes the name readable for information the user just used to narrow the
-   * list.
+   * Per yield unit, for the library. Computed only when the caller has given
+   * no figure of its own — the division lives in the domain's only one.
    */
-  const subtitle = `${describeYield(recipe.yield)} · ${describeYieldUnit(recipe.yield)}`;
+  const fallbackKcal =
+    kcal ?? `${formatKcal(macrosPerYieldUnit(recipe.total, recipe.yield).kcal)} kcal`;
+
+  /**
+   * "2 portions" in the add window; "4 portions · par portion" in the library.
+   *
+   * The tags are deliberately absent from both. They are a filter, shown as
+   * chips above the list, and repeating them on every row would spend the
+   * width that makes the name readable for information the user just used to
+   * narrow the list.
+   */
+  const subtitle =
+    quantity ?? `${describeYield(recipe.yield)} · ${describeYieldUnit(recipe.yield)}`;
 
   return (
     <Pressable
@@ -101,9 +116,35 @@ export function RecipeRow({
         </Text>
       </View>
 
-      <Text style={[styles.kcal, { color: theme.colors.textMuted }]}>
-        {formatKcal(perUnit.kcal)} kcal
-      </Text>
+      <Text style={[styles.kcal, { color: theme.colors.textMuted }]}>{fallbackKcal}</Text>
+
+      {onQuickAdd === undefined ? null : (
+        /*
+          ONE TAP INSTEAD OF THREE, and it only became honest once the row had
+          a quantity to show.
+
+          Specs 8.4a v2.4 promises that the quantity a row shows IS what its
+          button adds. A recipe had none to show until the last logged amount
+          arrived, which is why this button was refused in slice 6 and is here
+          now: the promise is keepable, through one value read once — the row,
+          the button and the occurrence screen all open on the same figure.
+
+          It is safe to be this fast BECAUSE OF THE BASKET: nothing is written
+          until "Confirmer", a line added by accident is removed by a swipe,
+          and the count in the header changes on the spot to say the tap
+          landed.
+        */
+        <GlassButton
+          symbol="plus"
+          onPress={onQuickAdd}
+          tintColor={theme.colors.accent}
+          accessibilityLabel={
+            quantity === undefined
+              ? `Ajouter ${recipe.name}`
+              : `Ajouter ${quantity} de ${recipe.name}`
+          }
+        />
+      )}
 
       {onToggleFavorite === undefined ? null : (
         <GlassButton

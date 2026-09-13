@@ -32,6 +32,9 @@ import { OffResultRow } from '../components/off-result-row';
 import { OffNoticeBanner, type OffNotice } from '../components/off-notice';
 import { RecentMealsSection } from '../components/recent-meals-section';
 import { RecipesSection } from '../components/recipes-section';
+import { readMealLines } from '../data/meal-lines';
+import { getAppDatabase } from '@/core/db/app-database';
+import { occurrenceLines } from '../domain/recipe-occurrence';
 import { dedupeRemote, libraryBarcodes } from '../off/off-dedupe';
 import { useOffLookup, useOffSearch } from '../off/off-queries';
 import type { OffOutcome } from '../off/off-client';
@@ -273,7 +276,19 @@ export function AddEntryScreen({
   }
 
   function collect(entry: PendingEntry): void {
-    setBasket((current) => [...current, entry]);
+    collectMany([entry]);
+  }
+
+  /**
+   * Several lines at once, for a past meal expanded into its own.
+   *
+   * One state update rather than one per line: React would batch them anyway,
+   * and a loop over `collect` would make the basket's length depend on how the
+   * updates happened to be grouped.
+   */
+  function collectMany(entries: readonly PendingEntry[]): void {
+    if (entries.length === 0) return;
+    setBasket((current) => [...current, ...entries]);
     backToList();
   }
 
@@ -611,7 +626,26 @@ export function AddEntryScreen({
               the whole library, exactly as it does for the foods.
             */}
             {listFilter === 'recipes' ? (
-              <RecipesSection onPick={setChosenRecipe} term={term} />
+              <RecipesSection
+                onPick={setChosenRecipe}
+                /*
+                  The row's own quantity, staged without opening anything — and
+                  the lines are scaled from the ingredients the list item
+                  already carries, so the figure the row showed is the figure
+                  that lands (specs 8.4a v2.4).
+                */
+                onQuickAdd={(recipe) =>
+                  collect({
+                    kind: 'recipe',
+                    recipeId: recipe.id,
+                    name: recipe.name,
+                    yieldType: recipe.yield.type,
+                    consumed: recipe.lastQuantity,
+                    lines: occurrenceLines(recipe, recipe.lastQuantity),
+                  })
+                }
+                term={term}
+              />
             ) : null}
 
             {/*
@@ -629,15 +663,13 @@ export function AddEntryScreen({
             {listFilter === 'meals' ? (
               <RecentMealsSection
                 mealPosition={mealPosition}
-                onPick={(meal) =>
-                  collect({
-                    kind: 'meal',
-                    sourceMealId: meal.mealId,
-                    name: meal.name,
-                    entryNames: meal.entryNames,
-                    kcal: meal.kcal,
-                  })
-                }
+                /*
+                  EXPANDED HERE, into one line per top-level entry. A meal that
+                  lands as four lines can have one of them removed or corrected
+                  before anything is written; as a single line it was all or
+                  nothing, which is the very thing the basket exists to avoid.
+                */
+                onPick={(meal) => collectMany(readMealLines(getAppDatabase(), meal.mealId))}
               />
             ) : null}
           </ScrollView>
@@ -773,10 +805,10 @@ export function AddEntryScreen({
             />
           ) : (
             /*
-              A meal, which has no middle ground to reopen — its row hands over
-              no press, so this branch is unreachable. Rendering nothing rather
-              than falling through to the free-entry form, which would have
-              read `macros` off a line that has none.
+              A replayed line, whose row hands over no press — so this branch
+              is unreachable. Rendering nothing rather than falling through to
+              the free-entry form, which would have read `macros` off a line
+              that has none.
             */
             null
           )}
@@ -932,14 +964,13 @@ function Confirm({
                     quantity: entry.quantity,
                   };
                 }
-                if (entry.kind === 'meal') {
+                if (entry.kind === 'replay') {
                   /*
-                    THE IDENTIFIER, NOT A COPY. The replay happens in the write
-                    transaction, so the macros are the ones the foods carry at
-                    that instant (specs 14.6 n° 6) rather than the ones they
-                    carried when the basket was filled.
+                    Verbatim. Every column was settled when the meal was
+                    expanded, and the user has seen them since — reading a food
+                    again here could write something they were not shown.
                   */
-                  return { kind: 'meal' as const, sourceMealId: entry.sourceMealId };
+                  return entry;
                 }
                 if (entry.kind === 'recipe') {
                   /*
@@ -1045,9 +1076,16 @@ function Basket({
                 taken back the way it was refused, by a swipe, and picked
                 again if a different one was meant.
               */
-              onPress={entry.kind === 'meal' ? undefined : () => onEdit(index)}
+              /*
+                A REPLAYED LINE IS NOT CORRECTABLE, and that is not an
+                omission. Specs 8.4 v2.3 says touching a line reopens the
+                choice that made it — this one was not chosen, it was lifted
+                whole from a past meal, and there is no screen behind it to
+                reopen. It is taken back the way it was refused, by a swipe.
+              */
+              onPress={entry.kind === 'replay' ? undefined : () => onEdit(index)}
               accessibilityLabel={
-                entry.kind === 'meal'
+                entry.kind === 'replay'
                   ? pendingEntryName(entry)
                   : `Modifier ${pendingEntryName(entry)}`
               }

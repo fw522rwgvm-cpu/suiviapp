@@ -1,10 +1,10 @@
-import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Text } from '@/core/ui/text';
 import { currentLocalDate, type LocalDate } from '@/core/date';
 import { formatDayShort, formatKcal } from '@/core/format';
 import { useTheme } from '@/core/theme';
+import { GlassButton } from '@/core/ui/glass-button';
 import { ListSeparator } from '@/core/ui/list-separator';
 import { useRecentMeals } from '../data/day-queries';
 import type { RecentMeal } from '../data/day-reads';
@@ -15,7 +15,18 @@ import type { RecentMeal } from '../data/day-reads';
  * > Meals: recent ones. Selecting a recent meal adds all of its entries at
  * > once to the target meal.
  *
- * ## IT FILLS THE BASKET NOW, LIKE EVERYTHING ELSE ON THIS SCREEN
+ * ## IT ARRIVES AS SEVERAL LINES, ONE PER TOP-LEVEL ENTRY
+ *
+ * Not as one "the whole meal" line, which is what it was first staged as. The
+ * difference is what the user can then do: a meal that lands as four lines can
+ * have one of them removed, or corrected, before anything is written. As one
+ * line it was all or nothing, which is the very thing the basket exists to
+ * avoid.
+ *
+ * A grouped recipe inside it stays ONE line: it is one of the things that were
+ * chosen, and its ingredients were never chosen one by one.
+ *
+ * ## IT FILLS THE BASKET, LIKE EVERYTHING ELSE ON THIS SCREEN
  *
  * It used to write and close, and that was a considered exception: specs 8.4a
  * says selecting a recent meal "adds all of its entries AT ONCE", and the
@@ -120,7 +131,26 @@ export function RecentMealsSection({
               <Text style={[styles.kcal, { color: theme.colors.textMuted }]}>
                 {`${formatKcal(meal.kcal)} kcal`}
               </Text>
-              <SymbolView name="plus.circle" size={22} tintColor={theme.colors.accent} />
+
+              {/*
+                A REAL BUTTON NOW, where a plain glyph sat before.
+                
+                It does exactly what the row does — there is no quantity screen
+                behind a meal, so there is no second thing for the row to mean.
+                It is here because the three lists now read as one grammar: a
+                food row, a recipe row and a meal row all carry a "+" that adds
+                what the row says, and a decorative plus among two real ones
+                would be the one that does not respond.
+
+                Glass, like the others: a list row is content, and content gets
+                no material from the system for free.
+              */}
+              <GlassButton
+                symbol="plus"
+                onPress={() => onPick(meal)}
+                tintColor={theme.colors.accent}
+                accessibilityLabel={`Ajouter ${meal.name}`}
+              />
             </Pressable>
           </View>
         ))}

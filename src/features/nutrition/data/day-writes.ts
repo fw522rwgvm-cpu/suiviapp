@@ -300,17 +300,30 @@ export type NewEntry =
       lines: readonly OccurrenceLine[];
     }
   /**
-   * A whole past meal, replayed (specs 8.4a).
+   * A line lifted from a past meal, already resolved (specs 8.4a).
    *
-   * IT CARRIES AN IDENTIFIER WHERE A RECIPE CARRIES ITS LINES, and the
-   * asymmetry is the point. A recipe was ADJUSTED on screen, so what the user
-   * confirmed exists only there; a recent meal was not touched at all, so
-   * there is nothing to carry and re-reading it at write time is strictly
-   * better — specs 14.6 n° 6 wants the macros of the foods as they read TODAY,
-   * and a copy taken when the basket was filled would be a few seconds older
-   * for no benefit.
+   * Written VERBATIM: the quantity and the portion came from the old entry and
+   * the macros were read when the meal was expanded, so there is nothing left
+   * to look up. That is deliberate rather than convenient — the basket showed
+   * these exact figures, and reading a food again here could write something
+   * the user was not shown.
+   *
+   * It is also why the three fallbacks of specs 14.6 n° 7 do not appear in
+   * this file any more: they were applied at the expansion, which is where the
+   * question "what does this food say now" belongs.
    */
-  | { kind: 'meal'; sourceMealId: DayMealId };
+  | {
+      kind: 'replay';
+      entryKind: 'food' | 'free';
+      sourceFoodId: FoodId | null;
+      name: string;
+      brand: string | null;
+      baseUnit: BaseUnit | null;
+      quantity: number;
+      portionName: string | null;
+      portionQuantity: number | null;
+      reference: Macros;
+    };
 
 /**
  * Logs one or more lines into a meal, materialising the day in the same
@@ -356,9 +369,12 @@ export function addEntries(
   input: { date: LocalDate; mealPosition: number; entries: readonly NewEntry[] },
 ): JournalEntryId[] {
   for (const entry of input.entries) {
-    // A meal carries no quantity of its own: it is a list of lines that
-    // already have theirs.
-    if (entry.kind === 'meal') continue;
+    if (entry.kind === 'replay') {
+      if (!Number.isFinite(entry.quantity) || entry.quantity <= 0) {
+        throw new Error('A replayed quantity must be a positive number');
+      }
+      continue;
+    }
     if (entry.kind === 'recipe') {
       // Its own shape of quantity: how much of the recipe, not base units. The
       // lines are checked inside the transaction, where dropping the empty
@@ -387,31 +403,6 @@ export function addEntries(
     const ids: JournalEntryId[] = [];
 
     for (const entry of input.entries) {
-      if (entry.kind === 'meal') {
-        /**
-         * A past meal, replayed into this one — inside the SAME transaction as
-         * every other line of the basket (specs 8.4 v2.3).
-         *
-         * Handled BEFORE the identifier is minted, because a meal is not one
-         * row: it brings several, with their own tree, and its positions
-         * continue from wherever the basket has got to. Minting an id for it
-         * and then discarding it would be a row that never existed appearing
-         * in the returned list.
-         */
-        const written = replayMeal(tx, {
-          date: input.date,
-          sourceMealId: entry.sourceMealId,
-          target: meal,
-          now,
-        });
-
-        ids.push(...written);
-        // Its lines took the positions after this one, so the next basket line
-        // must not reuse them.
-        position = nextPosition(tx, meal.id);
-        continue;
-      }
-
       const id = newId<JournalEntryId>();
       ids.push(id);
 
@@ -506,6 +497,33 @@ export function addEntries(
             .run();
         });
 
+        continue;
+      }
+
+      if (entry.kind === 'replay') {
+        /**
+         * Verbatim. Nothing is read, nothing is refreshed, nothing is
+         * recomputed — every column was settled when the meal was expanded
+         * into the basket, and the user has seen them since.
+         */
+        tx.insert(journalEntry)
+          .values({
+            ...common,
+            kind: entry.entryKind,
+            sourceFoodId: entry.sourceFoodId,
+            name: entry.name,
+            brand: entry.brand,
+            baseUnit: entry.baseUnit,
+            quantity: entry.quantity,
+            portionName: entry.portionName,
+            portionQuantity: entry.portionQuantity,
+            protein100: entry.reference.protein,
+            carbs100: entry.reference.carbs,
+            fat100: entry.reference.fat,
+            /** Kept as given, never recomputed from P/C/F (specs 5.1). */
+            kcal100: entry.reference.kcal,
+          })
+          .run();
         continue;
       }
 
@@ -940,130 +958,13 @@ export function deleteMeal(
  * ever 'food' or 'free' today — and a block is an adjusted composition
  * (specs 8.6), not a reference to re-read.
  */
-/**
- * Replays one past meal into a target meal, INSIDE the caller's transaction.
+/*
+ * refreshedReference and its FrozenReference shape have MOVED to
+ * data/meal-lines.ts.
  *
- * ## IT IS NO LONGER AN OPERATION OF ITS OWN
- *
- * It used to be `addRecentMeal`, which opened its own transaction, wrote, and
- * closed the panel. Slice 6 puts a recent meal in the basket like everything
- * else, so the replay is now one case of addEntries and has no reason to be
- * reachable on its own — the rule ensureMaterialized and ensureOffFood already
- * follow: what the user explicitly confirms is written, what they merely
- * choose is not.
- *
- * It returns the ids it wrote, and the caller decides what a meal with nothing
- * in it means.
+ * They answered "what does this food say now", which is a read, and their only
+ * caller was the meal replay — now that a recent meal is expanded into basket
+ * lines at the tap rather than replayed at the write, the question is asked
+ * where the expansion happens. Nothing in this file reads a food to refresh it
+ * any more: a replayed line arrives already resolved, and is written verbatim.
  */
-function replayMeal(
-  tx: AppDatabase,
-  input: {
-    date: LocalDate;
-    sourceMealId: DayMealId;
-    target: MealRef;
-    now: number;
-  },
-): JournalEntryId[] {
-  {
-    const source = readEntriesForReplay(tx, input.sourceMealId);
-    const target = input.target;
-    const now = input.now;
-    let position = nextPosition(tx, target.id);
-
-    /** Old identifier to new, so a recipe block keeps its shape. */
-    const remapped = new Map<JournalEntryId, JournalEntryId>();
-    const ids: JournalEntryId[] = [];
-
-    for (const entry of source) {
-      const id = newId<JournalEntryId>();
-      remapped.set(entry.id, id);
-      ids.push(id);
-
-      // A child whose parent is not in this meal would point outside it; the
-      // query returns a whole meal, so this only guards the impossible.
-      const parentEntryId =
-        entry.parentEntryId === null ? null : (remapped.get(entry.parentEntryId) ?? null);
-
-      const refreshed = refreshedReference(tx, entry);
-
-      tx.insert(journalEntry)
-        .values({
-          id,
-          dayMealId: target.id,
-          date: input.date,
-          parentEntryId,
-          position: position++,
-          kind: entry.kind,
-          sourceFoodId: entry.sourceFoodId,
-          // Carried, where slice 5 wrote a hard null: a replayed block that no
-          // longer knew its recipe would be correct and silently anonymous.
-          sourceRecipeId: entry.sourceRecipeId,
-          name: refreshed.name,
-          brand: refreshed.brand,
-          baseUnit: entry.baseUnit,
-          quantity: entry.quantity,
-          portionName: entry.portionName,
-          portionQuantity: entry.portionQuantity,
-          protein100: refreshed.protein100,
-          carbs100: refreshed.carbs100,
-          fat100: refreshed.fat100,
-          kcal100: refreshed.kcal100,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .run();
-    }
-
-    return ids;
-  }
-}
-
-interface FrozenReference {
-  name: string;
-  brand: string | null;
-  protein100: number | null;
-  carbs100: number | null;
-  fat100: number | null;
-  kcal100: number | null;
-}
-
-/** The food as it reads today, or the old capsule when it cannot be read. */
-function refreshedReference(
-  tx: AppDatabase,
-  entry: {
-    kind: JournalEntryKind;
-    sourceFoodId: FoodId | null;
-    baseUnit: BaseUnit | null;
-    name: string;
-    brand: string | null;
-    protein100: number | null;
-    carbs100: number | null;
-    fat100: number | null;
-    kcal100: number | null;
-  },
-): FrozenReference {
-  const capsule: FrozenReference = {
-    name: entry.name,
-    brand: entry.brand,
-    protein100: entry.protein100,
-    carbs100: entry.carbs100,
-    fat100: entry.fat100,
-    kcal100: entry.kcal100,
-  };
-
-  if (entry.kind !== 'food' || entry.sourceFoodId === null) return capsule;
-
-  const food = readFood(tx, entry.sourceFoodId);
-  if (food === null) return capsule;
-  // See the note above: matching units or nothing.
-  if (food.baseUnit !== entry.baseUnit) return capsule;
-
-  return {
-    name: food.name,
-    brand: food.brand,
-    protein100: food.reference.protein,
-    carbs100: food.reference.carbs,
-    fat100: food.reference.fat,
-    kcal100: food.reference.kcal,
-  };
-}

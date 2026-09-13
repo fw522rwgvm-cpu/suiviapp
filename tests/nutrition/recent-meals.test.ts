@@ -9,6 +9,7 @@ import {
   deleteEntry,
 } from '../../src/features/nutrition/data/day-writes';
 import { createFood, deleteFood, updateFood } from '../../src/features/nutrition/data/food-writes';
+import { readMealLines } from '../../src/features/nutrition/data/meal-lines';
 import { openTestDatabase, type TestDatabase } from '../helpers/database';
 
 /**
@@ -21,12 +22,14 @@ import { openTestDatabase, type TestDatabase } from '../helpers/database';
  * capsule, and each has its own test — a free entry, a deleted food, and a food
  * whose base unit has moved.
  *
- * IT GOES THROUGH THE BASKET SINCE SLICE 6's FOLLOW-UP. addRecentMeal is gone:
- * a recent meal is staged like every other line and written by addEntries, so
- * the path under test here is the one the screen actually takes.
+ * IT GOES THROUGH THE BASKET, AND THE MEAL IS EXPANDED AT THE TAP. There is no
+ * addRecentMeal and no replay inside the write: readMealLines turns a past meal
+ * into one staged line per top-level entry, and addEntries writes each one
+ * verbatim. So the path under test here is the one the screen actually takes,
+ * and the three fallbacks of specs 14.6 n° 7 are asserted where they now live.
  */
 
-/** One meal, staged and confirmed — what the add window now does. */
+/** One meal, expanded and confirmed — what the add window now does. */
 function replayMeal(input: {
   date: (typeof MONDAY);
   mealPosition: number;
@@ -35,7 +38,7 @@ function replayMeal(input: {
   return addEntries(fixture.db, {
     date: input.date,
     mealPosition: input.mealPosition,
-    entries: [{ kind: 'meal', sourceMealId: input.sourceMealId }],
+    entries: readMealLines(fixture.db, input.sourceMealId),
   });
 }
 
@@ -334,28 +337,26 @@ describe('replaying a recent meal', () => {
     expect(readDay(fixture.db, TUESDAY).materialized).toBe(true);
   });
 
-  it('writes no line when the source meal has been emptied — but does make the day', () => {
-    // THE ONE BEHAVIOUR THE BASKET CHANGED, and it changed in the right
-    // direction.
+  it('stages nothing at all when the source meal has been emptied', () => {
+    // AN EMPTY BASKET MUST NOT CREATE A DAY (specs 8.2), and expanding at the
+    // tap is what makes that true again without a special case.
     //
-    // The standalone replay refused to materialise here, on the reading that
-    // an empty meal is an empty basket and specs 8.2 forbids creating a day
-    // from nothing. Through the basket that reading no longer holds: the
-    // basket was NOT empty — the user put a meal line in it and pressed
-    // Confirmer — and 8.2 makes the user's action on a day the act that
-    // defines it. A day materialised with nothing in it is the same state a
-    // day emptied of its entries is already in, which slice 1 settled.
+    // Worth recording because it moved twice. With the meal as ONE basket line
+    // carrying an identifier, confirming it materialised the day and wrote
+    // nothing — the basket was not empty, and 8.2 makes the user's action the
+    // act that defines a day. Expanded at the tap, an emptied meal produces no
+    // line at all, so there is nothing to confirm and nothing to create.
     //
-    // It can only be reached by the meal being emptied between the list being
-    // drawn and Confirmer, which one screen at a time makes unreachable.
+    // The second reading is the better one: what the user confirms is what the
+    // basket holds, and the basket holds what they were shown.
     lunch();
     const sourceMealId = readDay(fixture.db, MONDAY).meals[1]!.id!;
     for (const entry of readMealEntries(fixture.db, sourceMealId)) {
       deleteEntry(fixture.db, entry.id);
     }
 
+    expect(readMealLines(fixture.db, sourceMealId)).toEqual([]);
     expect(replayMeal({ date: TUESDAY, mealPosition: 1, sourceMealId })).toEqual([]);
-    expect(readDay(fixture.db, TUESDAY).materialized).toBe(true);
-    expect(readMealEntries(fixture.db, readDay(fixture.db, TUESDAY).meals[1]!.id!)).toEqual([]);
+    expect(readDay(fixture.db, TUESDAY).materialized).toBe(false);
   });
 });

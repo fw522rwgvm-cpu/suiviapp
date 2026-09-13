@@ -1,5 +1,6 @@
-import type { BaseUnit, DayMealId, FoodId, RecipeId, YieldType } from '@/core/db/schema';
-import { formatChoiceQuantity } from '../components/portion-text';
+import type { BaseUnit, FoodId, RecipeId, YieldType } from '@/core/db/schema';
+import { formatChoiceQuantity, formatPortionCount } from '../components/portion-text';
+import { formatQuantity } from '@/core/format';
 import { describeConsumed } from '../components/recipe-text';
 import { macrosOf, type CompleteOffProduct } from '../off/off-product';
 import { describeMacros, totalOf, type Macros } from './macros';
@@ -80,13 +81,32 @@ export type PendingEntry =
    * The display fields are a snapshot, and that is fine: they say what the
    * line will bring, and the basket is emptied with the screen.
    */
+  /**
+   * A line lifted from a past meal, already resolved (specs 8.4a).
+   *
+   * IT CARRIES A WHOLE ROW rather than a reference to build one from, because
+   * there is nothing left to decide: the quantity and the portion come from
+   * the old entry, and the macros were read when the meal was expanded — the
+   * three fallbacks of specs 14.6 n° 7 have already been applied.
+   *
+   * That is what lets a replayed line be corrected or removed one at a time,
+   * which a single "the whole meal" line could not offer. And it keeps the
+   * basket's promise exactly: the figures shown ARE the figures written.
+   */
   | {
-      kind: 'meal';
-      sourceMealId: DayMealId;
+      kind: 'replay';
+      /** 'free' declines to show a quantity nobody typed (D5/R2). */
+      entryKind: 'food' | 'free';
+      /** Informative, and may name a food that no longer exists. */
+      sourceFoodId: FoodId | null;
       name: string;
-      /** Top-level lines, for the row to name what it holds. */
-      entryNames: readonly string[];
-      kcal: number;
+      brand: string | null;
+      baseUnit: BaseUnit | null;
+      quantity: number;
+      portionName: string | null;
+      portionQuantity: number | null;
+      /** For 100 base units, as they will be frozen. */
+      reference: Macros;
     };
 
 /**
@@ -98,20 +118,8 @@ export type PendingEntry =
  */
 export function pendingEntryMacros(entry: PendingEntry): Macros {
   if (entry.kind === 'free') return entry.macros;
-  /**
-   * A MEAL KNOWS ONLY ITS CALORIES, and says so rather than guessing.
-   *
-   * The recents query sums kcal and nothing else — three more sums for a row
-   * that shows one figure would be three more sums on every keystroke. So the
-   * three macros come back as zero, which the basket row must not print: it
-   * shows the calories and the names, and no P / G / L line.
-   *
-   * The journal gets all four, from the rows the replay writes; this is the
-   * one place that is short, and it is short where nothing reads it.
-   */
-  if (entry.kind === 'meal') {
-    return { protein: 0, carbs: 0, fat: 0, kcal: entry.kcal };
-  }
+  // A replayed line scales its own reference, exactly as a food line does.
+  if (entry.kind === 'replay') return totalOf(entry.reference, entry.quantity);
   // A block is the sum of its own lines, which is what its parent row will
   // show once written: the parent carries no macros of its own (D5/R2).
   if (entry.kind === 'recipe') return occurrenceTotal(entry.lines);
@@ -136,26 +144,14 @@ export function pendingEntryName(entry: PendingEntry): string {
 
 /** How many rows this line is about to write, when it is more than one. */
 export function pendingEntryLineCount(entry: PendingEntry): number | null {
-  if (entry.kind === 'recipe') return entry.lines.length;
-  if (entry.kind === 'meal') return entry.entryNames.length;
-  return null;
-}
-
-/**
- * Whether the line can state its three macros.
- *
- * False for a meal alone: the recents query sums calories and nothing else,
- * and printing "P 0 · G 0 · L 0" beside a real calorie figure would be four
- * numbers of which three are false.
- */
-export function hasPendingEntryMacros(entry: PendingEntry): boolean {
-  return entry.kind !== 'meal';
+  return entry.kind === 'recipe' ? entry.lines.length : null;
 }
 
 export function pendingEntryBrand(entry: PendingEntry): string | null {
   if (entry.kind === 'free') return null;
-  // Neither a recipe nor a meal has a brand, and neither ever will.
-  if (entry.kind === 'recipe' || entry.kind === 'meal') return null;
+  // A recipe has no brand, and never will: it is something you made.
+  if (entry.kind === 'recipe') return null;
+  if (entry.kind === 'replay') return entry.brand;
   return entry.kind === 'off' ? entry.product.brand : entry.brand;
 }
 
@@ -179,11 +175,20 @@ export function pendingEntryKcal(entry: PendingEntry): number {
 export function describePendingEntryQuantity(entry: PendingEntry): string | null {
   if (entry.kind === 'free') return null;
 
-  // A meal says WHAT IS IN IT where the others say how much of one thing —
-  // the same line the recents row shows, for the same reason: a count says
-  // the size and never the identity.
-  if (entry.kind === 'meal') {
-    return entry.entryNames.length === 0 ? null : entry.entryNames.join(', ');
+  /**
+   * A replayed line shows the quantity it was logged at, in the terms it was
+   * logged in — the portion when there was one, which is the basket's rule for
+   * every other line.
+   *
+   * A free entry among them shows nothing, for the reason it always does: it
+   * is stored as 100 units of a virtual food, and showing "100 g" would be
+   * showing the storage form.
+   */
+  if (entry.kind === 'replay') {
+    if (entry.entryKind === 'free' || entry.baseUnit === null) return null;
+    return entry.portionName === null || entry.portionQuantity === null
+      ? formatQuantity(entry.quantity, entry.baseUnit)
+      : formatPortionCount(entry.quantity / entry.portionQuantity, entry.portionName);
   }
 
   // A recipe says how much of ITSELF, in the terms its yield is stated in —
