@@ -1866,6 +1866,26 @@ petit-déjeuner logué, le modèle de la journée cessait d'être modifiable. Qu
 un composant a trois branches selon l'état, la question à poser n'est pas si
 elles sont justes mais **s'il en manque une**.
 
+**Apparier par position était faux, et il a fallu une suppression pour le
+voir.** Appliquer un modèle marchait index à index. Supprimez le dîner et tout
+ce qui suit le trou remonte d'un cran : les objectifs du dîner s'écrivaient sur
+la collation. **Rien ne le montrait** — les chiffres étaient plausibles, ils
+étaient simplement les mauvais, ce qui est le seul genre de faux qui compte.
+
+L'appariement se fait par **nom**, ce que les noms peuvent porter depuis qu'ils
+sont une liste fermée de quatre avec au plus un petit-déjeuner, un déjeuner et
+un dîner par journée : « le dîner de la journée » est une question à une seule
+réponse. Les collations, la seule sorte qui se répète, sont appariées dans
+l'ordre et le reste est rendu — manquantes d'un côté, non réclamées de l'autre.
+
+**Un repas du modèle que la journée n'a plus revient, ajouté en fin.** Pas
+inséré à sa place : les positions sont ce par quoi chaque écriture désigne un
+repas, donc le glisser au milieu demanderait de renuméroter des lignes que
+personne n'a touchées. Un dîner restauré arrive donc en dernier.
+
+Ce qui reste intouché : un nom, une entrée, et tout repas que le modèle ne
+nomme pas — celui-là garde tout et ne perd que ses chiffres.
+
 ## Points ouverts après la tranche 5
 - ~~**Vérification iPhone en attente.**~~ **Faite pour l'essentiel** : la
   tranche 5 a tourné sur l'appareil et a rendu six retours d'interface, tous
