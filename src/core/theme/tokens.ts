@@ -40,9 +40,24 @@ export interface ColorTokens {
    * iOS itself uses for "you can touch this", which is not a coincidence worth
    * fighting.
    *
-   * It was a green before, and the green was the problem: it sat next to the
-   * teal of protein, so an accent and a figure could be mistaken for each
-   * other on the one screen where both appear at once.
+   * IT WAS BLUE, AND BEFORE THAT GREEN. The green was dropped because it sat
+   * next to the teal of protein, and an accent and a figure could be mistaken
+   * for each other on the one screen where both appear at once.
+   *
+   * It is now a mint green — #08daa9, asked for by name as the application's
+   * colour. Which brings that exact collision back, so the answer is the other
+   * half of the trade: THE ACCENT VACATED BLUE, AND PROTEIN TOOK IT. The two
+   * are now a green and a blue rather than two greens, and the reason the old
+   * note gave for avoiding green no longer applies.
+   *
+   * ## THE HEX IS THE DARK VALUE, NOT BOTH
+   *
+   * #08daa9 measures 1.81:1 on white. That is below the 4.5:1 a label needs
+   * and below even the 3:1 a drawn shape needs, so in the light theme it would
+   * be a gauge you cannot see and a button you cannot read. It is therefore
+   * used exactly as given on the dark surface, where it reaches 9.60:1, and
+   * darkened to the same hue for the light one — the inverse of what the macro
+   * colours already do in the other direction.
    */
   accent: string;
   /** Text drawn on top of accent. */
@@ -63,11 +78,17 @@ export interface ColorTokens {
    * quantity of protein is not touchable, and borrowing the interactive colour
    * for it makes both meanings weaker.
    *
-   * FOUR HUES, AS FAR APART AS FOUR CAN BE, once the accent and the
-   * destructive red are excluded: orange for carbs, teal for protein, violet
-   * for fat, and magenta for calories. Calories came last and took what was
-   * left, which is also the only choice that survives being looked at -- a
-   * blue would sit on top of the teal, an amber on top of the orange, and a
+   * CALORIES ARE THE EXCEPTION, AND DELIBERATELY SO: they wear the accent
+   * itself. Calories are the figure the gauge draws and the one specs 8.3 makes
+   * legible without interaction, so one colour across the gauge, the dot and
+   * the headline says they are one thing. The rule below holds for the other
+   * three, which are quantities and not the subject.
+   *
+   * THREE HUES, AS FAR APART AS THREE CAN BE, once the accent and the
+   * destructive red are excluded: orange for carbs, blue for protein, violet
+   * for fat. Protein moved off teal when the accent became mint, which is what
+   * keeps them apart -- a green beside a teal was the very problem the accent
+   * note above records, and an amber would sit on top of the orange, and a
    * red would be read as something having gone wrong.
    *
    * In the spirit of the app the design was asked to follow, not sampled from
@@ -109,7 +130,7 @@ const light: ColorTokens = {
   text: '#111113',
   textMuted: '#65656d',
   textFaint: '#9a9aa3',
-  accent: '#3b5bdb',
+  accent: '#058063',
   onAccent: '#ffffff',
   warning: '#8a5a00',
   /**
@@ -127,8 +148,8 @@ const light: ColorTokens = {
    * clears the bar — 4.60:1, pinned by a test.
    */
   danger: '#e02d1f',
-  macroKcal: '#b5307a',
-  macroProtein: '#2f7d8c',
+  macroKcal: '#058063',
+  macroProtein: '#3457c5',
   macroCarbs: '#d98324',
   macroFat: '#8a5cc4',
   /** The rose of a sky at dawn, not the orange of the sun that is still rising. */
@@ -148,7 +169,7 @@ const dark: ColorTokens = {
   text: '#f2f2f4',
   textMuted: '#a0a0a9',
   textFaint: '#6b6b74',
-  accent: '#8ea8ff',
+  accent: '#08daa9',
   onAccent: '#0f0f11',
   warning: '#e0a942',
   /**
@@ -165,8 +186,8 @@ const dark: ColorTokens = {
   danger: '#ff453a',
   // Lifted, not the same hex: a colour that reads on white disappears on near
   // black, and the point of giving each macro a colour is that it be readable.
-  macroKcal: '#ec6fb5',
-  macroProtein: '#5cc4d4',
+  macroKcal: '#08daa9',
+  macroProtein: '#7f9cf5',
   macroCarbs: '#f0a94c',
   macroFat: '#b18ce0',
   // Lifted like the macros: a colour that reads on white disappears on near

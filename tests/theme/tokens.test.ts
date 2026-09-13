@@ -244,3 +244,51 @@ function isCool(hex: string): boolean {
   const blue = parseInt(hex.slice(5, 7), 16);
   return blue > red;
 }
+
+describe('the accent, now that it is the mint', () => {
+  it('is readable as a label on its own surface, in both themes', () => {
+    // It tints chevrons, "Enregistrer", the add button and every header. Below
+    // 4.5:1 those stop being readable, and #08daa9 as given measures 1.81:1 on
+    // white — which is why the light theme carries a darkened value of the same
+    // hue rather than the hex itself.
+    expect(contrast(colors.light.accent, colors.light.surface)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(colors.dark.accent, colors.dark.surface)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('is readable under the label of a filled button, in both themes', () => {
+    // The save buttons paint the accent and write onAccent on top of it.
+    expect(contrast(colors.light.onAccent, colors.light.accent)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(colors.dark.onAccent, colors.dark.accent)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('keeps the hex that was asked for, on the surface it works on', () => {
+    // Asked for by name. It reaches 9.60:1 on the dark surface, so it is used
+    // exactly as given there; the light theme is the compromise, not this.
+    expect(colors.dark.accent).toBe('#08daa9');
+  });
+
+  it('gives calories the accent itself, which is deliberate', () => {
+    // Calories are what the gauge draws and what specs 8.3 makes legible
+    // without interaction. One colour across the gauge, the dot and the
+    // headline says they are one thing — so this is the one macro allowed to
+    // wear the interactive colour, and the assertion exists so nobody
+    // "corrects" it back.
+    expect(colors.light.macroKcal).toBe(colors.light.accent);
+    expect(colors.dark.macroKcal).toBe(colors.dark.accent);
+  });
+
+  it('keeps protein away from the accent now that both could be green', () => {
+    // The accent was green once and was moved off it because it sat next to
+    // the teal of protein. The mint brings that back, so protein took the blue
+    // the accent vacated. Blue channel dominant on one, green on the other.
+    for (const scheme of ['light', 'dark'] as const) {
+      const protein = colors[scheme].macroProtein;
+      const red = parseInt(protein.slice(1, 3), 16);
+      const green = parseInt(protein.slice(3, 5), 16);
+      const blue = parseInt(protein.slice(5, 7), 16);
+
+      expect(blue, `${scheme} protein is a blue`).toBeGreaterThan(green);
+      expect(blue, `${scheme} protein is a blue`).toBeGreaterThan(red);
+    }
+  });
+});

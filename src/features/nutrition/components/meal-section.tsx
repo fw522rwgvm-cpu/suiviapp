@@ -327,7 +327,9 @@ const styles = StyleSheet.create({
     paddingLeft: 18,
   },
   identity: { flex: 1, gap: 3 },
-  name: { fontSize: 17, fontWeight: '600' },
+  // Bold, not semibold: the name is what the row IS, and it now sits beside a
+  // coloured glyph and above a line of figures that are both quieter than it.
+  name: { fontSize: 17, fontWeight: '700' },
   total: { fontSize: 14, fontVariant: ['tabular-nums'] },
   // Tighter than the row's own padding: the glyph is large enough to carry the
   // target on its own, so padding here would only push it off the edge.
