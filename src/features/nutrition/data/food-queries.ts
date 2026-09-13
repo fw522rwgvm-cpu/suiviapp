@@ -6,6 +6,7 @@ import {
   listFoods,
   readFavoriteFoods,
   readFood,
+  readFoodByBarcode,
   readFoodDraft,
   readQuantityPrefill,
   readRecentFoods,
@@ -35,6 +36,7 @@ export const foodKeys = {
   one: (foodId: FoodId | null) => ['nutrition', 'food', foodId] as const,
   draft: (foodId: FoodId | null) => ['nutrition', 'food-draft', foodId] as const,
   prefill: (foodId: FoodId | null) => ['nutrition', 'quantity-prefill', foodId] as const,
+  byBarcode: (barcode: string | null) => ['nutrition', 'food-barcode', barcode] as const,
 };
 
 /**
@@ -67,6 +69,24 @@ export function useRecentFoods(limit?: number) {
     queryKey: foodKeys.recents,
     queryFn: () => readRecentFoods(getAppDatabase(), limit),
     meta: readsFrom(food, journalEntry),
+  });
+}
+
+/**
+ * The first link of the scan chain: does the library already hold this product
+ * (specs 8.5)?
+ *
+ * It usually does, for anything scanned twice — the automatic copy put it
+ * there — and then the whole journey costs one indexed lookup and no network.
+ * That is most of how the five-second target is met, and it is why this query
+ * comes before the cache and before Open Food Facts rather than beside them.
+ */
+export function useFoodByBarcode(barcode: string | null) {
+  return useQuery({
+    queryKey: foodKeys.byBarcode(barcode),
+    queryFn: () => (barcode === null ? null : readFoodByBarcode(getAppDatabase(), barcode)),
+    enabled: barcode !== null && barcode !== '',
+    meta: readsFrom(food),
   });
 }
 

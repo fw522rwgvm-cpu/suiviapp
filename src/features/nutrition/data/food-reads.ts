@@ -127,6 +127,25 @@ export function listFoods(db: AppDatabase): FoodListItem[] {
     .map(toListItem);
 }
 
+/**
+ * The food holding this barcode, if the library already has it.
+ *
+ * THE FIRST STEP OF THE SCAN, and the one that usually ends it. Specs 8.5
+ * chains "personal, then cache, then Open Food Facts", and a product already
+ * logged once has been copied into the library — so the common case of
+ * scanning something habitual costs one indexed lookup and no network at all,
+ * which is most of how the five-second target is met.
+ *
+ * Served by ux_food_barcode, which exists for the deduplication anyway.
+ */
+export function readFoodByBarcode(db: AppDatabase, barcode: string): FoodListItem | null {
+  if (barcode.trim() === '') return null;
+
+  const rows = db.select(listColumns).from(food).where(eq(food.barcode, barcode)).all();
+  const row = rows[0];
+  return row === undefined ? null : toListItem(row);
+}
+
 /** One food with its portions, for the editor and the quantity screen. */
 export function readFood(db: AppDatabase, foodId: FoodId): FoodView | null {
   const rows = db

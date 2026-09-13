@@ -67,7 +67,34 @@ const config: ExpoConfig = {
     },
   },
 
-  plugins: ['expo-router'],
+  plugins: [
+    'expo-router',
+    /**
+     * The barcode scanner (specs 8.5, slice 4).
+     *
+     * DECLARED HERE RATHER THAN LEFT TO AUTOLINKING, unlike expo-sharing,
+     * because this plugin does something autolinking cannot: it writes
+     * NSCameraUsageDescription into Info.plist. iOS kills an application that
+     * opens the camera without one, so the alternative is not a missing string
+     * — it is a crash the JS bundle cannot reproduce.
+     *
+     * The text is shown in the system prompt, so it is in French like every
+     * other displayed string. It says what the camera is FOR: a permission
+     * prompt that only says "this app would like to use the camera" is the
+     * prompt people refuse.
+     *
+     * No microphone permission: the barcode scanner does not record audio, and
+     * asking for something unused is how an application gets refused.
+     */
+    [
+      'expo-camera',
+      {
+        cameraPermission:
+          'Suivi utilise l’appareil photo pour scanner le code-barres d’un produit et retrouver ses valeurs nutritionnelles.',
+        recordAudioAndroid: false,
+      },
+    ],
+  ],
 
   extra: {
     variant,

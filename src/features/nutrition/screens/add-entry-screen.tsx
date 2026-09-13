@@ -10,7 +10,12 @@ import { OverlayPanel, useDismiss, usePanelHeading } from '@/core/ui/overlay-pan
 import { SwipeBack } from '@/core/ui/swipe-back';
 import type { FoodId } from '@/core/db/schema';
 import { useAddEntries } from '../data/day-queries';
-import { useFavoriteFoods, useFoods, useRecentFoods } from '../data/food-queries';
+import {
+  useFavoriteFoods,
+  useFoodByBarcode,
+  useFoods,
+  useRecentFoods,
+} from '../data/food-queries';
 import type { FoodListItem } from '../data/food-reads';
 import { searchFoods } from '../domain/food-search';
 import {
@@ -19,6 +24,7 @@ import {
   type PendingEntry,
 } from '../domain/pending-entry';
 import { FoodRow } from '../components/food-row';
+import { ScanScreen } from '../off/scan-screen';
 import { OffResultRow } from '../components/off-result-row';
 import { OffNoticeBanner, type OffNotice } from '../components/off-notice';
 import { dedupeRemote, libraryBarcodes } from '../off/off-dedupe';
@@ -110,6 +116,8 @@ export function AddEntryScreen({
    * durably, and the one the scan will share.
    */
   const [picked, setPicked] = useState<string | null>(null);
+  /** True while the viewfinder is open. A step, like every other one here. */
+  const [scanning, setScanning] = useState(false);
   const [chosen, setChosen] = useState<FoodId | null>(null);
   const [freeEntry, setFreeEntry] = useState(false);
   const [showBasket, setShowBasket] = useState(false);
@@ -124,7 +132,19 @@ export function AddEntryScreen({
   const favorites = useFavoriteFoods();
   const recents = useRecentFoods();
   const remote = useOffSearch(submitted);
-  const lookup = useOffLookup(picked);
+  /**
+   * THE FIRST LINK OF THE SCAN CHAIN (specs 8.5): personal, then cache, then
+   * Open Food Facts.
+   *
+   * A product scanned before has been copied into the library by the
+   * confirmation that logged it, so the habitual case ends here — one indexed
+   * lookup, no request, well inside the five seconds. The remote lookup below
+   * only runs once this has answered nothing, which is what `enabled` on the
+   * next line expresses.
+   */
+  const known = useFoodByBarcode(picked);
+  const knownFood = known.data ?? null;
+  const lookup = useOffLookup(knownFood === null && !known.isPending ? picked : null);
 
   const searching = term.trim() !== '';
   const results = useMemo(
@@ -158,6 +178,7 @@ export function AddEntryScreen({
   function backToList(): void {
     setChosen(null);
     setPicked(null);
+    setScanning(false);
     setFreeEntry(false);
     setShowBasket(false);
     setAmending(null);
@@ -221,14 +242,50 @@ export function AddEntryScreen({
   const incompleteProduct: OffProduct | null =
     lookup.data?.status === 'found' && !isCompleteProduct(lookup.data.product)
       ? lookup.data.product
-      : null;
+      : /**
+         * AN UNKNOWN BARCODE TAKES THE SAME DETOUR, which specs 8.5 asks for
+         * in its own line:
+         *
+         * > Unknown barcode: offer to create a pre-filled personal food.
+         *
+         * Pre-filled with the only thing there is — the barcode itself — and
+         * that is not nothing: it is what makes the food created here
+         * deduplicate against Open Food Facts the day somebody adds the
+         * product there. A form with an empty barcode would leave the shelf
+         * unscannable for ever.
+         */
+        lookup.data?.status === 'notFound' && picked !== null
+        ? {
+            barcode: picked,
+            name: null,
+            brand: null,
+            protein100: null,
+            carbs100: null,
+            fat100: null,
+            kcal100: null,
+          }
+        : null;
+
+  /**
+   * A scanned product already in the library short-circuits everything.
+   *
+   * Adjusted during the render rather than in an effect: an effect runs after
+   * its render has been painted, so the quantity step would flash the wrong
+   * content first. The same reasoning the carousel already had to learn.
+   */
+  if (knownFood !== null && picked !== null && chosen === null) {
+    setPicked(null);
+    setChosen(knownFood.id);
+  }
 
   const step =
     editing !== undefined
       ? 'amend'
       : showBasket
         ? 'basket'
-        : freeEntry && mealPosition !== null
+        : scanning
+          ? 'scan'
+          : freeEntry && mealPosition !== null
           ? 'free'
           : chosen !== null
             ? 'quantity'
@@ -271,11 +328,41 @@ export function AddEntryScreen({
               at the top rather than at the bottom of a list that grows: the
               fastest path must not move as the food database fills up.
             */}
+            {/*
+              Two ways in, side by side and both one tap: specs 8.4d makes free
+              entry a single tap, and specs 8.5 budgets the whole scan at five
+              seconds. Neither can be a level down, and neither may move as the
+              library fills up — so they sit above the lists rather than after
+              them.
+            */}
+            <View style={styles.entryPoints}>
+            <Pressable
+              onPress={() => setScanning(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Scanner un code-barres"
+              style={[
+                styles.freeEntry,
+                styles.entryPoint,
+                {
+                  backgroundColor: theme.colors.surface,
+                  borderColor: theme.colors.border,
+                  borderRadius: theme.radius.lg,
+                },
+                theme.shadow,
+              ]}
+            >
+              <SymbolView name="barcode.viewfinder" size={18} tintColor={theme.colors.accent} />
+              <Text style={[styles.freeEntryLabel, { color: theme.colors.accent }]}>
+                Scanner
+              </Text>
+            </Pressable>
+
             <Pressable
               onPress={() => setFreeEntry(true)}
               accessibilityRole="button"
               style={[
                 styles.freeEntry,
+                styles.entryPoint,
                 {
                   backgroundColor: theme.colors.surface,
                   borderColor: theme.colors.border,
@@ -293,6 +380,7 @@ export function AddEntryScreen({
                 Saisie libre
               </Text>
             </Pressable>
+            </View>
 
             {!searching &&
             (favorites.data?.length ?? 0) === 0 &&
@@ -460,6 +548,22 @@ export function AddEntryScreen({
             onCollect={(entry) =>
               collect({ kind: 'free', name: entry.name.trim(), macros: entry.macros })
             }
+          />
+        </SwipeBack>
+      ) : step === 'scan' ? (
+        <SwipeBack key={step} onBack={backToList} behind={picker}>
+          <ScanScreen
+            onScanned={(barcode) => {
+              /*
+                The viewfinder closes on the scan itself rather than on what
+                the scan finds. What follows — library, cache, network, or the
+                pre-filled form — takes a moment, and leaving a live camera
+                running underneath it would be the phone still looking while
+                the answer arrives.
+              */
+              setScanning(false);
+              setPicked(barcode);
+            }}
           />
         </SwipeBack>
       ) : step === 'offDraft' && incompleteProduct !== null ? (
@@ -793,15 +897,24 @@ function OffDraftStep({
   const theme = useTheme();
   const missing = missingMacroLabels(product);
   usePanelHeading(product.name ?? 'Nouvel aliment', 'À compléter');
+  // The barcode is shown rather than hidden: it is the one thing that IS
+  // known, and seeing it is how a wrong scan gets noticed before a food is
+  // created under it.
 
   return (
     <View style={styles.fill}>
       <Text style={[styles.detour, { color: theme.colors.textMuted }]}>
-        {missing.length === 0
-          ? 'Ce produit n’a pas de nom sur Open Food Facts. Complétez-le pour l’ajouter.'
-          : `Open Food Facts ne donne pas ${listFrench(missing)} pour ce produit. Complétez${
-              missing.length === 1 ? '-la' : '-les'
-            } pour l’ajouter.`}
+        {missing.length === 4 && product.name === null
+          ? // Nothing came back at all: an unknown barcode rather than an
+            // incomplete product. Saying "Open Food Facts does not give" here
+            // would be describing a product that does not exist.
+            'Ce code-barres est inconnu d’Open Food Facts. Créez l’aliment : il sera ' +
+            'retrouvé au prochain scan.'
+          : missing.length === 0
+            ? 'Ce produit n’a pas de nom sur Open Food Facts. Complétez-le pour l’ajouter.'
+            : `Open Food Facts ne donne pas ${listFrench(missing)} pour ce produit. Complétez${
+                missing.length === 1 ? '-la' : '-les'
+              } pour l’ajouter.`}
       </Text>
 
       <FoodEditorScreen
@@ -918,6 +1031,8 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   freeEntryLabel: { fontSize: 17, fontWeight: '600' },
+  entryPoints: { flexDirection: 'row', gap: 10 },
+  entryPoint: { flex: 1 },
   section: { gap: 9 },
   sectionTitle: {
     fontSize: 12,
