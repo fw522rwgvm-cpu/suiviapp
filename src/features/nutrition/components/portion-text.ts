@@ -77,3 +77,28 @@ export function formatChoiceQuantity(choice: QuantityChoice, baseUnit: string): 
     ? formatQuantity(choice.baseQuantity, baseUnit)
     : formatPortionCount(choice.portion.count, choice.portion.name);
 }
+
+/**
+ * A chosen quantity with what it comes to beside it: "2 tranches (50 g)".
+ *
+ * THE THIRD WORDING OF ONE FACT, and each has a reason:
+ *
+ *  - formatEntryQuantity — "2 tranches · 50 g" — is the journal row, where an
+ *    entry is read against a day's total;
+ *  - formatChoiceQuantity — "2 tranches" — is the basket, where the line sits
+ *    beside a name in a space that has room for one thing;
+ *  - this one is a list row that offers to repeat itself. The portion is the
+ *    decision and the parenthesis is the check: "2 tranches" alone cannot be
+ *    compared with the "265 kcal / 100 g" on the line below it, and a button
+ *    that adds an amount should let you see the amount in the unit the food is
+ *    stated in.
+ *
+ * Base units alone when there is no portion: "50 g (50 g)" would be a
+ * parenthesis that repeats its own sentence.
+ */
+export function formatChoiceWithBase(choice: QuantityChoice, baseUnit: string): string {
+  const base = formatQuantity(choice.baseQuantity, baseUnit);
+  return choice.portion === null
+    ? base
+    : `${formatPortionCount(choice.portion.count, choice.portion.name)} (${base})`;
+}

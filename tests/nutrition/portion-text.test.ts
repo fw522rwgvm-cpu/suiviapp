@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { PORTION_NAMES } from '../../src/core/db/schema';
 import {
+  formatChoiceWithBase,
   formatEntryQuantity,
   formatPortionCount,
 } from '../../src/features/nutrition/components/portion-text';
+import {
+  baseQuantity,
+  portionQuantity,
+} from '../../src/features/nutrition/domain/portions';
 
 /**
  * French wording for portions (D10: no internationalisation library).
@@ -70,5 +75,39 @@ describe('what a journal row says', () => {
 
   it('falls back rather than dividing by a portion size of zero', () => {
     expect(formatEntryQuantity(60, 'g', 'tranche', 0)).toBe(`60${NB}g`);
+  });
+});
+
+describe('a quantity offered for repeat', () => {
+  /**
+   * The wording a list row uses when it offers to add itself again.
+   *
+   * It is the THIRD of three, and the differences are deliberate rather than
+   * accidental: the journal row joins with a middle dot because an entry is
+   * read against a total, the basket shows the portion alone because the line
+   * has room for one thing, and this one parenthesises because the row also
+   * carries "kcal / 100 g" underneath — a portion with no grams beside it
+   * cannot be compared with it.
+   */
+  it('parenthesises what a portion comes to', () => {
+    expect(formatChoiceWithBase(portionQuantity({ name: 'tranche', quantity: 25 }, 2), 'g')).toBe(
+      `2${NB}tranches (50${NB}g)`,
+    );
+  });
+
+  it('says base units once when there is no portion', () => {
+    // "50 g (50 g)" would be a parenthesis repeating its own sentence.
+    expect(formatChoiceWithBase(baseQuantity(50), 'g')).toBe(`50${NB}g`);
+    expect(formatChoiceWithBase(baseQuantity(200), 'ml')).toBe(`200${NB}ml`);
+  });
+
+  it('keeps the singular and the fraction the portion wording already handles', () => {
+    expect(formatChoiceWithBase(portionQuantity({ name: 'bol', quantity: 250 }, 1), 'g')).toBe(
+      `1${NB}bol (250${NB}g)`,
+    );
+    // -eau takes an x, which is the trap the naive plural rule falls into.
+    expect(
+      formatChoiceWithBase(portionQuantity({ name: 'morceau', quantity: 20 }, 3), 'g'),
+    ).toBe(`3${NB}morceaux (60${NB}g)`);
   });
 });

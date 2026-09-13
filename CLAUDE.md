@@ -1181,8 +1181,8 @@ restant verte. Le seul contrôle qui vaille reste
 `rm -rf node_modules && npm ci --ignore-scripts`, et le seul comptage qui veuille
 dire quelque chose reste `grep -c '"node_modules/@rolldown/binding-'`.
 
-**Un récent se répète en un toucher, et la quantité affichée EST celle qui sera
-ajoutée.** Pas « la même à peu près » : la ligne, le bouton et l'écran de
+**Toute ligne d'aliment personnel se répète en un toucher, et la quantité
+affichée EST celle qui sera ajoutée.** Pas « la même à peu près » : la ligne, le bouton et l'écran de
 quantité tirent la valeur de `prefillQuantity`, une seule fonction pure, une
 seule fois. Deux chemins vers « la dernière quantité » s'accorderaient presque
 toujours — et le jour où ils divergeraient, la ligne mentirait sur ce que fait
@@ -1194,12 +1194,35 @@ Le cas qui décide reste celui du pré-remplissage : une tranche à 25 g quand
 « 2 tranches » a été logué, à 30 g aujourd'hui → le bouton ajoute **50 g**, pas
 60. Une seconde implémentation se serait trompée là.
 
-**Le coût est assumé et écrit : une lecture indexée par récent.** La sortie
-élégante serait une fonction de fenêtre, mais l'ordre est `(created_at, id)` et
-une colonne nue à côté d'un agrégat est choisie arbitrairement par SQLite —
-donc la réécrire avec un ordre plus lâche donnerait précisément la seconde
-vérité qu'on refuse. Les portions, elles, sont chargées pour toute la page en
-une requête. Si ça se mesure un jour, D16 dit « sur mesure, pas sur intuition ».
+**Un aliment jamais consommé garde son bouton**, et la chaîne répond comme elle
+l'a toujours fait : sa quantité de référence, puis 100. La ligne n'affirme
+jamais que cette quantité a été mangée — elle énonce ce que le bouton ajoutera,
+ce qui est vrai à chaque étape. Retirer le bouton aurait coupé la liste des
+favoris en deux selon un critère invisible.
+
+**Trois formulations d'une quantité coexistent, et chacune a sa raison** :
+« 2 tranches · 50 g » au Journal, où une entrée se lit face à un total ;
+« 2 tranches » au panier, où la ligne a la place d'une seule chose ;
+« 2 tranches (50 g) » sur une ligne de liste, parce que la ligne du dessous
+énonce toujours « kcal / 100 g » et qu'une portion sans grammes à côté ne s'y
+compare pas.
+
+**Étendre la même chose aux favoris et à la recherche a forcé la bonne
+requête.** Tant que seuls les récents la portaient, une lecture indexée par
+rangée était un coût plafonné à vingt. La recherche porte sur **toute** la
+bibliothèque : ç'aurait été quelques centaines de requêtes à chaque ouverture
+de la fenêtre, sur un chemin budgété à 0,3 s. D'où une fonction de fenêtre,
+`ROW_NUMBER() OVER (PARTITION BY source_food_id ORDER BY created_at DESC,
+id DESC)` — l'ordre **caractère pour caractère** celui de
+`readLastEntryForFood`, donc `rn = 1` sélectionne exactement la ligne que cette
+fonction rend.
+
+Deux implémentations d'une même question, c'est précisément ce que toute cette
+fonctionnalité cherche à éviter. Elles ne sont donc pas tenues d'accord par le
+soin mais **par un test** : sur un journal généré de quatre mois, aliment par
+aliment, les deux doivent coïncider. Une mutation de l'ordre le fait rougir.
+Trois requêtes pour une liste de n'importe quelle longueur, et aucune
+arithmétique hors de `prefillQuantity`.
 
 **Et c'est sans danger uniquement parce que le panier existe.** Rien n'est
 écrit avant « Confirmer », une ligne ajoutée par erreur se retire d'un

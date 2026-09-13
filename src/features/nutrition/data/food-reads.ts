@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNotNull, sql } from 'drizzle-orm';
 import type { AppDatabase } from '@/core/db/database';
 import {
   food,
@@ -56,7 +56,7 @@ export interface FoodPortionView extends Portion {
 }
 
 /**
- * A recent food, plus the quantity a one-tap add would log (specs 8.4a, D16).
+ * A food in a list, plus the quantity a one-tap add would log (specs 8.4a, D16).
  *
  * The quantity is NOT a second answer to "how much": it comes from
  * prefillQuantity, the same pure function the quantity screen opens on. That
@@ -65,8 +65,14 @@ export interface FoodPortionView extends Portion {
  * quantity screen would propose are one value produced once. Two paths to it
  * would agree almost always, and the day they disagreed the row would lie
  * about what its own button does.
+ *
+ * ALL THREE LISTS CARRY IT, not just recents. A favourite marked on a food
+ * never eaten has no "last time", and the chain answers that case as it always
+ * has: the food's own display_ref_qty, then 100. The row does not claim the
+ * quantity was eaten before — it states what the button will add, which is
+ * true whichever step of the chain produced it.
  */
-export interface RecentFoodItem extends FoodListItem {
+export interface QuickAddFood extends FoodListItem {
   lastQuantity: QuantityChoice;
 }
 
@@ -133,13 +139,15 @@ function toListItem(row: ListRow): FoodListItem {
  * Ordered NOCASE to match ix_food_name, so the sort is the index's own and
  * 'abricot' does not land after every capital letter.
  */
-export function listFoods(db: AppDatabase): FoodListItem[] {
-  return db
-    .select(listColumns)
-    .from(food)
-    .orderBy(sql`${food.name} COLLATE NOCASE`, asc(food.id))
-    .all()
-    .map(toListItem);
+export function listFoods(db: AppDatabase): QuickAddFood[] {
+  return withLastQuantity(
+    db,
+    db
+      .select({ ...listColumns, displayRefQty: food.displayRefQty })
+      .from(food)
+      .orderBy(sql`${food.name} COLLATE NOCASE`, asc(food.id))
+      .all(),
+  );
 }
 
 /**
@@ -219,15 +227,137 @@ export function readFoodDraft(db: AppDatabase, foodId: FoodId): FoodDraft | null
   };
 }
 
+/**
+ * The last entry logged for EVERY food, in one query.
+ *
+ * ## WHY A WINDOW FUNCTION RATHER THAN A LOOP
+ *
+ * When only recents carried a quantity, one indexed lookup per row was a cost
+ * worth paying for certainty — twenty rows, capped. Extending the same feature
+ * to favourites and to search results removes that cap: the search runs over
+ * the WHOLE library, so a lookup per food would be a few hundred queries every
+ * time the add window opens, on the path D16 budgets at 0,3 s.
+ *
+ * ## AND WHY IT IS STILL NOT A SECOND ANSWER
+ *
+ * The ordering is `created_at DESC, id DESC` — character for character the one
+ * readLastEntryForFood uses — so ROW_NUMBER() = 1 selects exactly the row that
+ * function returns. That is not a coincidence to be maintained by care: a test
+ * compares the two over a seeded journal, food by food, and fails if they ever
+ * disagree.
+ *
+ * The ordering itself is not arbitrary either. `created_at` is nullable in the
+ * frozen schema, so an imported archive can hold NULLs there, and SQLite sorts
+ * NULLs last on a descending order — quietly picking the OLDEST row. `id` is a
+ * ULID, so it sorts by creation time on its own: it is both the tie-break and
+ * the fallback.
+ *
+ * Entries with no quantity are excluded: a recipe parent carries none (D5/R2),
+ * and it is not something anyone logged a quantity of.
+ */
+function lastEntriesByFood(db: AppDatabase): Map<FoodId, LastEntry> {
+  const rows = db.all<{
+    source_food_id: FoodId;
+    quantity: number;
+    portion_name: string | null;
+    portion_quantity: number | null;
+  }>(sql`
+    SELECT source_food_id, quantity, portion_name, portion_quantity
+    FROM (
+      SELECT
+        ${journalEntry.sourceFoodId} AS source_food_id,
+        ${journalEntry.quantity} AS quantity,
+        ${journalEntry.portionName} AS portion_name,
+        ${journalEntry.portionQuantity} AS portion_quantity,
+        ROW_NUMBER() OVER (
+          PARTITION BY ${journalEntry.sourceFoodId}
+          ORDER BY ${journalEntry.createdAt} DESC, ${journalEntry.id} DESC
+        ) AS rn
+      FROM ${journalEntry}
+      WHERE ${journalEntry.sourceFoodId} IS NOT NULL
+        AND ${journalEntry.quantity} IS NOT NULL
+    )
+    WHERE rn = 1
+  `);
+
+  return new Map(
+    rows.map((row) => [
+      row.source_food_id,
+      {
+        quantity: row.quantity,
+        portionName: row.portion_name,
+        portionQuantity: row.portion_quantity,
+      },
+    ]),
+  );
+}
+
+/**
+ * Portions for every food, in one query, keyed by food.
+ *
+ * Needed because step two of the pre-fill chain asks whether the portion a
+ * quantity was logged in still exists AND is still the same size — a slice
+ * redefined from 25 g to 30 g must not silently turn a 50 g habit into 60 g.
+ */
+function portionsByFood(db: AppDatabase): Map<FoodId, Portion[]> {
+  const byFood = new Map<FoodId, Portion[]>();
+
+  for (const row of db
+    .select({
+      foodId: foodPortion.foodId,
+      name: foodPortion.name,
+      quantity: foodPortion.quantity,
+    })
+    .from(foodPortion)
+    .orderBy(asc(foodPortion.position), asc(foodPortion.id))
+    .all()) {
+    const existing = byFood.get(row.foodId);
+    if (existing === undefined) {
+      byFood.set(row.foodId, [{ name: row.name, quantity: row.quantity }]);
+    } else {
+      existing.push({ name: row.name, quantity: row.quantity });
+    }
+  }
+
+  return byFood;
+}
+
+/**
+ * Attaches to each row the quantity a one-tap add would log.
+ *
+ * The two lookups are done ONCE for the whole page, then the pure chain runs
+ * per row. Three queries for a list of any length, and no arithmetic outside
+ * prefillQuantity.
+ */
+function withLastQuantity(
+  db: AppDatabase,
+  rows: readonly (ListRow & { displayRefQty: number })[],
+): QuickAddFood[] {
+  if (rows.length === 0) return [];
+
+  const lastEntries = lastEntriesByFood(db);
+  const portions = portionsByFood(db);
+
+  return rows.map((row) => ({
+    ...toListItem(row),
+    lastQuantity: prefillQuantity(lastEntries.get(row.id) ?? null, {
+      portions: portions.get(row.id) ?? [],
+      displayRefQty: row.displayRefQty,
+    }),
+  }));
+}
+
 /** Favourites, alphabetically. The first half of quick access (specs 8.4a). */
-export function readFavoriteFoods(db: AppDatabase): FoodListItem[] {
-  return db
-    .select(listColumns)
-    .from(food)
-    .where(eq(food.isFavorite, 1))
-    .orderBy(sql`${food.name} COLLATE NOCASE`, asc(food.id))
-    .all()
-    .map(toListItem);
+export function readFavoriteFoods(db: AppDatabase): QuickAddFood[] {
+  return withLastQuantity(
+    db,
+    db
+      .select({ ...listColumns, displayRefQty: food.displayRefQty })
+      .from(food)
+      .where(eq(food.isFavorite, 1))
+      .orderBy(sql`${food.name} COLLATE NOCASE`, asc(food.id))
+      .all(),
+  );
 }
 
 /**
@@ -244,7 +374,7 @@ export function readFavoriteFoods(db: AppDatabase): FoodListItem[] {
  * the same food reached two ways, not a duplicate. Filtering it out of recents
  * would make the second list shift about depending on what is starred.
  */
-export function readRecentFoods(db: AppDatabase, limit = 20): RecentFoodItem[] {
+export function readRecentFoods(db: AppDatabase, limit = 20): QuickAddFood[] {
   const rows = db
     .select({
       ...listColumns,
@@ -268,56 +398,7 @@ export function readRecentFoods(db: AppDatabase, limit = 20): RecentFoodItem[] {
     .limit(limit)
     .all();
 
-  if (rows.length === 0) return [];
-
-  /**
-   * Portions for the whole page in ONE query, keyed by food.
-   *
-   * They are needed because step two of the pre-fill chain asks whether the
-   * portion a quantity was logged in still exists AND is still the same size
-   * — a slice redefined from 25 g to 30 g must not silently turn a 50 g habit
-   * into 60 g. Fetching them per food would be a query each; fetching them
-   * here is one.
-   */
-  const ids = rows.map((row) => row.id);
-  const portionsByFood = new Map<FoodId, Portion[]>();
-  for (const portion of db
-    .select({
-      foodId: foodPortion.foodId,
-      name: foodPortion.name,
-      quantity: foodPortion.quantity,
-    })
-    .from(foodPortion)
-    .where(inArray(foodPortion.foodId, ids))
-    .orderBy(asc(foodPortion.position), asc(foodPortion.id))
-    .all()) {
-    const existing = portionsByFood.get(portion.foodId);
-    if (existing === undefined) {
-      portionsByFood.set(portion.foodId, [{ name: portion.name, quantity: portion.quantity }]);
-    } else {
-      existing.push({ name: portion.name, quantity: portion.quantity });
-    }
-  }
-
-  /**
-   * The last entry is read PER FOOD, deliberately, and the cost is stated
-   * rather than hidden: one indexed lookup each, capped by `limit`.
-   *
-   * The alternative — one grouped query — cannot express "the last row" the
-   * way readLastEntryForFood does without a window function, because the order
-   * is (created_at, id) and a bare column beside an aggregate is one SQLite
-   * picks arbitrarily. Reimplementing it with a looser ordering would give a
-   * SECOND answer to "what was the last quantity", free to disagree with the
-   * quantity screen's. Correctness first; D16 says full text and its like are
-   * switched on to a measurement, not to a hunch, and the same applies here.
-   */
-  return rows.map((row) => ({
-    ...toListItem(row),
-    lastQuantity: prefillQuantity(readLastEntryForFood(db, row.id), {
-      portions: portionsByFood.get(row.id) ?? [],
-      displayRefQty: row.displayRefQty,
-    }),
-  }));
+  return withLastQuantity(db, rows);
 }
 
 /**

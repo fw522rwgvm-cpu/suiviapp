@@ -16,8 +16,9 @@ import {
   useFoods,
   useRecentFoods,
 } from '../data/food-queries';
-import type { FoodListItem } from '../data/food-reads';
+import type { FoodListItem, QuickAddFood } from '../data/food-reads';
 import { searchFoods } from '../domain/food-search';
+import { totalOf } from '../domain/macros';
 import {
   pendingEntryKcal,
   pendingEntryName,
@@ -42,7 +43,7 @@ import { FoodEditorScreen } from './food-editor-screen';
 import { PendingEntryRow } from '../components/pending-entry-row';
 import { SwipeToDeleteRow } from '../components/swipe-to-delete-row';
 import { SearchField } from '../components/search-field';
-import { formatChoiceQuantity } from '../components/portion-text';
+import { formatChoiceWithBase } from '../components/portion-text';
 import { FreeEntryScreen } from './free-entry-screen';
 import { QuantityScreen } from './quantity-screen';
 import { ListSeparator } from '@/core/ui/list-separator';
@@ -175,6 +176,38 @@ export function AddEntryScreen({
    * fail without anything having been typed.
    */
   const notice = noticeFor(remote.data, lookup.data);
+
+  /**
+   * How any personal row repeats itself in one tap (specs 8.4a).
+   *
+   * THE SAME FUNCTION FOR THE THREE LISTS, so favourites, recents and search
+   * results cannot drift into three slightly different offers. What differs
+   * between them is only which foods they hold — and, for a food never eaten,
+   * what the pre-fill chain falls back to. The row never claims the quantity
+   * was eaten before; it states what the button will add, which is true at
+   * every step of the chain.
+   *
+   * No arithmetic here: prefillQuantity produced the quantity in the read
+   * layer, and totalOf turns it into calories (D9).
+   */
+  function repeatable(item: QuickAddFood) {
+    return {
+      label: formatChoiceWithBase(item.lastQuantity, item.baseUnit),
+      kcal: `${formatKcal(totalOf(item.reference, item.lastQuantity.baseQuantity).kcal)} kcal`,
+      onAdd: () =>
+        collect({
+          kind: 'food',
+          foodId: item.id,
+          name: item.name,
+          brand: item.brand,
+          baseUnit: item.baseUnit,
+          reference: item.reference,
+          // The very value the row is showing, and the one the quantity screen
+          // would have opened on. Produced once, in the read layer.
+          quantity: item.lastQuantity,
+        }),
+    };
+  }
 
   function backToList(): void {
     setChosen(null);
@@ -413,6 +446,7 @@ export function AddEntryScreen({
                   foods={results}
                   onPick={setChosen}
                   emptyText={`Aucun résultat pour « ${term.trim()} ».`}
+                  quickAdd={repeatable}
                 />
 
                 {/*
@@ -432,35 +466,17 @@ export function AddEntryScreen({
               </>
             ) : (
               <>
-                <Section title="Favoris" foods={favorites.data ?? []} onPick={setChosen} />
+                <Section
+                  title="Favoris"
+                  foods={favorites.data ?? []}
+                  onPick={setChosen}
+                  quickAdd={repeatable}
+                />
                 <Section
                   title="Récents"
                   foods={recents.data ?? []}
                   onPick={setChosen}
-                  /*
-                    THE ONLY LIST THAT CAN REPEAT ITSELF. Every row here has a
-                    last quantity by construction — recents are derived from
-                    journal entries — so the lookup below never misses, and the
-                    quantity it carries is the one readQuantityPrefill would
-                    hand the quantity screen. One value, produced once, in the
-                    read layer (D9): this screen does no arithmetic.
-                  */
-                  quickAdd={(recent) => ({
-                    label: formatChoiceQuantity(recent.lastQuantity, recent.baseUnit),
-                    onAdd: () =>
-                      collect({
-                        kind: 'food',
-                        foodId: recent.id,
-                        name: recent.name,
-                        brand: recent.brand,
-                        baseUnit: recent.baseUnit,
-                        reference: recent.reference,
-                        // The very value the row is showing, and the one the
-                        // quantity screen would have opened on. Not recomputed
-                        // here: this screen does no arithmetic (D9).
-                        quantity: recent.lastQuantity,
-                      }),
-                  })}
+                  quickAdd={repeatable}
                 />
               </>
             )}
@@ -844,7 +860,7 @@ function Section<T extends FoodListItem>({
    * time": a favourite never logged has nothing to repeat, and a search result
    * is not yet a habit. Absent, the section renders exactly as before.
    */
-  quickAdd?: (food: T) => { label: string; onAdd: () => void };
+  quickAdd?: (food: T) => { label: string; kcal: string; onAdd: () => void };
 }) {
   const theme = useTheme();
 
@@ -885,6 +901,7 @@ function Section<T extends FoodListItem>({
                   food={food}
                   onPress={() => onPick(food.id)}
                   quantity={repeat?.label}
+                  kcal={repeat?.kcal}
                   onQuickAdd={repeat?.onAdd}
                 />
               </View>

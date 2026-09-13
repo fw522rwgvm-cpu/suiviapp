@@ -21,6 +21,7 @@ export function FoodRow({
   onPress,
   onToggleFavorite,
   quantity,
+  kcal,
   onQuickAdd,
 }: {
   food: FoodListItem;
@@ -37,10 +38,34 @@ export function FoodRow({
    * time" to speak of, and a food never logged has nothing to repeat.
    */
   quantity?: string;
+  /**
+   * What `quantity` comes to in calories, already worded.
+   *
+   * Shown beside the + button rather than under the name, because it belongs
+   * to the action: it is the price of pressing it. The "265 kcal / 100 g" on
+   * the line below stays, and the two do not compete — one says what this
+   * food IS, the other what this tap COSTS.
+   */
+  kcal?: string;
   /** Adds `quantity` straight to the basket, skipping the quantity screen. */
   onQuickAdd?: () => void;
 }) {
   const theme = useTheme();
+
+  /**
+   * "Sans marque, 2 tranches (50 g)" — or either half on its own.
+   *
+   * Joined with a comma because they are two facts about the same thing, not a
+   * heading and a value. A row with no brand and no quantity has no second
+   * line at all rather than an empty one.
+   */
+  const brand = food.brand === null || food.brand === '' ? null : food.brand;
+  const subtitle =
+    brand === null
+      ? (quantity ?? null)
+      : quantity === undefined
+        ? brand
+        : `${brand}, ${quantity}`;
 
   return (
     <Pressable
@@ -52,39 +77,24 @@ export function FoodRow({
       ]}
     >
       <View style={styles.identity}>
-        {/*
-          Name and quantity on one line, the way a basket line is laid out —
-          the same fact in the same shape, so the two lists read alike.
-        */}
-        <View style={styles.heading}>
-          <Text style={[styles.name, { color: theme.colors.text }]} numberOfLines={1}>
-            {food.name}
-          </Text>
-          {/*
-            WHERE THIS DIVERGES FROM THE BASKET, deliberately. A basket row
-            drops the quantity rather than let the name be truncated, because
-            half a name identifies nothing. Here the quantity survives and the
-            name gives way, because the quantity is ACTIONABLE: it says what
-            the + button is about to add, and hiding it would leave a button
-            that adds an unstated amount. The food is identified twice over
-            anyway — by its brand underneath, and by the fact that the user is
-            looking at a list of what they themselves ate.
-          */}
-          {quantity === undefined ? null : (
-            <Text style={[styles.quantity, { color: theme.colors.textMuted }]}>
-              {quantity}
-            </Text>
-          )}
-        </View>
+        <Text style={[styles.name, { color: theme.colors.text }]} numberOfLines={1}>
+          {food.name}
+        </Text>
 
         {/*
           Its own line, under the name it qualifies rather than trailing after
           it. Two foods of the same name are told apart by their brand, and a
           brand chasing a long name is the half that gets cut.
+
+          THE QUANTITY JOINS IT HERE rather than sitting beside the name, and
+          that settles an arbitration rather than dodging it: on the name's
+          line the two competed for width, and one of them had to give. On this
+          line they do not — a brand and a quantity are both short, and a row
+          with neither simply has one line fewer.
         */}
-        {food.brand === null || food.brand === '' ? null : (
+        {subtitle === null ? null : (
           <Text style={[styles.brand, { color: theme.colors.textMuted }]} numberOfLines={1}>
-            {food.brand}
+            {subtitle}
           </Text>
         )}
 
@@ -93,24 +103,29 @@ export function FoodRow({
         </Text>
       </View>
 
+      {kcal === undefined ? null : (
+        <Text style={[styles.kcal, { color: theme.colors.text }]}>{kcal}</Text>
+      )}
+
       {onQuickAdd === undefined ? null : (
         /*
           ONE TAP INSTEAD OF THREE, which is the only kind of optimisation D16
           says works: "the target is not met by optimising code, it is met by
           removing gestures."
-          
+
           The pre-filled quantity screen already made a habitual food two taps.
-          This makes it one, for the case where the answer to "how much" is
-          the same as last time — which for a recent food is most of the time.
-          The row itself still opens the quantity screen, so changing the
-          amount costs exactly what it did before.
-          
+          This makes it one, whenever the answer to "how much" is the same as
+          last time — which, across favourites, recents and a search for
+          something already in the library, is most of the time. The row itself
+          still opens the quantity screen, so changing the amount costs exactly
+          what it did before.
+
           It is safe to be this fast BECAUSE OF THE BASKET: nothing is written
           until "Confirmer", a line added by accident is removed by a swipe,
           and the count in the header button changes on the spot to say the tap
           landed. A one-tap write straight to the journal would need a
           confirmation; a one-tap basket line needs none.
-          
+
           Glass, like the star: a list row is content, and content gets no
           material from the system for free.
         */
@@ -158,11 +173,10 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   identity: { flex: 1, gap: 1 },
-  heading: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
-  // flexShrink on the name and not on the quantity: when space runs out it is
-  // the name that gives way. See the note above the quantity.
-  name: { fontSize: 16, flexShrink: 1 },
-  quantity: { fontSize: 13, flexShrink: 0 },
+  name: { fontSize: 16 },
+  // Not shrinkable: a calorie figure cut in half is worse than a name cut in
+  // half, and it is the one number the + button is answerable for.
+  kcal: { fontSize: 15, fontWeight: '500', flexShrink: 0 },
   // Between the name and the figures in weight as well as in place: it says
   // which food this is, not what it is worth.
   brand: { fontSize: 13 },

@@ -2,12 +2,16 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { toLocalDate } from '../../src/core/date';
 import { addEntries } from '../../src/features/nutrition/data/day-writes';
 import {
+  listFoods,
+  readFavoriteFoods,
+  readLastEntryForFood,
   readQuantityPrefill,
   readRecentFoods,
 } from '../../src/features/nutrition/data/food-reads';
 import { createFood, updateFood } from '../../src/features/nutrition/data/food-writes';
 import type { FoodDraft } from '../../src/features/nutrition/domain/food-draft';
 import { baseQuantity, portionQuantity } from '../../src/features/nutrition/domain/portions';
+import { seedJournal } from '../../src/dev/seed';
 import { openTestDatabase, type TestDatabase } from '../helpers/database';
 
 /**
@@ -187,5 +191,66 @@ describe('several recents at once', () => {
     // The early return exists because `inArray` with no ids is a query that
     // either fails or matches everything, depending on the driver.
     expect(readRecentFoods(database.db)).toEqual([]);
+  });
+});
+
+describe('the grouped read and the single read are the same read', () => {
+  /**
+   * THE ASSERTION THE WINDOW FUNCTION RESTS ON.
+   *
+   * Extending the + button to favourites and to search results meant the last
+   * quantity had to be fetched for the WHOLE library, so the per-food lookup
+   * became one grouped query with ROW_NUMBER(). That is a second piece of code
+   * answering "what was the last entry", and the first — readLastEntryForFood
+   * — still serves the quantity screen.
+   *
+   * Two implementations of one question is exactly the shape this whole
+   * feature was built to avoid. They are kept honest here rather than by care:
+   * over a seeded journal of several months, food by food, they must agree.
+   * The ordering is the part that would drift — `created_at` is nullable, and
+   * SQLite sorts NULLs last on a descending order, quietly handing back the
+   * OLDEST row.
+   */
+  it('agrees food by food over months of history', () => {
+    const report = seedJournal(database.db, { endDate: DAY, days: 120, seed: 11 });
+    expect(report.entries).toBeGreaterThan(200);
+
+    const foods = listFoods(database.db);
+    expect(foods.length).toBeGreaterThan(0);
+
+    let compared = 0;
+    for (const row of foods) {
+      const single = readLastEntryForFood(database.db, row.id);
+      const screen = readQuantityPrefill(database.db, row.id);
+
+      expect(screen).not.toBeNull();
+      // The row, the button and the quantity screen: one value.
+      expect(row.lastQuantity).toEqual(screen?.quantity);
+      if (single !== null) compared += 1;
+    }
+
+    // Guards the assertion above against passing vacuously on a library where
+    // nothing was ever logged.
+    expect(compared).toBeGreaterThan(0);
+  });
+
+  it('gives a never-eaten food the same answer the chain always gave', () => {
+    // A favourite marked on a food nobody has eaten. There is no "last time",
+    // and the chain falls through to display_ref_qty and then to 100 — which
+    // is what the quantity screen would open on, so the row is still telling
+    // the truth about what its button does.
+    const id = createFood(database.db, draft({ name: 'Jamais mangé', isFavorite: true }));
+
+    const favourite = readFavoriteFoods(database.db)[0];
+    expect(favourite?.id).toBe(id);
+    expect(favourite?.lastQuantity).toEqual(baseQuantity(100));
+    expect(favourite?.lastQuantity).toEqual(readQuantityPrefill(database.db, id)?.quantity);
+    // And it is absent from recents, which are derived from journal entries.
+    expect(readRecentFoods(database.db)).toEqual([]);
+  });
+
+  it('answers an empty library without a query for nothing', () => {
+    expect(listFoods(database.db)).toEqual([]);
+    expect(readFavoriteFoods(database.db)).toEqual([]);
   });
 });
