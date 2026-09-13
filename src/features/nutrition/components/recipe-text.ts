@@ -1,3 +1,6 @@
+import { formatQuantity } from '@/core/format';
+import type { RecipeYield } from '../domain/recipe-macros';
+
 /**
  * How recipes are worded on screen.
  *
@@ -53,4 +56,45 @@ export function describeRecipeUses(
   return uses.count === 1
     ? `${subject} garde ses chiffres, mais ne suivra plus vos corrections de cet aliment.`
     : `${subject} gardent leurs chiffres, mais ne suivront plus vos corrections de cet aliment.`;
+}
+
+/**
+ * What a recipe makes: "4 portions" or "850 g".
+ *
+ * A weight yield is always grams — the note on YIELD_TYPES in the schema says
+ * why — so there is no unit to carry alongside and none to get wrong.
+ */
+export function describeYield(recipeYield: RecipeYield): string {
+  if (recipeYield.type === 'weight') return formatQuantity(recipeYield.value, 'g');
+
+  // Two decimals at most: a yield of 4 is "4 portions", one of 2.5 is
+  // "2,5 portions", and nothing here ever needs more precision than a half.
+  const rounded = Math.round(recipeYield.value * 100) / 100;
+  const plural = rounded > 1 ? 'portions' : 'portion';
+  return `${String(rounded).replace('.', ',')} ${plural}`;
+}
+
+/**
+ * What the figures beside a recipe are stated against: "par portion" or
+ * "pour 100 g".
+ *
+ * The counterpart of the food library's "kcal / 100 g", and it exists for the
+ * same reason: a calorie figure with no denominator beside it cannot be
+ * compared with the row above, and a list that cannot be compared is not doing
+ * the one thing a list is for.
+ */
+export function describeYieldUnit(recipeYield: RecipeYield): string {
+  return recipeYield.type === 'portions' ? 'par portion' : 'pour 100 g';
+}
+
+/**
+ * How much of a recipe is being eaten: "2 portions" or "250 g".
+ *
+ * Deliberately the same shape as describeYield, because the two are read
+ * against each other — "2 portions" under a recipe that makes "4 portions" is
+ * a fraction anyone can see, where two wordings of one unit would have to be
+ * decoded instead.
+ */
+export function describeConsumed(recipeYield: RecipeYield, consumed: number): string {
+  return describeYield({ type: recipeYield.type, value: consumed });
 }
