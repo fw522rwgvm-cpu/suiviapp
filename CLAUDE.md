@@ -1672,6 +1672,52 @@ interne reste en pleine précision : c'est un arrondi au point d'affichage, comm
 tous les autres de `core/format`. Un test pose `formatMacro` et
 `formatMacroWhole` côte à côte pour qu'on ne les fusionne pas par mégarde.
 
+**Une dépendance native déjà autolinkée ne coûte pas de cycle CI.** `expo-font`
+est une dépendance directe d'`expo` et porte son `expo-module.config.json` :
+son module natif est **déjà dans le client installé**. Les fontes se chargent
+donc à l'exécution et non à la compilation, et Nunito est arrivée sans
+reconstruire. C'est le pendant exact de la règle posée pour l'anneau — avant
+d'ajouter du natif, demander quel écran le monte en premier — et ici la réponse
+était « il est déjà là ».
+
+Elle est quand même **déclarée au `package.json`** plutôt que laissée
+transitive : une montée mineure d'`expo` pourrait la retirer, et le §5 veut ses
+dépendances nommées.
+
+**Trois fichiers statiques, pas une fonte variable.** Un seul fichier aurait été
+plus propre, mais `fontWeight` ne pilote pas un axe variable à travers React
+Native : iOS enregistre l'instance par défaut et **synthétise** le gras — un
+faux épaissi qui se voit à côté de vraie typographie, surtout aux petites
+tailles, c'est-à-dire presque partout ici. La graisse choisit donc le fichier.
+
+**Et la graisse redevient `normal` en sortie.** Sinon iOS reçoit une demande de
+gras *sur une fonte déjà grasse* et en synthétise un par-dessus : le double-gras
+qui donne mauvaise réputation aux polices embarquées.
+
+**Un composant plutôt qu'un réglage global, parce qu'il n'y en a plus.**
+`Text.defaultProps` au démarrage était le recours habituel ; React 19 a supprimé
+`defaultProps` des composants fonction. Y revenir demanderait une affirmation de
+type sur un composant — interdite par le §4 — pour écrire un champ que React ne
+lit plus. D'où `core/ui/text.tsx` et trente-cinq imports déplacés une fois ; le
+prochain changement de police en changera un.
+
+**Le fichier d'actifs est séparé de la table de correspondance**, et ce n'est pas
+du rangement : `require` d'un `.ttf` parle à Metro et pas à Node. Sans la
+coupure, la table — le mécanisme entier, ce qui produit du faux gras en silence
+quand elle est fausse — ne pourrait pas être testée du tout.
+
+**Rien n'est bloqué sur la fonte.** Le chargement peut échouer ; `fontFamilyFor`
+rend alors `undefined`, chaque `Text` retombe sur la police système, et c'est
+exactement ce qui a tourné pendant cinq tranches. Retenir l'application pour une
+fonte mettrait un écran blanc sur le chemin critique d'une application dont
+toute la cible est quinze secondes.
+
+**Une boîte carrée qui ne peint que son haut laisse un écart qu'on prend pour
+une marge.** Une jauge trois quarts descend à cos(45°) × rayon sous le centre,
+soit une vingtaine de points au-dessus du bord sur une boîte de 186. La bande
+vide se lisait comme un espace entre le chiffre et les barres ; elle est reprise
+par une marge négative, avec l'arithmétique écrite à côté du nombre.
+
 ## Points ouverts après la tranche 5
 - ~~**Vérification iPhone en attente.**~~ **Faite pour l'essentiel** : la
   tranche 5 a tourné sur l'appareil et a rendu six retours d'interface, tous
@@ -1694,14 +1740,21 @@ tous les autres de `core/format`. Un test pose `formatMacro` et
 - **`carrot.fill` et les trois symboles météo ne sont pas vérifiés sur
   l'appareil.** Ce sont des SF Symbols standards et l'application vise iOS 18,
   mais un nom de symbole absent rend un carré vide, pas une erreur.
-- **La police de l'application n'a pas changé**, et c'est le seul point d'une
-  demande qui n'a pas été livré. Deux choses manquent, et aucune ne se devine :
-  **quelle** police Yazio utilise — je ne le sais pas de source sûre et je ne
-  vais pas l'affirmer — et **le fichier de fonte**, avec la licence qui va avec,
-  une police de marque étant commerciale la plupart du temps. `expo-font` 57 est
-  dans l'arbre (transitivement, via `expo`) mais n'est pas au §5 : l'y ajouter
-  est une décision à prendre, pas un détail. Ce qui débloque : un nom, et soit
-  les fichiers, soit un équivalent Google Fonts.
+- ~~**La police de l'application n'a pas changé.**~~ **Nunito est en place**
+  (Regular, SemiBold, Bold), sous licence OFL, chargée à l'exécution.
+- **Nunito n'a jamais été vue à l'écran.** Les trois fichiers sont dans le
+  bundle et la table graisse → fonte est testée, mais rien ne dit qu'iOS les
+  enregistre sous les noms attendus : une famille mal nommée rend la police
+  système sans erreur. Le témoin est un titre en 700 — s'il n'est pas plus gras
+  que le corps, c'est le nom de famille qui est faux, pas la graisse.
+- **`fontVariant: ['tabular-nums']` n'est pas vérifié sur Nunito.** Une
+  vingtaine de chiffres de l'application en dépendent pour s'aligner en colonne.
+  Si Nunito ne porte pas la fonctionnalité `tnum`, les colonnes de nombres
+  danseront — visible surtout sur la liste des entrées et les barres de macros.
+- **Les contrôles natifs gardent la police système**, et c'est irréductible :
+  `ActionSheetIOS`, les alertes, les en-têtes de `Stack` et le
+  `UIPickerView` des quantités sont dessinés par UIKit. Nunito s'arrête à ce
+  que l'application dessine elle-même.
 - **Un repas nommé librement avant la règle reste tel quel, et c'est voulu**
   (§5.2). Conséquence à connaître : sa fiche ne propose que les types encore
   libres, donc un tel repas ne peut pas être « corrigé » vers un type déjà pris
