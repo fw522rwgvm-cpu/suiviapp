@@ -308,26 +308,22 @@ describe('the constraints 0005 can never gain later', () => {
     // of what R3 buys.
     db.prepare(
       `UPDATE recipe_ingredient
-          SET frozen_name = (SELECT name FROM food WHERE id = 'f1'),
-              frozen_kcal_100 = (SELECT kcal_100 FROM food WHERE id = 'f1'),
-              frozen_at = 1,
-              food_id = NULL
+          SET frozen_name = ?, frozen_kcal_100 = ?, frozen_at = 1, food_id = NULL
         WHERE food_id = 'f1'`,
-    ).run();
+    ).run('Pois chiches', 265.5);
 
     expect(() => db.prepare("DELETE FROM food WHERE id = 'f1'").run()).not.toThrow();
     expect(countRows(db, 'recipe_ingredient')).toBe(1);
     db.close();
   });
 
-  it('reads the food row while unlinking it in the same statement', () => {
-    // THE ASSUMPTION THE FREEZE RESTS ON, checked rather than reasoned about.
-    //
-    // freezeIngredientsOf sets food_id to NULL in the same UPDATE whose other
-    // SET expressions read that food through a correlated subquery. The
-    // reasoning says the subquery hits `food`, a different table, untouched —
-    // but a reasoning is not an observation, and the whole of D5/R3 rests on
-    // this one statement being atomic AND complete.
+  it('accepts a capsule and a broken link written by one UPDATE', () => {
+    // THE SHAPE freezeIngredientsOf USES, checked against the schema rather
+    // than reasoned about: filling the seven freeze columns and setting
+    // food_id to NULL in ONE statement must satisfy ck_ingredient_link, not
+    // trip it. A CHECK evaluated against a half-applied row would make the
+    // whole of D5/R3 unimplementable, and there would be no way to find that
+    // out except by trying.
     const db = openEmptyDatabase();
     applyAllMigrations(db);
     insertFood(db);
@@ -336,13 +332,11 @@ describe('the constraints 0005 can never gain later', () => {
 
     db.prepare(
       `UPDATE recipe_ingredient
-          SET frozen_name = (SELECT name FROM food WHERE id = recipe_ingredient.food_id),
-              frozen_base_unit = (SELECT base_unit FROM food WHERE id = recipe_ingredient.food_id),
-              frozen_kcal_100 = (SELECT kcal_100 FROM food WHERE id = recipe_ingredient.food_id),
-              frozen_at = 1,
-              food_id = NULL
+          SET frozen_name = ?, frozen_base_unit = ?, frozen_protein_100 = ?,
+              frozen_carbs_100 = ?, frozen_fat_100 = ?, frozen_kcal_100 = ?,
+              frozen_at = ?, food_id = NULL
         WHERE food_id = 'f1'`,
-    ).run();
+    ).run('Pois chiches', 'g', 8.25, 47.5, 3.125, 265.5, 1);
 
     const row = db.prepare('SELECT * FROM recipe_ingredient').get() as Record<string, unknown>;
 

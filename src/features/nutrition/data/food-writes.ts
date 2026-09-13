@@ -1,6 +1,12 @@
 import { and, eq, ne } from 'drizzle-orm';
 import type { AppDatabase } from '@/core/db/database';
-import { food, foodPortion, type FoodId, type FoodPortionId } from '@/core/db/schema';
+import {
+  food,
+  foodPortion,
+  recipeIngredient,
+  type FoodId,
+  type FoodPortionId,
+} from '@/core/db/schema';
 import { newId } from '@/core/id';
 import {
   canonicalMacrosOf,
@@ -223,18 +229,101 @@ export function updateFood(db: AppDatabase, foodId: FoodId, draft: FoodDraft): v
 }
 
 /**
- * Deletes a food. Its portions go with it, by cascade.
+ * Freezes every ingredient line pointing at a food, and breaks their links
+ * (D5/R3, specs 5.3).
  *
- * NEVER BLOCKED, and past entries are left intact (specs 5.3). That holds by
- * construction rather than by care: journal_entry.source_food_id carries no
- * foreign key, so there is nothing here that could cascade into history and
- * nothing that could refuse the deletion. See the note in the schema.
+ * > La ligne d'ingrédient est conservée sous forme figée : nom et macros
+ * > gelés, plus de lien vers la base.
  *
- * One statement, so no explicit transaction: SQLite already wraps a lone
- * statement in one, and the cascade is the database's own work.
+ * ONE UPDATE, not a loop, and that is the whole design. R3 requires the fill
+ * and the unlink to be atomic; a loop could stop halfway and leave a recipe
+ * with some ingredients frozen and some pointing at a food about to vanish.
+ * With a single statement a half-freeze is not merely unlikely, it is
+ * inexpressible.
+ *
+ * The food is read first, INSIDE the caller's transaction, so the values
+ * cannot go stale between the read and the write — and so the capsule holds
+ * exactly what readFood returns, which is the same shape every other reader of
+ * this food already sees. A correlated subquery would have been one statement
+ * instead of two, and would have put raw SQL in the write layer to buy an
+ * atomicity the transaction already provides.
+ *
+ * Not exported, for the reason ensureMaterialized and ensureOffFood are not:
+ * called on its own it would strip a recipe of its live links for no reason at
+ * all, and a forced quit between it and the deletion that justified it would
+ * leave the library holding a food that no recipe can follow any more. It is
+ * the first statement of the only write that needs it.
+ */
+function freezeIngredientsOf(tx: AppDatabase, foodId: FoodId, now: number): void {
+  const rows = tx
+    .select({
+      name: food.name,
+      baseUnit: food.baseUnit,
+      protein100: food.protein100,
+      carbs100: food.carbs100,
+      fat100: food.fat100,
+      kcal100: food.kcal100,
+    })
+    .from(food)
+    .where(eq(food.id, foodId))
+    .all();
+
+  const source = rows[0];
+  // Nothing to freeze against. Deleting a food that is not there is not an
+  // error — the caller may simply be late — and writing a capsule of nulls
+  // would violate ck_ingredient_link, correctly.
+  if (source === undefined) return;
+
+  tx.update(recipeIngredient)
+    .set({
+      frozenName: source.name,
+      frozenBaseUnit: source.baseUnit,
+      frozenProtein100: source.protein100,
+      frozenCarbs100: source.carbs100,
+      frozenFat100: source.fat100,
+      /** Kept as given, never recomputed from P/C/F (specs 5.1). */
+      frozenKcal100: source.kcal100,
+      frozenAt: now,
+      // Last in the object and irrelevant that it is: SQLite evaluates every
+      // SET expression against the row as it was before the statement, so the
+      // order of assignments cannot matter.
+      foodId: null,
+    })
+    .where(eq(recipeIngredient.foodId, foodId))
+    .run();
+}
+
+/**
+ * Deletes a food. Its portions go with it, by cascade; its ingredient lines
+ * survive, frozen.
+ *
+ * NEVER BLOCKED, and past entries are left intact (specs 5.3). The journal
+ * half holds by construction rather than by care: journal_entry.source_food_id
+ * carries no foreign key, so nothing here can cascade into history and nothing
+ * can refuse the deletion.
+ *
+ * ## THE RECIPE HALF IS THE OPPOSITE, AND IT IS WHY THIS IS NO LONGER ONE LINE
+ *
+ * recipe_ingredient.food_id DOES carry a foreign key, with no ON DELETE clause
+ * — so NO ACTION, which SQLite enforces immediately. Delete a food an
+ * ingredient points at without freezing first and SQLite refuses, which would
+ * be exactly the blocked deletion specs 5.3 says never happens.
+ *
+ * It never happens because the freeze runs first, in this transaction. So the
+ * constraint is not an obstacle to work around: it is the only thing that
+ * PROVES the freeze ran. Collapse this back into a single delete one day and
+ * the database refuses loudly, instead of a recipe quietly losing its macros.
+ * That is the trade slice 6 took, and the schema note on food_id records it.
+ *
+ * ON DELETE SET NULL was the alternative, and it is refused for precisely the
+ * reason D5/R3 exists: it breaks the link WITHOUT filling the capsule, leaving
+ * an ingredient with no name and no macros where specs 5.3 promises both.
  */
 export function deleteFood(db: AppDatabase, foodId: FoodId): void {
-  db.delete(food).where(eq(food.id, foodId)).run();
+  db.transaction((tx) => {
+    freezeIngredientsOf(tx, foodId, Date.now());
+    tx.delete(food).where(eq(food.id, foodId)).run();
+  });
 }
 
 /**
