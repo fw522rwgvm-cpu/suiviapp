@@ -16,7 +16,7 @@ import Animated, {
   withTiming,
   type WithTimingConfig,
 } from 'react-native-reanimated';
-import { addDays, currentLocalDate, type LocalDate } from '@/core/date';
+import { addDays, type LocalDate } from '@/core/date';
 import { formatDayShort } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import {
@@ -26,6 +26,7 @@ import {
 } from '../data/day-queries';
 import type { JournalEntryView } from '../data/day-reads';
 import { DayPage } from '../components/day-page';
+import { useToday } from '@/features/settings/data/settings-queries';
 import { useRequestedDate } from '../hooks/requested-date';
 import type { DayMealView } from '../domain/day-plan';
 
@@ -80,10 +81,13 @@ export function JournalScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
 
-  // The cutoff hour is a setting (specs 8.8) whose screen arrives in slice 7.
-  // Until then the default of midnight applies, through the one function that
-  // decides what today is (D3).
-  const [today] = useState<LocalDate>(() => currentLocalDate());
+  // Through the one function that decides what today is, cutoff included (D3).
+  // Frozen against the clock, live against the setting: see useToday.
+  //
+  // `date` is seeded from it and then owned by the carousel. Changing the
+  // cutoff therefore moves the title's idea of "Aujourd'hui" at once, and does
+  // NOT drag the day being looked at out from under a swipe.
+  const today = useToday();
   const [date, setDate] = useState<LocalDate>(today);
 
   /**

@@ -1,7 +1,6 @@
 import Constants from 'expo-constants';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
-import { Text } from '@/core/ui/text';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { prepareDatabase, type StartupReport, type StartupState } from './startup';
 
 const StartupContext = createContext<StartupReport | null>(null);
@@ -25,6 +24,19 @@ export function useStartupReport(): StartupReport {
  * Holds no business logic: it runs the sequence of startup.ts and renders one
  * of three outcomes. The refusal of D6/G3 has to be reachable before the router
  * mounts, since there is no usable application behind it.
+ *
+ * ## IT IS THE ONE SCREEN WITH NO THEME, AND IT HAS TO BE
+ *
+ * The theme preference is a row in `setting`, so it cannot be read before the
+ * database is open — which is what this component is waiting for. Slice 7
+ * therefore moved ThemeProvider BELOW this gate, and these three screens use
+ * react-native's own Text with the colours written out, rather than core/ui's,
+ * which needs a theme context that does not exist yet here.
+ *
+ * Consequence, named rather than discovered: the spinner and the two failure
+ * screens are always light, whatever the user chose. They are the screens
+ * shown when the application cannot run at all; the brand typeface and the
+ * dark palette are not what is at stake on them.
  */
 export function DatabaseGate({ children }: { children: ReactNode }) {
   const [report, setReport] = useState<StartupReport | null>(null);

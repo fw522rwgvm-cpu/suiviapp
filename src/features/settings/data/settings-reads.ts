@@ -1,6 +1,13 @@
 import { eq } from 'drizzle-orm';
+import { normalizeCutoffHour } from '@/core/date';
 import type { AppDatabase } from '@/core/db/database';
 import { setting } from '@/core/db/schema';
+// tokens, not the '@/core/theme' barrel: see the note in domain/preferences.ts.
+import { parseThemePreference, type ThemePreference } from '@/core/theme/tokens';
+import {
+  normalizeAdherenceTolerance,
+  type Preferences,
+} from '../domain/preferences';
 
 /**
  * Reads of the key/value settings (schema 2.1).
@@ -18,13 +25,28 @@ import { setting } from '@/core/db/schema';
  */
 
 /**
- * Keys slice 2 actually uses.
+ * The keys actually in service.
  *
- * Section 2.1 lists eight; the rest arrive with their features (theme and the
- * day cutoff at slice 7). Declaring them early would be a layer built "for
- * later", which section 7 rules out.
+ * Section 2.1 lists eight. Six are here as of slice 7; the last two —
+ * progression_increment_default_kg and intervals_sync_frequency — arrive with
+ * their features in V3 and V4. Declaring them early would be a layer built
+ * "for later", which section 7 rules out.
  */
 export const SETTING_KEYS = {
+  /** Light / dark / system (specs 8.8), slice 7. */
+  theme: 'theme',
+  /**
+   * The hour at which "today" turns over, 0 to 6 (specs 8.2, 8.8), slice 7.
+   *
+   * IT DECIDES A DEFAULT AND NOTHING ELSE. Specs 8.2 is explicit: the setting
+   * only moves the date PROPOSED by default, it changes nothing already
+   * stored, and a wrong date is corrected in one gesture. So a corrupt row
+   * here can put the Journal on the wrong day for a moment; it can never put
+   * an entry on the wrong day behind the user's back.
+   */
+  dayCutoffHour: 'day_cutoff_hour',
+  /** Slack allowed on each of the four macros, in percent (specs 8.7), slice 7. */
+  adherenceTolerancePct: 'adherence_tolerance_pct',
   /** Instant of the last successful export, epoch ms (specs 5.4). */
   lastExportAt: 'last_export_at',
   /** How many days before the Settings screen highlights it (specs 5.4). */
@@ -124,4 +146,62 @@ export function readExportReminderDays(db: AppDatabase): number {
     DEFAULT_EXPORT_REMINDER_DAYS,
   );
   return value !== null && value > 0 ? value : DEFAULT_EXPORT_REMINDER_DAYS;
+}
+
+/**
+ * The stored theme preference, or 'system' (specs 8.8).
+ *
+ * parseThemePreference lives in core/theme beside the tokens it decides, and
+ * is reused rather than restated: an unknown value must read as 'system' in
+ * exactly one place, or two readings of the same column are free to disagree.
+ */
+export function readThemePreference(db: AppDatabase): ThemePreference {
+  return parseThemePreference(readSetting(db, SETTING_KEYS.theme));
+}
+
+/**
+ * The hour at which the day turns over, clamped to 0..6 (specs 8.2).
+ *
+ * Clamped by core/date's own function, for the same reason: the bounds belong
+ * to the rule, not to the storage. This module only knows which key holds it.
+ */
+export function readCutoffHour(db: AppDatabase): number {
+  return normalizeCutoffHour(readIntegerSetting(db, SETTING_KEYS.dayCutoffHour, null));
+}
+
+/** Slack allowed on each of the four macros, in percent (specs 8.7). */
+export function readAdherenceTolerancePct(db: AppDatabase): number {
+  return normalizeAdherenceTolerance(
+    readIntegerSetting(db, SETTING_KEYS.adherenceTolerancePct, null),
+  );
+}
+
+/**
+ * The three preferences, in one call.
+ *
+ * ## IT IS READ SYNCHRONOUSLY, AND THAT IS ITS ENTIRE REASON TO EXIST
+ *
+ * Every one of these has to be available on a component's FIRST render, not a
+ * tick later:
+ *
+ *  - the theme decides what colour the first frame is painted;
+ *  - the cutoff decides which day the Journal opens on, and the Journal freezes
+ *    that date in its initial state (specs 7: always today, never the last date
+ *    consulted).
+ *
+ * A value that arrives one render late is the defect this project has already
+ * met twice — the quantity wheels that spun as they opened, and the carousel
+ * whose key changed in an effect. Both had the same cause: a value produced
+ * AFTER the render that needed it. The answer both times was to make the value
+ * exist first, and this is that answer for preferences.
+ *
+ * Three reads on a primary key, on a local synchronous database. There is
+ * nothing here to batch and nothing to measure.
+ */
+export function readPreferences(db: AppDatabase): Preferences {
+  return {
+    theme: readThemePreference(db),
+    cutoffHour: readCutoffHour(db),
+    adherenceTolerancePct: readAdherenceTolerancePct(db),
+  };
 }

@@ -1,10 +1,11 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { currentLocalDate, parseLocalDate } from '@/core/date';
+import { parseLocalDate } from '@/core/date';
 import type { JournalEntryId } from '@/core/db/schema';
 import { toEntityId } from '@/core/id';
 import { GlassButton } from '@/core/ui/glass-button';
 import { OverlayPanel, useDismiss } from '@/core/ui/overlay-panel';
 import { FreeEntryScreen } from '@/features/nutrition/screens/free-entry-screen';
+import { useToday } from '@/features/settings/data/settings-queries';
 
 /**
  * Route wiring only (D10): read the parameters, hand them to the domain screen.
@@ -36,6 +37,7 @@ export default function FreeEntryRoute() {
     mealPosition?: string;
     entryId?: string;
   }>();
+  const today = useToday();
 
   const date = params.date === undefined ? null : parseLocalDate(params.date);
   const position =
@@ -44,7 +46,7 @@ export default function FreeEntryRoute() {
   return (
     <OverlayPanel onDismiss={() => router.back()} right={<CancelAction />}>
       <FreeEntryScreen
-        date={date ?? currentLocalDate()}
+        date={date ?? today}
         mealPosition={Number.isInteger(position) && position >= 0 ? position : null}
         entryId={
           params.entryId === undefined ? null : toEntityId<JournalEntryId>(params.entryId)

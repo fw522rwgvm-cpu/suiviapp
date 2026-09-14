@@ -1,6 +1,7 @@
 import { useLocalSearchParams } from 'expo-router';
-import { currentLocalDate, parseLocalDate } from '@/core/date';
+import { parseLocalDate } from '@/core/date';
 import { CalendarScreen } from '@/features/nutrition/screens/calendar-screen';
+import { useToday } from '@/features/settings/data/settings-queries';
 
 /**
  * Route wiring only (D10): read the parameter, hand it to the domain screen.
@@ -15,7 +16,8 @@ import { CalendarScreen } from '@/features/nutrition/screens/calendar-screen';
  */
 export default function CalendarRoute() {
   const { date } = useLocalSearchParams<{ date?: string }>();
+  const today = useToday();
   const parsed = date === undefined ? null : parseLocalDate(date);
 
-  return <CalendarScreen date={parsed ?? currentLocalDate()} />;
+  return <CalendarScreen date={parsed ?? today} />;
 }

@@ -1,6 +1,7 @@
 import { useLocalSearchParams } from 'expo-router';
-import { currentLocalDate, parseLocalDate } from '@/core/date';
+import { parseLocalDate } from '@/core/date';
 import { AddEntryScreen } from '@/features/nutrition/screens/add-entry-screen';
+import { useToday } from '@/features/settings/data/settings-queries';
 
 /**
  * Route wiring only (D10): read the parameters, hand them to the domain screen.
@@ -11,6 +12,7 @@ import { AddEntryScreen } from '@/features/nutrition/screens/add-entry-screen';
  */
 export default function AddEntryRoute() {
   const params = useLocalSearchParams<{ date?: string; mealPosition?: string }>();
+  const today = useToday();
 
   const date = params.date === undefined ? null : parseLocalDate(params.date);
   const position =
@@ -18,7 +20,7 @@ export default function AddEntryRoute() {
 
   return (
     <AddEntryScreen
-      date={date ?? currentLocalDate()}
+      date={date ?? today}
       mealPosition={Number.isInteger(position) && position >= 0 ? position : null}
     />
   );
