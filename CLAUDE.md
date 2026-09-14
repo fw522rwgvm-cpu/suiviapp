@@ -2895,6 +2895,14 @@ du haut ; elle bascule alors à l'intérieur du sommet de la barre.
   **Lu dans la source, jamais vu à l'écran** : la tranche 6 n'a pas tourné sur
   l'appareil. Non corrigé pour ça — à confirmer d'un coup d'œil avant de
   toucher du code livré.
+- **`tests/dev/seed.test.ts` a rougi une fois, sans être reproductible.**
+  « carries a long history without choking » — trois ans générés en une
+  transaction, le test le plus lourd de la suite — a échoué sous UTC et
+  America/New_York au cours d'une exécution, puis six suites complètes l'ont
+  passé. **Le message n'a pas été capturé**, donc l'hypothèse d'un dépassement
+  du délai de vitest sous charge (soixante-six workers) n'est qu'une hypothèse.
+  À regarder si la CI le refait : c'est le seul test dont le coût dépende de la
+  machine.
 - **`ios/Suivi/Info.plist` porte trois `UsageDescription`** là où une seule est
   déclarée dans `app.config.ts`. Constaté au pré-vol, antérieur à cette tranche,
   et sans rapport avec svg qui n'en demande aucune. À regarder un jour : une

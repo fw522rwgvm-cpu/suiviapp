@@ -45,6 +45,19 @@ export function verticalScale(
   values: readonly (number | null)[],
   height: number,
   tickCount = 4,
+  /**
+   * Blank kept ABOVE the highest gridline.
+   *
+   * Not decoration. `.nice()` rounds the domain out so that the top tick sits
+   * EXACTLY at the maximum — which maps to y = 0, the first pixel of the
+   * canvas. A label centred on that line then has its ascenders at a negative
+   * y and is clipped away by the SVG viewport: the top figure of the axis
+   * loses its head, and only that one, which reads as a rendering fault rather
+   * than as a missing inset.
+   *
+   * Zero by default, so a caller drawing without axis labels pays nothing.
+   */
+  topInset = 0,
 ): VerticalScale {
   const finite = values.filter(
     (value): value is number => value !== null && Number.isFinite(value),
@@ -53,7 +66,7 @@ export function verticalScale(
 
   const scale = scaleLinear()
     .domain([0, peak <= 0 ? 1 : peak])
-    .range([height, 0])
+    .range([height, topInset])
     .nice(tickCount);
 
   const [, max = 1] = scale.domain();

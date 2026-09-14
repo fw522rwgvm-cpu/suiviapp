@@ -51,6 +51,29 @@ describe('verticalScale', () => {
     }
   });
 
+  it('keeps the top gridline off the very first pixel, when asked', () => {
+    // THE DEFECT THIS EXISTS FOR. `.nice()` rounds the domain out so the top
+    // tick lands EXACTLY on the maximum, which maps to y = 0 — and a label
+    // centred on that line has its ascenders at a negative y, clipped away by
+    // the SVG viewport. Only the top figure loses its head, which reads as a
+    // rendering fault rather than as a missing inset.
+    const flush = verticalScale([2000], 100);
+    expect(flush.y(flush.max)).toBe(0);
+
+    const inset = verticalScale([2000], 100, 4, 10);
+    expect(inset.y(inset.max)).toBe(10);
+    // The baseline does not move: bars still stand on the bottom of the plot.
+    expect(inset.y(0)).toBe(100);
+  });
+
+  it('scales into the reduced range, not just offset by it', () => {
+    const inset = verticalScale([100], 100, 4, 10);
+    // Half the domain sits half way down the REMAINING height, not half way
+    // down the canvas: an inset that only shifted would put every bar 10 points
+    // short of where its value says.
+    expect(inset.y(inset.max / 2)).toBeCloseTo(55, 6);
+  });
+
   it('ignores gaps when choosing the top', () => {
     expect(verticalScale([null, 100, null], 100).max).toBe(
       verticalScale([100], 100).max,

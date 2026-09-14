@@ -11,6 +11,7 @@ import {
   FRAME_TOP,
   GUTTER_BOTTOM,
   GUTTER_LEFT,
+  GUTTER_TOP,
 } from '@/core/charts/chart-frame';
 import { bandGeometry, verticalScale } from '@/core/charts/scale';
 import type { LocalDate } from '@/core/date';
@@ -86,6 +87,10 @@ export function CaloriesChart({ panel }: { panel: NutritionPanel }) {
   const scale = verticalScale(
     [...panel.kcalSeries, ...panel.targetSeries, ...panel.rollingKcalSeries],
     plotHeight,
+    TICK_COUNT,
+    // Without it the top gridline sits on y = 0 and its label loses its head
+    // over the edge of the canvas. See verticalScale.
+    GUTTER_TOP,
   );
 
   const meanPath = d3Line<number>()
@@ -119,65 +124,81 @@ export function CaloriesChart({ panel }: { panel: NutritionPanel }) {
 
   return (
     <View>
-      <ChartFrame height={HEIGHT} width={width} scale={scale} xLabels={labelsFor(panel, count)}>
-        {() => (
-          <>
-            {panel.kcalSeries.map((kcal, index) =>
-              kcal === null ? null : (
-                <Rect
-                  key={index}
-                  x={band.left(index)}
-                  y={scale.y(kcal)}
-                  width={band.barWidth}
-                  height={Math.max(1, plotHeight - scale.y(kcal))}
-                  // The accent, like the gauge on the Journal: calories wear
-                  // one colour across the application (amendment 14.4 no 15).
-                  fill={theme.colors.macroKcal}
-                  opacity={touched === null || touched === index ? 1 : 0.35}
-                  rx={band.barWidth > 4 ? 2 : 0}
-                />
-              ),
-            )}
-
-            {goalPath === null ? null : (
-              <Path
-                d={goalPath}
-                stroke={theme.colors.textFaint}
-                strokeWidth={1.5}
-                strokeDasharray="4 3"
-                fill="none"
-              />
-            )}
-
-            {meanPath === null ? null : (
-              <Path d={meanPath} stroke={theme.colors.text} strokeWidth={2} fill="none" />
-            )}
-          </>
-        )}
-      </ChartFrame>
-
-      {shown === undefined || shown === null ? null : (
-        <Tooltip
-          x={GUTTER_LEFT + band.centre(touched ?? 0)}
-          y={scale.y(shown.consumed?.kcal ?? 0)}
-          plotLeft={GUTTER_LEFT}
-          plotRight={GUTTER_LEFT + plotWidth}
-          day={shown}
-          today={panel.days[count - 1]?.date ?? shown.date}
-        />
-      )}
-
       {/*
-        Over the plot only, offset by the gutter the frame reserves for its
-        labels — otherwise a touch on the axis figures would read as day zero.
+        THE CHART BOX, AND ITS HEIGHT IS DECLARED RATHER THAN INFERRED.
+
+        The tooltip is anchored by its BOTTOM, so it needs a positioning parent
+        whose lower edge is a known point of the drawing. Left in the outer view
+        it would have measured from under the legend, which is neither a fixed
+        distance nor the same one at two lines of legend and three.
       */}
-      <GestureDetector gesture={scrub}>
-        <View
-          style={[styles.touch, { left: GUTTER_LEFT, width: plotWidth }]}
-          accessibilityRole="image"
-          accessibilityLabel="Calories par jour sur la plage choisie"
-        />
-      </GestureDetector>
+      <View style={{ height: FRAME_TOP + HEIGHT }}>
+        <ChartFrame
+          height={HEIGHT}
+          width={width}
+          scale={scale}
+          xLabels={labelsFor(panel, count)}
+        >
+          {() => (
+            <>
+              {panel.kcalSeries.map((kcal, index) =>
+                kcal === null ? null : (
+                  <Rect
+                    key={index}
+                    x={band.left(index)}
+                    y={scale.y(kcal)}
+                    width={band.barWidth}
+                    height={Math.max(1, plotHeight - scale.y(kcal))}
+                    // The accent, like the gauge on the Journal: calories wear
+                    // one colour across the application (amendment 14.4 no 15).
+                    fill={theme.colors.macroKcal}
+                    opacity={touched === null || touched === index ? 1 : 0.35}
+                    rx={band.barWidth > 4 ? 2 : 0}
+                  />
+                ),
+              )}
+
+              {goalPath === null ? null : (
+                <Path
+                  d={goalPath}
+                  stroke={theme.colors.textFaint}
+                  strokeWidth={1.5}
+                  strokeDasharray="4 3"
+                  fill="none"
+                />
+              )}
+
+              {meanPath === null ? null : (
+                <Path d={meanPath} stroke={theme.colors.text} strokeWidth={2} fill="none" />
+              )}
+            </>
+          )}
+        </ChartFrame>
+
+        {shown === undefined || shown === null ? null : (
+          <Tooltip
+            x={GUTTER_LEFT + band.centre(touched ?? 0)}
+            barTop={scale.y(shown.consumed?.kcal ?? 0)}
+            plotHeight={plotHeight}
+            plotLeft={GUTTER_LEFT}
+            plotRight={GUTTER_LEFT + plotWidth}
+            day={shown}
+            today={panel.days[count - 1]?.date ?? shown.date}
+          />
+        )}
+
+        {/*
+          Over the plot only, offset by the gutter the frame reserves for its
+          labels — otherwise a touch on the axis figures would read as day zero.
+        */}
+        <GestureDetector gesture={scrub}>
+          <View
+            style={[styles.touch, { left: GUTTER_LEFT, width: plotWidth }]}
+            accessibilityRole="image"
+            accessibilityLabel="Calories par jour sur la plage choisie"
+          />
+        </GestureDetector>
+      </View>
 
       {/*
         The legend STAYS while a bar is being read, where it used to be
@@ -220,7 +241,8 @@ export function CaloriesChart({ panel }: { panel: NutritionPanel }) {
  */
 function Tooltip({
   x,
-  y,
+  barTop,
+  plotHeight,
   plotLeft,
   plotRight,
   day,
@@ -228,8 +250,9 @@ function Tooltip({
 }: {
   /** Centre of the bar, in chart coordinates. */
   x: number;
-  /** Top of the bar. */
-  y: number;
+  /** Top of the bar, in plot coordinates: 0 is the top of the canvas. */
+  barTop: number;
+  plotHeight: number;
   plotLeft: number;
   plotRight: number;
   day: DayFigure;
@@ -239,18 +262,46 @@ function Tooltip({
 
   const half = TOOLTIP_WIDTH / 2;
   const left = Math.min(Math.max(x - half, plotLeft), plotRight - TOOLTIP_WIDTH);
-  // FRAME_TOP is where the plot begins; above it there is nothing to draw on.
-  const above = y - TOOLTIP_HEIGHT - 6;
-  const top = FRAME_TOP + Math.max(0, above);
+
+  /**
+   * ANCHORED BY ITS BOTTOM, so its own height never enters the sum.
+   *
+   * It was anchored by its top, against a height written down as a constant —
+   * and the constant was a guess, because the bubble is three lines with a goal
+   * and two without. Whatever number was chosen was wrong for one of the two
+   * shapes, which is how it came to sit across the top of the bar instead of
+   * above it.
+   *
+   * With `bottom` there is nothing to guess: the bubble's lower edge is placed
+   * a fixed gap above the bar's top and it grows upwards from there, at two
+   * lines or three.
+   *
+   * The container's bottom is the bottom of the whole chart box, hence the
+   * bottom gutter in the sum — the dates under the baseline live there.
+   */
+  const bottom = plotHeight + GUTTER_BOTTOM - barTop + GAP;
+
+  /**
+   * The flip, and it is the ONLY thing the height is still needed for.
+   *
+   * A tall bar leaves no room above itself, so the bubble goes to the top of
+   * the plot instead. Measured rather than assumed — one frame on an estimate,
+   * then exact and stable, since the height only changes between a day with a
+   * goal and a day without. And a stale height can now only make the bubble
+   * flip a frame late; it can no longer place it wrongly.
+   */
+  const [height, setHeight] = useState(ESTIMATED_TOOLTIP_HEIGHT);
+  const fitsAbove = barTop - GAP - height >= 0;
 
   return (
     <View
       pointerEvents="none"
+      onLayout={(event) => setHeight(event.nativeEvent.layout.height)}
       style={[
         styles.tooltip,
+        fitsAbove ? { bottom } : { top: FRAME_TOP },
         {
           left,
-          top,
           width: TOOLTIP_WIDTH,
           backgroundColor: theme.colors.surface,
           borderColor: theme.colors.border,
@@ -275,7 +326,13 @@ function Tooltip({
 }
 
 const TOOLTIP_WIDTH = 132;
-const TOOLTIP_HEIGHT = 54;
+/** Air between the bubble's lower edge and the top of the bar it names. */
+const GAP = 6;
+/**
+ * First-frame guess, and nothing more: onLayout replaces it immediately and it
+ * only ever decides whether to flip, never where to sit.
+ */
+const ESTIMATED_TOOLTIP_HEIGHT = 62;
 
 function Key({ color, label, dashed }: { color: string; label: string; dashed?: boolean }) {
   const theme = useTheme();
@@ -294,6 +351,9 @@ function Key({ color, label, dashed }: { color: string; label: string; dashed?: 
 }
 
 const HEIGHT = 150;
+
+/** Gridlines asked for. d3 picks round numbers near this count, not exactly it. */
+const TICK_COUNT = 4;
 
 function indices(count: number): number[] {
   return Array.from({ length: count }, (_, index) => index);

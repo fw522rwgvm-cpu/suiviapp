@@ -113,6 +113,15 @@ export const GUTTER_LEFT = 34;
 /** Room for one line of dates under the baseline. */
 export const GUTTER_BOTTOM = 16;
 /**
+ * Room ABOVE the highest gridline, for its own label.
+ *
+ * Ten points against a ten-point font: the label is centred on its line, so it
+ * reaches some three points above it, and the rest is air the tallest bar is
+ * better for. Passed to verticalScale by the caller, which is what actually
+ * reserves it — this constant only says how much.
+ */
+export const GUTTER_TOP = 10;
+/**
  * Air between the card's text and the plot — and the offset anything drawn
  * OVER the chart has to add.
  *
