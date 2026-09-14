@@ -562,25 +562,47 @@ off_cache(
 ### 2.5 Poids (V2)
 
 ```sql
-weight_measure(
+weight_measure(                       -- 0006, tranche 8
   date TEXT PRIMARY KEY,              -- une mesure au plus par date (§6.2)
   value_kg REAL NOT NULL,
-  created_at INTEGER, updated_at INTEGER
+  created_at INTEGER, updated_at INTEGER,
+  CHECK (value_kg > 0)                -- ck_weight_value
 )
+-- Aucun index : `date` EST la clé primaire, donc SQLite l'indexe déjà et les
+-- balayages BETWEEN s'en servent. Aucune clé étrangère non plus, et surtout
+-- pas vers day(date) : une journée n'existe qu'une fois matérialisée, donc la
+-- clé forcerait à en créer une pour y peser (§8.2).
 
-weight_goal(
+weight_goal(                          -- 0006, tranche 8
   id TEXT PK, target_kg REAL NOT NULL,
   mode TEXT NOT NULL,                 -- 'target_date' | 'rate'
   target_date TEXT, rate_kg_per_week REAL,
   defined_at INTEGER NOT NULL,
-  is_active INTEGER NOT NULL DEFAULT 1
+  is_active INTEGER NOT NULL DEFAULT 1,
+  CHECK (mode IN ('target_date','rate')),                        -- ck_weight_goal_mode
+  CHECK ((mode = 'target_date' AND target_date IS NOT NULL
+                               AND rate_kg_per_week IS NULL)
+      OR (mode = 'rate'        AND rate_kg_per_week IS NOT NULL
+                               AND target_date IS NULL)),        -- ck_weight_goal_terms
+  CHECK (target_kg > 0),                                         -- ck_weight_goal_target
+  CHECK (is_active IN (0,1))                                     -- ck_weight_goal_active
 )
+CREATE UNIQUE INDEX ux_weight_goal_active
+  ON weight_goal(is_active) WHERE is_active = 1;   -- un seul objectif actif
+-- Aucune CHECK sur rate_kg_per_week : il est SIGNÉ, et zéro veut dire maintien.
+-- ck_weight_goal_terms porte l'exclusivité des deux termes, qui est D9 rendu
+-- structurel — l'un des deux se dérive de l'autre (§6.2), donc aucun des deux
+-- ne peut coexister avec l'autre sans ambiguïté. Voir §9.9 n° 2.
 
-notification_setting(
+notification_setting(                 -- 0007, TRANCHE 9 — pas livrée en 0006
   kind TEXT PRIMARY KEY,              -- 'weigh_in'|'empty_journal'|'daily_summary'|'export_reminder'
   enabled INTEGER NOT NULL DEFAULT 0,
   hour INTEGER, minute INTEGER
 )
+-- Rangée ici parce que cette section classe par VERSION ; le §7 ordonne par
+-- TRANCHE et place les notifications en 9. Différer ne coûte rien : la table ne
+-- porte aucune clé étrangère dans un sens ni dans l'autre, donc 0007 la créera
+-- entière sans rien reconstruire (§9.9 n° 1).
 ```
 
 ### 2.6 Musculation (V3)
@@ -1022,3 +1044,25 @@ divergence vivre dans le code.
 | 8 | D9, §8.7 | **`Adherence` gagne `byMacro`**, quatre taux sur le meme denominateur que le taux global | Additif : le chiffre de tete reste la proportion de jours du §8.7. Ce que les quatre achetent est ce qu'un seul ne peut pas dire, et l'invariant qui les lie -- le global ne peut exceder le plus faible des quatre, un jour ne comptant globalement que s'il comptait sur chacun -- est teste a quatre tolerances plutot que suppose |
 | 9 | D13, §3 | `core/charts/` gagne `use-scrub.ts`, `chart-tooltip.tsx` et `barPath`, tous a leur **deuxieme utilisateur reel** | La regle, appliquee a l'heure. Deux graphiques d'un meme ecran repondant differemment a un toucher serait le genre d'ecart que personne ne remarque avant de s'en plaindre. `barPath` existe parce que `rx` sur un `Rect` arrondit les QUATRE coins : sur une barre en deux segments, les coins bas du segment superieur laissent voir celui du dessous, et le recouvrement que ca imposait rendait la barre **impossible a attenuer** -- 35 % de rouge a travers 35 % de vert invente une troisieme couleur |
 | 10 | D13 | **`ChartFrame` accepte un SECOND axe, a droite**, sans lignes d'horizon propres | Premiere des « series de natures differentes sur des axes differents » que D13 donne comme la raison meme de faire les graphiques a la main. L'axe de gauche garde les lignes, celui de droite n'etiquette que ses graduations, teinte de la couleur de sa serie pour qu'il ne soit jamais a deviner lequel sert qui. `plotWidthFor` est exporte parce que l'appelant a besoin du meme nombre -- poser ses bandes, borner une infobulle -- et qu'une formule ecrite a deux endroits est libre de diverger le jour ou une gouttiere change |
+
+### 9.9 Tranche 8 (15/09/2026)
+
+| No | Section | Amendement | Motif |
+| --- | --- | --- | --- |
+| 1 | §2.5 | **`0006` cree `weight_measure` et `weight_goal`, et PAS `notification_setting`** | Le §2.5 range les trois sous « Poids (V2) » parce qu'il classe par VERSION ; le §7 ordonne par TRANCHE et met les notifications en tranche 9. Ils ne se contredisent pas. Et differer ne coute rien, ce qui est le test qui compte : `notification_setting` ne porte aucune cle etrangere dans un sens ni dans l'autre, donc `0007` la creera entiere. Ce n'est pas une table retenue malgre un risque — il n'y a aucun risque a retenir |
+| 2 | §2.5 | **`weight_goal` porte deux CHECK que le §2.5 ne declare pas** : `mode IN ('target_date','rate')` et l'exclusivite stricte de ses deux termes | Le mode PILOTE LE CALCUL : il decide quelle colonne est lue et quel chiffre en est derive, donc un troisieme mode tombe a travers chaque branche et produit un rythme plausible et faux. Meme classe que `ck_entry_kind` et `ck_recipe_yield_type` ; a l'oppose de `food_portion.name`, dont elargir le vocabulaire ne casse rien. **L'exclusivite est la decision de cette migration** : le §6.2 fait de l'un des deux termes une valeur DERIVEE de l'autre, or D9 interdit de stocker ce qui se derive — une ligne portant les deux serait soit une entorse a D9, soit une ambiguite sans reponse. La CHECK rend cet etat inexprimable, ce qui vaut mieux qu'une regle que la couche d'ecriture doit se souvenir d'appliquer. Et son autre moitie compte autant : un objectif en mode `rate` sans rythme est un objectif que personne ne peut lire |
+| 3 | §2.5, D9 | **`ck_weight_value > 0`**, la ou la tranche 3 avait ecarte toute CHECK sur les macros | Le motif de la tranche 3 ne s'applique pas : il tenait a ce que le §8.5 exige des valeurs Open Food Facts **signalees et jamais refusees**, et a ce que la tranche 4 copie automatiquement en base tout produit logue. Ici il n'y a ni source externe, ni copie automatique, ni chemin ou une valeur arrive sans avoir ete tapee. Un poids nul n'est pas une valeur douteuse a corriger, c'est une valeur impossible — et `value_kg` est le seul contenu de la table. Precedents dans le schema livre : `ck_portion_quantity` et `ck_recipe_yield_value`. Aucune borne haute : ce serait legiferer sur ce qu'un corps peut peser |
+| 4 | §2.5 | **Aucune cle etrangere, et `weight_measure.date` ne reference surtout pas `day.date`** | La forme tentante, et elle est fausse : une journee n'existe qu'une fois MATERIALISEE, donc la cle forcerait a creer une journee pour y peser — de la donnee creee par consultation, que le §8.2 interdit. Se peser un jour ou l'on n'a rien logue est parfaitement ordinaire. Un test l'exerce des deux cotes plutot que de le laisser au commentaire |
+| 5 | §2.5 | **`ux_weight_goal_active`, index unique partiel sur `is_active = 1`** | Tout l'aval suppose un seul objectif. Sur `day_meal` la tranche 5 avait refuse le meme outil pour une raison qui ne s'applique pas ici : une base en service porte deja les lignes qui le violeraient, alors que **cette table est neuve** — aucune ligne n'existe nulle part, donc l'index se construit toujours. Et il reste la seule partie d'une migration qui s'annule sans rien reconstruire |
+| 6 | §3, D9, D13 | **`core/db/date-bucket.ts`** porte `Grain`, `bucketOf`, `nextBucket` et l'expression SQL de regroupement | C'est ici que la regle d'agregation de D9 trouve enfin un client : la plage la plus longue du §8.7 vaut exactement 90, et « au-dela de 90 » n'inclut pas 90, donc la tranche 7 n'y a jamais touche. Le module vit dans `core/db` et non dans une feature parce que **deux features groupent sur les memes seaux** — la courbe groupe `weight_measure`, le graphique croise du §9.4 groupe `journal_entry` — et deux series d'un meme graphique tombant sur des seaux distants de six jours est exactement le defaut que le partage evite. Chaque grain rend une DATE CIVILE, jamais un libelle de periode, pour que rien en aval n'ait a savoir quel grain il regarde |
+| 7 | D9, D13 | **Le lundi d'une semaine a deux implementations, tenues par un test** | `date(d, 'weekday 0', '-6 days')` en SQL et `startOfWeek` en TypeScript. Deux implementations d'une meme question sont ce que ce projet retrouve dans ses propres bugs — la fonction de fenetre de la tranche 4 est tenue a `readLastEntryForFood` par la meme forme de test. Comparees date par date sur seize cents dates consecutives : les cas qui casseraient sont les bords d'annee et le dimanche qui ne doit PAS avancer d'une semaine, et aucun des deux ne s'ecrit a la main |
+| 8 | D13 | **`scale.ts` gagne `linearScale`, a cote de `verticalScale` et sans la remplacer** | Une barre encode une quantite par sa LONGUEUR, donc son axe doit partir de zero ou l'image ment — et ment dans le sens flatteur. Une ligne encode le changement par sa PENTE : rien en elle n'invite a comparer 78 kg a zero, et sur un domaine de 0 a 80 une perte de trois kilos sur un trimestre occupe quatre pour cent du trace. **Deux fonctions plutot qu'une avec un drapeau** : la version a drapeau est la facon dont un graphique a barres finit par gagner une base non nulle parce que quelqu'un a passe le mauvais argument. Le rembourrage est une PART de l'etendue, jamais un nombre d'unites, et une serie plate retombe sur une bande fixe — sinon d3 rend NaN, que `react-native-svg` dessine comme rien du tout plutot que comme une erreur |
+| 9 | D13 | **`ChartFrame` gagne `baseline`, `formatTick` et `formatRightTick`** | La ligne renforcee du pied dit « c'est ici que les barres se tiennent » ; sur une echelle qui ne contient pas zero ce serait un trait epais a une valeur arbitraire, disant ca avec insistance. Le format des graduations etait l'entier en dur, juste pour des kilocalories et FAUX des que les graduations tombent entre deux entiers — sur 76,2 a 76,8, d3 choisit 76,2 / 76,4 / 76,6 et l'arrondi imprimerait « 76 » trois fois, ce qui se lit comme un defaut de rendu. Et l'axe de droite a le SIEN : le propos d'un second axe est qu'il porte une serie d'une autre NATURE, donc un format partage ecrirait « 2 450,0 » a cote de kilos a une decimale |
+| 10 | §3 | **L'onglet Stats gagne une pile native**, et `core/ui/stack-header.ts` nait avec elle | Troisieme utilisateur des memes options d'en-tete, ce que `settings/_layout.tsx` avait lui-meme annonce en tranche 5 : « deux piles aux memes options ne sont pas encore un composant, la suivante tranchera ». Elle tranche. Le style de TITRE reste chez chaque pile : le Nunito extra-gras du Journal est une decision, pas un mecanisme que trois piles ont en commun. L'ecran Stats garde `headerShown: false` et son grand titre a lui — une pile ajoutee dessous est du cablage, pas un changement visuel que personne n'a demande. Point ouvert de la tranche 5 ferme |
+| 11 | §9.5 n° 11, §9.8 n° 2 | **`progress-ring.tsx` n'est PAS reecrit sur svg, et le report devient definitif** | Renversement consigne plutot qu'oubli. Quatre raisons, et aucune n'est le gout : il marche et **sa geometrie est verifiee sur l'appareil** ; le premier ecran qui le monte est le Journal, donc le reecrire met un risque sur l'ecran d'accueil pour un gain fonctionnel nul ; ses tests portent sur l'arithmetique des deux rotations et sur la distance des pastilles a 37°, arithmetique qui **disparait** avec svg, alors que le rendu d'un graphique n'est teste nulle part — on echangerait du code teste et observe contre du code qui ne l'est ni l'un ni l'autre ; et les seuls gains reels, moins de vues et l'animation, ne sont demandes nulle part |
+| 12 | D9, §9.2 | **La regression charge vingt jours pour n'en mesurer que quatorze** | Mesure, pas devinee. Chaque point lisse est une moyenne glissante a sept jours, donc le plus ancien point de la fenetre a besoin des six jours qui le precedent. Charger exactement quatorze ne plante pas : les six premiers points se calculent contre des fenetres courtes, qui sur une serie descendante tombent trop bas, et les ajuster **aplatit la droite**. Sur une perte parfaitement reguliere de 0,7 kg/semaine : `-0,5438` charge a 14 contre `-0,7000` charge a 20, soit **22,3 % trop lent**. Personne ne l'aurait vu — « vous perdez 0,54 kg par semaine » est une phrase parfaitement croyable |
+| 13 | D15 | **Le generateur de demonstration pese, et ne PEUT PAS ecraser une pesee reelle** | Sans poids seme, courbes, rythme, ecart et graphique croise sont vides : la moitie de la tranche serait invisible sur l'appareil, exactement ce que la tranche 7 a rencontre avec les modeles. Et un defaut reel, trouve en ecrivant le test : la moitie « journal » du generateur tient gratuitement la promesse du bouton — elle AJOUTE des entrees — la ou `setWeight` est un upsert sur une cle primaire, donc un second appui remplacait chaque pesee reelle de la plage par une valeur inventee. Chaque date est desormais lue avant d'etre ecrite. Le rythme vise seme est deliberement plus raide que la derive semee : un objectif collant a la tendance afficherait un ecart de zero, la seule valeur qui a la meme tete que le calcul marche ou non |
+
+**Reserve inscrite.** Aucune dependance n'entre en tranche 8 : `react-native-svg`, `d3-scale` et `d3-shape` sont dans le binaire depuis `dev-b19`. Donc **aucun cycle CI n'est necessaire**, et le piege du lockfile ne peut pas se presenter, n'y ayant aucune installation. `0006` arrive par Metro comme tout le reste du JavaScript.
+
+**Consequence a connaitre.** Une fois `0006` appliquee, la base de developpement devient plus recente que le binaire quotidien, qui reste a `0005` : un export dev importe dans la quotidienne sera refuse par G3. C'est le comportement voulu, et c'est aussi la raison pour laquelle l'aller-retour export / import merite d'etre refait sur l'appareil — il ne l'a pas ete depuis `0005`, et `0006` porte le total a **six tables non verifiees** dans l'unique filet.

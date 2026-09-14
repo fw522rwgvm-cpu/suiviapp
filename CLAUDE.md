@@ -61,8 +61,18 @@ L'application doit tolérer un arrêt forcé à tout moment sans perte.
 ---
 
 ## État du projet
-Tranches 0 à 7 livrées — **fin de la V1**. 1011 tests verts sous les trois
-fuseaux, `tsc` vert, bundle produit.
+Tranches 0 à 8 livrées. La tranche 8 (poids) ouvre la V2. **1138 tests verts**
+sous les trois fuseaux, `tsc` vert, bundle produit.
+
+**La tranche 8 ne demande AUCUN cycle CI.** Aucune dépendance n'entre :
+`react-native-svg`, `d3-scale` et `d3-shape` sont dans le binaire depuis
+`dev-b19`. Donc aucune installation, donc **le piège du lockfile ne peut pas se
+présenter** — pour la première fois depuis la tranche 2. `0006` arrive par
+Metro comme tout le reste du JavaScript.
+
+**Rien de la tranche 8 n'a tourné sur l'appareil**, et elle s'empile sur deux
+dettes plus anciennes : la tranche 6 n'y a jamais tourné non plus, et le thème
+face au chrome natif reste décidé sur une lecture de source.
 
 **La tranche 7 a tourné sur l'iPhone** (14/09/2026), Stats compris : le binaire
 `dev-b19` porte `react-native-svg`, l'onglet s'ouvre, et neuf retours d'usage
@@ -147,7 +157,8 @@ est morte, et l'export est l'unique filet du projet.
 
 **Le schéma est gelé. Ajout seul désormais (D6/G2).** La migration initiale
 n'a jamais été dégelée : `0001_journal` a été ajoutée à côté, puis `0002_food`,
-`0003_barcode_off_cache` et `0004_templates_planning`.
+`0003_barcode_off_cache`, `0004_templates_planning`, `0005_recipes` et
+`0006_weight`.
 Réécrire `0000` aurait changé son horodatage, fait voir une migration en
 attente à l'installation quotidienne, qui aurait tenté de recréer `setting` et
 échoué au démarrage. Le dégel servait à corriger `0000` ; `0000` n'avait rien à
@@ -2947,6 +2958,375 @@ journée en cours » rejoint les exclusions nommées. Un test exige que
 `mesurées + non renseignées + sans objectif + en cours` fasse exactement la
 plage.
 
+## Ce que la tranche 8 a établi
+
+**`0006` porte deux tables, cinq CHECK et un index, et c'est tout
+l'irréversible.** La règle de la tranche 3 appliquée colonne par colonne : une
+migration porte ce qui ne peut pas être ajouté plus tard et diffère ce qui le
+peut. Ce qui est entré, ce sont les tables, leurs colonnes `NOT NULL` sans
+défaut et les CHECK. L'index ne l'est pas ; `notification_setting` non plus.
+
+**`ck_weight_goal_terms` est la décision de cette migration.** Le §6.2 fait de
+l'un des deux termes d'un objectif une valeur **dérivée** de l'autre — date
+cible et le rythme se calcule, rythme et la date s'estime — or D9 interdit de
+stocker ce qui se dérive. Une ligne portant les deux serait donc soit une
+entorse à D9, soit une ambiguïté sans réponse : laquelle fait autorité ? La
+CHECK rend cet état **inexprimable**, ce qui vaut mieux qu'une règle que la
+couche d'écriture doit se souvenir d'appliquer.
+
+Et son autre moitié compte autant : un objectif en mode `rate` sans rythme est
+un objectif que **personne ne peut lire**, et rien ne le signalerait — le défaut
+exact que les quatre `IS NOT NULL` de `readDailyTargets` évitent une table plus
+loin. Précédent : `ck_ingredient_link`, la seule CHECK du schéma qui soit
+l'unique barrière disponible, parce qu'une règle de catalogue est par colonne et
+que celle-ci en croise trois.
+
+**Une CHECK sur `value_kg`, là où les macros n'en ont aucune — et le motif de la
+tranche 3 ne s'applique pas.** Ce qui avait écarté toute CHECK sur les macros,
+c'est que le §8.5 exige des valeurs Open Food Facts *signalées et jamais
+refusées* et que la tranche 4 copie automatiquement en base tout produit logué :
+une CHECK y aurait transformé une anomalie signalable en échec d'INSERT sur ce
+chemin. Ici il n'y a **ni source externe, ni copie automatique, ni chemin où une
+valeur arrive sans avoir été tapée**. Un poids nul n'est pas une valeur douteuse
+à corriger, c'est une valeur impossible — et `value_kg` est le seul contenu de
+la table. Précédents déjà livrés : `ck_portion_quantity`, `ck_recipe_yield_value`.
+
+Aucune borne haute, en revanche : ce serait légiférer sur ce qu'un corps peut
+peser, et une borne trop basse refuserait une mesure légitime en silence.
+
+**Aucune clé étrangère, et c'est la décision qu'on ne voit pas.**
+`weight_measure.date REFERENCES day(date)` est la forme tentante — deux dates
+civiles, et un poids appartient à une journée dans la langue courante. Elle est
+fausse : une journée n'existe qu'une fois **matérialisée** (§8.2), donc la clé
+forcerait à créer une journée pour y peser, soit de la donnée créée par
+consultation. Se peser un jour où l'on n'a rien logué est parfaitement ordinaire.
+Un test l'exerce des deux côtés plutôt que de le laisser au commentaire.
+
+**Un seul objectif actif, et l'index est sûr ici pour la raison qui l'avait fait
+refuser ailleurs.** Tout l'aval suppose un objectif : l'écart compare à **un**
+rythme, la courbe porte **une** ligne. La tranche 5 avait refusé un index unique
+partiel sur `day_meal` parce qu'une base en service porte déjà les lignes qui le
+violeraient — l'index aurait échoué à se construire sur exactement les données
+qu'il existait pour protéger. **Cette table est neuve** : aucune ligne n'existe
+nulle part, dans aucune base ni aucune archive, donc il se construit toujours.
+
+Corollaire trouvé par exécution, et utile : **un index unique ne nomme pas son
+index dans l'erreur**, il nomme la colonne — « UNIQUE constraint failed:
+weight_goal.is_active ». C'est le seul endroit où une CHECK est strictement
+meilleure pour le diagnostic : `ck_weight_goal_terms` dit son propre nom, donc
+qui répare une archive à la main sait quelle règle il a enfreinte.
+
+**Désactiver n'est pas supprimer, et ça se voit en base.** Le §6.2 liste
+« modifiable, désactivable, supprimable » comme trois actions, donc elles
+laissent trois traces. Un objectif retiré garde sa cible, son mode et sa date de
+définition ; `setActiveGoal` le désactive **avant** d'insérer le nouveau, dans
+une transaction — l'ordre est forcé par l'index, et un arrêt forcé entre les deux
+laisserait sinon l'utilisateur sans aucun objectif actif, sans rien à l'écran
+pour l'expliquer.
+
+### Le chiffre que personne n'aurait vu
+
+**La régression charge vingt jours pour n'en mesurer que quatorze.** Le §9.2 fait
+porter le rythme réel sur « la série lissée des 14 derniers jours ». Chaque point
+lissé étant une moyenne glissante à sept jours, le plus ancien point de la
+fenêtre a besoin des **six jours qui le précèdent** pour exister.
+
+Charger exactement quatorze ne plante pas. Ça calcule les six premiers points
+contre des fenêtres courtes, qui sur une série descendante tombent trop bas, et
+les ajuster **aplatit la droite**. Mesuré sur une perte parfaitement régulière de
+0,7 kg par semaine :
+
+```
+chargé 14, lissé, ajusté      ->  -0,5438 kg/semaine   (22,3 % trop lent)
+chargé 20, lissé, 14 gardés   ->  -0,7000 kg/semaine   (exact)
+```
+
+Une moyenne glissante **pleine** sur une droite est cette droite décalée, donc
+elle en garde la pente exactement : toute l'erreur vient des fenêtres courtes du
+début, et toute l'erreur disparaît en chargeant six jours de plus. « Vous perdez
+0,54 kg par semaine » est une phrase parfaitement croyable — c'est le seul genre
+de faux qui compte.
+
+**Et une chose que j'avais affirmée et que le test a démentie.** J'avais écrit
+que le lissage protège la régression des valeurs aberrantes. Il ne le fait pas
+partout. En balayant une pointe sur les quatorze positions d'une série propre :
+
+```
+position  0  1 | 2  3  4  5 | 6  7  8  9 | 10 11 12 13
+aide ?    no no |  Y  Y  Y  Y | no no no no |  Y  Y  Y  Y
+```
+
+La forme est le **levier**. L'influence d'un point sur une pente croît avec sa
+distance au centre des abscisses, donc une pointe à une extrémité fait basculer
+toute la droite tandis qu'une pointe au milieu ne la bouge presque pas. Le
+lissage étale la pointe sur les sept jours suivants — ce qui tire une aberration
+à fort levier vers le milieu, et une aberration inoffensive vers le bord. Il
+échange donc une grosse erreur contre une petite, ce qui est le bon échange : le
+cas qu'il aggrave était déjà presque gratuit.
+
+### L'agrégation de D9 a enfin un client
+
+**`core/db/date-bucket.ts` porte le grain, et il vit dans le noyau pour une
+raison.** La règle « semaine au-delà de 90 jours, mois au-delà d'un an » n'avait
+jamais servi : la plus longue plage du §8.7 vaut exactement 90, et « au-delà de
+90 » n'inclut pas 90. Le §9.2 offre « 1 an » et « tout ».
+
+Le module est dans `core/db` et non dans `features/weight` parce que **deux
+features groupent sur les mêmes seaux** — la courbe groupe `weight_measure`, le
+graphique croisé du §9.4 groupe `journal_entry`. Deux séries d'un même graphique
+tombant sur des seaux distants de six jours est exactement le défaut que le
+partage évite.
+
+**Chaque grain rend une DATE CIVILE**, jamais un libellé de période. Pas
+`2026-W11` ni `2026-03` : le lundi de la semaine, le premier du mois. Donc tout
+point — jour, semaine ou mois — porte une vraie date que l'axe sait placer et
+avec laquelle `core/date` sait compter, et **rien en aval ne branche sur le
+grain**.
+
+**Le lundi a deux implémentations, tenues par un test et pas par le soin.**
+`date(d, 'weekday 0', '-6 days')` en SQL avance jusqu'au dimanche suivant puis
+recule de six jours — y compris quand `d` **est** un dimanche, SQLite ne
+déplaçant pas une date déjà sur le jour nommé. C'est une seconde implémentation
+de `startOfWeek`. Comparées date par date sur **1601 dates consécutives**, sur le
+patron que la tranche 4 a posé pour la fonction de fenêtre : les cas qui
+casseraient sont les bords d'année et ce dimanche-là, et aucun des deux ne
+s'écrit à la main.
+
+**L'axe dense part du SEAU qui contient le début de plage**, jamais du début de
+plage. Une plage commence rarement un lundi, et un axe partant du 5 mars ne
+dessinerait jamais le 2 mars dans lequel SQL a groupé cette mesure : la première
+mesure de la plage disparaîtrait en silence.
+
+**Au-delà de 90 jours, la moyenne d'agrégation EST la série lissée.** Le §9.2
+n° 3 le dit sans le dire : « agrégées par semaine ou par mois, série brute et
+série lissée se confondent visuellement » n'est vrai que parce qu'une moyenne
+hebdomadaire de poids quotidiens est **déjà** une moyenne sur sept jours. Lisser
+en plus, jour par jour, obligerait à remonter tous les jours — ce que D13
+interdit. Conséquence assumée : **la définition de « lissé » change avec la
+plage**, consignée plutôt que laissée à découvrir.
+
+**Le rythme ne lit PAS la série du graphique**, et le poids actuel non plus. Le
+§9.2 fixe la fenêtre à quatorze jours : une carte dont le chiffre bougerait en
+touchant « 1 an » rapporterait l'image plutôt que le corps, avec un chiffre
+plausible à chaque fois. `readRateWindow` est donc toujours quotidienne. Même
+chose pour le « poids actuel » dont descendent tous les chiffres d'objectif : sur
+« 1 an » le dernier seau du graphique est une moyenne de semaine.
+
+### Ce que les graphiques ont demandé
+
+**Une courbe n'a pas de zéro, donc l'échelle des barres ne pouvait pas servir.**
+`verticalScale` part de zéro et doit continuer : une barre encode par sa
+**longueur**. Une ligne encode par sa **pente** — rien en elle n'invite l'œil à
+comparer 78 kg à zéro — et sur un domaine de 0 à 80 une perte de trois kilos sur
+un trimestre occupe quatre pour cent du tracé.
+
+**Deux fonctions, jamais une avec un drapeau.** La version à drapeau est la façon
+dont un graphique à barres finit par gagner une base non nulle parce que
+quelqu'un a passé le mauvais argument.
+
+Le rembourrage de `linearScale` est une **part de l'étendue**, jamais un nombre
+d'unités : des kilos ici, des kilocalories dans le croisé, et un `2` fixe serait
+généreux sur l'un et invisible sur l'autre. Une série plate — une seule mesure,
+ou plusieurs identiques — retombe sur une bande fixe, sans quoi le domaine serait
+un point, d3 rendrait `NaN`, et **`react-native-svg` dessine `NaN` comme rien du
+tout plutôt que comme une erreur**.
+
+**`ChartFrame` a gagné trois options et n'en a perdu aucune.** La ligne de base
+renforcée devient facultative — elle dit « c'est ici que les barres se tiennent »,
+et sur une échelle sans zéro ce serait un trait épais à une valeur arbitraire,
+disant ça avec insistance. Le format des graduations devient injectable : le
+défaut à l'entier est juste pour des kilocalories et **faux** dès que les
+graduations tombent entre deux entiers — sur un domaine de 76,2 à 76,8, d3
+choisit 76,2 / 76,4 / 76,6 et l'arrondi imprimerait « 76 » trois fois, ce qui se
+lit comme un défaut de rendu et non comme un formateur manquant.
+
+**Et l'axe de droite a le sien, corrigé avant d'être livré.** Le propos même d'un
+second axe est qu'il porte une série d'une autre **nature** : un format partagé
+écrirait « 2 450,0 » à côté de kilos à une décimale.
+
+**La série brute est en points, la lissée en ligne.** Deux lignes se
+disputeraient, et c'est la lissée qu'il faut lire : le §9.2 régresse dessus, et
+un poids brut saute de plusieurs centaines de grammes par jour pour des raisons
+étrangères à la tendance. Les points disparaissent au-delà de 90 jours (§9.2
+n° 3) — agrégés, les deux séries sont la même ligne tracée deux fois.
+
+**La ligne se BRISE sur un jour non pesé.** Joindre par-dessus dessinerait un
+segment droit à travers une quinzaine que personne n'a mesurée : c'est la
+« prolongée artificiellement » que le §9.2 n° 1 interdit, en image.
+
+**L'objectif est une ligne plate à la cible, et il entre dans le DOMAINE.** Une
+trajectoire demanderait un poids de départ à la date de définition, qui peut ne
+pas exister — personne n'est obligé de s'être pesé ce jour-là. Et sans la cible
+dans l'échelle, un objectif huit kilos plus bas sortirait du tracé : **une ligne
+d'objectif invisible est pire qu'aucune, parce que le graphique a l'air
+complet.**
+
+**Le graphique croisé n'a rien eu à construire.** `ChartFrame` portait déjà un
+second axe depuis la tranche 7 ; il lui manquait exactement ce qui manquait à la
+courbe. Son axe droit **part de zéro** là où le gauche n'en a pas : un poids nul
+n'a aucun sens, un apport calorique nul est une vraie quantité lisible.
+
+**Pas de lecture au doigt sur le croisé**, contrairement aux trois autres. Un
+toucher lit **une** valeur, et le sujet de ce graphique est la relation entre
+deux. Ce qui s'y lit est la forme.
+
+### Deux décisions d'interface qui ne se devinent pas
+
+**Le poids se saisit par une rangée qui ouvre une fenêtre, pas par un champ
+vivant.** Le §9.1 dit « champ de saisie sous la liste des repas », et la lecture
+littérale ne survit pas à l'écran qui la porte. Trois raisons, la troisième
+décide : le Journal est un carrousel dont **trois pages sont montées à la fois** ;
+un clavier qui monte dans une bande qui se balaie horizontalement se bat contre
+le geste autour duquel cette page est construite ; et la confirmation
+d'écrasement que le §9.1 exige doit tomber **entre** la frappe et l'écriture, or
+un champ qui enregistre au blur n'a pas cet instant.
+
+**La carte se rend sur les pages voisines aussi, mais inerte.** C'est le seul
+élément de cette page qui porte un chiffre pour la date : la cacher sur les deux
+flancs ferait apparaître le nombre une image après chaque balayage, soit le
+vacillement que le carrousel a passé la tranche 3 à supprimer. Un toucher, lui,
+n'a rien à faire sur une journée que personne ne regarde.
+
+**La confirmation ne se déclenche que sur une date déjà renseignée**, et c'est la
+lettre du §9.1. Une alerte à chaque pesée serait ce que la tranche 4 a retiré
+partout : une question déjà répondue reposée. L'écriture reste un upsert et doit
+le rester — elle sert aussi la graine, l'import et une correction depuis
+l'historique.
+
+**L'historique vit dans l'onglet Stats, et c'est un trou de spécification
+comblé.** Le §9.1 exige la liste et ne lui donne aucun endroit ; le §7 ne la
+nomme pas, le §12 ne la range pas dans les Réglages. Elle est à un toucher de la
+courbe parce que corriger une mesure **suit** le fait de la voir aberrante.
+
+**Chaque volet du tableau de bord porte sa propre plage.** Le §8.7 donne
+7 / 30 / 90 à la nutrition, le §9.2 donne 30 / 90 / 1 an / tout au poids : deux
+listes normatives et différentes. Un contrôle unique devrait inventer une plage
+qu'aucun document ne demande — sept jours d'une courbe lissée sur sept jours n'a
+qu'**un** point utilisable. Le contrôle de la nutrition n'a pas bougé ; son
+commentaire, qui promettait de « gouverner tous les volets », a été corrigé
+plutôt que laissé : c'était devenu un contrôle qui ment.
+
+**Le volet poids est rendu hors de la branche « Rien à agréger ».** Quelqu'un qui
+se pèse tous les jours sans rien loguer a un volet poids plein et un volet
+nutrition vide, et l'écran doit pouvoir dire les deux à la fois.
+
+**L'écart au rythme est une différence, jamais une avance ou un retard.** « En
+avance » a été écrit d'abord et est faux pour la moitié des objectifs : une prise
+de masse à +0,5 visant +0,3 a le même écart **positif** qu'une perte à −0,3
+visant −0,5, et ce sont des situations opposées. Juger demande la direction du
+voyage, qui appartient à l'écran.
+
+**Le champ de rythme n'est pas un `decimal-pad`.** Un rythme est signé, le pavé
+décimal d'iOS n'a **aucune touche de signe**, et un objectif de perte serait
+littéralement inatteignable. C'est `numbers-and-punctuation`.
+
+**Un interdit absolu évité de justesse, noté parce que le raccourci est
+tentant** : `new Date().toISOString().slice(0, 10)` pour obtenir aujourd'hui est
+faux deux fois — c'est la construction que le projet interdit, et `toISOString`
+répond en **UTC**, donc à l'est de Greenwich elle nomme demain pendant toute la
+soirée. Une date cible validée contre le mauvais jour est refusée ou acceptée à
+un jour près. `useToday()` est le seul point d'entrée.
+
+### Ce que la graine devait, et le défaut qu'elle portait
+
+**Sans poids semé, la moitié de la tranche est invisible sur l'appareil** —
+courbes, rythme, écart, graphique croisé, tous vides. Exactement ce que la
+tranche 7 a rencontré avec les modèles.
+
+La forme est une dérive lente plus du bruit quotidien, et les deux moitiés
+comptent : une droite parfaite rendrait le lissage inutile et la régression
+trivialement juste, ce qui en fait la seule histoire sur laquelle un calcul de
+rythme cassé a encore l'air correct. Le rythme visé semé est **plus raide** que
+la dérive semée — un objectif collant à la tendance afficherait un écart de zéro,
+la seule valeur qui a la même tête que le calcul marche ou non.
+
+**Et un défaut réel, trouvé en écrivant le test plutôt qu'après : la graine
+écrasait de vraies pesées.** Le bouton des Réglages promet de n'effacer rien, et
+la moitié « journal » tient cette promesse gratuitement puisqu'elle **ajoute**
+des entrées. `setWeight` est un upsert sur une clé primaire : un second appui
+remplaçait en silence chaque pesée réelle de la plage par une valeur inventée.
+Aucun retour arrière, et l'export est l'unique filet. Chaque date est désormais
+lue avant d'être écrite.
+
+### Le point ouvert de la tranche 5 qui se ferme
+
+**`core/ui/stack-header.ts` naît du troisième utilisateur**, ce que
+`settings/_layout.tsx` avait lui-même annoncé : « deux piles aux mêmes options ne
+sont pas encore un composant, la suivante tranchera ». L'onglet Stats gagne une
+pile native pour l'historique, et elle est la troisième.
+
+Le **style de titre reste chez chaque pile** : le Nunito extra-gras du Journal
+est une décision, pas un mécanisme que trois piles ont en commun. Et l'écran
+Stats garde `headerShown: false` avec son grand titre à lui — une pile ajoutée
+dessous est du câblage, pas un changement visuel que personne n'a demandé.
+
+## Points ouverts après la tranche 8
+
+- **Vérification iPhone en attente, et elle s'empile sur deux dettes.** La
+  tranche 6 n'a toujours pas tourné sur l'appareil — le bloc groupé du Journal,
+  et que son tap de repli n'ait pas volé le balayage de suppression — et le
+  thème face au chrome natif reste décidé sur une lecture de source. La
+  tranche 8 touche le Journal et ajoute une pile native à Stats : elle
+  s'empile dessus.
+- **L'aller-retour export / import est la dette la plus urgente.** Il n'a pas
+  été refait sur l'appareil depuis `0005`, et `0006` porte le total à **six
+  tables non vérifiées** dans l'unique filet. La bascule reste du natif
+  `expo-sqlite` qu'aucun test n'atteint — la seule partie capable de détruire
+  la base quotidienne est exactement la partie non testée, comme depuis la
+  tranche 2. Et le §9.1 v2.2 le dit mieux que moi : **le poids n'existe qu'ici**,
+  intervals.icu ne l'expose pas, il n'y a aucune échappatoire technique.
+- **Conséquence de `0006` à connaître avant de la rencontrer** : la base de
+  développement devient plus récente que le binaire quotidien, resté à `0005`.
+  Un export dev importé dans la quotidienne sera refusé par G3. C'est le
+  comportement voulu.
+- **Hypothèse signalée : la pesée est supposée matinale.** Le §9.1 la place « au
+  réveil », donc après l'heure de bascule (bornée à 6 h) dans tous les cas
+  ordinaires. Une pesée à 3 h du matin avec un seuil à 4 h atterrit sur la
+  veille, ce qui est exactement ce que le seuil veut dire — mais personne ne
+  l'a essayé. La question se repose en tranche 9, où le rappel de pesée doit
+  décider seul de « la date du jour ».
+- **Le rendu des graphiques reste non testé, par construction**, comme en
+  tranche 7. Seule l'arithmétique l'est. Ce que l'appareil seul peut dire :
+  l'épaisseur des points bruts à quatre-vingt-dix jours, la lisibilité de l'axe
+  à une décimale, et si la ligne d'objectif en pointillés se distingue de la
+  courbe lissée en thème sombre.
+- **Le graphique croisé n'a aucune lecture au doigt**, contrairement aux trois
+  autres. Délibéré — son sujet est une relation, pas une valeur — mais c'est la
+  seule incohérence d'interaction de l'écran, et elle se remarquera peut-être
+  à l'usage avant d'être comprise.
+- **Aucun test ne couvre l'écran de saisie ni celui de l'objectif**, qui ne se
+  rendent pas depuis Node. Ce qui est fixé est ce qu'ils appellent :
+  `validateGoalDraft`, `parseDecimal`, `formatWeight`. Le piège qu'aucun test ne
+  peut tenir reste le même que pour les molettes de la tranche 4 — un appelant
+  qui confondrait `undefined` et `null`.
+- **`progress-ring.tsx` ne sera pas réécrit sur svg**, et c'est désormais un
+  renversement consigné (`architecture §9.9` n° 11) plutôt qu'un report. Les
+  quatre motifs sont là ; le principal est qu'on échangerait du code testé et
+  vérifié sur l'appareil contre du code qui ne serait ni l'un ni l'autre, sur
+  l'écran d'accueil, pour un gain fonctionnel nul.
+- **Hypothèse signalée : douze semaines par défaut** pour une date cible neuve,
+  et des pas d'une semaine. Choisi, pas mesuré. Aucun sélecteur de date natif
+  n'est ajouté — le §5 n'en porte pas, et une molette de tous les jours sur deux
+  ans est un défilement plutôt qu'un choix.
+- **`weight_measure` n'a pas de règle de validation numérique à l'import.** Une
+  archive réparée à la main avec `value_kg: 0` échoue sur `ck_weight_value`,
+  donc avec une erreur SQLite nommant une contrainte plutôt qu'une ligne. Le
+  catalogue d'export n'a **aucune** règle numérique — seulement des formes
+  (`civil_date`, `entity_id`, `epoch_ms`) et des ensembles fermés (`one_of`) —
+  et en ajouter une est le même report que `non_empty` pour `food.barcode`.
+- **Rien ne propose de corriger une mesure depuis la courbe.** Toucher un point
+  affiche sa valeur ; pour la corriger il faut passer par l'historique. Le §9.1
+  ne demande pas mieux, et l'ajouter mettrait une écriture derrière un geste de
+  lecture.
+- **`fontVariant: ['tabular-nums']` reste non vérifié sur Nunito**, et la
+  tranche 8 en ajoute : le chiffre de tête des trois cartes de poids, la colonne
+  de l'historique, les valeurs des infobulles. Si Nunito ne porte pas `tnum`, la
+  colonne de l'historique est l'endroit où ça se verra le plus.
+- **Le seuil de « objectif atteint » vaut 100 g.** Choisi parce que c'est une
+  graduation de balance domestique. Sans lui, « atteint » serait une égalité
+  exacte de deux flottants, qui n'arrive jamais — donc l'écran dirait pour
+  toujours qu'il reste quelques grammes.
+
 ## Points ouverts après la tranche 7
 
 - ~~**Vérification iPhone en attente.**~~ **Faite pour la tranche 7, Stats
@@ -2974,10 +3354,14 @@ plage.
   tranche 7 en ajoute : le chiffre de tête de chaque carte, les trois parts de
   la répartition, les quatre mesures de D16. Si Nunito ne porte pas `tnum`, ça
   se verra d'abord ici.
-- **L'anneau n'est pas réécrit sur svg**, contrairement à ce que le §9.5 n° 11
-  annonçait. Reporté en tranche 8, où svg aura tourné et où les courbes de
-  poids le montent de toute façon. **C'est un renversement consigné, pas un
-  oubli.**
+- ~~**L'anneau n'est pas réécrit sur svg**, reporté en tranche 8.~~ **Tranché en
+  tranche 8 : il ne le sera pas**, et le report devient définitif
+  (`architecture §9.9` n° 11). Le motif principal : ses tests portent sur
+  l'arithmétique des deux rotations et des pastilles, arithmétique qui
+  **disparaît** avec svg, alors que le rendu d'un graphique n'est testé nulle
+  part — on échangerait du code testé et vérifié sur l'appareil contre du code
+  qui ne serait ni l'un ni l'autre, sur l'écran d'accueil, pour un gain
+  fonctionnel nul.
 - **Hypothèse signalée : la tolérance vaut 10 % par défaut.** Aucun document ne
   donne ce nombre. La façon de savoir qu'il est faux est de regarder le taux
   après un mois d'usage : s'il est toujours à 0 %, le seuil est trop serré.
@@ -3021,7 +3405,8 @@ plage.
   suppression — puis les deux étapes de l'ajout, où un `SwipeBack` de plus est
   empilé dans une fenêtre qui en contient déjà.
 - **L'aller-retour export / import n'a pas été refait sur l'appareil** avec les
-  quatre tables de `0005` dedans. Il est vert en Node, fixtures remplissant
+  quatre tables de `0005` dedans — et `0006` en ajoute deux, ce qui porte le
+  total à six. Il est vert en Node, fixtures remplissant
   chaque colonne, mais la bascule reste du natif `expo-sqlite` que les tests
   n'atteignent pas — c'est la partie capable de détruire la base quotidienne et
   c'est exactement la partie non testée, comme depuis la tranche 2.
@@ -3148,10 +3533,12 @@ plage.
   existe aucun** — le bouton promet de n'effacer rien. Sa collation n'a pas
   d'objectif, délibérément : une journée partiellement ciblée est le cas que les
   statistiques doivent traiter correctement.
-- **Deux piles natives déclarent les mêmes options d'en-tête**, celle du Journal
-  et celle des Réglages. C'est le deuxième utilisateur, donc la règle du
-  deuxième utilisateur est atteinte de justesse — mais le partage ferait un
-  composant de quatre lignes d'options. Laissé tel quel ; le troisième tranchera.
+- ~~**Deux piles natives déclarent les mêmes options d'en-tête.**~~ **Fermé en
+  tranche 8** : l'onglet Stats en ajoute une troisième pour l'historique des
+  pesées, et c'est le troisième utilisateur que ce point attendait.
+  `core/ui/stack-header.ts` porte les quatre options communes ; le style de
+  titre reste chez chaque pile, parce que le Nunito extra-gras du Journal est
+  une décision et non un mécanisme.
 
 ## Points ouverts après la tranche 4
 - ~~**Vérification iPhone en attente.**~~ **Faite, scan compris.** Reste non
