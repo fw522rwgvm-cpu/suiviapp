@@ -11,7 +11,7 @@ import {
 import { Text } from '@/core/ui/text';
 import { formatQuantity, parseDecimal } from '@/core/format';
 import { useTheme } from '@/core/theme';
-import type { FoodId, JournalEntryId } from '@/core/db/schema';
+import type { BaseUnit, FoodId, FoodPortionId, JournalEntryId } from '@/core/db/schema';
 import { useEntry, useUpdateFoodEntryQuantity } from '../data/day-queries';
 import { useFood, useQuantityPrefill } from '../data/food-queries';
 import type { FoodPortionView, FoodView } from '../data/food-reads';
@@ -21,6 +21,7 @@ import {
   baseQuantity,
   choiceOf,
   portionQuantity,
+  type Portion,
   type QuantityChoice,
 } from '../domain/portions';
 import { useDismiss, usePanelHeading } from '@/core/ui/overlay-panel';
@@ -109,6 +110,32 @@ type Props =
       amending?: QuantityChoice;
       onCollect: (quantity: QuantityChoice) => void;
     })
+  | (Common & {
+      /**
+       * A line LIFTED FROM A PAST MEAL, being corrected in the basket.
+       *
+       * IT MAKES NO QUERY AT ALL, for the reason collectOff makes none:
+       * everything the form needs travels on the line. The macros were
+       * resolved when the meal was expanded — the three fallbacks of specs
+       * 14.6 n° 7 are already behind it — so re-reading a food here would
+       * risk writing something other than what the basket showed.
+       *
+       * It carries ITS OWN PORTION and no others. A capsule knows the portion
+       * it was logged in and nothing about the food's current list; offering
+       * the rest would mean a query, and offering none would drop "2 tranches"
+       * to grams the moment the quantity was touched — the defect this screen
+       * has already been bitten by once.
+       */
+      mode: 'frozen';
+      name: string;
+      brand: string | null;
+      baseUnit: BaseUnit;
+      reference: Macros;
+      /** The portion it was logged in, if any. Its only alternative unit. */
+      portion: Portion | null;
+      amending: QuantityChoice;
+      onCollect: (quantity: QuantityChoice) => void;
+    })
   | (Common & { mode: 'edit'; entryId: JournalEntryId });
 
 export function QuantityScreen(props: Props) {
@@ -117,6 +144,8 @@ export function QuantityScreen(props: Props) {
       return <CollectQuantity {...props} />;
     case 'collectOff':
       return <CollectOffQuantity {...props} />;
+    case 'frozen':
+      return <FrozenQuantity {...props} />;
     case 'edit':
       return <EditQuantity {...props} />;
   }
@@ -160,6 +189,58 @@ function CollectOffQuantity({
   );
 }
 
+/**
+ * The same form, fed straight from a capsule.
+ *
+ * Nothing is read and nothing waits: the name, the unit, the macros and the
+ * portion all travel on the line, which is what makes correcting a replayed
+ * line as immediate as the line itself was.
+ */
+function FrozenQuantity({
+  name,
+  brand,
+  baseUnit,
+  reference,
+  portion,
+  amending,
+  onCollect,
+}: Common & {
+  name: string;
+  brand: string | null;
+  baseUnit: BaseUnit;
+  reference: Macros;
+  portion: Portion | null;
+  amending: QuantityChoice;
+  onCollect: (quantity: QuantityChoice) => void;
+}) {
+  return (
+    <QuantityForm
+      title={name}
+      subtitle={brand}
+      baseUnit={baseUnit}
+      reference={reference}
+      /*
+        Its own portion, or none. `[]` rather than null: there is nothing to
+        wait for, which is exactly the distinction the loading rule draws.
+      */
+      portions={
+        portion === null ? [] : [{ id: FROZEN_PORTION_ID, position: 0, ...portion }]
+      }
+      initial={amending}
+      action="Enregistrer"
+      onSubmit={onCollect}
+    />
+  );
+}
+
+/**
+ * A portion carried on a capsule has no row behind it, and needs an identifier
+ * only because FoodPortionView carries one. Nothing reads it: a journal entry
+ * freezes a portion's name and size into its own columns and holds no link to
+ * the row it came from (D5/R1).
+ */
+const FROZEN_PORTION_ID = 'frozen' as FoodPortionId;
+
 /** The caller's own ending, or the panel's — whichever this is inside. */
 function useEnding(onDone?: () => void): () => void {
   const dismiss = useDismiss();
@@ -177,6 +258,16 @@ function CollectQuantity({
 }) {
   const prefill = useQuantityPrefill(foodId);
   const loaded = prefill.data ?? null;
+  /**
+   * Answered, whatever the answer.
+   *
+   * `undefined` is the query still running; `null` is the query saying the
+   * food is not there — deleted between the basket being filled and this
+   * correction. Collapsing the two would hold the wheels for ever on the
+   * second, which is the same "not yet, never none" confusion that opened a
+   * portion on grams one function down.
+   */
+  const answered = prefill.data !== undefined;
   const correcting = amending !== undefined;
 
   return (
@@ -185,7 +276,13 @@ function CollectQuantity({
       subtitle={loaded?.food.brand ?? null}
       baseUnit={loaded?.food.baseUnit ?? 'g'}
       reference={loaded?.food.reference ?? null}
-      portions={loaded?.food.portions ?? []}
+      /*
+        NULL UNTIL THE FOOD HAS ANSWERED, even when `amending` means the
+        quantity is already in hand. The two used to be independent, so a
+        correction rendered its wheels immediately against an empty portion
+        list and landed on grams — see the note on this prop.
+      */
+      portions={answered ? (loaded?.food.portions ?? []) : null}
       // A correction shows what was chosen, and it is there from the first
       // frame rather than a query away: the basket carries it.
       initial={amending ?? loaded?.quantity ?? null}
@@ -215,7 +312,19 @@ function EditQuantity({ entryId, onDone }: Common & { entryId: JournalEntryId })
       subtitle={loaded?.brand ?? null}
       baseUnit={loaded?.baseUnit ?? 'g'}
       reference={loaded?.reference ?? null}
-      portions={source.data?.portions ?? []}
+      /*
+        Null while the food is still being read, and EMPTY when there is none
+        to read — a free entry has no source, and a food deleted since answers
+        with null. Both of those are real answers and must not hold the wheels;
+        only the wait must.
+      */
+      portions={
+        loaded === null || loaded.sourceFoodId === null
+          ? []
+          : source.data === undefined
+            ? null
+            : (source.data?.portions ?? [])
+      }
       initial={
         loaded === null || loaded.quantity === null
           ? null
@@ -246,7 +355,28 @@ function QuantityForm({
   subtitle: string | null;
   baseUnit: string;
   reference: Macros | null;
-  portions: readonly FoodPortionView[];
+  /**
+   * The portions the food offers TODAY, or null while they are still being
+   * read.
+   *
+   * ## NULL MEANS "NOT YET", NEVER "NONE" — AND HERE IT WAS THE BUG
+   *
+   * An empty list is a real answer: a food with no named portions, an Open
+   * Food Facts product, a food deleted since. wheelFor resolves the entry's
+   * portion name against this list and falls back to base units when it is not
+   * there, which is right for a portion that was renamed or dropped.
+   *
+   * It is exactly wrong while the list is merely LATE. The two inputs of this
+   * screen come from two queries, and for a journal entry the second cannot
+   * even start until the first has answered — the food is found through the
+   * entry. So an entry logged as "2 tranches" reliably mounted its wheels on
+   * an empty list, resolved to nothing, and opened on grams.
+   *
+   * Waiting for both is the same rule the quantity already followed, applied
+   * to the second input. The cost is one tick of the loading dots where a
+   * correction used to be instant — instant and on the wrong unit.
+   */
+  portions: readonly FoodPortionView[] | null;
   /**
    * The quantity to open on, or null while it is still being read.
    *
@@ -274,11 +404,13 @@ function QuantityForm({
    * render has been painted, so that is a frame of wrong value followed by a
    * visible spin — every single time the screen opened.
    *
-   * Holding the body back until `initial` is known makes the wheels' first
-   * frame their right one. And the scroll view stays the same element in both
-   * states on purpose: swapping a View for a ScrollView is what made the
-   * Journal's day page jump, because UIKit recomputes a fresh scroll view's
-   * content inset from nothing.
+   * Holding the body back until `initial` AND `portions` are known makes the
+   * wheels' first frame their right one. Both, because the unit wheel is as
+   * much a part of that frame as the number — see the note on `portions`.
+   *
+   * And the scroll view stays the same element in both states on purpose:
+   * swapping a View for a ScrollView is what made the Journal's day page jump,
+   * because UIKit recomputes a fresh scroll view's content inset from nothing.
    */
   return (
     <ScrollView
@@ -286,7 +418,7 @@ function QuantityForm({
       contentContainerStyle={styles.content}
       contentInsetAdjustmentBehavior="automatic"
     >
-      {initial === null ? (
+      {initial === null || portions === null ? (
         <LoadingDots />
       ) : (
         <QuantityBody

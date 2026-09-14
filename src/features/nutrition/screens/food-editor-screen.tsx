@@ -17,6 +17,7 @@ import {
   useCreateFood,
   useDeleteFood,
   useFoodDraft,
+  useRecipesUsingFood,
   useSetFoodFavorite,
   useUpdateFood,
 } from '../data/food-queries';
@@ -34,6 +35,7 @@ import { MACRO_FIELDS, MacroFieldRow, type MacroKey } from '../components/macro-
 import { UnitToggle } from '../components/unit-toggle';
 import { PortionEditor } from '../components/portion-editor';
 import { foodProblemText } from '../components/food-problem-text';
+import { describeRecipeUses } from '../components/recipe-text';
 
 /**
  * Creating and editing a food (specs 8.5).
@@ -105,6 +107,8 @@ export function FoodEditorScreen({
   const create = useCreateFood();
   const update = useUpdateFood();
   const remove = useDeleteFood();
+  // Read ahead of the confirmation: an Alert cannot wait for a query.
+  const recipeUses = useRecipesUsingFood(foodId);
   const favorite = useSetFoodFavorite();
 
   /**
@@ -208,7 +212,12 @@ export function FoodEditorScreen({
     // tap is easy to make by accident, not because the application hesitates.
     Alert.alert(
       `Supprimer « ${draft.name} » ?`,
-      'Les entrées déjà enregistrées au journal ne changent pas.',
+      [
+        'Les entrées déjà enregistrées au journal ne changent pas.',
+        describeRecipeUses(recipeUses.data),
+      ]
+        .filter((line): line is string => line !== null)
+        .join('\n\n'),
       [
         { text: 'Annuler', style: 'cancel' },
         {

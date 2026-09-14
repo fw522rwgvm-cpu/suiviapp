@@ -34,12 +34,17 @@ describe('table catalog', () => {
     expect(unclassified).toEqual([]);
   });
 
-  it('carries the tables of slices 0 to 5, parents before children', () => {
+  it('carries the tables of slices 0 to 6, parents before children', () => {
     // The importer follows this order, never the file's key order.
     //
     // The planning block sits between the settings and the reference data, so
     // the order reads as configuration, then reference data, then journal.
     // day_template leads it because the other three reference it.
+    //
+    // The recipe block follows the foods and precedes the journal, which is
+    // the only position its dependencies allow: recipe_ingredient.food_id is
+    // a real foreign key to food, and nothing in the journal references a
+    // recipe by key.
     expect(exportedTables().map((table) => table.name)).toEqual([
       'setting',
       'day_template',
@@ -48,10 +53,26 @@ describe('table catalog', () => {
       'planning_override',
       'food',
       'food_portion',
+      'recipe',
+      'recipe_tag',
+      'recipe_step',
+      'recipe_ingredient',
       'day',
       'day_meal',
       'journal_entry',
     ]);
+  });
+
+  it('finds the composite primary key of recipe_tag', () => {
+    // Not a restatement of the test below, which only asks that every table
+    // have SOME key. This one pins the case that made it fail: Drizzle leaves
+    // column.primary false on every column of a composite key, so reading the
+    // column alone reported recipe_tag as keyless — which would also have
+    // dropped its ORDER BY, silently, and stopped two exports of the same data
+    // from being the same file.
+    const tags = exportedTables().find((table) => table.name === 'recipe_tag');
+
+    expect(tags?.primaryKey).toEqual(['recipe_id', 'tag']);
   });
 
   it('dates the planning tables to 0004, so a slice-4 archive stays readable', () => {

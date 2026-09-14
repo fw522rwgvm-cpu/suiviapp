@@ -1,10 +1,13 @@
 import { addDays, type LocalDate } from '@/core/date';
 import type { AppDatabase } from '@/core/db/database';
-import type { BaseUnit, FoodId, PortionName } from '@/core/db/schema';
+import type { BaseUnit, FoodId, PortionName, YieldType } from '@/core/db/schema';
 import { addFoodEntry, addFreeEntry } from '@/features/nutrition/data/day-writes';
 import { listFoods } from '@/features/nutrition/data/food-reads';
 import { createFood } from '@/features/nutrition/data/food-writes';
 import { emptyFoodDraft } from '@/features/nutrition/domain/food-draft';
+import { listRecipes } from '@/features/nutrition/data/recipe-reads';
+import { createRecipe } from '@/features/nutrition/data/recipe-writes';
+import { emptyRecipeDraft } from '@/features/nutrition/domain/recipe-draft';
 import type { Macros } from '@/features/nutrition/domain/macros';
 import { baseQuantity, portionQuantity } from '@/features/nutrition/domain/portions';
 import { createRandom, type Random } from './random';
@@ -179,6 +182,8 @@ export interface SeedReport {
   entries: number;
   /** Foods created in the personal database. */
   foods: number;
+  /** Recipes created in the library (slice 6). */
+  recipes: number;
   firstDate: LocalDate;
   lastDate: LocalDate;
 }
@@ -261,6 +266,114 @@ function logFood(
   });
 }
 
+/**
+ * Two demo recipes, one yielded in portions and one by weight (slice 6).
+ *
+ * BOTH YIELDS, deliberately: they take different columns on the block's parent
+ * row — portion_name for one, base_unit for the other — and a generated
+ * database carrying only one of them would leave the other rendering path
+ * unexercised on the device, which is the only place it can be looked at.
+ *
+ * Their ingredients name foods from the catalogue above, so the library is
+ * coherent and deleting one of those foods exercises the freeze of D5/R3 with
+ * a real recipe behind it.
+ */
+const RECIPES: readonly {
+  name: string;
+  yieldType: YieldType;
+  yieldValue: number;
+  prepMinutes: number | null;
+  isFavorite: boolean;
+  tags: string[];
+  steps: string[];
+  /** A food name from FOODS, and how much of it in base units. */
+  ingredients: readonly { food: string; quantity: number }[];
+}[] = [
+  {
+    name: 'Bol du matin',
+    yieldType: 'portions',
+    yieldValue: 2,
+    prepMinutes: 5,
+    isFavorite: true,
+    tags: ['petit-déjeuner', 'rapide'],
+    steps: ['Verser le lait sur le yaourt.', 'Ajouter les amandes concassées.'],
+    // MIXED BASE UNITS ON PURPOSE: millilitres of milk beside grams of the
+    // rest. It is the ordinary case, and it is why a weight yield is stated in
+    // grams and never derived — there is no unit these two could sum in.
+    ingredients: [
+      { food: 'Lait demi-écrémé', quantity: 300 },
+      { food: 'Yaourt nature', quantity: 125 },
+      { food: 'Amandes', quantity: 30 },
+    ],
+  },
+  {
+    name: 'Poulet riz',
+    yieldType: 'weight',
+    yieldValue: 900,
+    prepMinutes: 25,
+    isFavorite: false,
+    tags: ['batch cooking'],
+    steps: ['Cuire le riz.', 'Saisir le poulet.', 'Mélanger.'],
+    ingredients: [
+      { food: 'Blanc de poulet', quantity: 400 },
+      { food: 'Riz basmati cru', quantity: 200 },
+    ],
+  },
+];
+
+/**
+ * Creates the demo recipes, through createRecipe rather than by inserting rows
+ * — the reason seedFoods gives, one table along.
+ *
+ * REUSES A RECIPE ALREADY THERE, by name, so pressing the Settings button
+ * twice stacks entries without duplicating the library. An ingredient naming a
+ * food the catalogue no longer holds is skipped rather than fatal: the
+ * generator must never be the thing that fails.
+ */
+function seedRecipes(tx: AppDatabase, foods: readonly SeededFood[]): number {
+  const existing = new Set(listRecipes(tx).map((item) => item.name));
+  const byName = new Map(foods.map((seeded) => [seeded.food.name, seeded]));
+  let created = 0;
+
+  for (const recipe of RECIPES) {
+    if (existing.has(recipe.name)) continue;
+
+    const ingredients = recipe.ingredients.flatMap((line) => {
+      const seeded = byName.get(line.food);
+      if (seeded === undefined) return [];
+      return [
+        {
+          id: null,
+          foodId: seeded.id,
+          name: seeded.food.name,
+          quantity: line.quantity,
+          // Follows the food, always: an ingredient whose unit disagreed with
+          // its food's would be refused by the write layer, and rightly.
+          unit: seeded.food.baseUnit,
+          frozen: null,
+        },
+      ];
+    });
+
+    if (ingredients.length === 0) continue;
+
+    createRecipe(tx, {
+      ...emptyRecipeDraft(),
+      name: recipe.name,
+      prepMinutes: recipe.prepMinutes,
+      yieldType: recipe.yieldType,
+      yieldValue: recipe.yieldValue,
+      isFavorite: recipe.isFavorite,
+      tags: recipe.tags,
+      steps: recipe.steps.map((text) => ({ id: null, text })),
+      ingredients,
+    });
+    created += 1;
+  }
+
+  return created;
+}
+
 export function seedJournal(db: AppDatabase, options: SeedOptions): SeedReport {
   const { endDate, days, seed = 1, coverage = 0.85 } = options;
   if (days < 1) throw new Error('Nothing to generate');
@@ -274,9 +387,11 @@ export function seedJournal(db: AppDatabase, options: SeedOptions): SeedReport {
   // which nest as savepoints, so every invariant still runs — and an
   // interrupted seed leaves the database exactly as it was.
   let seeded: SeededFood[] = [];
+  let recipes = 0;
 
   db.transaction((tx) => {
     seeded = seedFoods(tx);
+    recipes = seedRecipes(tx, seeded);
 
     for (let offset = 0; offset < days; offset += 1) {
       const date = addDays(firstDate, offset);
@@ -314,6 +429,7 @@ export function seedJournal(db: AppDatabase, options: SeedOptions): SeedReport {
     days: daysWritten,
     entries: written,
     foods: seeded.length,
+    recipes,
     firstDate,
     lastDate: endDate,
   };

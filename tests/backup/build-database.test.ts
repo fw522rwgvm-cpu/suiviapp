@@ -145,8 +145,19 @@ describe('an archive written before the food tables existed', () => {
     const file = exported(source) as Record<string, unknown>;
     const tables = file['tables'] as Record<string, unknown>;
     // Written by a binary that had never heard of them.
+    //
+    // THE RECIPE TABLES GO TOO, and slice 6 is what made that necessary: the
+    // generator now seeds recipes, and a recipe_ingredient pointing at a food
+    // the archive no longer carries is exactly what barrier three refuses. It
+    // is not a workaround — an archive declaring 0001_journal cannot hold
+    // recipes either, 0005 being three migrations further on. The fixture was
+    // describing a database that never existed.
     delete tables['food'];
     delete tables['food_portion'];
+    delete tables['recipe'];
+    delete tables['recipe_tag'];
+    delete tables['recipe_step'];
+    delete tables['recipe_ingredient'];
 
     const verdict = buildDatabase(receiving.db, validated(file));
     expect(verdict.ok, JSON.stringify(verdict.ok ? [] : verdict.problems)).toBe(true);
@@ -161,6 +172,9 @@ describe('an archive written before the food tables existed', () => {
     expect(tableNames(receiving.raw)).toContain('food');
     expect(countRows(receiving.raw, 'food')).toBe(0);
     expect(countRows(receiving.raw, 'food_portion')).toBe(0);
+    expect(tableNames(receiving.raw)).toContain('recipe');
+    expect(countRows(receiving.raw, 'recipe')).toBe(0);
+    expect(countRows(receiving.raw, 'recipe_ingredient')).toBe(0);
 
     // Fully migrated: the CHECK from 0002 is live on the database that is
     // about to become the application's.
@@ -283,6 +297,7 @@ describe('slicing the migration journal', () => {
       '0002_food',
       '0003_barcode_off_cache',
       '0004_templates_planning',
+      '0005_recipes',
     ]);
     // An archive from this binary has nothing left, which is the ordinary case.
     expect(tagsAfter(bundle, bundle.journal.entries.length - 1)).toEqual([]);

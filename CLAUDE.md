@@ -32,6 +32,9 @@ dit avant de l'appliquer, puis on l'applique.
 - Les macros sont stockées pour 100 unités de base.
 - Une entrée de journal fige la référence et la quantité, jamais le total.
 - Seules les lignes sans enfant portent des macros.
+- Une quantité stockée est en unité de base. **Une seule exception, et elle
+  n'en est une que parce que la ligne ne porte aucune macro** : le parent d'un
+  bloc groupé, dont la quantité dit combien de la recette a été mangé.
 - Toute opération multi-lignes est explicitement transactionnelle.
 - Aucune invalidation de cache écrite à la main : elle passe par le bus
   de changements.
@@ -53,13 +56,22 @@ L'application doit tolérer un arrêt forcé à tout moment sans perte.
 ---
 
 ## État du projet
-Tranches 0 à 5 livrées. **La tranche 5 n'a pas encore tourné sur l'appareil** :
-code complet, typé, 671 tests verts sous les trois fuseaux, bundle produit —
+Tranches 0 à 6 livrées. **La tranche 6 n'a pas encore tourné sur l'appareil** :
+code complet, typé, 875 tests verts sous les trois fuseaux, bundle produit —
 mais rien de son interface n'a été touché sur l'iPhone. À lire comme tel.
 
 **Elle ne demande aucun cycle CI.** Aucune dépendance native n'entre, donc tout
-se vérifie par Metro sur le binaire dev existant — l'inverse exact de la
-tranche 4, où le scan imposait de reconstruire.
+se vérifie par Metro sur le binaire dev existant — comme la tranche 5, et
+l'inverse exact de la tranche 4 où le scan imposait de reconstruire.
+
+Ce que la vérification devra regarder en premier, parce que rien d'autre ne
+peut le dire : **le bloc groupé du Journal** — qu'il se replie, que son indent
+se lise comme un niveau, que le geste de balayage n'ait pas été volé par le tap
+de repli — et **les deux étapes de l'ajout d'une recette**, où un `SwipeBack`
+de plus a été empilé dans une fenêtre qui en contient déjà.
+
+La tranche 5 a été éprouvée sur l'iPhone en plusieurs tours : jauge, couleurs,
+icônes, police, modèles, planning, calendrier.
 
 Tranches 0 à 4 livrées avant elle. **La tranche 4 est vérifiée sur l'iPhone,
 scan compris** (13/09/2026) : le code-barres se lit, le produit arrive avec ses
@@ -1930,6 +1942,671 @@ suivre.
 **La fenêtre n'a aucun fond posé**, d'où le blanc. `backgroundColor` dans
 `app.config.ts` ou `expo-system-ui` le corrigeraient, les deux nativement, donc
 au prix d'un cycle CI. Non fait : sans zoom, plus rien ne découvre la fenêtre.
+
+## Ce que la tranche 6 a établi
+
+**La contrainte qui ressemble à un bug et n'en est pas.** `recipe_ingredient.food_id`
+porte une clé étrangère **sans clause `ON DELETE`**, donc `NO ACTION`, que SQLite
+applique **immédiatement**. Lue seule, elle contredit le §5.3 : supprimer un
+aliment ingrédient échouerait, alors qu'aucune suppression n'est jamais bloquée.
+
+Elle cesse de le contredire dès que D5/R3 est obéi — le gel remplit la capsule
+et rompt le lien dans une transaction unique, donc au moment du `DELETE` plus
+rien ne référence l'aliment. Ce n'est donc pas un obstacle à contourner :
+**c'est la seule chose qui prouve que le gel a tourné.** Simplifier `deleteFood`
+un jour, et la base refuse bruyamment au lieu qu'une recette perde ses macros
+en silence.
+
+Le test le pose **des deux côtés**, et c'est la seconde moitié qui compte :
+`deleteFood` passe, le `DELETE` brut sur une situation identique lève. Sans
+elle, le test passerait aussi bien contre un `ON DELETE SET NULL` — c'est-à-dire
+contre la version qui perd les macros. `SET NULL` était le candidat tentant et
+il est refusé pour la raison même qui fait exister R3 : il rompt le lien **sans**
+remplir la capsule.
+
+**Le gel est UN SEUL `UPDATE`.** Une boucle aurait rendu l'atomicité de R3
+affaire de chance ; là, un demi-gel est *inexprimable*. L'aliment est lu dans
+la transaction, donc la capsule porte ce que `readFood` rend — la même forme
+que tous les autres lecteurs voient — et non ce qu'une sous-requête SQL aurait
+reconstruit à côté. Et il fige l'aliment **tel qu'il se lit à cet instant**,
+pas tel qu'il a été créé : le §8.5 fait de la correction d'un produit copié le
+mécanisme principal de compensation de la source, donc figer les valeurs de
+création réinstallerait en silence l'erreur qu'on vient de corriger, sur le
+seul chemin où personne ne la cherchera.
+
+**Une recette ne stocke aucune macro, donc son total est calculé DEUX FOIS par
+construction.** En SQL pour la bibliothèque — une lecture par recette serait
+impayable sur un chemin que D16 budgète en dixièmes de seconde — et en
+TypeScript pour l'écran d'une recette, qui tient déjà tous ses ingrédients et
+n'a aucune raison de redemander à SQL de les sommer. Les deux sont justes et
+aucune n'est retirable.
+
+Ce qui les tient égales n'est donc pas le soin mais **un test, sur une
+bibliothèque générée dont un tiers des lignes sont gelées**. Elles
+s'accorderaient sur tous les exemples qu'on penserait à écrire à la main. Le
+partage est net : SQL multiplie et somme, `recipe-macros` divise et rien
+d'autre.
+
+**Les deux rendements sont LA MÊME FORMULE, et il faut le dire tout haut.**
+`consommé / rendement`, à l'identique : deux portions sur quatre, 250 g sur
+850 g. Le type de rendement ne change que l'unité écrite sur la molette.
+L'implémentation évidente est un `switch` à deux branches identiques, et la
+seconde branche est exactement l'endroit où une divergence finit par
+s'introduire. Un test la fixe.
+
+**`COALESCE` et `LEFT JOIN` font qu'un ingrédient gelé n'a aucun cas
+particulier** : la valeur vivante, ou la capsule, en une expression sans
+branche. Un `INNER JOIN` aurait fait disparaître les lignes gelées et une
+recette aurait silencieusement perdu des calories — précisément ce que le §5.3
+promet qu'il n'arrive pas.
+
+**Le §5.3 — « modifier un aliment met à jour les recettes » — n'a demandé
+aucune ligne de code.** C'est une propriété de **ne pas stocker** : le total se
+somme depuis les lignes vivantes à chaque lecture, donc corriger un aliment
+déplace toutes les recettes qui l'utilisent et ne déplace rien de ce qui a déjà
+été mangé. Un test l'énonce quand même, parce qu'il énonce D5 en entier en un
+fichier.
+
+**Le brouillon transporte la capsule gelée, et c'est porteur.** Les ingrédients
+sont remplacés en bloc à l'enregistrement, sur le précédent de
+`replacePortions` ; mais les valeurs d'une ligne gelée n'existent **nulle part
+ailleurs**, son aliment étant supprimé. Sans elle, **ouvrir une recette et
+l'enregistrer sans rien changer** détruirait la seule copie des macros d'un
+aliment supprimé, et le total bougerait sans raison visible. Vérifié par
+mutation : deux tests rougissent.
+
+**La règle qu'aucune contrainte ne peut porter, parce qu'elle est
+inter-tables** : `unit` doit égaler le `base_unit` de l'aliment.
+`ck_ingredient_unit` tient la colonne à `g|ml` mais ne voit pas l'aliment, et
+des millilitres contre des macros pour 100 g donnent un nombre faux et
+parfaitement plausible. Elle vit à la frontière d'écriture, avec son test.
+
+**Un ingrédient se saisit en unité de base, jamais en portions.** Le §6.1
+laisse l'unité ouverte et cette table n'a pas la paire `portion_name` /
+`portion_quantity` qu'une entrée de journal possède — une portion ne pourrait
+donc s'exprimer qu'en faisant du nombre un compte de portions, ce qui casse la
+règle de la tranche 3 dont dépend le `SUM` sans clause. L'éditeur peut proposer
+les portions comme commodité de saisie ; ce qui atterrit en base est toujours
+des grammes ou des millilitres.
+
+**Un rendement en poids veut toujours dire des grammes.** Une recette mélange
+les deux unités de base par nature — 300 g de tomates et 200 ml de bouillon —
+donc aucune unité ne peut sommer les deux et le rendement ne se dérive pas des
+ingrédients. Un plat fini se pèse. Le §5.1 le dit par l'autre bout : le poids
+d'un aliment est cru et non préparé, et « l'écart est absorbé par le rendement
+des recettes » — or cet écart est de l'eau.
+
+**Le bloc porte les lignes AJUSTÉES, jamais un identifiant de recette à
+relire.** C'est le §8.6 points 2 et 3 : l'ajustement n'existe que sur l'écran
+qui l'a fait, et le redériver à l'écriture le jetterait — l'utilisateur
+confirmerait un jeu de chiffres et un autre serait écrit.
+
+C'est **l'inverse exact du chemin `food`**, où l'entrée *est* construite en
+relisant l'aliment dans la transaction, et la différence est de principe : une
+entrée d'aliment fige une **référence** dont la base fait autorité, une
+occurrence fige une **décision** qui n'existe que sur l'écran qui l'a prise.
+
+**Les deux étapes du §8.6 restent deux, et l'ordre n'est pas cosmétique.** Un
+seul écran coûterait moins de touchers, et les lignes se re-échelonnant pendant
+la frappe seraient l'énoncé le plus clair de ce que la quantité fait. Refusé
+parce que **les deux éditions ne commutent pas** : ajuster une ligne *puis*
+changer la quantité devrait re-échelonner depuis la recette, effaçant
+l'ajustement sans que rien ne le dise. Régler la quantité d'abord supprime le
+cas, et revenir en arrière devient un acte explicite dont re-dériver est la
+réponse attendue.
+
+**Le `quantity` d'un parent `recipe` n'est PAS en unités de base — c'est
+l'ombre de l'invariant, pas une entorse.** Il dit combien de la recette a été
+mangé : portions dans `portion_name`, grammes dans `base_unit`,
+`portion_quantity` toujours `NULL` parce qu'une portion de recette n'a pas de
+taille en unités de base — c'est précisément ce qu'un rendement en portions
+veut dire.
+
+C'est sûr pour une seule raison : **le parent ne porte aucune macro**, donc
+`SUM(quantity * NULL)` vaut `NULL` quelle que soit la quantité. Et rien d'autre
+ne peut porter cette information, une recette étant un objet vivant qui a pu
+changer de rendement depuis. D'où le test qui rend la chose falsifiable : muter
+la quantité d'un parent ne déplace **aucun** total, et une troisième assertion
+vérifie que la mutation a bien eu lieu — sinon les deux premières porteraient
+sur un non-événement. Même parade que `display_ref_qty` en tranche 3.
+
+**La fuite que personne n'aurait vue.** Une ligne `recipe_item` porte un
+`source_food_id` et une quantité, donc avant le filtre `kind = 'food'` elle
+était éligible à devenir « la dernière quantité pour cet aliment ». Loguer une
+bolognaise faisait offrir à l'oignon une dose d'**ingrédient** sur l'écran
+d'ajout — échelonnée par la part de recette mangée, puis ajustée à la main.
+Plausible, faux, invisible : trente grammes d'oignon est une quantité d'oignon
+parfaitement croyable.
+
+Le filtre est sur les **deux** lectures, et le test qui les tient d'accord
+depuis la tranche 4 génère désormais des blocs. Vérifié par mutation : le
+retirer fait rougir deux tests.
+
+**Une ligne mise à zéro s'en va, elle n'est pas refusée.** Retirer un ingrédient
+pour une fois est exactement ce que l'écran d'ajustement sert à faire, et
+demander de supprimer la rangée serait une seconde façon de dire la même chose.
+Le filtrage tourne **dans** `addEntries`, donc l'écran ne peut pas oublier de le
+faire. Un bloc vide, lui, est refusé : un parent sans enfant ne porte aucune
+macro et loguerait un repas à zéro calorie qui a l'air d'une mesure.
+
+**Le catalogue d'export sait lire une clé primaire composite.** Vérifié par
+exécution avant d'écrire quoi que ce soit : Drizzle laisse `column.primary` à
+`false` sur **chaque** colonne d'une PK déclarée au niveau table. La moitié
+bruyante était le test de couverture ; la moitié silencieuse aurait été la
+perte de l'`ORDER BY` de `recipe_tag`, donc deux exports des mêmes données
+cessant d'être le même fichier.
+
+**Et le mécanisme a fonctionné trois fois de plus.** `0005` a fait rougir
+quatre tests d'un coup, dont **deux imprévus** — et l'un des deux était un
+défaut latent de la tranche 5 : « 0004 ajoute quatre tables et rien d'autre »
+passait par `applyMigrationsAfter`, **qui n'est pas borné par le haut** et
+allait donc casser à la migration suivante quel qu'en soit le contenu. D'où
+`applyOneMigration`, la primitive qui pose vraiment la question. Puis le jeu de
+démonstration, en semant des recettes, a fait tomber « une archive écrite avant
+l'existence des tables d'aliments » : la fixture décrivait une base qui n'a
+jamais existé, une archive à `0001_journal` ne pouvant pas porter de recettes
+non plus.
+
+**Une règle de pluriel a été supprimée.** `describeYield` en avait une (« plus
+de 1 ») à côté de celle de `portion-text` (« 2 ou plus »), et les deux divergent
+exactement sur les valeurs qu'une demi-portion produit. Tout passe désormais par
+`formatPortionCount`.
+
+**`searchFoods` tolère une entité sans marque.** Une recette a un nom et **pas**
+de marque — pas une marque nulle — et ajouter la colonne à `RecipeListItem`
+pour satisfaire une signature aurait été la vue qui se plie à la recherche. Le
+remède est un `== null` au lieu d'un `=== null`, sans quoi le pliage serait
+appelé sur `undefined` ; un test l'attrape.
+
+**Le filtrage par tag est un SECOND filtre, composé avec la recherche, jamais
+fondu dedans.** Taper « végétarien » et toucher la puce « végétarien » sont deux
+questions différentes, et une recherche qui comprendrait les deux devrait les
+classer l'une contre l'autre : une recette *nommée* « gratin végétarien »
+vaut-elle mieux qu'une recette *taguée* végétarien ? Quelle que soit la réponse,
+l'ordre de la liste cesserait d'être explicable. **Un seul tag à la fois**, pour
+la même raison : deux puces posent aussitôt la question union/intersection que
+personne n'a tranchée.
+
+**Pas de bouton « + » sur une rangée de recette**, là où toute rangée d'aliment
+en porte un. Le §8.4a v2.4 promet que la quantité affichée **est** celle
+qu'ajoute le bouton ; un aliment tient cette promesse par sa chaîne de
+pré-remplissage à quatre temps, une recette n'a aucun équivalent — le §8.6 fait
+de la quantité consommée sa *première* question. Un « + » inventerait une
+quantité ou ouvrirait un écran, et les deux défont ce que les rangées voisines
+viennent de promettre.
+
+**Choisir une recette remplit le panier**, comme un aliment et contrairement à
+un repas récent : le §8.4a écrit la ligne des recettes mot pour mot comme celle
+des aliments, et l'exception de la tranche 5 était motivée par le fait qu'un
+repas récent est « un repas entier en un geste », ce qu'une recette n'est pas.
+
+**Le tap d'un bloc replie, il n'édite pas** — et c'est une divergence signalée
+(`specs §14.7` n° 1). Le §8.3 point 6 dit que toucher une entrée ouvre l'écran
+d'ajustement ; sur un bloc, la rangée vit dans `SwipeToDeleteRow`, **qui possède
+le tap** parce qu'il le met en course avec le pan — l'arbitrage qui manquait en
+tranche 4. Y imbriquer un second `Pressable` pour le chevron remettrait le
+système de responder de React Native dans un sous-arbre de gestes, c'est-à-dire
+le piège documenté déjà payé une fois. L'ajustement est un bouton nommé au pied
+du bloc ouvert, ce qui est mieux placé de toute façon : il est là où sont les
+ingrédients qu'il va éditer.
+
+**Les enfants d'un bloc ne se balaient pas.** Une ligne d'ingrédient n'est pas
+une entrée que quelqu'un a choisie ; la supprimer laisserait une occurrence qui
+ne correspond plus à rien, et le §8.6 donne exactement une façon de changer une
+occurrence. Balayer le parent emporte tout, par cascade — une seule instruction,
+ce qui est pourquoi `deleteEntry` n'a jamais eu besoin d'une boucle.
+
+**Imbriquer les enfants a rendu le repas sommable depuis ses rangées.** Avec les
+enfants **dans** leur parent plutôt qu'à côté, additionner les `total` des
+rangées rendues donne le repas, sans clause et sans risque de compter un bloc
+deux fois. Un test le compare à la somme SQL.
+
+**L'avertissement de suppression apprend au lieu d'alarmer.** Rien n'est perdu
+et il ne le dit pas ; il dit que le **lien** part, donc qu'une correction future
+n'atteindra plus ces ingrédients. `describeRecipeUses` rend `null` sur
+`undefined` — « pas encore lu » n'est jamais « aucune », faute de quoi la
+confirmation mentirait dans le sens rassurant, le seul sens que ce projet
+n'autorise jamais.
+
+**La version de format d'export n'a pas bougé, et c'était écrit.** La tranche 2
+avait posé que la version 1 versionne l'**enveloppe** et jamais le contenu, et
+nommé les seules choses qui la déplaceraient — compression, NDJSON, *ingrédients
+imbriqués sous leur recette*. Quatre tables entrent, la version reste 1, et le
+contenu est couvert comme prévu par le tag de migration. Une tranche qui aurait
+suivi les tables en serait à 4 pour rien, chaque incrément étant une occasion
+d'orpheliner une archive.
+
+**Un cycle d'import type-only, le premier du dépôt.** `recipes.ts` importe
+l'objet `food` ; `nutrition.ts` importe seulement le **type** `RecipeId`. Un
+`import type` est effacé avant le bundler, donc le graphe d'exécution reste à
+sens unique — mais `planning.ts` n'importe rien de `nutrition.ts`, donc aucun
+précédent n'existait. Vérifié par `npm run bundle:ios`, pas supposé.
+
+## Ce que le filtre de listes a établi (14/09/2026)
+
+**Trois listes empilées étaient une file d'attente.** L'écran d'ajout a gagné
+ses listes une par tranche — aliments en 3, Open Food Facts en 4, repas récents
+en 5, recettes en 6 — et à la quatrième les recettes se retrouvaient sous les
+repas sous deux listes d'aliments. Sur l'écran que D16 budgète en **touchers**,
+c'était devenu un défilement. Un filtre segmenté les remplace : toujours
+exactement un actif, jamais aucun, Aliments par défaut.
+
+**Le filtre est SOUS le champ, pas au-dessus.** Lu de haut en bas il dit
+« cherche ceci, parmi ceux-là ». Au-dessus, il aurait séparé les deux entrées
+rapides — Scanner, Saisie libre — du champ qu'elles surplombent délibérément
+depuis la tranche 4.
+
+**Les trois listes ne répondent pas de la même façon au terme, et c'est un fait
+sur elles.** Aliments et recettes échangent l'accès rapide contre **toute la
+bibliothèque** dès qu'un terme est tapé ; un repas récent ne peut être que
+*filtré*. La raison est dans le §14.6 n° 5 : un repas récent **est** un repas
+passé, donc il n'existe aucun repas qu'on pourrait chercher sans l'avoir déjà
+mangé. Chercher à l'intérieur de l'accès rapide serait l'alternative plausible
+et elle est fausse — ce dont on tape le nom est précisément ce que l'accès
+rapide ne contient pas.
+
+**La recherche distante appartient aux Aliments seuls, et le déclencheur est
+silencieux plutôt que désactivé.** Valider le champ sous Recettes ou Repas ne
+fait rien ; changer de filtre efface le résultat distant. C'est le seul geste
+de cet écran qui coûte quelque chose **hors** du téléphone, et dépenser une
+requête contre le quota de D11 pour une liste que personne ne regardera est
+exactement ce que le limiteur existe pour éviter. Vérifié à la source plutôt
+que supposé : `useOffSearch` est `enabled` sur un terme soumis non vide, donc
+mettre `submitted` à `null` suffit à ce qu'aucune requête ne parte.
+
+**Le bandeau d'échec suit la liste qu'il explique.** Il était « directement
+sous le champ » ; il est maintenant sous le filtre et seulement avec les
+aliments. Sous les recettes, il parlerait de quelque chose qui n'est pas à
+l'écran.
+
+**Un titre de section qui répète l'onglet actif est le même mot deux fois.**
+`RecipesSection` et `RecentMealsSection` ont perdu le leur. Les aliments
+gardent les leurs — « Favoris », « Récents » — parce que ce sont deux groupes
+sous un seul onglet, ce qui est autre chose.
+
+**Les recettes ont leurs deux sections, comme les aliments.** « Favoris » et
+« Récents » séparés, pas une liste fusionnée. La fusion a été essayée d'abord,
+sur l'argument que l'étoile de chaque rangée dit déjà dans quelle moitié elle
+est — vrai d'une rangée lue seule, faux d'une liste lue comme une forme. Ce que
+le titre achète est de savoir **où les favoris s'arrêtent**, ce qu'aucune marque
+par rangée ne peut dire. Un terme tapé les refond en une seule « Mes recettes »,
+parce qu'à ce moment le partage n'a plus rien à dire : le classement est
+l'ordre, et un favori est là où la correspondance le met.
+
+**Une rangée de repas dit ce qu'il y a dedans, pas combien il y en a.**
+« 8 lignes » dit la taille du repas et jamais ce qu'il était : deux repas de
+huit lignes ne se distinguent par rien, ce qui est la seule chose que cette
+liste ait à faire. Une ligne, coupée par la plateforme — rien ne la mesure, une
+liste qui rentre est rare et une liste coupée nomme quand même les deux ou
+trois premières choses, ce qui identifie le repas.
+
+**Un bloc de recette y donne SON nom, jamais ses ingrédients.** Un repas est
+fait de ce qui a été **choisi**, et les ingrédients d'une recette ne l'ont pas
+été un par un.
+
+**Et ça a découvert deux réponses à une question.** `entryCount` était un
+`count(*)` sur la jointure ; les noms ne comptent que les lignes de tête. Un
+repas « Amorce + Curry » était donc rapporté à **quatre** lignes tout en en
+nommant deux, et l'étiquette VoiceOver lisait la contradiction à voix haute. Le
+compte est désormais **dérivé** des noms — une seule source, plus de désaccord
+possible. C'est le test écrit pour la nouvelle ligne qui l'a trouvé, pas une
+relecture.
+
+**La recherche est inerte sous Repas, et désactivée plutôt que cachée.** Un
+repas récent **est** un repas passé : il n'y a aucune bibliothèque derrière lui,
+et filtrer dix rangées déjà à l'écran n'est pas une recherche mais une façon
+d'en cacher certaines. Désactivée et non retirée parce que le filtre est
+directement en dessous — un contrôle qui saute quand le choix change est pire
+qu'un contrôle qui a visiblement rien à faire. Et le champ s'affiche **vide**
+pendant qu'il est inerte plutôt que de montrer un terme qu'il n'applique pas :
+un « poulet » grisé au-dessus d'une liste qui l'ignore serait un mensonge. Le
+terme survit dans l'état, donc revenir le restaure.
+
+**Le « + » de la bibliothèque crée le type affiché au lieu de demander lequel.**
+Il posait une question à deux réponses dans une feuille d'action ; le filtre
+vient de rendre la réponse **visible à l'écran**, donc la reposer serait
+redemander ce que l'utilisateur vient de dire. Deux touchers pour ce qui en
+vaut un, à chaque fois. Créer l'autre type coûte un toucher sur le filtre, et
+devient prévisible au lieu d'être mémorisé.
+
+**`core/ui/segmented.tsx` arrive avec deux utilisateurs réels le premier jour**,
+ce qui est exactement ce que la règle de migration demande. Il diffère de
+`TagFilter` sur un point qui n'est pas cosmétique : **toucher l'option active
+ne fait rien**, là où toucher la puce active l'efface. Un tag *narrowe* une
+liste qui a du sens sans lui ; celui-ci *sélectionne* quelle liste s'affiche, et
+« aucune » n'est pas un état que quelqu'un a demandé.
+
+*Duplication connue, nommée plutôt que cachée* : `unit-toggle.tsx` et
+`yield-toggle.tsx` dessinent la même chose et lui sont antérieurs. Ils sont
+laissés tels quels — toucher du code livré pour la seule cohérence est ce que
+ce projet décline — mais celui des deux qu'on éditera ensuite pour ses propres
+raisons doit se replier dessus au lieu d'être copié une quatrième fois.
+
+## Deux renversements, et pourquoi ils tiennent (14/09/2026)
+
+**Un repas récent passe par le panier.** Il écrivait et fermait, et c'était une
+exception consignée (`specs §14.6 n° 8`) : mettre en attente semblait
+transformer un toucher en un toucher plus une confirmation.
+
+L'argument était plus faible qu'il n'en avait l'air. Le « Confirmer » est
+**déjà là** pour le reste du repas, donc l'exception ne faisait économiser
+aucun geste à qui ajoutait autre chose en même temps — et elle rendait
+impossibles trois choses : combiner un repas récent avec un aliment, le
+corriger avant qu'il n'atterrisse, le retirer sans qu'il ait été écrit. Le
+« d'un coup » du §8.4a est satisfait par le geste unique qui remplit le panier ;
+rien n'y dit que le geste doit atteindre la base.
+
+**La ligne de panier d'un repas porte un IDENTIFIANT, là où une recette porte
+ses lignes.** L'asymétrie est le point : une recette a été **ajustée** à
+l'écran, donc ce que l'utilisateur a confirmé n'existe que là ; un repas récent
+n'a été touché en rien. Le relire au moment de l'écriture est donc strictement
+meilleur — le §14.6 n° 6 veut les macros des aliments telles qu'elles se lisent
+**aujourd'hui**, et une copie prise au remplissage du panier serait plus
+vieille de quelques secondes pour rien.
+
+**`addRecentMeal` n'existe plus.** Le rejeu est devenu `replayMeal`, privé, une
+étape de la transaction d'`addEntries` — la règle qu'`ensureMaterialized` et
+`ensureOffFood` suivent déjà : ce que l'utilisateur enregistre explicitement
+s'écrit, ce qu'il se contente de choisir non.
+
+**Une conséquence qui change un comportement, signalée** : confirmer un panier
+contenant un repas depuis vidé **matérialise** la journée, là où l'ancien
+chemin refusait. L'ancien refus lisait « un repas vide est un panier vide ». Le
+panier, lui, n'était pas vide. Le §8.2 fait de l'action de l'utilisateur l'acte
+qui définit une journée, et une journée matérialisée sans rien dedans est déjà
+l'état d'une journée vidée de ses entrées.
+
+**Une ligne de repas au panier ne se corrige pas.** Le §8.4 v2.3 dit que
+toucher une ligne rouvre le choix qui l'a faite ; pour un repas ce choix était
+« ce repas-là », qui n'a pas de milieu à rouvrir. Elle se reprend comme elle
+s'est refusée, par un balayage.
+
+---
+
+**Les deux écrans d'une recette n'en font qu'un, et l'objection tombe au lieu
+d'être acceptée.** Ils étaient séparés parce que les deux éditions ne commutent
+pas : ajuster une ligne puis changer la quantité devrait re-dériver depuis la
+recette, effaçant l'ajustement en silence (`specs §14.7 n° 2`).
+
+Changer la quantité **ré-échelonne** désormais au lieu de re-dériver. Un
+ajustement est conservé comme un **rapport** — la moitié de crème à deux
+portions reste la moitié à quatre — et sur le chemin ordinaire, où rien n'a
+encore été ajusté, les deux sont arithmétiquement la même chose :
+
+```
+q × (c₁ / rendement) × (c₂ / c₁)  =  q × (c₂ / rendement)
+```
+
+Un test le fixe. Ce que la fusion achète est exactement ce que la séparation
+coûtait : les lignes se re-échelonnent sous le doigt, ce qui est l'énoncé le
+plus clair de ce que la quantité fait.
+
+**Le ré-échelonnement s'applique au blur, pas à chaque frappe.** En direct il
+passerait sur « 1 », puis « 13 », puis « 137 » — trois passes sur la liste,
+deux à des montants que personne n'a voulus, sur un formulaire dont les
+chiffres sont lus pendant qu'ils bougent. Même arbitrage que les molettes de la
+tranche 4.
+
+**Une ligne mise à zéro reste à zéro quand la quantité change.** Elle a été
+retirée de cette fois-là ; changer la part du plat qu'on mange ne l'y remet pas.
+
+**Et échelonner depuis zéro est refusé plutôt que toléré.** Le champ passe par
+la chaîne vide pendant qu'on le retape. Rendre les lignes inchangées les
+figerait en silence à l'ancienne quantité, donc `rescaleLines` rend `null` et
+l'appelant re-dérive.
+
+**La quantité existe AVANT les lignes, et c'est structurel.** La tranche 4 l'a
+payé sur l'appareil : les molettes se montaient sur un défaut et un effet les
+déplaçait quand la requête répondait — **un effet tourne après que son rendu a
+été peint**, donc elles tournaient visiblement en s'ouvrant. L'écran est donc
+scindé en deux composants et seul le **corps** attend ; il initialise son état
+depuis ses props, dans l'initialiseur, jamais dans un effet.
+
+Corollaire : **`autoFocus` + `selectTextOnFocus` fonctionnent ici**, là où la
+tranche 3 avait constaté qu'ils ne sélectionnaient rien. La différence est la
+seule qui compte — la valeur vient d'un initialiseur d'état et existe **avant**
+le champ.
+
+**Le pré-remplissage d'une recette est plus court que celui d'un aliment, et
+c'est normal.** La chaîne à quatre temps du §8.4 a deux étapes sans contrepartie
+ici : une recette n'a ni portions propres dont revérifier la taille, ni
+`display_ref_qty`. Reste « la dernière fois, sinon un défaut » — 1 portion, ou
+100 g pour un rendement en poids, faute d'analogue d'« une portion ».
+
+**Réserve levée, et non exploitée** : le §14.7 n° 4 refusait un bouton « + »
+sur une rangée de recette faute de pré-remplissage. Il devient possible. Il
+n'est pas ajouté, parce que la rangée n'affiche pas de quantité et que le
+§8.4a v2.4 exige que les deux aillent ensemble — ce serait un troisième
+changement que personne n'a demandé.
+
+**Aucun index derrière la lecture de la dernière quantité**, et c'est toujours
+le report de la tranche 6. `ix_entry_source_recipe` refléterait
+`ix_entry_source_food`, mais la règle dit qu'un index est la seule chose d'une
+migration qui s'ajoute toujours plus tard, et ajouter une migration par symétrie
+est ce que ce projet décline. Le jour où un vrai historique le rend mesurable,
+c'est un `CREATE INDEX`.
+
+**Le test le plus lourd de la suite a un délai à lui.** Une année d'historique
+généré traverse export, validation, import et une comparaison ligne à ligne sur
+quatorze tables ; il tenait sous les cinq secondes par défaut jusqu'à ce que la
+tranche 6 ajoute quatre tables à chacune de ces quatre passes, et il s'est mis à
+dépasser **par intermittence** — la pire façon pour un test d'échouer. L'année
+n'est pas négociable : D15 donne au générateur la tâche de « vérifier les
+performances sur de longs historiques », et la rétrécir pour tenir dans un délai
+supprimerait le seul endroit où ça se fait. C'est le budget qui bouge.
+
+## Le « + » des trois listes, et le repas qui se déplie (14/09/2026)
+
+**Le bouton refusé est devenu honnête, et c'est l'obstacle qui a disparu — pas
+la règle.** Le §8.4a v2.4 exige que la quantité affichée **soit** celle
+qu'ajoute le bouton, et une recette n'en avait aucune à afficher : le §8.6 fait
+de la quantité consommée sa première question. Le pré-remplissage lui en donne
+une, donc la promesse redevient tenable.
+
+La rangée, le bouton et l'écran d'occurrence lisent tous
+`prefillRecipeQuantity` — **une valeur produite une fois**, portée sur
+`RecipeListItem`. Deux chemins vers elle s'accorderaient presque toujours, et
+le jour où ils divergeraient la rangée mentirait sur ce que fait son propre
+bouton. Un test l'assert contre la fonction, jamais contre un littéral.
+
+**La liste porte désormais les ingrédients, et c'est ce qui rend le toucher
+unique possible.** Une requête pour toute la bibliothèque, sur le patron de
+`tagsByRecipe`, plutôt qu'une lecture par rangée — le coût que la tranche 4
+avait déjà refusé en étendant la quantité aux favoris et à la recherche. Le
+bouton échelonne ces lignes-là, donc le chiffre affiché est le chiffre déposé.
+
+Un test tient `recipeTotal` sur ces ingrédients contre le `total` que SQL somme,
+dans **le même objet** : les deux implémentations du même nombre y sont
+désormais côte à côte, ce qui rend leur désaccord immédiat au lieu d'être
+lointain.
+
+**Une rangée de recette dit deux choses différentes selon l'écran.** C'est la
+règle de la tranche 4 appliquée : un seul chiffre de calories par rangée,
+toujours au même endroit, et ce qu'il veut dire appartient à l'écran. À l'ajout
+c'est **le prix du toucher** — la dernière quantité loguée et ses calories. Dans
+la bibliothèque c'est ce que la recette **est**, par unité de rendement, parce
+que c'est ce qui la rend comparable. Le composant retombe sur la seconde forme
+quand l'appelant ne lui donne rien, donc la bibliothèque n'a rien à dire.
+
+**Le repas se déplie au panier, une ligne par entrée de tête.** Il était une
+ligne unique portant l'identifiant du repas source, rejouée dans la transaction
+d'écriture (`specs §14.10 n° 1`). Ce que le dépliage change n'est pas le moment
+mais ce que l'utilisateur peut faire : **un repas qui arrive en quatre lignes
+peut en perdre une, ou en corriger une, avant que quoi que ce soit ne soit
+écrit.** En une ligne c'était tout ou rien — ce que le panier existe
+précisément pour éviter.
+
+Une recette groupée à l'intérieur reste **une** ligne. Elle est une des choses
+qui ont été choisies ; ses ingrédients ne l'ont jamais été un par un.
+
+**`refreshedReference` a déménagé dans les lectures, et `replayMeal` a
+disparu.** La fonction répond à « que dit cet aliment maintenant », ce qui est
+une lecture, et son seul appelant était le rejeu. Plus rien dans la couche
+d'écriture ne relit un aliment pour le rafraîchir : une ligne rejouée arrive
+**déjà résolue** et s'écrit telle quelle.
+
+Prix nommé : les macros sont lues **quelques secondes plus tôt**, au toucher
+plutôt qu'à « Confirmer ». Le §14.6 n° 6 demande les valeurs d'*aujourd'hui*
+plutôt que la capsule figée — quelques secondes ne sont pas la distinction
+qu'il trace. Ce que ça rachète est la promesse du panier elle-même : une ligne
+montre exactement ce qu'elle écrira.
+
+**Les trois replis du §14.6 n° 7 ont survécu au déménagement** — saisie libre,
+aliment supprimé, unité de base changée. Même règle, même raisonnement ; seul
+son porteur a bougé.
+
+**Un comportement a fait l'aller-retour, et la troisième lecture est la
+bonne.** Un repas vidé entre le moment où la liste est dessinée et le toucher :
+
+1. Rejeu autonome — ne matérialisait pas, « un repas vide est un panier vide ».
+2. Une ligne au panier — matérialisait, parce que le panier n'était **pas**
+   vide : l'utilisateur y avait mis une ligne et confirmé.
+3. Déplié au toucher — ne matérialise pas, parce qu'il ne produit **aucune
+   ligne**. Il n'y a rien à confirmer et rien à créer, sans aucun cas
+   particulier.
+
+La troisième est la meilleure parce qu'elle ne décide rien : ce que
+l'utilisateur confirme est ce que le panier contient, et le panier contient ce
+qu'on lui a montré.
+
+**Une ligne rejouée ne se corrige pas**, elle se retire. Le §8.4 v2.3 dit que
+toucher une ligne rouvre le choix qui l'a faite ; celle-ci n'a pas été
+*choisie*, elle a été **levée** d'un repas passé, et il n'y a aucun écran
+derrière elle à rouvrir.
+
+**Et le « + » d'un repas fait exactement ce que fait la rangée.** Il n'y a pas
+d'écran de quantité derrière un repas, donc rien d'autre que la rangée pourrait
+vouloir dire. Il est là parce que les trois listes se lisent maintenant comme
+une seule grammaire — et parce qu'un « plus » décoratif entre deux vrais serait
+celui qui ne répond pas.
+
+## Une ligne rejouée se corrige, comme tout ce qui est au panier
+
+**Rapporté depuis l'appareil : la quantité d'un aliment venu d'un repas ne
+pouvait pas être changée.** C'est moi qui l'avais bloqué, et le raisonnement
+était faux. Je l'avais justifié ainsi : le §8.4 v2.3 dit que toucher une ligne
+rouvre le **choix** qui l'a faite, et une ligne rejouée n'a pas été *choisie* —
+elle a été levée d'un repas passé, donc il n'y aurait rien à rouvrir.
+
+Mais c'est un aliment avec une quantité, et « combien » est exactement la
+question que le panier existe pour laisser changer avant que quoi que ce soit
+ne soit écrit. L'argument confondait *l'origine* de la ligne avec *ce qu'elle
+est*.
+
+**Trois écrans, et la branche est la forme de la ligne, pas une recherche :**
+
+- une **saisie libre** rouvre ses quatre chiffres. Ses macros *sont* le choix
+  (D5/R2), et il n'y a aucun aliment derrière elle à consulter ;
+- une ligne **pointant encore un aliment** rouvre l'écran de quantité ordinaire,
+  donc **toute** la liste de portions de l'aliment est offerte — et la ligne
+  corrigée devient une ligne d'aliment ordinaire, ce qu'elle est ;
+- une ligne dont **l'aliment est parti** rouvre contre sa propre capsule, avec
+  la portion dans laquelle elle a été loguée et aucune autre. Il n'y a plus rien
+  à interroger, et le §5.3 dit que cette suppression ne doit rien coûter à
+  l'entrée.
+
+**Le mode `frozen` de l'écran de quantité n'interroge rien**, pour la raison que
+`collectOff` n'interroge rien : tout voyage sur la ligne. Il porte **sa** portion
+et aucune autre — en offrir davantage demanderait une requête, et n'en offrir
+aucune ferait retomber « 2 tranches » sur les grammes au premier toucher, ce qui
+est exactement le défaut que cet écran venait de payer.
+
+**Et un blocage latent de la même famille, corrigé au passage.** Corriger une
+ligne dont l'aliment avait été supprimé *pendant* la session laissait l'écran
+sur les points de chargement pour toujours : `undefined` (requête en cours) et
+`null` (requête ayant répondu « pas d'aliment ») étaient repliés l'un sur
+l'autre par un `?? null`. C'est la même confusion, à une fonction d'écart.
+
+## Un défaut trouvé sur l'appareil : la molette qui s'ouvrait en grammes
+
+**Une entrée loguée « 2 tranches » rouvrait son écran de quantité sur les
+grammes.** Sur le journal comme au panier, et de façon déterministe.
+
+**La cause n'est pas dans `wheelFor`**, qui est juste : il résout le nom de
+portion de l'entrée contre les portions que l'aliment propose *aujourd'hui* et
+retombe sur l'unité de base quand il ne l'y trouve pas. C'est le bon
+comportement pour une portion renommée ou supprimée depuis.
+
+Elle est dans ce que l'appelant lui passait. **Une liste vide est une vraie
+réponse** — un aliment sans portions, un produit Open Food Facts, un aliment
+supprimé — et elle est *indiscernable* d'une liste simplement en retard. Or le
+formulaire n'attendait que la **quantité** :
+
+- au journal, la requête de l'aliment ne peut même pas démarrer avant que celle
+  de l'entrée ait répondu, l'aliment étant trouvé *à travers* l'entrée. Les
+  molettes se montaient donc toujours contre une liste vide ;
+- au panier, `amending` est une prop, donc la quantité est là dès la première
+  image pendant que la requête de pré-remplissage, elle, ne l'est pas.
+
+Dans les deux cas la portion ne se résolvait contre rien, et l'unité tombait
+sur zéro.
+
+**C'est la règle « null veut dire *pas encore*, jamais *aucune* » — appliquée à
+un seul des deux entrants.** Elle était écrite, testée et respectée pour la
+quantité ; le second entrant du même écran ne l'avait pas. Le remède est de
+l'étendre : `portions` devient nullable, `null` retient les molettes, `[]` est
+passé uniquement quand il n'y a rien à attendre — un produit distant, une
+saisie libre, un aliment supprimé.
+
+**Prix payé, et il est du bon côté** : une correction au panier coûte désormais
+un battement de points de chargement là où elle était instantanée. Instantanée
+et sur la mauvaise unité.
+
+**Ce que le test peut et ne peut pas dire.** L'écran ne se rend pas depuis
+Node, donc rien ne peut vérifier le garde lui-même. Ce qui est fixé est le
+**piège** : `wheelFor(portion, [])` retombe sur l'unité de base, et
+`wheelFor(portion, [la portion])` ne le fait pas. Le test dit donc pourquoi
+l'appelant n'a pas le droit de passer une liste vide qu'il n'a pas encore lue —
+ce qui est la seule moitié du défaut qu'un test puisse tenir.
+
+## Points ouverts après la tranche 6
+- **Vérification iPhone en attente.** Rien de l'interface des recettes n'a été
+  touché sur l'appareil. À regarder en premier : le bloc groupé du Journal — le
+  repli, l'indent, et surtout que le tap de repli n'ait pas volé le balayage de
+  suppression — puis les deux étapes de l'ajout, où un `SwipeBack` de plus est
+  empilé dans une fenêtre qui en contient déjà.
+- **L'aller-retour export / import n'a pas été refait sur l'appareil** avec les
+  quatre tables de `0005` dedans. Il est vert en Node, fixtures remplissant
+  chaque colonne, mais la bascule reste du natif `expo-sqlite` que les tests
+  n'atteignent pas — c'est la partie capable de détruire la base quotidienne et
+  c'est exactement la partie non testée, comme depuis la tranche 2.
+- **Aucune recette ne se saisit en portions d'ingrédient.** L'éditeur ne propose
+  pas encore les portions d'un aliment comme commodité de saisie : un ingrédient
+  s'ouvre sur 100 unités de base et se retape. La conversion à la capture est
+  prévue par la décision (`architecture §9.6` n° 7) et non faite — c'est du
+  confort, pas une règle.
+- **Un ingrédient gelé n'est pas re-liable depuis l'éditeur.** Sa ligne s'édite
+  en quantité et porte une marque, mais rien ne permet de la rattacher à un
+  aliment. Choisir un aliment est *ajouter* un ingrédient. Volontaire : laisser
+  re-lier remplacerait une capsule par les valeurs d'un autre aliment, en
+  silence. À rouvrir si supprimer puis recréer un aliment devient courant.
+- **Trois dessins du même contrôle segmenté.** `core/ui/segmented.tsx` est le
+  bon, `unit-toggle.tsx` et `yield-toggle.tsx` lui sont antérieurs et copient
+  ses styles. Non fusionnés : ce serait toucher du code livré sans autre motif
+  que la cohérence. À replier au premier de ces deux fichiers qu'on rouvrira
+  pour une autre raison.
+- **La recherche de la bibliothèque ne cherche pas dans les tags.** Seul le nom
+  et la marque sont classés ; un tag ne se trouve qu'en touchant sa puce. C'est
+  la conséquence directe du refus de fondre les deux filtres, et la réserve est
+  que quelqu'un tapera « végétarien » dans le champ avant de voir la puce.
+- ~~**Aucun pré-remplissage de quantité pour une recette.**~~ **Fait**, et il a
+  levé la réserve sur le bouton « + ». L'index reste différé : la fonction de
+  fenêtre tourne sans lui, et ajouter une migration par symétrie avec
+  `ix_entry_source_food` est ce que ce projet décline. Le jour où un vrai
+  historique le rend mesurable, c'est un `CREATE INDEX`.
+- **Le bloc ne dit pas combien d'ingrédients il contient quand il est replié.**
+  Le nom, la quantité et le total, rien de plus. Trois touchers pour compter.
+  Non fait parce qu'aucune spec ne le demande et que la rangée porte déjà cinq
+  valeurs sur sa ligne grise.
+- **`recipe_step` n'a pas d'index sur `recipe_id`**, comme `day_template_meal`
+  n'en a pas sur `template_id` et pour le même motif : la table est bornée par
+  ce que l'utilisateur crée, et un index reste la seule chose d'une migration
+  qui puisse encore être ajoutée sans rien reconstruire. Idem `recipe_tag`, dont
+  la clé primaire composite sert déjà les lectures par recette.
+- **Hypothèse signalée : quatre portions par défaut** sur une recette neuve.
+  Choisi, pas mesuré. Un rendement de 1 est la valeur qui rend l'arithmétique
+  des portions invisible, donc celle où un défaut faux passerait inaperçu — d'où
+  un nombre qui force à regarder.
 
 ## Points ouverts après la tranche 5
 - ~~**Vérification iPhone en attente.**~~ **Faite pour l'essentiel** : la

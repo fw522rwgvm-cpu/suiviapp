@@ -95,6 +95,19 @@ export function indexOfTag(tag: string): number {
   return index;
 }
 
+/**
+ * Applies exactly ONE named migration, and nothing else.
+ *
+ * The primitive for "what does this migration create?". applyMigrationsAfter
+ * cannot answer that question — it is unbounded above, so it silently starts
+ * including the next migration the day one is added. Slice 5 asked it that
+ * question anyway and slice 6 collected the bill: `0005` made "0004 adds the
+ * four tables and nothing else" fail by adding four tables of its own.
+ */
+export function applyOneMigration(db: Database.Database, tag: string): void {
+  applyMigration(db, readMigrationSql(tag));
+}
+
 /** Applies everything after `index`, over a database that already holds rows. */
 export function applyMigrationsAfter(db: Database.Database, index: number): string[] {
   const applied: string[] = [];

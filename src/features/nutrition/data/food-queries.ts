@@ -1,6 +1,13 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { getAppDatabase } from '@/core/db/app-database';
-import { food, foodPortion, journalEntry, type FoodId } from '@/core/db/schema';
+import {
+  food,
+  foodPortion,
+  journalEntry,
+  recipe,
+  recipeIngredient,
+  type FoodId,
+} from '@/core/db/schema';
 import { readsFrom } from '@/core/query';
 import {
   listFoods,
@@ -11,6 +18,7 @@ import {
   readQuantityPrefill,
   readRecentFoods,
 } from './food-reads';
+import { countRecipesUsingFood, recipeNamesUsingFood } from './recipe-reads';
 import { createFood, deleteFood, setFoodFavorite, updateFood } from './food-writes';
 
 /**
@@ -37,6 +45,7 @@ export const foodKeys = {
   draft: (foodId: FoodId | null) => ['nutrition', 'food-draft', foodId] as const,
   prefill: (foodId: FoodId | null) => ['nutrition', 'quantity-prefill', foodId] as const,
   byBarcode: (barcode: string | null) => ['nutrition', 'food-barcode', barcode] as const,
+  recipeUses: (foodId: FoodId | null) => ['nutrition', 'food-recipe-uses', foodId] as const,
 };
 
 /**
@@ -119,6 +128,33 @@ export function useQuantityPrefill(foodId: FoodId | null) {
     queryFn: () => (foodId === null ? null : readQuantityPrefill(getAppDatabase(), foodId)),
     enabled: foodId !== null,
     meta: readsFrom(food, foodPortion, journalEntry),
+  });
+}
+
+/**
+ * Which recipes would lose their live link to this food if it were deleted
+ * (specs 5.3).
+ *
+ * Read ahead of the confirmation rather than inside it, because an Alert
+ * cannot wait for a query — and because the answer is wanted before the
+ * destructive button is even offered, not after it is pressed.
+ *
+ * It declares both tables: renaming a recipe changes what the warning says,
+ * and adding an ingredient changes whether there is one at all.
+ */
+export function useRecipesUsingFood(foodId: FoodId | null) {
+  return useQuery({
+    queryKey: foodKeys.recipeUses(foodId),
+    queryFn: () => {
+      if (foodId === null) return { count: 0, names: [] };
+      const database = getAppDatabase();
+      return {
+        count: countRecipesUsingFood(database, foodId),
+        names: recipeNamesUsingFood(database, foodId),
+      };
+    },
+    enabled: foodId !== null,
+    meta: readsFrom(recipe, recipeIngredient),
   });
 }
 

@@ -22,6 +22,7 @@ export function SearchField({
   onSubmit,
   placeholder = 'Rechercher un aliment',
   autoFocus = false,
+  disabled = false,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -36,6 +37,21 @@ export function SearchField({
   onSubmit?: () => void;
   placeholder?: string;
   autoFocus?: boolean;
+  /**
+   * Inert, for a list that has nothing to search (slice 6).
+   *
+   * The recent meals are the case: a recent meal is a PAST meal, so there is
+   * no library behind it to look through — filtering ten rows that are already
+   * on screen is not a search, it is a way of hiding some of them.
+   *
+   * DISABLED RATHER THAN HIDDEN, because the filter sits directly underneath
+   * and removing the field would move it: a control that jumps as the choice
+   * changes is worse than one that visibly has nothing to do. And the field
+   * shows EMPTY while disabled rather than a term it is not applying — a
+   * greyed-out "poulet" over a list that ignores it would be a lie — while the
+   * caller keeps the term, so coming back restores it.
+   */
+  disabled?: boolean;
 }) {
   const theme = useTheme();
 
@@ -44,15 +60,19 @@ export function SearchField({
       style={[
         styles.field,
         { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+        disabled ? styles.disabled : null,
       ]}
     >
       <SymbolView name="magnifyingglass" size={16} tintColor={theme.colors.textFaint} />
       <TextInput
-        value={value}
+        value={disabled ? '' : value}
         onChangeText={onChange}
+        editable={!disabled}
         placeholder={placeholder}
         placeholderTextColor={theme.colors.textFaint}
-        autoFocus={autoFocus}
+        // Never on a field nobody can type in: iOS would raise the keyboard
+        // over a list and then refuse every key.
+        autoFocus={autoFocus && !disabled}
         autoCorrect={false}
         autoCapitalize="none"
         returnKeyType="search"
@@ -63,7 +83,7 @@ export function SearchField({
         clearButtonMode="never"
         style={[styles.input, { color: theme.colors.text }]}
       />
-      {value === '' ? null : (
+      {disabled || value === '' ? null : (
         <Pressable
           onPress={() => onChange('')}
           hitSlop={12}
@@ -92,4 +112,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   input: { flex: 1, fontSize: 17, padding: 0 },
+  // Dimmed as a whole, glass included: the magnifier has to fade with the
+  // field or it reads as a live button on a dead control.
+  disabled: { opacity: 0.45 },
 });

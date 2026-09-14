@@ -1,4 +1,4 @@
-import { asc, eq, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import type { LocalDate } from '@/core/date';
 import type { AppDatabase } from '@/core/db/database';
 import {
@@ -10,9 +10,10 @@ import {
   type FoodId,
   type JournalEntryId,
   type JournalEntryKind,
+  type RecipeId,
 } from '@/core/db/schema';
 import { virtualDay, type DayView } from '../domain/day-plan';
-import { totalOf, ZERO_MACROS, type Macros } from '../domain/macros';
+import { sumMacros, totalOf, ZERO_MACROS, type Macros } from '../domain/macros';
 import { mealLabels } from '../domain/meal-kinds';
 import { readTargets } from '../domain/planning';
 import { readDayPlan } from './planning-reads';
@@ -168,10 +169,29 @@ export interface JournalEntryView {
   name: string;
   brand: string | null;
   baseUnit: BaseUnit | null;
-  /** Always in base units, whatever the user typed. */
+  /**
+   * How much of it.
+   *
+   * Always in base units for a row that carries macros — the rule slice 3
+   * settled and the clause-free SUM depends on.
+   *
+   * A GROUPED RECIPE PARENT IS THE ONE EXCEPTION, and it is safe for exactly
+   * one reason: it carries NO macros (D5/R2), so quantity is never multiplied
+   * by anything. On such a row this holds how much of the recipe was eaten —
+   * a count of portions when the yield is in portions, grams when it is in
+   * grams — which is what the journal has to show and what nothing else can
+   * derive, the recipe being a living object.
+   *
+   * That is not a breach of the invariant, it is its shadow: SUM(quantity *
+   * NULL) is NULL whatever the quantity. A test mutates a parent's quantity
+   * and demands that no total in the journal moves by a bit, so the rule is
+   * falsifiable rather than commented.
+   */
   quantity: number | null;
   /** The food this came from, if any. Informative, without a live link. */
   sourceFoodId: FoodId | null;
+  /** The recipe a grouped block came from. Informative, without a live link. */
+  sourceRecipeId: RecipeId | null;
   /**
    * How the quantity was expressed, frozen at the time (D5/R1).
    *
@@ -183,31 +203,83 @@ export interface JournalEntryView {
   portionQuantity: number | null;
   /** Macros for 100 base units, as frozen (D5/R1). NULL on a grouped parent. */
   reference: Macros | null;
-  /** Derived, never stored (D9). NULL where there is no reference to scale. */
+  /**
+   * WHAT THIS ROW CONTRIBUTES, CHILDREN INCLUDED. Derived, never stored (D9).
+   *
+   * A leaf scales its own frozen reference. A grouped parent has no reference
+   * to scale, so this is the sum of its children — which is the figure the
+   * journal row must show, and the only one a reader would accept beside a
+   * meal's sub-total.
+   *
+   * Summing the `total` of the rows readMealEntries hands back therefore gives
+   * the meal, with no clause and no risk of counting a block twice: the
+   * children are nested inside their parent rather than sitting beside it.
+   */
   total: Macros | null;
+  /**
+   * The ingredient lines of a grouped recipe block (D5/R2). Empty for a leaf.
+   *
+   * Nested rather than returned flat, which is the whole difference: before
+   * slice 6 a block would have rendered as a parent followed by its
+   * ingredients at the same level as every other entry of the meal.
+   */
+  children: JournalEntryView[];
 }
 
-/** One entry, for the screen that edits it. Null once it has been deleted. */
+/**
+ * One entry with its ingredient lines, for the screen that edits it. Null once
+ * it has been deleted.
+ *
+ * The children are fetched too, because a grouped recipe parent is not a row
+ * that can be read on its own: its macros are NULL and its figure is the sum
+ * of the lines below it (D5/R2).
+ */
 export function readEntry(db: AppDatabase, entryId: JournalEntryId): JournalEntryView | null {
-  const rows = selectEntries(db, eq(journalEntry.id, entryId));
-  return rows[0] ?? null;
+  const rows = selectEntries(
+    db,
+    or(eq(journalEntry.id, entryId), eq(journalEntry.parentEntryId, entryId)),
+  );
+  return rows.find((row) => row.id === entryId) ?? null;
 }
 
-/** The entries of one meal, loaded only when that meal is unfolded. */
+/**
+ * The entries of one meal, loaded only when that meal is unfolded.
+ *
+ * TOP-LEVEL ROWS ONLY, each carrying its own children. Before slice 6 this was
+ * flat and a grouped block would have rendered as a parent followed by its
+ * ingredients at the same level as every other entry of the meal.
+ */
 export function readMealEntries(db: AppDatabase, mealId: DayMealId): JournalEntryView[] {
   return selectEntries(db, eq(journalEntry.dayMealId, mealId));
 }
 
+/**
+ * Reads rows and nests them.
+ *
+ * ONE QUERY, not one per block: the parents and the children of a meal come
+ * back together and the tree is built in memory. A meal holds a handful of
+ * rows, and a query per block would be a read multiplied by something the user
+ * controls.
+ *
+ * A child whose parent is not in the result set is promoted to the top level
+ * rather than dropped. That cannot happen for a whole meal — the cascade on
+ * parent_entry_id means an orphan cannot exist — but silently swallowing a row
+ * that carries macros is the one outcome worth refusing outright: the meal's
+ * sub-total comes from SQL and would then disagree with the rows shown under
+ * it, which is a visible wrong number with no visible cause.
+ */
 function selectEntries(db: AppDatabase, where: SQL | undefined): JournalEntryView[] {
   const rows = db
     .select({
       id: journalEntry.id,
+      parentEntryId: journalEntry.parentEntryId,
       kind: journalEntry.kind,
       name: journalEntry.name,
       brand: journalEntry.brand,
       baseUnit: journalEntry.baseUnit,
       quantity: journalEntry.quantity,
       sourceFoodId: journalEntry.sourceFoodId,
+      sourceRecipeId: journalEntry.sourceRecipeId,
       portionName: journalEntry.portionName,
       portionQuantity: journalEntry.portionQuantity,
       protein100: journalEntry.protein100,
@@ -220,7 +292,7 @@ function selectEntries(db: AppDatabase, where: SQL | undefined): JournalEntryVie
     .orderBy(asc(journalEntry.position), asc(journalEntry.id))
     .all();
 
-  return rows.map((row) => {
+  const views = rows.map((row) => {
     // Destructured so the null checks actually narrow: a boolean computed
     // ahead of time tells TypeScript nothing about the properties it read.
     const { protein100, carbs100, fat100, kcal100 } = row;
@@ -232,7 +304,7 @@ function selectEntries(db: AppDatabase, where: SQL | undefined): JournalEntryVie
         ? { protein: protein100, carbs: carbs100, fat: fat100, kcal: kcal100 }
         : null;
 
-    return {
+    const view: JournalEntryView = {
       id: row.id,
       kind: row.kind,
       name: row.name,
@@ -240,20 +312,73 @@ function selectEntries(db: AppDatabase, where: SQL | undefined): JournalEntryVie
       baseUnit: row.baseUnit,
       quantity: row.quantity,
       sourceFoodId: row.sourceFoodId,
+      sourceRecipeId: row.sourceRecipeId,
       portionName: row.portionName,
       portionQuantity: row.portionQuantity,
       reference,
       total:
         reference === null || row.quantity === null ? null : totalOf(reference, row.quantity),
+      children: [],
     };
+
+    return { view, parentEntryId: row.parentEntryId };
   });
+
+  const byId = new Map(views.map((entry) => [entry.view.id, entry.view]));
+  const top: JournalEntryView[] = [];
+
+  for (const { view, parentEntryId } of views) {
+    const parent = parentEntryId === null ? undefined : byId.get(parentEntryId);
+    if (parent === undefined) {
+      top.push(view);
+    } else {
+      parent.children.push(view);
+    }
+  }
+
+  // The parent's figure, once its children are in: it has no reference of its
+  // own to scale, so this is the only total it can state — and it is what the
+  // journal row shows beside the meal's sub-total.
+  for (const view of top) {
+    if (view.children.length === 0) continue;
+    view.total = sumMacros(
+      view.children.map((child) => child.total ?? ZERO_MACROS),
+    );
+  }
+
+  return top;
 }
 
 export interface RecentMeal {
   mealId: DayMealId;
   date: LocalDate;
   name: string;
+  /**
+   * How many lines the meal holds — DERIVED FROM entryNames, never counted
+   * separately.
+   *
+   * It was a count(*) over the join until slice 6, and that quietly stopped
+   * being the same number: the join sees the ingredient rows of a grouped
+   * block, the names do not. A meal of "Amorce + Curry" was reported as four
+   * lines while naming two, and the accessibility label read the
+   * contradiction out loud.
+   *
+   * One source, so they cannot disagree again.
+   */
   entryCount: number;
+  /**
+   * What is IN the meal, in the order it was logged.
+   *
+   * TOP-LEVEL LINES ONLY: a grouped recipe block contributes its own name, not
+   * its ingredients. A meal is made of the things that were chosen, and the
+   * ingredients of a recipe were not chosen one by one — listing them would
+   * make a three-line meal read as an eleven-line one.
+   *
+   * The row shows these instead of a count, because "8 lignes" says how much
+   * there is and never what it is: two meals of eight lines are told apart by
+   * nothing at all, which is the one thing a recents list has to do.
+   */
+  entryNames: string[];
   /** What the meal came to, derived here and never stored (D9). */
   kcal: number;
 }
@@ -282,12 +407,15 @@ export interface RecentMeal {
  * sorting by creation time and created_at being nullable in the frozen schema.
  */
 export function readRecentMeals(db: AppDatabase, limit = 10): RecentMeal[] {
-  return db
+  const rows = db
     .select({
       mealId: dayMeal.id,
       date: dayMeal.date,
       name: dayMeal.name,
-      entryCount: sql<number>`count(${journalEntry.id})`,
+      // Over EVERY row, children included: the parent of a block carries NULL
+      // macros and SUM ignores it, so this is the clause-free expression the
+      // whole schema rests on (D5/R2). It is the count, not the sum, that had
+      // to learn about the tree.
       kcal: sql<number | null>`sum(${journalEntry.quantity} * ${journalEntry.kcal100} / 100.0)`,
     })
     .from(dayMeal)
@@ -298,14 +426,60 @@ export function readRecentMeals(db: AppDatabase, limit = 10): RecentMeal[] {
       sql`max(${journalEntry.id}) desc`,
     )
     .limit(limit)
-    .all()
-    .map((row) => ({
+    .all();
+
+  const names = entryNamesByMeal(
+    db,
+    rows.map((row) => row.mealId),
+  );
+
+  return rows.map((row) => {
+    const entryNames = names.get(row.mealId) ?? [];
+    return {
       mealId: row.mealId,
       date: row.date,
       name: row.name,
-      entryCount: row.entryCount,
+      entryCount: entryNames.length,
+      entryNames,
       kcal: row.kcal ?? 0,
-    }));
+    };
+  });
+}
+
+/**
+ * The top-level line names of several meals, in ONE query, keyed by meal.
+ *
+ * One query rather than one per meal: the list is capped at ten today, and a
+ * read per row is the cost slice 4 already refused when it extended the
+ * quantity from the recents to a whole library. The shape is the one
+ * tagsByRecipe and portionsByFood already use.
+ *
+ * parent_entry_id IS NULL is the whole of "top-level": it drops the ingredient
+ * lines of a grouped block and keeps the block itself (D5/R2).
+ */
+function entryNamesByMeal(
+  db: AppDatabase,
+  mealIds: readonly DayMealId[],
+): Map<DayMealId, string[]> {
+  const byMeal = new Map<DayMealId, string[]>();
+  if (mealIds.length === 0) return byMeal;
+
+  const rows = db
+    .select({ mealId: journalEntry.dayMealId, name: journalEntry.name })
+    .from(journalEntry)
+    .where(
+      and(inArray(journalEntry.dayMealId, [...mealIds]), isNull(journalEntry.parentEntryId)),
+    )
+    .orderBy(asc(journalEntry.position), asc(journalEntry.id))
+    .all();
+
+  for (const row of rows) {
+    const existing = byMeal.get(row.mealId);
+    if (existing === undefined) byMeal.set(row.mealId, [row.name]);
+    else existing.push(row.name);
+  }
+
+  return byMeal;
 }
 
 /**
@@ -321,6 +495,13 @@ export interface ReplayableEntry {
   position: number;
   kind: JournalEntryKind;
   sourceFoodId: FoodId | null;
+  /**
+   * CARRIED, where slice 5 did not carry it — and it was not an oversight so
+   * much as a column with no user yet. Replaying a meal that holds a grouped
+   * block would otherwise produce a correct block that no longer knows which
+   * recipe it came from, and nothing on screen would say so.
+   */
+  sourceRecipeId: RecipeId | null;
   name: string;
   brand: string | null;
   baseUnit: BaseUnit | null;
@@ -341,6 +522,7 @@ export function readEntriesForReplay(db: AppDatabase, mealId: DayMealId): Replay
       position: journalEntry.position,
       kind: journalEntry.kind,
       sourceFoodId: journalEntry.sourceFoodId,
+      sourceRecipeId: journalEntry.sourceRecipeId,
       name: journalEntry.name,
       brand: journalEntry.brand,
       baseUnit: journalEntry.baseUnit,

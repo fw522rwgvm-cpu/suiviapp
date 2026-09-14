@@ -54,7 +54,14 @@ export function SeedSection() {
                 // where the seed is pinned.
                 seed: Date.now() % 100000,
               });
-              setOutcome(`${report.entries} entrées sur ${report.days} journées.`);
+              // The recipes are named only when some were actually created:
+              // pressing twice reuses the library rather than duplicating it,
+              // so a second run legitimately reports none.
+              setOutcome(
+                report.recipes === 0
+                  ? `${report.entries} entrées sur ${report.days} journées.`
+                  : `${report.entries} entrées sur ${report.days} journées, ${report.recipes} recettes.`,
+              );
             } catch (error) {
               setOutcome(error instanceof Error ? error.message : String(error));
             } finally {

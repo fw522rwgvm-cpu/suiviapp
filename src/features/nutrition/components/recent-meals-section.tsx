@@ -1,13 +1,13 @@
-import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Text } from '@/core/ui/text';
 import { currentLocalDate, type LocalDate } from '@/core/date';
 import { formatDayShort, formatKcal } from '@/core/format';
 import { useTheme } from '@/core/theme';
+import { GlassButton } from '@/core/ui/glass-button';
 import { ListSeparator } from '@/core/ui/list-separator';
-import { useDismiss } from '@/core/ui/overlay-panel';
-import { useAddRecentMeal, useRecentMeals } from '../data/day-queries';
+import { useRecentMeals } from '../data/day-queries';
+import type { RecentMeal } from '../data/day-reads';
 
 /**
  * Recent meals, on the quick-access screen (specs 8.4a).
@@ -15,45 +15,69 @@ import { useAddRecentMeal, useRecentMeals } from '../data/day-queries';
  * > Meals: recent ones. Selecting a recent meal adds all of its entries at
  * > once to the target meal.
  *
- * ## IT WRITES DIRECTLY, WHERE EVERYTHING ELSE ON THIS SCREEN IS STAGED
+ * ## IT ARRIVES AS SEVERAL LINES, ONE PER TOP-LEVEL ENTRY
  *
- * A tension worth naming rather than smoothing over. Specs 8.4 v2.3 says
- * nothing is written before "Confirmer"; 8.4a says selecting a recent meal
- * "adds all of its entries AT ONCE". The basket rule names the two things it
- * governs — choosing a food, and typing a free entry — and a recent meal is
- * neither: it is a whole meal in one gesture, which is its entire reason to
- * exist. Staging it would turn one tap into one tap plus a confirmation, for
- * the one action on this screen that is already complete when it is made.
+ * Not as one "the whole meal" line, which is what it was first staged as. The
+ * difference is what the user can then do: a meal that lands as four lines can
+ * have one of them removed, or corrected, before anything is written. As one
+ * line it was all or nothing, which is the very thing the basket exists to
+ * avoid.
  *
- * So it writes, in one transaction, and closes. It is undone the way any other
- * line is: swipe, then tap.
+ * A grouped recipe inside it stays ONE line: it is one of the things that were
+ * chosen, and its ingredients were never chosen one by one.
+ *
+ * ## IT FILLS THE BASKET, LIKE EVERYTHING ELSE ON THIS SCREEN
+ *
+ * It used to write and close, and that was a considered exception: specs 8.4a
+ * says selecting a recent meal "adds all of its entries AT ONCE", and the
+ * basket rule of 8.4 v2.3 names only the two things it governs — choosing a
+ * food and typing a free entry. Staging it looked like turning one tap into
+ * one tap plus a confirmation.
+ *
+ * REVERSED ON REQUEST, and the argument against it was weaker than it looked:
+ * the cost is one tap on a "Confirmer" that is already there for the rest of
+ * the meal, and what it buys is that a recent meal can be combined with a
+ * food, corrected before it lands, and removed without having been written.
+ * Three things the exception made impossible. "AT ONCE" is satisfied by the
+ * one gesture that fills the basket; nothing in 8.4a says the gesture has to
+ * reach the database.
+ *
+ * The panel no longer closes either — the basket is the destination, and it is
+ * confirmed with whatever else is in it.
  */
 export function RecentMealsSection({
-  date,
   mealPosition,
+  onPick,
 }: {
-  date: LocalDate;
   /** Null while no meal is targeted; the section then renders nothing. */
   mealPosition: number | null;
+  /** Stages the meal. Nothing is written until "Confirmer" (specs 8.4 v2.3). */
+  onPick: (meal: RecentMeal) => void;
 }) {
   const theme = useTheme();
   // Read once and frozen for the life of the panel, as the Journal does: one
   // function decides what today is (D3), and a label must not change under a
   // list because midnight went past while it was open.
   const [today] = useState<LocalDate>(() => currentLocalDate());
-  // Inside the panel, so this folds the window away rather than cutting it.
-  const dismiss = useDismiss();
-
   const recents = useRecentMeals();
-  const add = useAddRecentMeal();
 
   const meals = recents.data ?? [];
-  if (mealPosition === null || meals.length === 0) return null;
+
+  if (mealPosition === null) return null;
+
+  if (meals.length === 0) {
+    return (
+      <Text style={[styles.emptyText, { color: theme.colors.textMuted }]}>
+        Aucun repas récent. Ils apparaissent ici dès qu’un repas a été enregistré.
+      </Text>
+    );
+  }
 
   return (
+    // NO HEADING OF ITS OWN since slice 6: the filter above the list already
+    // says "Repas", and a card headed by the name of the tab that selected it
+    // is the same word twice in the space of an inch.
     <View style={styles.section}>
-      <Text style={[styles.sectionTitle, { color: theme.colors.textMuted }]}>Repas</Text>
-
       <View
         style={[
           styles.card,
@@ -68,16 +92,16 @@ export function RecentMealsSection({
           <View key={meal.mealId}>
             {index === 0 ? null : <ListSeparator />}
             <Pressable
-              onPress={() =>
-                add.mutate(
-                  { date, mealPosition, sourceMealId: meal.mealId },
-                  { onSuccess: dismiss },
-                )
-              }
+              onPress={() => onPick(meal)}
               accessibilityRole="button"
+              // VoiceOver gets the COUNT as well as the names: it reads the
+              // whole label whatever the width, so nothing is cut here and
+              // "huit lignes" is the summary the sighted reader gets from the
+              // ellipsis.
               accessibilityLabel={
                 `${meal.name} du ${formatDayShort(meal.date, today)}, ` +
-                `${meal.entryCount} lignes, ${formatKcal(meal.kcal)} kcal`
+                `${meal.entryCount} ${meal.entryCount === 1 ? 'ligne' : 'lignes'} : ` +
+                `${describeMealContents(meal)}, ${formatKcal(meal.kcal)} kcal`
               }
               style={styles.row}
             >
@@ -85,9 +109,21 @@ export function RecentMealsSection({
                 <Text style={[styles.name, { color: theme.colors.text }]} numberOfLines={1}>
                   {meal.name}
                 </Text>
+                {/*
+                  WHAT IS IN IT, not how much of it there is.
+                  
+                  "8 lignes" says how big the meal was and never what it was:
+                  two meals of eight lines are told apart by nothing at all,
+                  which is the one thing this list has to do. The names are
+                  what was chosen — a grouped recipe contributes its own name
+                  rather than its ingredients.
+
+                  ONE LINE, cut by the platform. Nothing measures it: a list
+                  that fits is rare and a list that is cut still names the
+                  first two or three things, which is what identifies the meal.
+                */}
                 <Text style={[styles.detail, { color: theme.colors.textMuted }]} numberOfLines={1}>
-                  {`${formatDayShort(meal.date, today)} · ` +
-                    `${meal.entryCount === 1 ? '1 ligne' : `${meal.entryCount} lignes`}`}
+                  {`${formatDayShort(meal.date, today)} · ${describeMealContents(meal)}`}
                 </Text>
               </View>
 
@@ -95,7 +131,26 @@ export function RecentMealsSection({
               <Text style={[styles.kcal, { color: theme.colors.textMuted }]}>
                 {`${formatKcal(meal.kcal)} kcal`}
               </Text>
-              <SymbolView name="plus.circle" size={22} tintColor={theme.colors.accent} />
+
+              {/*
+                A REAL BUTTON NOW, where a plain glyph sat before.
+                
+                It does exactly what the row does — there is no quantity screen
+                behind a meal, so there is no second thing for the row to mean.
+                It is here because the three lists now read as one grammar: a
+                food row, a recipe row and a meal row all carry a "+" that adds
+                what the row says, and a decorative plus among two real ones
+                would be the one that does not respond.
+
+                Glass, like the others: a list row is content, and content gets
+                no material from the system for free.
+              */}
+              <GlassButton
+                symbol="plus"
+                onPress={() => onPick(meal)}
+                tintColor={theme.colors.accent}
+                accessibilityLabel={`Ajouter ${meal.name}`}
+              />
             </Pressable>
           </View>
         ))}
@@ -107,6 +162,24 @@ export function RecentMealsSection({
       </Text>
     </View>
   );
+}
+
+/**
+ * The things a meal was made of, as one line.
+ *
+ * Joined with a comma because they are a list of peers, where the "·" of the
+ * rows elsewhere separates facts of different kinds — here the date is the
+ * other kind and keeps the dot.
+ *
+ * Falls back to the count when there is nothing to name, which cannot happen
+ * for a meal the query returned (it joins on at least one entry) but would
+ * otherwise render a dangling separator.
+ */
+function describeMealContents(meal: { entryNames: readonly string[]; entryCount: number }): string {
+  if (meal.entryNames.length === 0) {
+    return meal.entryCount === 1 ? '1 ligne' : `${meal.entryCount} lignes`;
+  }
+  return meal.entryNames.join(', ');
 }
 
 const styles = StyleSheet.create({
@@ -126,4 +199,5 @@ const styles = StyleSheet.create({
   detail: { fontSize: 13 },
   kcal: { fontSize: 13, fontVariant: ['tabular-nums'] },
   note: { fontSize: 12, lineHeight: 16, marginHorizontal: 4 },
+  emptyText: { fontSize: 15, lineHeight: 21 },
 });

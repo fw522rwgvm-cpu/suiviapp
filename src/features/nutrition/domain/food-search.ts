@@ -164,9 +164,22 @@ export function foldForSearch(value: string, canNormalize: boolean = CAN_NORMALI
   return foldByTable(decomposed).replace(/\s+/g, ' ').trim();
 }
 
+/**
+ * What this module needs to rank something: a name, and a brand if the thing
+ * has one.
+ *
+ * THE BRAND IS OPTIONAL because slice 6 brought a second kind of entity into
+ * this list. A recipe has a name and no brand — not a null brand, no brand at
+ * all — and adding the column to RecipeListItem to satisfy a signature would
+ * have been the view bending to the search rather than the other way round.
+ *
+ * Widening the shape is the smaller change and the honest one: the search
+ * ranks a name first and a brand second, and "no brand" and "brand unknown"
+ * score identically anyway.
+ */
 export interface SearchableFood {
   name: string;
-  brand: string | null;
+  brand?: string | null;
 }
 
 /**
@@ -190,7 +203,9 @@ export function scoreFood(food: SearchableFood, foldedTerm: string): number {
   if (name.includes(` ${foldedTerm}`)) return 60;
   if (name.includes(foldedTerm)) return 40;
 
-  const brand = food.brand === null ? '' : foldForSearch(food.brand);
+  // Nullish rather than null: an entity with no brand column at all is the
+  // recipe case, and calling the fold on undefined would throw.
+  const brand = food.brand == null ? '' : foldForSearch(food.brand);
   if (brand.startsWith(foldedTerm)) return 20;
   if (brand.includes(foldedTerm)) return 10;
 

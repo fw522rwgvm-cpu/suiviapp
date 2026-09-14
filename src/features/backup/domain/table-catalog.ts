@@ -25,7 +25,7 @@
  */
 
 import { getTableColumns, getTableName, is } from 'drizzle-orm';
-import { SQLiteTable, type SQLiteColumn } from 'drizzle-orm/sqlite-core';
+import { getTableConfig, SQLiteTable, type SQLiteColumn } from 'drizzle-orm/sqlite-core';
 import {
   day,
   dayMeal,
@@ -36,8 +36,13 @@ import {
   journalEntry,
   planningOverride,
   planningWeekday,
+  recipe,
+  recipeIngredient,
+  recipeStep,
+  recipeTag,
   setting,
   PORTION_NAMES,
+  YIELD_TYPES,
 } from '@/core/db/schema';
 import * as schema from '@/core/db/schema';
 
@@ -67,6 +72,17 @@ export interface ExportColumn {
    * missing. The database's own rule does the reasoning.
    */
   hasDefault: boolean;
+  /**
+   * Whether this column is PART OF the primary key — single or composite.
+   *
+   * Composite keys are the reason this is not simply Drizzle's column.primary.
+   * A key declared with primaryKey({ columns: [...] }) leaves that flag FALSE
+   * on every column and lives on the table instead, so reading the column
+   * alone reported recipe_tag as having no key at all. That failed the
+   * coverage test loudly and would have dropped this table's ORDER BY
+   * silently, which is the half that matters: two exports of the same data
+   * would have stopped being the same file.
+   */
   isPrimaryKey: boolean;
   value: ValueRule | null;
   /**
@@ -136,6 +152,20 @@ const EXPORT_ORDER: readonly { table: SQLiteTable; introducedIn: string }[] = [
   { table: planningOverride, introducedIn: '0004_templates_planning' },
   { table: food, introducedIn: '0002_food' },
   { table: foodPortion, introducedIn: '0002_food' },
+  /**
+   * Recipes sit AFTER the foods and before the journal, because that is the
+   * only position the dependencies allow: recipe_ingredient.food_id carries a
+   * real foreign key to food, so food must land first, and nothing in the
+   * journal block references a recipe by key — source_recipe_id is
+   * informative, without a live link.
+   *
+   * recipe leads its own block, the other three referencing it, exactly as
+   * day_template leads the planning block.
+   */
+  { table: recipe, introducedIn: '0005_recipes' },
+  { table: recipeTag, introducedIn: '0005_recipes' },
+  { table: recipeStep, introducedIn: '0005_recipes' },
+  { table: recipeIngredient, introducedIn: '0005_recipes' },
   { table: day, introducedIn: '0001_journal' },
   { table: dayMeal, introducedIn: '0001_journal' },
   { table: journalEntry, introducedIn: '0001_journal' },
@@ -216,6 +246,49 @@ const VALUE_RULES: Record<string, Record<string, ValueRule>> = {
     date: { rule: 'civil_date' },
     template_id: { rule: 'entity_id' },
   },
+  recipe: {
+    id: { rule: 'entity_id' },
+    /**
+     * The closed set of YIELD_TYPES, named from the schema rather than
+     * respelled — the shape PORTION_NAMES set in slice 3.
+     *
+     * Unlike food_portion.name this one ALSO carries a CHECK, and the two
+     * barriers answer different questions. The CHECK exists because widening
+     * this set breaks a calculation rather than a label; the rule exists
+     * because D7 wants a hand-repaired file to be told the table, the row and
+     * the column instead of being handed a constraint name.
+     */
+    yield_type: { rule: 'one_of', allowed: YIELD_TYPES },
+    created_at: { rule: 'epoch_ms' },
+    updated_at: { rule: 'epoch_ms' },
+  },
+  recipe_tag: {
+    recipe_id: { rule: 'entity_id' },
+    /**
+     * `tag` carries no rule, and there is none to give: specs 8.6 states no
+     * vocabulary because the whole point of a tag is that the user invents it.
+     * This is food_portion.name's argument with nothing left to weigh.
+     */
+  },
+  recipe_step: {
+    id: { rule: 'entity_id' },
+    recipe_id: { rule: 'entity_id' },
+  },
+  recipe_ingredient: {
+    id: { rule: 'entity_id' },
+    recipe_id: { rule: 'entity_id' },
+    food_id: { rule: 'entity_id' },
+    unit: { rule: 'one_of', allowed: ['g', 'ml'] },
+    frozen_base_unit: { rule: 'one_of', allowed: ['g', 'ml'] },
+    frozen_at: { rule: 'epoch_ms' },
+    /**
+     * WHAT NO RULE HERE CAN EXPRESS, stated so the gap is deliberate rather
+     * than forgotten: that food_id and the frozen columns are exclusive
+     * (D5/R3). Rules are per-column, and this one spans two. ck_ingredient_link
+     * carries it in SQL instead — the one place in this schema where the CHECK
+     * is the only barrier available and therefore the stronger one.
+     */
+  },
   day: {
     date: { rule: 'civil_date' },
     /**
@@ -246,6 +319,16 @@ const VALUE_RULES: Record<string, Record<string, ValueRule>> = {
      * leaves past entries intact (specs 5.3).
      */
     source_food_id: { rule: 'entity_id' },
+    /**
+     * Declarable only now that RecipeId exists, and strictly stronger than
+     * before — the third time this exact pattern runs, after source_food_id in
+     * slice 3 and template_id_snapshot in slice 5.
+     *
+     * It stays a rule rather than becoming a foreign key: the column is
+     * informative, without a live link, so that deleting a recipe leaves every
+     * grouped block that came from it intact (specs 5.2, 5.3).
+     */
+    source_recipe_id: { rule: 'entity_id' },
     kind: { rule: 'one_of', allowed: ['food', 'recipe', 'recipe_item', 'free'] },
     base_unit: { rule: 'one_of', allowed: ['g', 'ml'] },
     created_at: { rule: 'epoch_ms' },
@@ -267,10 +350,32 @@ function toKind(columnType: string): ColumnKind {
   }
 }
 
+/**
+ * The SQL names making up a table's primary key, single or composite.
+ *
+ * Drizzle states the two forms in two places and neither knows about the
+ * other: a single-column key sets column.primary, and a composite one lands in
+ * getTableConfig().primaryKeys with column.primary left false throughout.
+ * Reading only the first is what made recipe_tag look keyless.
+ */
+function primaryKeyNames(table: SQLiteTable): Set<string> {
+  const names = new Set<string>();
+
+  for (const column of Object.values(getTableColumns(table))) {
+    if (column.primary) names.add(column.name);
+  }
+  for (const key of getTableConfig(table).primaryKeys) {
+    for (const column of key.columns) names.add(column.name);
+  }
+
+  return names;
+}
+
 function describe(entry: { table: SQLiteTable; introducedIn: string }): ExportedTable {
   const { table, introducedIn } = entry;
   const name = getTableName(table);
   const rules = VALUE_RULES[name] ?? {};
+  const keyColumns = primaryKeyNames(table);
 
   const columns: ExportColumn[] = Object.entries(getTableColumns(table)).map(
     ([property, column]) => ({
@@ -279,7 +384,7 @@ function describe(entry: { table: SQLiteTable; introducedIn: string }): Exported
       kind: toKind(column.columnType),
       notNull: column.notNull,
       hasDefault: column.hasDefault,
-      isPrimaryKey: column.primary,
+      isPrimaryKey: keyColumns.has(column.name),
       value: rules[column.name] ?? null,
       column,
     }),
