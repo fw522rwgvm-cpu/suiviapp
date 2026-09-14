@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, between, eq, inArray, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
 import type { LocalDate } from '@/core/date';
 import type { AppDatabase } from '@/core/db/database';
 import {
@@ -540,4 +540,95 @@ export function readEntriesForReplay(db: AppDatabase, mealId: DayMealId): Replay
     // in a single pass.
     .orderBy(asc(journalEntry.parentEntryId), asc(journalEntry.position), asc(journalEntry.id))
     .all();
+}
+
+/**
+ * What was eaten on each day of a range, one row per day that has anything.
+ *
+ * ## IT LIVES HERE, BESIDE readDayTotals, AND THAT IS DELIBERATE
+ *
+ * The statistics panel needs exactly the sum readDayTotals computes, day by
+ * day over ninety of them. Writing that expression a second time in
+ * features/stats would put two definitions of "what this day came to" in the
+ * application, free to drift — and amendment 9.6 no 11 records what that costs
+ * when it happened with recipe sums. They share `macroSum` instead, which is
+ * one definition with two GROUP BY clauses over it.
+ *
+ * No clause filtering childless rows, and still right for the same reason
+ * readDayTotals gives: a grouped recipe parent carries NULL macros and SUM
+ * ignores NULLs, so double counting is impossible rather than avoided (D5/R2).
+ *
+ * SPARSE ON PURPOSE. A day nobody logged has no row, and the caller turns the
+ * absence into a gap rather than a zero. Returning zeros here would make the
+ * distinction between "ate nothing" and "wrote nothing down" unrecoverable by
+ * the time anyone could act on it — and specs 8.7 no 1 rests on that exact
+ * distinction.
+ *
+ * Served by ix_entry_date, which schema 2.3 puts on the denormalised date
+ * column for precisely this: a range scan feeding a grouped aggregate.
+ */
+export function readDailyTotals(
+  db: AppDatabase,
+  from: LocalDate,
+  to: LocalDate,
+): Map<LocalDate, Macros> {
+  const rows = db
+    .select({ date: journalEntry.date, ...macroSum })
+    .from(journalEntry)
+    .where(between(journalEntry.date, from, to))
+    .groupBy(journalEntry.date)
+    .all();
+
+  return new Map(rows.map((row) => [row.date, toMacros(row)]));
+}
+
+/**
+ * Each day's goal over a range — the sum of its meals' (specs 8.1).
+ *
+ * ## THE FOUR "IS NOT NULL" CLAUSES ARE THE WHOLE POINT
+ *
+ * readTargets treats a meal's four target columns as ALL FOUR OR NONE: a
+ * partial set is a target nobody could read, so it counts as no target at all.
+ * SQL does not agree on its own — `sum(target_protein)` happily ignores the
+ * NULLs in the other three columns and returns a protein goal for a meal that
+ * readTargets says has no goal.
+ *
+ * Nothing this application writes produces such a row. An archive repaired by
+ * hand does, and `day_meal` has no CHECK to stop it (amendment 14.6 no 16
+ * explains why it never will). So the clauses are what keeps the two readings
+ * of the same four columns in agreement, and a test pins them together against
+ * a generated journal rather than trusting the care that wrote them.
+ *
+ * Sparse like the totals: a virtual day has no day_meal rows at all, and a
+ * materialised day whose meals carry no goal produces none either. Both are
+ * "no goal", which is what the caller needs to tell apart from "a goal of
+ * zero".
+ */
+export function readDailyTargets(
+  db: AppDatabase,
+  from: LocalDate,
+  to: LocalDate,
+): Map<LocalDate, Macros> {
+  const rows = db
+    .select({
+      date: dayMeal.date,
+      protein: sql<number | null>`sum(${dayMeal.targetProtein})`,
+      carbs: sql<number | null>`sum(${dayMeal.targetCarbs})`,
+      fat: sql<number | null>`sum(${dayMeal.targetFat})`,
+      kcal: sql<number | null>`sum(${dayMeal.targetKcal})`,
+    })
+    .from(dayMeal)
+    .where(
+      and(
+        between(dayMeal.date, from, to),
+        isNotNull(dayMeal.targetProtein),
+        isNotNull(dayMeal.targetCarbs),
+        isNotNull(dayMeal.targetFat),
+        isNotNull(dayMeal.targetKcal),
+      ),
+    )
+    .groupBy(dayMeal.date)
+    .all();
+
+  return new Map(rows.map((row) => [row.date, toMacros(row)]));
 }
