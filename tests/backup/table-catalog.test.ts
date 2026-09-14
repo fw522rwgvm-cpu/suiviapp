@@ -34,7 +34,7 @@ describe('table catalog', () => {
     expect(unclassified).toEqual([]);
   });
 
-  it('carries the tables of slices 0 to 6, parents before children', () => {
+  it('carries the tables of slices 0 to 8, parents before children', () => {
     // The importer follows this order, never the file's key order.
     //
     // The planning block sits between the settings and the reference data, so
@@ -45,6 +45,11 @@ describe('table catalog', () => {
     // the only position its dependencies allow: recipe_ingredient.food_id is
     // a real foreign key to food, and nothing in the journal references a
     // recipe by key.
+    //
+    // The weight block sits last, and its position is the one that is
+    // genuinely free: neither table carries a foreign key in either direction.
+    // Kept together rather than filed by kind, because weight is a domain of
+    // its own with nothing joining it to nutrition.
     expect(exportedTables().map((table) => table.name)).toEqual([
       'setting',
       'day_template',
@@ -60,6 +65,8 @@ describe('table catalog', () => {
       'day',
       'day_meal',
       'journal_entry',
+      'weight_goal',
+      'weight_measure',
     ]);
   });
 

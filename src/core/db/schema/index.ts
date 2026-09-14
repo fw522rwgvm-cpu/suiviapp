@@ -7,3 +7,4 @@ export * from './planning';
 export * from './nutrition';
 export * from './recipes';
 export * from './off';
+export * from './weight';
