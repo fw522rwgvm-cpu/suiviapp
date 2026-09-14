@@ -92,6 +92,40 @@ describe('nutritionPanel', () => {
     expect(panel.meanTargetKcal).toBe(2200);
   });
 
+  it('smooths each macro over the same week as the calories', () => {
+    const panel = nutritionPanel(
+      [
+        day('2026-09-12', macros(100, 200, 60, 1800), null),
+        day('2026-09-13', macros(200, 300, 80, 2200), null),
+      ],
+      10,
+      TODAY,
+    );
+
+    // Each position averages the window ending on it, exactly as the calories
+    // do — the chart draws the two together on one pair of axes, so a macro
+    // smoothed differently would be a line that cannot be compared.
+    expect(panel.rollingMacroSeries.protein).toEqual([100, 150]);
+    expect(panel.rollingMacroSeries.carbs).toEqual([200, 250]);
+    expect(panel.rollingMacroSeries.fat).toEqual([60, 70]);
+    expect(panel.rollingKcalSeries).toEqual([1800, 2000]);
+  });
+
+  it('leaves the raw macros untouched beside the smoothed ones', () => {
+    // Both are kept: the smoothed series are what the chart draws, the raw ones
+    // are what they are computed from, and nothing should have to undo one to
+    // get the other.
+    const panel = nutritionPanel(
+      [day('2026-09-12', macros(100, 200, 60, 1800), null), day('2026-09-13', null, null)],
+      10,
+      TODAY,
+    );
+
+    expect(panel.macroSeries.protein).toEqual([100, null]);
+    // A gap does not reset the smoothing: the window still holds a measurement.
+    expect(panel.rollingMacroSeries.protein).toEqual([100, 100]);
+  });
+
   it('has no split when nothing was recorded', () => {
     const panel = nutritionPanel([day('2026-09-13', null, GOAL)], 10, TODAY);
     expect(panel.splits).toBeNull();

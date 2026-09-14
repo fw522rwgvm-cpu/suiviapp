@@ -31,6 +31,8 @@ export function ChartFrame({
   height,
   width,
   scale,
+  rightScale,
+  rightTint,
   /** One label per slot; empty strings are skipped, which is how thinning works. */
   xLabels,
   children,
@@ -38,12 +40,31 @@ export function ChartFrame({
   height: number;
   width: number;
   scale: VerticalScale;
+  /**
+   * A SECOND axis, on the right, for a series of another nature.
+   *
+   * > Trois écrans clés superposent des séries de natures différentes sur des
+   * > axes différents — exactement là où les bibliothèques génériques se
+   * > battent contre vous. (D13)
+   *
+   * This is the first of them. Grams and kilocalories differ by an order of
+   * magnitude, so one axis would flatten the three macro lines into the floor
+   * to make room for a calorie line — which is not a compromise, it is losing
+   * the subject to keep the context.
+   *
+   * IT DRAWS NO GRIDLINES OF ITS OWN. Two sets of horizontal rules at two sets
+   * of heights is the noise that gives dual axes their bad name; the left scale
+   * owns the lines, and this one only labels its own ticks beside them.
+   */
+  rightScale?: VerticalScale;
+  /** Tints the right labels, so it is never a guess which axis serves which. */
+  rightTint?: string;
   xLabels: readonly string[];
   children: (plot: { width: number; height: number }) => ReactNode;
 }) {
   const theme = useTheme();
 
-  const plotWidth = Math.max(1, width - GUTTER_LEFT);
+  const plotWidth = plotWidthFor(width, rightScale !== undefined);
   const plotHeight = Math.max(1, height - GUTTER_BOTTOM);
   const family = fontFamilyFor('normal', theme.fontsLoaded);
   const slot = plotWidth / Math.max(1, xLabels.length);
@@ -80,6 +101,22 @@ export function ChartFrame({
               </SvgText>
             </G>
           ))}
+
+          {rightScale === undefined
+            ? null
+            : rightScale.ticks.map((tick) => (
+                <SvgText
+                  key={`right-${tick}`}
+                  x={plotWidth + 6}
+                  y={rightScale.y(tick) + 4}
+                  fill={rightTint ?? theme.colors.textFaint}
+                  fontSize={10}
+                  fontFamily={family}
+                  textAnchor="start"
+                >
+                  {String(Math.round(tick))}
+                </SvgText>
+              ))}
 
           {/* Zero. Where the bars stand, so it is drawn a shade stronger. */}
           <Line
@@ -154,6 +191,20 @@ export const GUTTER_TOP = 10;
  * meaning two different things is how they come to disagree.
  */
 export const FRAME_TOP = 16;
+/** Room for a four-digit label to the right of the plot, when a second axis asks. */
+export const GUTTER_RIGHT = 30;
+
+/**
+ * The drawable width, given the whole width and whether a second axis is in
+ * play.
+ *
+ * Exported because the CALLER needs the same number — to lay out its bands, to
+ * clamp a tooltip — and a formula written in two places is a formula free to
+ * disagree the day a gutter changes.
+ */
+export function plotWidthFor(width: number, rightAxis = false): number {
+  return Math.max(1, width - GUTTER_LEFT - (rightAxis ? GUTTER_RIGHT : 0));
+}
 
 const styles = StyleSheet.create({
   frame: { marginTop: FRAME_TOP },

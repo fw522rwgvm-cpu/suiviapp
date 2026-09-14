@@ -48,6 +48,19 @@ export interface NutritionPanel {
    * the same rule: a day with no entry is null, never zero.
    */
   macroSeries: MacroSeries;
+  /**
+   * The same three, smoothed over a week (specs 8.7).
+   *
+   * What the chart actually draws. Ninety days of raw macros is three lines
+   * crossing each other every day — the shape of daily variation, which nobody
+   * asked about and the Journal already answers a day at a time. Smoothed, the
+   * three say whether the balance has MOVED, which is the only question a
+   * range of ninety days can be asked.
+   *
+   * The raw series stay beside them: they are what the rolling mean is computed
+   * from, and keeping both means nothing has to recompute one from the other.
+   */
+  rollingMacroSeries: MacroSeries;
 
   /** Finished days of the range — its length is the honest denominator. */
   span: number;
@@ -110,6 +123,11 @@ export function nutritionPanel(
     targetSeries,
     rollingKcalSeries: rollingMean(kcalSeries, WEEKLY_WINDOW_DAYS),
     macroSeries,
+    rollingMacroSeries: {
+      protein: rollingMean(macroSeries.protein, WEEKLY_WINDOW_DAYS),
+      carbs: rollingMean(macroSeries.carbs, WEEKLY_WINDOW_DAYS),
+      fat: rollingMean(macroSeries.fat, WEEKLY_WINDOW_DAYS),
+    },
 
     span: finished.length,
     recorded: recorded.length,
