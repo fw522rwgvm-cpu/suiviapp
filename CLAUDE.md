@@ -2480,6 +2480,43 @@ vouloir dire. Il est là parce que les trois listes se lisent maintenant comme
 une seule grammaire — et parce qu'un « plus » décoratif entre deux vrais serait
 celui qui ne répond pas.
 
+## Une ligne rejouée se corrige, comme tout ce qui est au panier
+
+**Rapporté depuis l'appareil : la quantité d'un aliment venu d'un repas ne
+pouvait pas être changée.** C'est moi qui l'avais bloqué, et le raisonnement
+était faux. Je l'avais justifié ainsi : le §8.4 v2.3 dit que toucher une ligne
+rouvre le **choix** qui l'a faite, et une ligne rejouée n'a pas été *choisie* —
+elle a été levée d'un repas passé, donc il n'y aurait rien à rouvrir.
+
+Mais c'est un aliment avec une quantité, et « combien » est exactement la
+question que le panier existe pour laisser changer avant que quoi que ce soit
+ne soit écrit. L'argument confondait *l'origine* de la ligne avec *ce qu'elle
+est*.
+
+**Trois écrans, et la branche est la forme de la ligne, pas une recherche :**
+
+- une **saisie libre** rouvre ses quatre chiffres. Ses macros *sont* le choix
+  (D5/R2), et il n'y a aucun aliment derrière elle à consulter ;
+- une ligne **pointant encore un aliment** rouvre l'écran de quantité ordinaire,
+  donc **toute** la liste de portions de l'aliment est offerte — et la ligne
+  corrigée devient une ligne d'aliment ordinaire, ce qu'elle est ;
+- une ligne dont **l'aliment est parti** rouvre contre sa propre capsule, avec
+  la portion dans laquelle elle a été loguée et aucune autre. Il n'y a plus rien
+  à interroger, et le §5.3 dit que cette suppression ne doit rien coûter à
+  l'entrée.
+
+**Le mode `frozen` de l'écran de quantité n'interroge rien**, pour la raison que
+`collectOff` n'interroge rien : tout voyage sur la ligne. Il porte **sa** portion
+et aucune autre — en offrir davantage demanderait une requête, et n'en offrir
+aucune ferait retomber « 2 tranches » sur les grammes au premier toucher, ce qui
+est exactement le défaut que cet écran venait de payer.
+
+**Et un blocage latent de la même famille, corrigé au passage.** Corriger une
+ligne dont l'aliment avait été supprimé *pendant* la session laissait l'écran
+sur les points de chargement pour toujours : `undefined` (requête en cours) et
+`null` (requête ayant répondu « pas d'aliment ») étaient repliés l'un sur
+l'autre par un `?? null`. C'est la même confusion, à une fonction d'écart.
+
 ## Un défaut trouvé sur l'appareil : la molette qui s'ouvrait en grammes
 
 **Une entrée loguée « 2 tranches » rouvrait son écran de quantité sur les

@@ -11,7 +11,7 @@ import {
 import { Text } from '@/core/ui/text';
 import { formatQuantity, parseDecimal } from '@/core/format';
 import { useTheme } from '@/core/theme';
-import type { FoodId, JournalEntryId } from '@/core/db/schema';
+import type { BaseUnit, FoodId, FoodPortionId, JournalEntryId } from '@/core/db/schema';
 import { useEntry, useUpdateFoodEntryQuantity } from '../data/day-queries';
 import { useFood, useQuantityPrefill } from '../data/food-queries';
 import type { FoodPortionView, FoodView } from '../data/food-reads';
@@ -21,6 +21,7 @@ import {
   baseQuantity,
   choiceOf,
   portionQuantity,
+  type Portion,
   type QuantityChoice,
 } from '../domain/portions';
 import { useDismiss, usePanelHeading } from '@/core/ui/overlay-panel';
@@ -109,6 +110,32 @@ type Props =
       amending?: QuantityChoice;
       onCollect: (quantity: QuantityChoice) => void;
     })
+  | (Common & {
+      /**
+       * A line LIFTED FROM A PAST MEAL, being corrected in the basket.
+       *
+       * IT MAKES NO QUERY AT ALL, for the reason collectOff makes none:
+       * everything the form needs travels on the line. The macros were
+       * resolved when the meal was expanded — the three fallbacks of specs
+       * 14.6 n° 7 are already behind it — so re-reading a food here would
+       * risk writing something other than what the basket showed.
+       *
+       * It carries ITS OWN PORTION and no others. A capsule knows the portion
+       * it was logged in and nothing about the food's current list; offering
+       * the rest would mean a query, and offering none would drop "2 tranches"
+       * to grams the moment the quantity was touched — the defect this screen
+       * has already been bitten by once.
+       */
+      mode: 'frozen';
+      name: string;
+      brand: string | null;
+      baseUnit: BaseUnit;
+      reference: Macros;
+      /** The portion it was logged in, if any. Its only alternative unit. */
+      portion: Portion | null;
+      amending: QuantityChoice;
+      onCollect: (quantity: QuantityChoice) => void;
+    })
   | (Common & { mode: 'edit'; entryId: JournalEntryId });
 
 export function QuantityScreen(props: Props) {
@@ -117,6 +144,8 @@ export function QuantityScreen(props: Props) {
       return <CollectQuantity {...props} />;
     case 'collectOff':
       return <CollectOffQuantity {...props} />;
+    case 'frozen':
+      return <FrozenQuantity {...props} />;
     case 'edit':
       return <EditQuantity {...props} />;
   }
@@ -160,6 +189,58 @@ function CollectOffQuantity({
   );
 }
 
+/**
+ * The same form, fed straight from a capsule.
+ *
+ * Nothing is read and nothing waits: the name, the unit, the macros and the
+ * portion all travel on the line, which is what makes correcting a replayed
+ * line as immediate as the line itself was.
+ */
+function FrozenQuantity({
+  name,
+  brand,
+  baseUnit,
+  reference,
+  portion,
+  amending,
+  onCollect,
+}: Common & {
+  name: string;
+  brand: string | null;
+  baseUnit: BaseUnit;
+  reference: Macros;
+  portion: Portion | null;
+  amending: QuantityChoice;
+  onCollect: (quantity: QuantityChoice) => void;
+}) {
+  return (
+    <QuantityForm
+      title={name}
+      subtitle={brand}
+      baseUnit={baseUnit}
+      reference={reference}
+      /*
+        Its own portion, or none. `[]` rather than null: there is nothing to
+        wait for, which is exactly the distinction the loading rule draws.
+      */
+      portions={
+        portion === null ? [] : [{ id: FROZEN_PORTION_ID, position: 0, ...portion }]
+      }
+      initial={amending}
+      action="Enregistrer"
+      onSubmit={onCollect}
+    />
+  );
+}
+
+/**
+ * A portion carried on a capsule has no row behind it, and needs an identifier
+ * only because FoodPortionView carries one. Nothing reads it: a journal entry
+ * freezes a portion's name and size into its own columns and holds no link to
+ * the row it came from (D5/R1).
+ */
+const FROZEN_PORTION_ID = 'frozen' as FoodPortionId;
+
 /** The caller's own ending, or the panel's — whichever this is inside. */
 function useEnding(onDone?: () => void): () => void {
   const dismiss = useDismiss();
@@ -177,6 +258,16 @@ function CollectQuantity({
 }) {
   const prefill = useQuantityPrefill(foodId);
   const loaded = prefill.data ?? null;
+  /**
+   * Answered, whatever the answer.
+   *
+   * `undefined` is the query still running; `null` is the query saying the
+   * food is not there — deleted between the basket being filled and this
+   * correction. Collapsing the two would hold the wheels for ever on the
+   * second, which is the same "not yet, never none" confusion that opened a
+   * portion on grams one function down.
+   */
+  const answered = prefill.data !== undefined;
   const correcting = amending !== undefined;
 
   return (
@@ -191,7 +282,7 @@ function CollectQuantity({
         correction rendered its wheels immediately against an empty portion
         list and landed on grams — see the note on this prop.
       */
-      portions={loaded === null ? null : loaded.food.portions}
+      portions={answered ? (loaded?.food.portions ?? []) : null}
       // A correction shows what was chosen, and it is there from the first
       // frame rather than a query away: the basket carries it.
       initial={amending ?? loaded?.quantity ?? null}

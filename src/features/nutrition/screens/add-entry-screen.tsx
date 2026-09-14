@@ -20,6 +20,7 @@ import {
 } from '../data/food-queries';
 import type { FoodListItem, QuickAddFood } from '../data/food-reads';
 import { searchFoods } from '../domain/food-search';
+import { choiceOf, type QuantityChoice } from '../domain/portions';
 import { totalOf } from '../domain/macros';
 import {
   pendingEntryKcal,
@@ -126,6 +127,22 @@ const LIST_FILTERS = [
 ] as const;
 
 type ListFilter = (typeof LIST_FILTERS)[number]['value'];
+
+/**
+ * A replayed line's quantity, in the terms it was logged in.
+ *
+ * The portion when there was one, so correcting "2 tranches" opens on slices
+ * rather than on the grams they came to — the same rule every other quantity
+ * on this screen follows, and the one the wheels were bitten by once.
+ */
+function replayChoice(entry: PendingEntry & { kind: 'replay' }): QuantityChoice {
+  return choiceOf(
+    entry.quantity,
+    entry.portionName === null || entry.portionQuantity === null
+      ? null
+      : { name: entry.portionName, quantity: entry.portionQuantity },
+  );
+}
 
 export function AddEntryScreen({
   date,
@@ -789,6 +806,83 @@ export function AddEntryScreen({
               recipeId={editing.recipeId}
               onCollect={(occurrence) => amend(amending, { kind: 'recipe', ...occurrence })}
             />
+          ) : editing.kind === 'replay' ? (
+            /*
+              A LINE LIFTED FROM A PAST MEAL IS CORRECTED LIKE ANY OTHER.
+              
+              It was not, at first, on the reading that it had not been CHOSEN
+              and so had no choice to reopen. That was wrong: it is a food with
+              a quantity, and "how much" is exactly the question the basket
+              exists to let you change before anything is written.
+
+              Which screen depends on what the line is, and the branch is the
+              line's own shape rather than a lookup:
+
+               - a FREE entry reopens its four figures. Its macros ARE the
+                 choice (D5/R2), and there is no food behind it to consult;
+               - a line still pointing at a food reopens the ordinary quantity
+                 screen, so the food's WHOLE portion list is offered — the
+                 corrected line then becomes an ordinary food line, which is
+                 what it is;
+               - a line whose food is gone reopens against its own capsule,
+                 carrying the portion it was logged in and no other. There is
+                 nothing left to query, and specs 5.3 says its deletion must
+                 cost the entry nothing.
+            */
+            editing.entryKind === 'free' ? (
+              <FreeEntryScreen
+                date={date}
+                mealPosition={mealPosition}
+                entryId={null}
+                initial={{ name: editing.name, macros: editing.reference }}
+                onCollect={(entry) =>
+                  amend(amending, {
+                    kind: 'free',
+                    name: entry.name.trim(),
+                    macros: entry.macros,
+                  })
+                }
+              />
+            ) : editing.sourceFoodId !== null ? (
+              <QuantityScreen
+                mode="collect"
+                foodId={editing.sourceFoodId}
+                amending={replayChoice(editing)}
+                onCollect={(quantity, food) =>
+                  amend(amending, {
+                    kind: 'food',
+                    foodId: food.id,
+                    name: food.name,
+                    brand: food.brand,
+                    baseUnit: food.baseUnit,
+                    reference: food.reference,
+                    quantity,
+                  })
+                }
+              />
+            ) : (
+              <QuantityScreen
+                mode="frozen"
+                name={editing.name}
+                brand={editing.brand}
+                baseUnit={editing.baseUnit ?? 'g'}
+                reference={editing.reference}
+                portion={
+                  editing.portionName === null || editing.portionQuantity === null
+                    ? null
+                    : { name: editing.portionName, quantity: editing.portionQuantity }
+                }
+                amending={replayChoice(editing)}
+                onCollect={(quantity) =>
+                  amend(amending, {
+                    ...editing,
+                    quantity: quantity.baseQuantity,
+                    portionName: quantity.portion?.name ?? null,
+                    portionQuantity: quantity.portion?.quantity ?? null,
+                  })
+                }
+              />
+            )
           ) : editing.kind === 'free' ? (
             <FreeEntryScreen
               date={date}
@@ -803,15 +897,7 @@ export function AddEntryScreen({
                 })
               }
             />
-          ) : (
-            /*
-              A replayed line, whose row hands over no press — so this branch
-              is unreachable. Rendering nothing rather than falling through to
-              the free-entry form, which would have read `macros` off a line
-              that has none.
-            */
-            null
-          )}
+          ) : null}
         </SwipeBack>
       ) : step === 'free' && mealPosition !== null ? (
         <SwipeBack key={step} onBack={backToList} behind={picker}>
@@ -1076,19 +1162,8 @@ function Basket({
                 taken back the way it was refused, by a swipe, and picked
                 again if a different one was meant.
               */
-              /*
-                A REPLAYED LINE IS NOT CORRECTABLE, and that is not an
-                omission. Specs 8.4 v2.3 says touching a line reopens the
-                choice that made it — this one was not chosen, it was lifted
-                whole from a past meal, and there is no screen behind it to
-                reopen. It is taken back the way it was refused, by a swipe.
-              */
-              onPress={entry.kind === 'replay' ? undefined : () => onEdit(index)}
-              accessibilityLabel={
-                entry.kind === 'replay'
-                  ? pendingEntryName(entry)
-                  : `Modifier ${pendingEntryName(entry)}`
-              }
+              onPress={() => onEdit(index)}
+              accessibilityLabel={`Modifier ${pendingEntryName(entry)}`}
             >
               <PendingEntryRow entry={entry} />
             </SwipeToDeleteRow>
