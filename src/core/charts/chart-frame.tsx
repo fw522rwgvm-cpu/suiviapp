@@ -33,6 +33,9 @@ export function ChartFrame({
   scale,
   rightScale,
   rightTint,
+  baseline = true,
+  formatTick = (value) => String(Math.round(value)),
+  formatRightTick = (value) => String(Math.round(value)),
   /** One label per slot; empty strings are skipped, which is how thinning works. */
   xLabels,
   children,
@@ -59,6 +62,47 @@ export function ChartFrame({
   rightScale?: VerticalScale;
   /** Tints the right labels, so it is never a guess which axis serves which. */
   rightTint?: string;
+  /**
+   * The stronger line along the foot of the plot.
+   *
+   * TRUE ONLY WHEN THE FOOT OF THE PLOT IS ZERO. It is drawn a shade heavier
+   * than a gridline because it means something a gridline does not — "this is
+   * where the bars stand" — and on a scale that does not contain zero it would
+   * be a heavy rule at an arbitrary value, saying that with emphasis.
+   *
+   * A weight curve is exactly that case: linearScale frames the values
+   * themselves, so the bottom of the plot is around 76 kg and nothing special
+   * happens there.
+   */
+  baseline?: boolean;
+  /**
+   * How a tick value is written.
+   *
+   * Defaults to whole numbers, which is right for kilocalories and grams and
+   * WRONG for anything whose ticks fall between integers. On a weight domain of
+   * 76.2 to 76.8, d3 picks 76.2, 76.4, 76.6 — and rounding those to whole
+   * numbers prints "76" three times, which reads as a rendering fault rather
+   * than as a missing formatter.
+   *
+   * Found by reasoning about the domain rather than on screen, and worth
+   * stating: nothing about a chart of identical labels says which of the two it
+   * is.
+   */
+  formatTick?: (value: number) => string;
+  /**
+   * How a tick of the RIGHT axis is written, when there is one.
+   *
+   * Its own, because the whole point of a second axis is that it carries a
+   * series of another NATURE — and a format follows the nature, not the chart.
+   * The crossed chart of specs 9.4 is the case: kilograms to one decimal on the
+   * left, whole kilocalories on the right. Sharing one formatter would print
+   * "2 450,0 kcal", which is the kind of wrong that looks like a bug in the
+   * data.
+   *
+   * Defaults to whole numbers rather than to formatTick, so a caller that sets
+   * a decimal format for its own axis does not silently inherit it here.
+   */
+  formatRightTick?: (value: number) => string;
   xLabels: readonly string[];
   children: (plot: { width: number; height: number }) => ReactNode;
 }) {
@@ -97,7 +141,7 @@ export function ChartFrame({
                 fontFamily={family}
                 textAnchor="end"
               >
-                {String(Math.round(tick))}
+                {formatTick(tick)}
               </SvgText>
             </G>
           ))}
@@ -114,19 +158,21 @@ export function ChartFrame({
                   fontFamily={family}
                   textAnchor="start"
                 >
-                  {String(Math.round(tick))}
+                  {formatRightTick(tick)}
                 </SvgText>
               ))}
 
           {/* Zero. Where the bars stand, so it is drawn a shade stronger. */}
-          <Line
-            x1={0}
-            x2={plotWidth}
-            y1={plotHeight}
-            y2={plotHeight}
-            stroke={theme.colors.border}
-            strokeWidth={1.5}
-          />
+          {baseline ? (
+            <Line
+              x1={0}
+              x2={plotWidth}
+              y1={plotHeight}
+              y2={plotHeight}
+              stroke={theme.colors.border}
+              strokeWidth={1.5}
+            />
+          ) : null}
 
           {xLabels.map((label, index) => {
             if (label === '') return null;
