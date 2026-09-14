@@ -245,6 +245,19 @@ export function JournalScreen() {
     ]);
   }
 
+  /**
+   * Recording a weight, on the date of the page it was asked from (specs 9.1).
+   *
+   * The date travels as a route parameter here, where a chosen date travels as
+   * a consumed request in the other direction. The difference is which way it
+   * points: an INPUT to a window is harmless if stale — the window closes and
+   * the parameter goes with it — whereas a date coming BACK has to be taken
+   * once and cleared, or the Journal would reopen on it (specs 7).
+   */
+  function openWeight(pageDate: LocalDate): void {
+    router.push({ pathname: '/(modals)/weight', params: { date: pageDate } });
+  }
+
   const pageProps = {
     width,
     onAdd: openAdd,
@@ -252,6 +265,7 @@ export function JournalScreen() {
     onDeleteEntry: removeEntry,
     onMealActions: promptMealActions,
     onAddMeal: promptAddMeal,
+    onWeigh: openWeight,
   };
 
   const previous = addDays(date, -1);

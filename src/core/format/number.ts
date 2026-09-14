@@ -106,3 +106,40 @@ export function formatQuantity(value: number, unit: string): string {
   const text = Number.isInteger(rounded) ? formatFixed(rounded, 0) : formatFixed(rounded, 1);
   return `${text}${GROUP_SEPARATOR}${unit}`;
 }
+
+/**
+ * "78,4 kg" — a weight, always to one decimal (specs 6.2, 9.1).
+ *
+ * ## THE DECIMAL IS NEVER DROPPED, WHERE formatQuantity DROPS IT
+ *
+ * A quantity is typed and rarely fractional, so "120 g" beats "120,0 g". A
+ * weight is MEASURED: a domestic scale reads to a tenth, and "78 kg" beside
+ * "78,4 kg" in a list would read as a rounder, less certain figure rather than
+ * as the same kind of reading. The trailing zero is what says the tenth was
+ * looked at.
+ *
+ * That is the same argument that keeps an individual journal entry's decimal
+ * while a day's total loses it: there the figure IS the measurement.
+ */
+export function formatWeight(valueKg: number): string {
+  return `${formatFixed(valueKg, 1)}${GROUP_SEPARATOR}kg`;
+}
+
+/**
+ * "−0,35 kg/sem" — a rate of change, signed, to two decimals.
+ *
+ * TWO decimals, where a weight gets one: a rate of a few hundred grams a week
+ * is the whole subject, so rounding it to a tenth would collapse 0,35 and 0,25
+ * — a difference of two kilos over three months — into the same figure.
+ *
+ * The plus sign is written where a weight would not carry one. A rate is the
+ * one number on this screen whose DIRECTION is its meaning, and an unsigned
+ * "0,35 kg/sem" beside a target of "-0,35" would read as agreement.
+ */
+export function formatRate(kgPerWeek: number): string {
+  const rounded = Math.round(kgPerWeek * 100) / 100;
+  // A rate that rounds to zero is maintenance, and "+0,00" would invent a
+  // direction nobody is travelling in.
+  const sign = rounded > 0 ? '+' : '';
+  return `${sign}${formatFixed(rounded, 2)}${GROUP_SEPARATOR}kg/sem`;
+}
