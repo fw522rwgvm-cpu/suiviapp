@@ -47,6 +47,7 @@ import {
   type CompleteOffProduct,
   type OffProduct,
 } from '../off/off-product';
+import { detourFor, type OffDetour } from '../off/off-detour';
 import { draftFromProduct } from '../off/off-draft';
 import { FoodEditorScreen } from './food-editor-screen';
 import { PendingEntryRow } from '../components/pending-entry-row';
@@ -382,32 +383,7 @@ export function AddEntryScreen({
    * window with it, and the basket with the window. It stays exactly where it
    * was — it is this screen's state, and a step does not touch it.
    */
-  const incompleteProduct: OffProduct | null =
-    lookup.data?.status === 'found' && !isCompleteProduct(lookup.data.product)
-      ? lookup.data.product
-      : /**
-         * AN UNKNOWN BARCODE TAKES THE SAME DETOUR, which specs 8.5 asks for
-         * in its own line:
-         *
-         * > Unknown barcode: offer to create a pre-filled personal food.
-         *
-         * Pre-filled with the only thing there is — the barcode itself — and
-         * that is not nothing: it is what makes the food created here
-         * deduplicate against Open Food Facts the day somebody adds the
-         * product there. A form with an empty barcode would leave the shelf
-         * unscannable for ever.
-         */
-        lookup.data?.status === 'notFound' && picked !== null
-        ? {
-            barcode: picked,
-            name: null,
-            brand: null,
-            protein100: null,
-            carbs100: null,
-            fat100: null,
-            kcal100: null,
-          }
-        : null;
+  const detour: OffDetour | null = detourFor(lookup.data, picked);
 
   /**
    * A scanned product already in the library short-circuits everything.
@@ -436,7 +412,7 @@ export function AddEntryScreen({
             ? 'quantity'
             : pickedProduct !== null
               ? 'offQuantity'
-              : incompleteProduct !== null
+              : detour !== null
                 ? 'offDraft'
                 : 'list';
 
@@ -954,10 +930,10 @@ export function AddEntryScreen({
             }}
           />
         </SwipeBack>
-      ) : step === 'offDraft' && incompleteProduct !== null ? (
+      ) : step === 'offDraft' && detour !== null ? (
         <SwipeBack key={step} onBack={backToList} behind={picker}>
           <OffDraftStep
-            product={incompleteProduct}
+            detour={detour}
             onCreated={(foodId) => {
               /*
                 Created, then chosen — two acts, in that order. The food now
@@ -1346,15 +1322,14 @@ function noticeFor(
  * thirty seconds once.
  */
 function OffDraftStep({
-  product,
+  detour,
   onCreated,
 }: {
-  product: OffProduct;
+  detour: OffDetour;
   onCreated: (foodId: FoodId) => void;
 }) {
   const theme = useTheme();
-  const missing = missingMacroLabels(product);
-  usePanelHeading(product.name ?? 'Nouvel aliment', 'À compléter');
+  usePanelHeading(detour.product.name ?? 'Nouvel aliment', 'À compléter');
   // The barcode is shown rather than hidden: it is the one thing that IS
   // known, and seeing it is how a wrong scan gets noticed before a food is
   // created under it.
@@ -1362,27 +1337,73 @@ function OffDraftStep({
   return (
     <View style={styles.fill}>
       <Text style={[styles.detour, { color: theme.colors.textMuted }]}>
-        {missing.length === 4 && product.name === null
-          ? // Nothing came back at all: an unknown barcode rather than an
-            // incomplete product. Saying "Open Food Facts does not give" here
-            // would be describing a product that does not exist.
-            'Ce code-barres est inconnu d’Open Food Facts. Créez l’aliment : il sera ' +
-            'retrouvé au prochain scan.'
-          : missing.length === 0
-            ? 'Ce produit n’a pas de nom sur Open Food Facts. Complétez-le pour l’ajouter.'
-            : `Open Food Facts ne donne pas ${listFrench(missing)} pour ce produit. Complétez${
-                missing.length === 1 ? '-la' : '-les'
-              } pour l’ajouter.`}
+        {detourText(detour)}
       </Text>
 
       <FoodEditorScreen
         foodId={null}
         presentation="panel"
-        initial={draftFromProduct(product)}
+        initial={draftFromProduct(detour.product)}
         onSaved={onCreated}
       />
     </View>
   );
+}
+
+/**
+ * Why the form opened, in the user's words.
+ *
+ * ## THE QUOTA MESSAGE LIVES HERE NOW, AND THAT IS NOT INCIDENTAL
+ *
+ * D11 makes a server-signalled quota the ONE message of this application that
+ * interrupts rather than whispers, and until now it was a banner on the list.
+ * Sending a failed scan to this form would have carried the user away from the
+ * banner — so the message comes with them. It is more visible here than it was
+ * there: a line at the top of the screen they are now on, rather than a strip
+ * above a list they have left.
+ */
+function detourText(detour: OffDetour): string {
+  switch (detour.reason) {
+    case 'notFound':
+      // Nothing came back at all: an unknown barcode rather than an incomplete
+      // product. Saying "Open Food Facts does not give" here would be
+      // describing a product that does not exist.
+      return (
+        'Ce code-barres est inconnu d’Open Food Facts. Créez l’aliment : il sera ' +
+        'retrouvé au prochain scan.'
+      );
+
+    case 'offline':
+      return (
+        'Open Food Facts n’a pas répondu. Créez l’aliment avec ce que vous avez sous ' +
+        'les yeux : il sera retrouvé au prochain scan, sans réseau.'
+      );
+
+    case 'badResponse':
+      // Never phrased as "hors ligne": the server answered, so the phone is
+      // demonstrably connected (D11, slice 4).
+      return (
+        'Open Food Facts a répondu quelque chose d’illisible. Créez l’aliment avec ce ' +
+        'que vous avez sous les yeux : il sera retrouvé au prochain scan.'
+      );
+
+    case 'throttled':
+      return (
+        'Open Food Facts a refusé la demande : trop de requêtes. Les appels distants ' +
+        'sont suspendus quelques minutes. Créez l’aliment à la main — il sera retrouvé ' +
+        'au prochain scan, sans rien demander au serveur.'
+      );
+
+    case 'incomplete': {
+      const missing = missingMacroLabels(detour.product);
+      if (missing.length === 0) {
+        return 'Ce produit n’a pas de nom sur Open Food Facts. Complétez-le pour l’ajouter.';
+      }
+      return `Open Food Facts ne donne pas ${listFrench(missing)} pour ce produit. Complétez${
+        missing.length === 1 ? '-la' : '-les'
+      } pour l’ajouter.`;
+    }
+  }
 }
 
 /** "les protéines et les calories" rather than a comma-separated list. */
