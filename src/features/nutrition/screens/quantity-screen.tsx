@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -9,6 +9,7 @@ import {
 import { Text } from '@/core/ui/text';
 import { formatQuantity, parseDecimal } from '@/core/format';
 import { useTheme } from '@/core/theme';
+import { done, TRANSITIONS } from '@/core/perf/marks';
 import { KeypadAccessory } from '@/core/ui/keypad-accessory';
 import type { BaseUnit, FoodId, FoodPortionId, JournalEntryId } from '@/core/db/schema';
 import { useEntry, useUpdateFoodEntryQuantity } from '../data/day-queries';
@@ -466,6 +467,22 @@ function QuantityBody({
    * Computed at mount from the quantity handed in, never in an effect.
    */
   const [wheel, setWheel] = useState<WheelChoice>(() => wheelFor(initial, portions));
+
+  /**
+   * Where D16's third transition ends (dev only).
+   *
+   * HERE rather than in the screen above, and the difference is the whole
+   * point of the split: this component does not mount until a quantity exists,
+   * so its first paint is the first frame on which the wheels show the right
+   * value. Reporting from the screen would have timed the arrival of an empty
+   * form.
+   *
+   * Reached from the journal's own rows too, where nothing was started — `done`
+   * answers that by recording nothing rather than inventing a duration.
+   */
+  useEffect(() => {
+    done(TRANSITIONS.pickFood);
+  }, []);
   /**
    * Whether the quantity row has become a field.
    *

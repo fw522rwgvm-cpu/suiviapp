@@ -1,11 +1,12 @@
 import { SymbolView } from 'expo-symbols';
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from '@/core/ui/text';
 import type { LocalDate } from '@/core/date';
 import { formatKcal } from '@/core/format';
 import { useTheme } from '@/core/theme';
+import { begin, done, TRANSITIONS } from '@/core/perf/marks';
 import { GlassButton } from '@/core/ui/glass-button';
 import { OverlayPanel, useDismiss, usePanelHeading } from '@/core/ui/overlay-panel';
 import { SwipeBack } from '@/core/ui/swipe-back';
@@ -177,6 +178,33 @@ export function AddEntryScreen({
   /** True while the viewfinder is open. A step, like every other one here. */
   const [scanning, setScanning] = useState(false);
   const [chosen, setChosen] = useState<FoodId | null>(null);
+
+  /**
+   * Where D16's second transition ends (dev only).
+   *
+   * On the first passive effect, so it reports once the window has PAINTED.
+   * Deliberately not "once the lists have data": D16 budgets 0.3 s for the
+   * window OPENING, and what fills it afterwards is the next step's problem.
+   * Measuring the queries here would fold two budgets into one figure and make
+   * neither diagnosable.
+   */
+  useEffect(() => {
+    done(TRANSITIONS.openAdd);
+  }, []);
+
+  /**
+   * Choosing a food, with D16's third transition started on the way.
+   *
+   * Wrapped once rather than at each of the three lists — favourites, recents,
+   * search results — so the three cannot come to disagree about what counts as
+   * choosing. The scan path sets `chosen` directly and is deliberately NOT
+   * timed here: it is its own five-second journey (specs 8.5), measured from
+   * the camera rather than from a tap.
+   */
+  function pickFood(foodId: FoodId): void {
+    begin(TRANSITIONS.pickFood);
+    setChosen(foodId);
+  }
   const [chosenRecipe, setChosenRecipe] = useState<RecipeId | null>(null);
   /**
    * Which of the three lists the screen is showing (demande explicite).
@@ -591,7 +619,7 @@ export function AddEntryScreen({
                   <Section
                     title="Mes aliments"
                     foods={results}
-                    onPick={setChosen}
+                    onPick={pickFood}
                     emptyText={`Aucun résultat pour « ${term.trim()} ».`}
                     quickAdd={repeatable}
                   />
@@ -623,13 +651,13 @@ export function AddEntryScreen({
                   <Section
                     title="Favoris"
                     foods={favorites.data ?? []}
-                    onPick={setChosen}
+                    onPick={pickFood}
                     quickAdd={repeatable}
                   />
                   <Section
                     title="Récents"
                     foods={recents.data ?? []}
-                    onPick={setChosen}
+                    onPick={pickFood}
                     quickAdd={repeatable}
                   />
                 </>
@@ -1084,6 +1112,7 @@ function Confirm({
             { onSuccess: dismiss },
           )
         }
+        onPressIn={() => begin(TRANSITIONS.confirm)}
         disabled={addEntries.isPending}
         accessibilityRole="button"
         style={[styles.confirm, { backgroundColor: theme.colors.accent }]}

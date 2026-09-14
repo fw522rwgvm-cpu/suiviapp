@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { LocalDate } from '@/core/date';
 import { useTheme } from '@/core/theme';
 import { LoadingDots } from '@/core/ui/loading-dots';
+import { done, TRANSITIONS } from '@/core/perf/marks';
 import { useMinimumVisible } from '@/core/ui/use-minimum-visible';
 import { useDay, useDayTotals, useMealTotals } from '../data/day-queries';
 import type { JournalEntryView } from '../data/day-reads';
@@ -93,6 +94,31 @@ export function DayPage({
    * that was being seen. A day is ready when all three of its queries are.
    */
   const pending = day.isPending || totals.isPending || mealTotals.isPending;
+
+  /**
+   * Where two of D16's four transitions end (dev only).
+   *
+   * A passive effect rather than a layout one, deliberately: this has to
+   * report when the figures are ON SCREEN, and a layout effect runs before
+   * paint.
+   *
+   * ## ONLY THE ACTIVE PAGE REPORTS, AND THAT IS NOT TIDINESS
+   *
+   * Three pages are mounted at once. The two neighbours are not the day
+   * anything was just added to, so their queries were never invalidated and
+   * their `pending` goes false immediately — a neighbour reporting "validation
+   * → Journal à jour" would time a page that had nothing to wait for and print
+   * a handsome figure nobody earned. Exactly the plausible-and-wrong number
+   * D15 is about.
+   *
+   * Cold start is consumed once, wherever it happens first, so it needs no
+   * such care; it is gated the same way for one answer rather than two rules.
+   */
+  useEffect(() => {
+    if (!active || pending) return;
+    done(TRANSITIONS.coldStart);
+    done(TRANSITIONS.confirm);
+  }, [active, pending, totals.dataUpdatedAt]);
 
   /**
    * Held for a full second once it has appeared at all.

@@ -8,6 +8,7 @@ import { fontFamilyFor, useTheme, type ThemePreference } from '@/core/theme';
 import { KeypadAccessory } from '@/core/ui/keypad-accessory';
 import { ListSeparator } from '@/core/ui/list-separator';
 import { DataSection } from '@/features/backup/components/data-section';
+import { PerfSection } from '../components/perf-section';
 import { SearchDiagnosticSection } from '../components/search-diagnostic-section';
 import { SeedSection } from '../components/seed-section';
 import {
@@ -154,7 +155,8 @@ export function SettingsScreen() {
         </Card>
       </Section>
 
-      {/* Renders nothing on the daily installation (D15). */}
+      {/* Render nothing on the daily installation (D15). */}
+      <PerfSection />
       <SearchDiagnosticSection />
       <SeedSection />
     </ScrollView>

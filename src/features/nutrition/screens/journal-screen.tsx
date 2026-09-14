@@ -26,6 +26,7 @@ import {
 } from '../data/day-queries';
 import type { JournalEntryView } from '../data/day-reads';
 import { DayPage } from '../components/day-page';
+import { begin, TRANSITIONS } from '@/core/perf/marks';
 import { useToday } from '@/features/settings/data/settings-queries';
 import { useRequestedDate } from '../hooks/requested-date';
 import type { DayMealView } from '../domain/day-plan';
@@ -163,6 +164,9 @@ export function JournalScreen() {
    * that existed then.
    */
   function openAdd(pageDate: LocalDate, meal: DayMealView): void {
+    // D16's second transition starts at the tap, not at the navigation: what
+    // is budgeted is how long the user waits, and they start waiting here.
+    begin(TRANSITIONS.openAdd);
     router.push({
       pathname: '/(modals)/add-entry',
       params: { date: pageDate, mealPosition: String(meal.position) },
