@@ -16,6 +16,7 @@ import type { FoodId } from '@/core/db/schema';
 import {
   useCreateFood,
   useDeleteFood,
+  useFoodByBarcode,
   useFoodDraft,
   useRecipesUsingFood,
   useSetFoodFavorite,
@@ -159,7 +160,27 @@ export function FoodEditorScreen({
   }, [stored.data, loaded, foodId]);
 
   const problems = validateFoodDraft(draft);
-  const valid = isValidFoodDraft(draft);
+
+  /**
+   * Whether another food already claims this barcode.
+   *
+   * Not a FoodProblem, and deliberately: validateFoodDraft is pure and knows
+   * no database, while uniqueness is a fact about the whole library. It joins
+   * the kcal discrepancy and the impossible-energy mark, which are also
+   * computed outside the validator and shown beside their field.
+   *
+   * Unlike those two it DOES gate the save. Specs 8.5 requires unreliable
+   * values to be marked and never refused; two foods claiming one product is
+   * not an unreliable value, it is a question a scan could not answer.
+   */
+  const typedBarcode = (draft.barcode ?? '').trim();
+  const holder = useFoodByBarcode(typedBarcode === '' ? null : typedBarcode);
+  const clash =
+    holder.data !== null && holder.data !== undefined && holder.data.id !== foodId
+      ? holder.data
+      : null;
+
+  const valid = isValidFoodDraft(draft) && clash === null;
   const theoretical = theoreticalKcal(draft.macros);
   const warn = hasKcalWarning(draft.macros);
   /**
@@ -301,6 +322,52 @@ export function FoodEditorScreen({
                 placeholder="Facultatif"
               />
             </FormRow>
+
+            {/*
+              THE BARCODE, TYPED BY HAND — which is what makes a food of one's
+              own answer a scan.
+
+              Specs 6.1 has given a food an optional barcode since the start,
+              and slice 4 carried it from Open Food Facts into the copy. What
+              was missing was the other direction: a food created here could
+              never be found by pointing the camera at the shelf, however many
+              times it was scanned.
+
+              'numbers-and-punctuation' rather than a number pad: a barcode is
+              digits in practice and "whatever the scanner read" by rule (see
+              food-draft), so the keyboard leans on the digits while leaving the
+              letters one tap away. It is also a standard keyboard, so it has a
+              return key — no accessory bar needed, unlike a true number pad.
+            */}
+            <FormRow label="Code-barres">
+              <FormInput
+                value={draft.barcode ?? ''}
+                onChangeText={(barcode) => setDraft((current) => ({ ...current, barcode }))}
+                placeholder="Facultatif"
+                keyboardType="numbers-and-punctuation"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </FormRow>
+
+            {/*
+              SAID HERE, BEFORE SAVING, rather than caught afterwards.
+
+              requireFreeBarcode already refuses a second food for one barcode,
+              and it THROWS — "a SQLite error naming a constraint, thrown from
+              inside a basket transaction that then rolls a whole meal back".
+              That is the right backstop and the wrong first line of defence.
+              This reads the index the moment the field changes and names the
+              food actually holding the code.
+            */}
+            {clash === null ? null : (
+              <FormRow>
+                <Text style={[styles.warning, { color: theme.colors.danger }]}>
+                  Ce code-barres est déjà celui de « {clash.name} ». Un produit ne peut
+                  désigner qu’un seul aliment, sinon un scan n’aurait pas de réponse.
+                </Text>
+              </FormRow>
+            )}
           </FormSection>
 
           {/*
