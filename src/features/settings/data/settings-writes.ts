@@ -1,6 +1,9 @@
 import { eq } from 'drizzle-orm';
+import { normalizeCutoffHour } from '@/core/date';
 import type { AppDatabase } from '@/core/db/database';
 import { setting } from '@/core/db/schema';
+import type { ThemePreference } from '@/core/theme/tokens';
+import { normalizeAdherenceTolerance } from '../domain/preferences';
 import { SETTING_KEYS } from './settings-reads';
 
 /**
@@ -76,4 +79,38 @@ export function recordExport(db: AppDatabase, at: number): void {
  */
 export function recordImportedArchive(db: AppDatabase, exportedAt: number): void {
   recordExport(db, exportedAt);
+}
+
+/**
+ * The theme preference (specs 8.8).
+ *
+ * The value is narrowed by its type rather than validated here: a
+ * ThemePreference cannot be anything else. Reading is where the checking
+ * happens, because reading is the side that faces an imported archive or a row
+ * repaired by hand.
+ */
+export function writeThemePreference(db: AppDatabase, preference: ThemePreference): void {
+  writeSetting(db, SETTING_KEYS.theme, preference);
+}
+
+/**
+ * The hour at which the day turns over (specs 8.2, 8.8).
+ *
+ * Normalised on the way IN as well as on the way out, which is not a belt and
+ * braces: the two sides answer different questions. Clamping on read protects
+ * against a row this application did not write; clamping on write means the
+ * stored value is the one the user will be shown, so a setting can never read
+ * back as something other than what was chosen.
+ */
+export function writeCutoffHour(db: AppDatabase, hour: number): void {
+  writeSetting(db, SETTING_KEYS.dayCutoffHour, String(normalizeCutoffHour(hour)));
+}
+
+/** Slack allowed on each of the four macros, in percent (specs 8.7). */
+export function writeAdherenceTolerancePct(db: AppDatabase, percent: number): void {
+  writeSetting(
+    db,
+    SETTING_KEYS.adherenceTolerancePct,
+    String(normalizeAdherenceTolerance(percent)),
+  );
 }

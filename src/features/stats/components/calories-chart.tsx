@@ -1,0 +1,387 @@
+import { curveMonotoneX, line as d3Line } from 'd3-shape';
+import { StyleSheet, View, useWindowDimensions } from 'react-native';
+import { GestureDetector } from 'react-native-gesture-handler';
+import { G, Path, Rect } from 'react-native-svg';
+import { Text } from '@/core/ui/text';
+import { formatDayCompact, formatDayShort, formatKcal } from '@/core/format';
+import { useTheme } from '@/core/theme';
+import {
+  ChartFrame,
+  FRAME_TOP,
+  GUTTER_BOTTOM,
+  GUTTER_LEFT,
+  GUTTER_TOP,
+} from '@/core/charts/chart-frame';
+import { ChartTooltip } from '@/core/charts/chart-tooltip';
+import { useScrub } from '@/core/charts/use-scrub';
+import {
+  bandGeometry,
+  barPath,
+  labelledIndices,
+  verticalScale,
+} from '@/core/charts/scale';
+import type { LocalDate } from '@/core/date';
+import type { DayFigure } from '../domain/adherence';
+import type { NutritionPanel } from '../domain/panel';
+
+/**
+ * Calories per day, against the goal, with the weekly rolling mean over it
+ * (specs 8.7).
+ *
+ * ## THREE SERIES ON ONE PAIR OF AXES, WHICH IS WHY THE CHARTS ARE HAND-MADE
+ *
+ * > Trois écrans clés superposent des séries de natures différentes — exactement
+ * > là où les bibliothèques génériques se battent contre vous. (D13)
+ *
+ * This is the mild version of that: bars for the days, a stepped line for the
+ * goal (it changes from one template to another and must not be interpolated
+ * between them), and a smooth line for the seven-day mean.
+ *
+ * ## A GAP IS A GAP IN ALL THREE
+ *
+ * A day with no entry has no bar and breaks the mean line, rather than drawing
+ * a bar of height zero and dragging the line to the floor. `defined()` is what
+ * does it for the lines; for the bars it is simply not emitting a Rect. This is
+ * the same rule the figures follow, and the chart has to agree with them or the
+ * picture contradicts the caption.
+ *
+ * ## ONE INTERACTION, MADE CONTINUOUS
+ *
+ * > Aucun zoom ni déplacement au doigt : les sélecteurs de plage y pourvoient
+ * > déjà. Une seule interaction : toucher un point affiche sa valeur et sa
+ * > date. (Specs 10.6, D13)
+ *
+ * This file used to say a scrub would be "a second interaction nobody asked
+ * for". It was asked for, and the objection does not survive the ask: dragging
+ * neither zooms nor pans — the viewport never moves — so it is the SAME
+ * interaction, read continuously. Lifting a finger ninety times to read ninety
+ * bars is not a rule worth keeping. Amended rather than left as a divergence
+ * (specs 14.13, architecture 9.8).
+ *
+ * A Pan rather than a Pressable, because a Pressable cannot follow a finger:
+ *  - onBegin selects at the touch, before any movement, so a plain tap still
+ *    reads exactly as it did;
+ *  - onUpdate follows;
+ *  - onFinalize clears, including when the ScrollView takes the gesture away.
+ *
+ * activeOffsetX is what keeps the page scrollable. Without it a vertical drag
+ * starting on the chart would be claimed here and the Stats screen would stop
+ * scrolling over its own graph. The cost, accepted: beginning a vertical scroll
+ * on the chart flashes a readout for an instant before the ScrollView wins.
+ *
+ * runOnJS because the readout is React state and a date string — it has to
+ * cross to the JS thread whatever happens, so there is nothing to gain by
+ * hopping through a shared value first.
+ */
+export function CaloriesChart({ panel }: { panel: NutritionPanel }) {
+  const theme = useTheme();
+  const { width: screenWidth } = useWindowDimensions();
+
+  // Card padding (16 each side) inside a screen padded by 16 each side.
+  const width = Math.max(160, screenWidth - 64);
+  const plotWidth = Math.max(1, width - GUTTER_LEFT);
+  // The frame's own bottom gutter, not a coincidence with FRAME_TOP: one is
+  // room for the dates under the baseline, the other is air above the plot.
+  const plotHeight = HEIGHT - GUTTER_BOTTOM;
+
+  const count = panel.days.length;
+  const band = bandGeometry(count, plotWidth);
+
+  // One scale for all three series: they are all calories, and giving the mean
+  // its own axis would let a flat line look like a steep one.
+  const scale = verticalScale(
+    [...panel.kcalSeries, ...panel.targetSeries, ...panel.rollingKcalSeries],
+    plotHeight,
+    TICK_COUNT,
+    // Without it the top gridline sits on y = 0 and its label loses its head
+    // over the edge of the canvas. See verticalScale.
+    GUTTER_TOP,
+  );
+
+  const meanPath = d3Line<number>()
+    .defined((index) => isDrawable(panel.rollingKcalSeries[index]))
+    .x((index) => band.centre(index))
+    .y((index) => scale.y(panel.rollingKcalSeries[index] ?? 0))
+    .curve(curveMonotoneX)(indices(count));
+
+  const { touched, gesture: scrub } = useScrub(band);
+  const shown = touched === null ? null : panel.days[touched];
+
+  return (
+    <View>
+      {/*
+        THE CHART BOX, AND ITS HEIGHT IS DECLARED RATHER THAN INFERRED.
+
+        The tooltip is anchored by its BOTTOM, so it needs a positioning parent
+        whose lower edge is a known point of the drawing. Left in the outer view
+        it would have measured from under the legend, which is neither a fixed
+        distance nor the same one at two lines of legend and three.
+      */}
+      <View style={{ height: FRAME_TOP + HEIGHT }}>
+        <ChartFrame
+          height={HEIGHT}
+          width={width}
+          scale={scale}
+          xLabels={labelsFor(panel, count, plotWidth / Math.max(1, count))}
+        >
+          {() => (
+            <>
+              {/*
+                THE BAR IS THE GOAL, AND THE FILL IS WHAT WAS EATEN.
+
+                It was a bar for the day with a dashed step line across for the
+                goal, and the line never read: a dashed rule sliding over ninety
+                bars says "a goal existed" without letting you see, at any one
+                bar, whether that day made it. As a vessel the question answers
+                itself — a track that is part full, full, or overflowing.
+
+                Three passes rather than one group per day, so the stacking
+                order is stated once instead of depending on the order elements
+                happen to be written in a fragment.
+              */}
+              {panel.targetSeries.map((target, index) =>
+                // NO TRACK ON A DAY WITH NOTHING RECORDED. An empty vessel
+                // reads as "ate nothing", where the truth is "wrote nothing
+                // down" — the distinction specs 8.7 no 1 rests on, and the one
+                // this whole panel keeps everywhere else. A gap stays a gap.
+                target === null || !isDrawable(panel.kcalSeries[index]) ? null : (
+                  <Rect
+                    key={`goal-${index}`}
+                    x={band.left(index)}
+                    y={scale.y(target)}
+                    width={band.barWidth}
+                    height={Math.max(1, plotHeight - scale.y(target))}
+                    // A ghost of the fill rather than a neutral grey: it is the
+                    // same quantity, not yet reached.
+                    fill={theme.colors.macroKcal}
+                    opacity={0.16}
+                    rx={band.barWidth > 4 ? 2 : 0}
+                  />
+                ),
+              )}
+
+              {/*
+                ONE BAR, TWO SEGMENTS, AND THEY DO NOT OVERLAP.
+
+                The red used to be a rectangle painted ON the green one. Two
+                faults came with that, and the second is the one that bit: its
+                rounded lower corners let the green show through, so the cap
+                read as a block pasted on — and dimming a bar to make its
+                neighbour stand out sent 35 % of red through 35 % of green and
+                invented a third colour.
+
+                Now the green stops at the goal and the red starts there, edge
+                to edge. Only the topmost segment is capped, which is what
+                barPath is for; the boundary between the two IS the goal, so the
+                bar says "over, and by this much" in one reading.
+              */}
+              {panel.kcalSeries.map((kcal, index) => {
+                if (kcal === null) return null;
+
+                const target = panel.targetSeries[index] ?? null;
+                const over = target !== null && kcal > target;
+                const radius = band.barWidth > 4 ? 2 : 0;
+                const dim = touched === null || touched === index ? 1 : 0.35;
+                const x = band.left(index);
+
+                return (
+                  <G key={`bar-${index}`} opacity={dim}>
+                    {/*
+                      The excess, drawn FIRST so it sits under the green rather
+                      than over it — asked for, and it also means a future
+                      change to either segment cannot make one paint across the
+                      other.
+                    */}
+                    {over ? (
+                      <Path
+                        d={barPath(
+                          x,
+                          band.barWidth,
+                          scale.y(kcal),
+                          scale.y(target),
+                          radius,
+                        )}
+                        fill={theme.colors.danger}
+                      />
+                    ) : null}
+
+                    <Path
+                      d={barPath(
+                        x,
+                        band.barWidth,
+                        scale.y(over && target !== null ? target : kcal),
+                        plotHeight,
+                        // Square where the red continues above it: a cap in the
+                        // middle of a bar is a seam.
+                        over ? 0 : radius,
+                      )}
+                      // The accent, like the gauge on the Journal: calories wear
+                      // one colour across the application (amendment 14.4 no 15).
+                      fill={theme.colors.macroKcal}
+                    />
+                  </G>
+                );
+              })}
+
+              {meanPath === null ? null : (
+                <Path d={meanPath} stroke={theme.colors.text} strokeWidth={2} fill="none" />
+              )}
+            </>
+          )}
+        </ChartFrame>
+
+        {shown === undefined || shown === null ? null : (
+          <ChartTooltip
+            x={GUTTER_LEFT + band.centre(touched ?? 0)}
+            anchorY={scale.y(shown.consumed?.kcal ?? 0)}
+            plotHeight={plotHeight}
+            plotLeft={GUTTER_LEFT}
+            plotRight={GUTTER_LEFT + plotWidth}
+          >
+            <DayReadout day={shown} today={panel.days[count - 1]?.date ?? shown.date} />
+          </ChartTooltip>
+        )}
+
+        {/*
+          Over the plot only, offset by the gutter the frame reserves for its
+          labels — otherwise a touch on the axis figures would read as day zero.
+        */}
+        <GestureDetector gesture={scrub}>
+          <View
+            style={[styles.touch, { left: GUTTER_LEFT, width: plotWidth }]}
+            accessibilityRole="image"
+            accessibilityLabel="Calories par jour sur la plage choisie"
+          />
+        </GestureDetector>
+      </View>
+
+      {/*
+        The legend STAYS while a bar is being read, where it used to be
+        replaced by the readout. The readout moved above the bar, so the two no
+        longer compete for the same line — and a legend that vanished the
+        moment you touched the chart took away the key to what you were
+        pointing at.
+      */}
+      <View style={styles.legend}>
+        <Key color={theme.colors.macroKcal} label="Consommé" />
+        <Key color={theme.colors.macroKcal} label="Objectif" faint />
+        <Key color={theme.colors.danger} label="Dépassement" />
+        <Key color={theme.colors.text} label="Moyenne 7 jours" line />
+      </View>
+    </View>
+  );
+}
+
+/**
+ * What the bubble says about one day of the calories chart.
+ *
+ * Content only: where it sits is ChartTooltip's problem, and the same one the
+ * macro chart has.
+ */
+function DayReadout({ day, today }: { day: DayFigure; today: LocalDate }) {
+  const theme = useTheme();
+
+  return (
+    <>
+      <Text style={[styles.tooltipDay, { color: theme.colors.textMuted }]} numberOfLines={1}>
+        {formatDayShort(day.date, today)}
+      </Text>
+      <Text style={[styles.tooltipValue, { color: theme.colors.text }]} numberOfLines={1}>
+        {day.consumed === null ? 'rien enregistré' : `${formatKcal(day.consumed.kcal)} kcal`}
+      </Text>
+      {day.target === null ? null : (
+        <Text style={[styles.tooltipGoal, { color: theme.colors.textFaint }]} numberOfLines={1}>
+          objectif {formatKcal(day.target.kcal)}
+        </Text>
+      )}
+    </>
+  );
+}
+
+function Key({
+  color,
+  label,
+  faint,
+  line,
+}: {
+  color: string;
+  label: string;
+  /** The unfilled vessel: the same colour, at the same opacity the track uses. */
+  faint?: boolean;
+  /** A stroke rather than a block, for the rolling mean. */
+  line?: boolean;
+}) {
+  const theme = useTheme();
+  return (
+    <View style={styles.key}>
+      <View
+        style={[
+          styles.swatch,
+          { backgroundColor: color },
+          faint === true ? styles.swatchFaint : null,
+          line === true ? styles.swatchLine : null,
+        ]}
+      />
+      <Text style={[styles.keyLabel, { color: theme.colors.textMuted }]}>{label}</Text>
+    </View>
+  );
+}
+
+const HEIGHT = 150;
+
+/** Gridlines asked for. d3 picks round numbers near this count, not exactly it. */
+const TICK_COUNT = 4;
+
+
+function indices(count: number): number[] {
+  return Array.from({ length: count }, (_, index) => index);
+}
+
+/**
+ * Whether a position has a value to draw.
+ *
+ * Both null and undefined, and the second is not paranoia: noUncheckedIndexedAccess
+ * makes every indexed read of these arrays `number | null | undefined`, so a
+ * check for null alone would typecheck and let an out-of-range index through as
+ * a point at zero.
+ */
+function isDrawable(value: number | null | undefined): boolean {
+  return value !== null && value !== undefined && Number.isFinite(value);
+}
+
+/**
+ * Dates under the axis, thinned to whatever the width actually holds.
+ *
+ * Which positions carry one is geometry, and lives in core/charts with the
+ * rest of it. This only turns them into words.
+ *
+ * ## THE COMPACT FORM, DELIBERATELY
+ *
+ * "15/09", not "mar. 15/09" and not "Aujourd'hui". An axis is read sideways to
+ * place a bar; it is not read for itself. Widening every label so the last one
+ * could say a word would have cost two of the intermediates — and touching a
+ * bar already says "Aujourd'hui" in full, where the question is actually
+ * being asked.
+ */
+function labelsFor(panel: NutritionPanel, count: number, slotWidth: number): string[] {
+  const shown = new Set(labelledIndices(count, slotWidth));
+  return panel.days.map((day, index) =>
+    shown.has(index) ? formatDayCompact(day.date) : '',
+  );
+}
+
+const styles = StyleSheet.create({
+  touch: { position: 'absolute', top: FRAME_TOP, height: HEIGHT - FRAME_TOP },
+  tooltipDay: { fontSize: 11 },
+  // Tabular, like every other figure of this panel: the bubble must not change
+  // width as the finger moves from a three-digit day to a four-digit one.
+  tooltipValue: { fontSize: 15, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  tooltipGoal: { fontSize: 11, fontVariant: ['tabular-nums'] },
+  legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 10, minHeight: 20 },
+  key: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  swatch: { width: 10, height: 10, borderRadius: 3 },
+  // The same opacity the track is drawn at, so the key IS the thing.
+  swatchFaint: { opacity: 0.16 },
+  swatchLine: { height: 2, borderRadius: 1 },
+  keyLabel: { fontSize: 12 },
+});

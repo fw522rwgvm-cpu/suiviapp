@@ -43,6 +43,23 @@ export type StartupState =
       backupDirectoryName: string;
       /** Most recent copy on disk, named so the user can go and get it (G3). */
       backupFileName: string | null;
+      /**
+       * THE TWO NUMBERS THAT SAY WHY, and they used to be thrown away here.
+       *
+       * compareVersions returns both and this mapping dropped them, so the
+       * refusal was correct and undiagnosable: the screen said "newer" without
+       * saying newer than what, by how much, or which migration. G3 exists to
+       * be read by a human standing in front of an application that will not
+       * start — withholding the one fact that identifies the problem is the
+       * opposite of that.
+       *
+       * The database's own migration cannot be NAMED, only dated: its tag is
+       * by definition absent from this binary's bundle. The binary's can be
+       * named, and is.
+       */
+      databaseWhen: number;
+      binaryWhen: number;
+      binaryTag: string | null;
     }
   | { status: 'failed'; message: string };
 
@@ -78,15 +95,19 @@ export async function prepareDatabase(): Promise<StartupReport> {
     const version = checkDatabaseVersion(database);
 
     if (version.status === 'too_recent') {
+      const schema = describeSchema();
       return {
         state: {
           status: 'blocked',
           reason: 'database_too_recent',
           backupDirectoryName: BACKUP_DIRECTORY_NAME,
           backupFileName: latestBackupName(),
+          databaseWhen: version.databaseWhen,
+          binaryWhen: version.binaryWhen,
+          binaryTag: schema.lastTag,
         },
         backup: null,
-        schema: describeSchema(),
+        schema,
         interruptedImport: false,
       };
     }

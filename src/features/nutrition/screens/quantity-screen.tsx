@@ -1,7 +1,5 @@
-import { useId, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  InputAccessoryView,
-  Keyboard,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,6 +9,8 @@ import {
 import { Text } from '@/core/ui/text';
 import { formatQuantity, parseDecimal } from '@/core/format';
 import { useTheme } from '@/core/theme';
+import { done, TRANSITIONS } from '@/core/perf/marks';
+import { KeypadAccessory } from '@/core/ui/keypad-accessory';
 import type { BaseUnit, FoodId, FoodPortionId, JournalEntryId } from '@/core/db/schema';
 import { useEntry, useUpdateFoodEntryQuantity } from '../data/day-queries';
 import { useFood, useQuantityPrefill } from '../data/food-queries';
@@ -467,6 +467,22 @@ function QuantityBody({
    * Computed at mount from the quantity handed in, never in an effect.
    */
   const [wheel, setWheel] = useState<WheelChoice>(() => wheelFor(initial, portions));
+
+  /**
+   * Where D16's third transition ends (dev only).
+   *
+   * HERE rather than in the screen above, and the difference is the whole
+   * point of the split: this component does not mount until a quantity exists,
+   * so its first paint is the first frame on which the wheels show the right
+   * value. Reporting from the screen would have timed the arrival of an empty
+   * form.
+   *
+   * Reached from the journal's own rows too, where nothing was started — `done`
+   * answers that by recording nothing rather than inventing a duration.
+   */
+  useEffect(() => {
+    done(TRANSITIONS.pickFood);
+  }, []);
   /**
    * Whether the quantity row has become a field.
    *
@@ -662,47 +678,33 @@ function TypedAmount({
 }) {
   const theme = useTheme();
   const [text, setText] = useState(initialText);
-  // Punctuation-free: it crosses to a native view as a plain string, and useId
-  // spells its own with colons.
-  const accessoryId = `qty${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
 
   return (
     <View style={styles.typedRow}>
-      <TextInput
-        value={text}
-        onChangeText={setText}
-        onBlur={() => onDone(text)}
-        autoFocus
-        selectTextOnFocus
-        // French keyboards put the comma on this pad; parseDecimal takes both.
-        keyboardType="decimal-pad"
-        inputAccessoryViewID={accessoryId}
-        style={[styles.typedInput, { color: theme.colors.text }]}
-      />
-      <Text style={[styles.amount, { color: theme.colors.textMuted }]}>{unit}</Text>
-
       {/*
-        AFTER the field: the native view binds itself on entering the window by
-        looking for an input carrying its id, so the field has to be there
-        first. One field, so no chevrons — they would be two dead controls.
+        The bar moved to core/ui in slice 7, at its second real user: the
+        adherence tolerance is the other lone numeric field in the application.
+        Nothing about it changed — it still renders after the field, because the
+        native view binds by finding an input already in the window, and it
+        still carries no chevrons, which for one field would be two dead
+        controls.
       */}
-      <InputAccessoryView nativeID={accessoryId}>
-        <View
-          style={[
-            styles.accessory,
-            { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border },
-          ]}
-        >
-          <Pressable
-            onPress={() => Keyboard.dismiss()}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel="Valider la quantité"
-          >
-            <Text style={[styles.done, { color: theme.colors.accent }]}>OK</Text>
-          </Pressable>
-        </View>
-      </InputAccessoryView>
+      <KeypadAccessory label="Valider la quantité">
+        {(accessoryId) => (
+          <TextInput
+            value={text}
+            onChangeText={setText}
+            onBlur={() => onDone(text)}
+            autoFocus
+            selectTextOnFocus
+            // French keyboards put the comma on this pad; parseDecimal takes both.
+            keyboardType="decimal-pad"
+            inputAccessoryViewID={accessoryId}
+            style={[styles.typedInput, { color: theme.colors.text }]}
+          />
+        )}
+      </KeypadAccessory>
+      <Text style={[styles.amount, { color: theme.colors.textMuted }]}>{unit}</Text>
     </View>
   );
 }
@@ -714,14 +716,6 @@ const styles = StyleSheet.create({
   // Right-aligned like the text it replaces, so the row does not shift as it
   // becomes a field.
   typedInput: { fontSize: 17, minWidth: 64, textAlign: 'right', padding: 0 },
-  accessory: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  done: { fontSize: 17, fontWeight: '600' },
   equivalent: { fontSize: 13 },
   save: { borderRadius: 18, paddingVertical: 16, alignItems: 'center' },
   saveLabel: { fontSize: 17, fontWeight: '600' },

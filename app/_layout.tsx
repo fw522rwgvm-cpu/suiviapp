@@ -1,9 +1,12 @@
 import { isLiquidGlassAvailable } from 'expo-glass-effect';
 import { Stack } from 'expo-router';
+import type { ReactNode } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { DatabaseGate } from '@/core/db/database-gate';
 import { QueryProvider } from '@/core/query';
 import { ThemeProvider, useTheme } from '@/core/theme';
+import { useSweepOffCacheOnce } from '@/features/nutrition/off/off-queries';
+import { usePreferences } from '@/features/settings/data/settings-queries';
 
 // Route wiring only. No logic, no queries (D10).
 //
@@ -14,21 +17,46 @@ import { ThemeProvider, useTheme } from '@/core/theme';
 // The query layer sits below the gate, for the same reason in reverse: it must
 // only ever talk to a database that has been opened, checked and migrated.
 //
+// ## THE THEME MOVED BELOW BOTH, IN SLICE 7, AND IT HAD TO
+//
+// It used to wrap everything, which was right while it only followed the
+// system. The stored preference (specs 8.8) is a row in `setting`, so nothing
+// above the gate can read it: a provider there would have had to start on a
+// default and correct itself once the database opened, which is a flash of the
+// wrong theme on every cold start.
+//
+// Below the gate it mounts with the preference already in hand — the read is
+// synchronous, see usePreferences — so the first painted frame is the right
+// colour. The price is that the gate's own three screens have no theme, which
+// is written up where they are.
+//
 // GestureHandlerRootView wraps everything because swipe to delete and the
 // day-to-day swipe (specs 8.3) are gesture handlers, and they are inert
 // outside it.
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <ThemeProvider>
-        <DatabaseGate>
-          <QueryProvider>
+      <DatabaseGate>
+        <QueryProvider>
+          <ThemeFromPreference>
             <RootStack />
-          </QueryProvider>
-        </DatabaseGate>
-      </ThemeProvider>
+          </ThemeFromPreference>
+        </QueryProvider>
+      </DatabaseGate>
     </GestureHandlerRootView>
   );
+}
+
+/**
+ * Reads the stored preference and hands it to the theme.
+ *
+ * Wiring, which is what this folder is for: one value read, one prop passed,
+ * no decision taken. ThemeProvider keeps knowing nothing about the database
+ * and settings-queries keeps knowing nothing about the tree.
+ */
+function ThemeFromPreference({ children }: { children: ReactNode }) {
+  const { theme } = usePreferences();
+  return <ThemeProvider preference={theme}>{children}</ThemeProvider>;
 }
 
 /**
@@ -44,6 +72,10 @@ export default function RootLayout() {
 function RootStack() {
   const theme = useTheme();
   const glass = isLiquidGlassAvailable();
+
+  // Once per launch, after the first paint. Mounting it is wiring; what it
+  // does and why it is not in the startup sequence is written where it lives.
+  useSweepOffCacheOnce();
 
   return (
     <Stack

@@ -1,11 +1,11 @@
-import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Text } from '@/core/ui/text';
-import { currentLocalDate, type LocalDate } from '@/core/date';
+import { type LocalDate } from '@/core/date';
 import { formatDayShort, formatKcal } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import { GlassButton } from '@/core/ui/glass-button';
 import { ListSeparator } from '@/core/ui/list-separator';
+import { useToday } from '@/features/settings/data/settings-queries';
 import { useRecentMeals } from '../data/day-queries';
 import type { RecentMeal } from '../data/day-reads';
 
@@ -56,9 +56,9 @@ export function RecentMealsSection({
 }) {
   const theme = useTheme();
   // Read once and frozen for the life of the panel, as the Journal does: one
-  // function decides what today is (D3), and a label must not change under a
-  // list because midnight went past while it was open.
-  const [today] = useState<LocalDate>(() => currentLocalDate());
+  // function decides what today is, cutoff included (D3), and a label must not
+  // change under a list because midnight went past while it was open.
+  const today = useToday();
   const recents = useRecentMeals();
 
   const meals = recents.data ?? [];

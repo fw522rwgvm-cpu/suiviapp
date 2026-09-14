@@ -25,6 +25,11 @@ dit avant de l'appliquer, puis on l'applique.
 - Ajout d'une dépendance native sans validation explicite.
 - Ajout d'une bibliothèque de composants d'interface, de NativeWind,
   ou d'une bibliothèque d'internationalisation.
+- Import du baril `@/core/theme` depuis un module que la suite Node atteint —
+  `data/`, `domain/`, `dev/`. Il réexporte `ThemeProvider`, donc `react-native`,
+  dont l'`index.js` est du Flow que rolldown refuse de parser : dix-sept
+  fichiers de test rougissent d'un coup sur une erreur qui ne parle pas de
+  thème. Viser `@/core/theme/tokens`, qui est pur.
 
 ## Règles structurantes
 - Une date civile est `TEXT AAAA-MM-JJ`. Un instant est un entier epoch ms.
@@ -56,19 +61,43 @@ L'application doit tolérer un arrêt forcé à tout moment sans perte.
 ---
 
 ## État du projet
-Tranches 0 à 6 livrées. **La tranche 6 n'a pas encore tourné sur l'appareil** :
-code complet, typé, 875 tests verts sous les trois fuseaux, bundle produit —
-mais rien de son interface n'a été touché sur l'iPhone. À lire comme tel.
+Tranches 0 à 7 livrées — **fin de la V1**. 1011 tests verts sous les trois
+fuseaux, `tsc` vert, bundle produit.
 
-**Elle ne demande aucun cycle CI.** Aucune dépendance native n'entre, donc tout
-se vérifie par Metro sur le binaire dev existant — comme la tranche 5, et
-l'inverse exact de la tranche 4 où le scan imposait de reconstruire.
+**La tranche 7 a tourné sur l'iPhone** (14/09/2026), Stats compris : le binaire
+`dev-b19` porte `react-native-svg`, l'onglet s'ouvre, et neuf retours d'usage
+ont été traités — le code-barres saisissable, le détour du scan, le graphique
+qui suit le doigt, l'objectif en récipient, l'axe rogné, les graduations
+intermédiaires, le dépassement en rouge, les macros lissées, et le
+dénominateur qui ne comptait pas contre la plage choisie.
 
-Ce que la vérification devra regarder en premier, parce que rien d'autre ne
-peut le dire : **le bloc groupé du Journal** — qu'il se replie, que son indent
-se lise comme un niveau, que le geste de balayage n'ait pas été volé par le tap
-de repli — et **les deux étapes de l'ajout d'une recette**, où un `SwipeBack`
-de plus a été empilé dans une fenêtre qui en contient déjà.
+**La tranche 7 demandait UN cycle CI, et un seul.** `react-native-svg` est la
+seule dépendance native qui entre, elle n'est importée qu'à la dernière étape,
+et **le binaire de développement doit être reconstruit avant que l'onglet Stats
+ne puisse s'ouvrir**. Tout le reste de la tranche — thème, heure de bascule,
+tolérance, écran À propos, les chiffres des statistiques — est vérifiable par
+Metro sur le binaire actuel.
+
+**Réserve jamais levée, et sans conséquence tant que la reconstruction précède
+l'essai** : on ne sait toujours pas si importer `react-native-svg` sans son
+module natif fait rougir *seulement* l'onglet Stats ou empêche l'application de
+s'ouvrir. Elle n'a pas eu l'occasion de se poser — le binaire a été reconstruit
+avant le premier lancement.
+
+**La tranche 6 n'a toujours pas tourné sur l'appareil**, à deux défauts près
+corrigés sur retour d'usage. La tranche 7 n'y change rien et s'empile dessus :
+la vérification devra regarder les deux, et dans cet ordre.
+
+Ce qui reste à regarder sur l'appareil, et qui n'a pas été touché :
+- **le bloc groupé du Journal** — le repli, l'indent, et surtout que le tap de
+  repli n'ait pas volé le balayage de suppression ;
+- **les deux `SwipeBack` empilés** dans la fenêtre d'ajout ;
+- **le thème face au chrome natif** : que « Sombre » sous un iOS clair peigne
+  bien la barre d'onglets, les en-têtes, les molettes et les alertes. C'est le
+  seul point de la tranche décidé sur une lecture de source
+  (`RCTAppearance.mm`) sans jamais être observé ;
+- **l'heure de bascule**, qui demande d'être devant le Journal avant l'heure
+  choisie.
 
 La tranche 5 a été éprouvée sur l'iPhone en plusieurs tours : jauge, couleurs,
 icônes, police, modèles, planning, calendrier.
@@ -218,6 +247,13 @@ rien : chaque écran affiche les chiffres d'hier, sans le dire.
   install` en particulier — c'est lié à TOUT mouvement de l'arbre. La règle
   pratique : après la moindre installation, compter, et si le compte est faux,
   reconstruire.
+
+  **Cinquième morsure en tranche 7**, après `expo install react-native-svg`
+  puis deux `npm install` : le compte est tombé à **zéro**, pas à un chiffre
+  intermédiaire. Ce que ça ajoute au constat : la tranche 7 a groupé ses trois
+  installations pour ne payer qu'une reconstruction, et ça a marché — le remède
+  est le même quel que soit le nombre de mouvements. Donc **installer tout d'un
+  coup, puis vérifier une fois**, plutôt qu'installer et vérifier trois fois.
 
   Et le contrôle évident est faux. Compter `grep -c rolldown package-lock.json`
   ou chercher les noms des liaisons trouve les **déclarations** de `rolldown`,
@@ -2559,6 +2595,425 @@ Node, donc rien ne peut vérifier le garde lui-même. Ce qui est fixé est le
 l'appelant n'a pas le droit de passer une liste vide qu'il n'a pas encore lue —
 ce qui est la seule moitié du défaut qu'un test puisse tenir.
 
+## Ce que la tranche 7 a établi
+
+**Il n'y a pas eu de migration, et c'est la première fois.** `theme`,
+`day_cutoff_hour` et `adherence_tolerance_pct` sont des lignes de `setting`,
+table clé/valeur livrée par `0000` — ce pour quoi elle existe. Aucune table,
+aucune colonne, aucune `CHECK`, aucune FK, et **pas même un index** :
+`ix_entry_date` et `ix_day_meal_date` servent déjà exactement les deux
+balayages de plage dont les statistiques ont besoin. Le catalogue d'export ne
+bouge pas non plus, une clé de `setting` étant une ligne et non du schéma.
+
+**Une préférence se lit par `useQuery` + `initialData`, et jamais autrement.**
+C'est la pièce qui a demandé le plus de réflexion et elle tient en une raison :
+un `useQuery` ordinaire rend `undefined` au rendu qui le monte, **si
+synchrone que soit sa fonction**. Or le Journal gèle sa date dans son état
+*initial* — donc un seuil arrivant un tick plus tard arriverait après la
+décision qu'il devait prendre. C'est le défaut des molettes de la tranche 4 et
+du `key` du carrousel de la tranche 3, une troisième fois, et la réponse est
+la même : **la valeur doit exister avant ce qui en dépend.**
+
+`initialData` est honnête plutôt qu'optimiste — la base est locale, synchrone
+et connue ouverte, donc c'est une vraie lecture. Et ça ne coûte rien de plus :
+`staleTime: Infinity` fait qu'aucun refetch ne suit, et le bus garde
+l'invalidation. Pas de second magasin, pas de `useSyncExternalStore`, pas de
+second abonnement à `addDatabaseChangeListener`.
+
+**`ThemeProvider` a dû descendre sous la base, et ça se paie.** Il enveloppait
+tout, ce qui était juste tant qu'il ne suivait que le système. La préférence
+stockée est une ligne de `setting` : **rien au-dessus de la porte ne peut la
+lire.** Un provider placé là aurait démarré sur un défaut puis se serait
+corrigé — un éclair du mauvais thème à chaque démarrage à froid. Prix nommé
+plutôt que découvert : les trois écrans de `DatabaseGate` (attente, refus G3,
+échec) n'ont plus ni thème ni Nunito, et sont toujours clairs. Ce sont ceux
+qu'on voit quand l'application ne peut pas tourner du tout.
+
+**`currentLocalDate` a perdu son paramètre par défaut, et c'est ça qui rend le
+réglage sûr.** Il en avait un — minuit — parce que rien ne lisait la clé. Dès
+qu'elle se lit, le défaut devient le danger : un site qui l'oublie répond
+minuit **en silence**, c'est-à-dire le mauvais jour, plausiblement, sur l'écran
+dont tout le rôle est de s'ouvrir sur le bon. Requis, c'est `tsc` qui nomme les
+huit appelants, et un neuf ne peut pas s'écrire sans décider d'où vient son
+seuil.
+
+`useToday()` est **gelé contre l'horloge, vivant contre le réglage** : il lit
+l'heure au montage et quand le seuil change, jamais à chaque rendu. C'est le
+comportement que les appelants documentaient déjà — « une étiquette ne doit pas
+changer sous une liste parce que minuit est passé pendant qu'elle était
+ouverte » — plus la seule chose qui manquait : changer le réglage est un acte,
+pas l'écoulement du temps, et doit se sentir tout de suite.
+
+**Le thème ne peint que la moitié de l'écran sans `Appearance.setColorScheme`.**
+`app.config.ts` pose `userInterfaceStyle: 'automatic'` : la barre d'onglets,
+les en-têtes natifs, le `UIPickerView` des quantités, `ActionSheetIOS`, les
+alertes et le clavier sont dessinés par UIKit et suivent l'**OS**, pas notre
+réglage. Quelqu'un qui choisit « sombre » sous un iOS clair aurait eu des
+cartes sombres sous une barre claire.
+
+**Constaté en lisant la source, pas dans une documentation** — qui dit
+d'ailleurs l'inverse (« this will not change the appearance of the system
+UI ») : `RCTAppearance.mm` parcourt chaque fenêtre de chaque scène connectée et
+y pose `overrideUserInterfaceStyle`. `'unspecified'` rend la main à l'OS, et
+c'est la valeur que les types acceptent là où `null` marche à l'exécution.
+
+### Les trois décisions que le §8.7 ne prend pas
+
+Le §8.7 donne **une phrase et un exemple chiffré** pour une fonction qui doit
+produire un pourcentage. Chacune de ces trois produit un chiffre plausible dans
+les deux sens.
+
+**Un trou n'est pas un zéro.** Le §8.7 n° 3 dit « par moyenne » sans dire sur
+quels jours. Compter une journée non renseignée pour 0 kcal mesurerait
+l'assiduité du journal et non ce qui a été mangé — ce que le n° 1 de la même
+section refuse déjà pour l'adhérence. Ce n'est même pas une inférence : **le
+§9.2 l'écrit mot pour mot** pour le lissage du poids. La règle existante est
+appliquée au cas analogue, plutôt qu'une neuve inventée.
+
+**Aujourd'hui ne compte dans aucun chiffre, et le graphique le dessine quand
+même.** Hypothèse signalée : aucun document ne l'évoque. Une journée en cours
+est une **mesure partielle** — à neuf heures du matin elle manque presque tout
+son objectif — donc le taux tomberait chaque matin et remonterait chaque soir
+sans que personne ait changé de façon de manger. La barre reste, parce que la
+regarder grandir est le but de l'écran. **Conséquence assumée : la dernière
+barre du graphique ne fait pas partie de la moyenne écrite à côté d'elle**, ce
+qui est dit à l'écran plutôt que laissé à découvrir.
+
+**L'objectif retenu est celui que le Journal AFFICHE, partiel compris.** Le
+§8.1 fait de l'objectif du jour la somme de ceux de ses repas et le §14.6 n° 10
+permet un repas sans objectif : une journée dont seul le petit-déjeuner est
+ciblé porte donc un objectif qui couvre un quart d'elle. Comparer la
+consommation entière à ça se lit comme un large dépassement. C'est une vraie
+tension — et elle est tranchée comme elle l'est déjà à l'écran : **le bandeau
+somme exactement cet objectif-là depuis la tranche 5.** Faire diverger la
+statistique mettrait deux réponses à « quel est l'objectif de cette journée »
+dans la même application, ce que ce projet passe son temps à éviter.
+
+**Et une journée sans objectif est exclue, comme une journée sans entrée.** Ce
+n'est pas rare : **toute journée matérialisée avant `0004` est dans ce cas,
+définitivement.** D'où la seconde ligne de la carte, qui nomme ce qui a été
+écarté — sans elle, l'arithmétique ne tomberait visiblement pas juste sur
+l'historique le plus courant qui soit.
+
+**Le dénominateur n'est pas un détail derrière un toucher.** Le §8.7 n° 2 le
+rend obligatoire, et la raison tient en une comparaison : 100 % sur deux jours
+et 100 % sur vingt-huit sont le même nombre.
+
+### Ce que les deux lectures d'objectif ont coûté
+
+**L'objectif d'une journée est calculé deux fois par construction**, et c'est
+le troisième tour du motif du §9.6 n° 11. Une lecture par jour est juste pour
+un jour et impayable pour quatre-vingt-dix ; une lecture groupée ne peut pas
+servir un écran qui tient déjà les repas d'une journée. Aucune des deux n'est
+retirable.
+
+**Le cas qui décide n'est pas théorique.** `readTargets` exige les **quatre**
+colonnes non nulles — un objectif partiel est un objectif que personne ne peut
+lire. `sum(target_protein)` en SQL ignore tranquillement les `NULL` des trois
+autres et rend un objectif de 60 g de protéines que personne n'a posé. Aucune
+écriture de l'application ne produit une telle ligne ; une archive réparée à la
+main si, et `day_meal` n'a pas de `CHECK` pour l'en empêcher (§14.6 n° 16).
+
+D'où les quatre clauses `IS NOT NULL`, et surtout **le test qui les tient**.
+Mutation vérifiée : sans elles, il rougit sur `{protein: 60, carbs: 100}` puis
+sur `{protein: 110}` — un objectif inventé, puis un objectif cassé additionné à
+un objectif valide. Les deux chiffres sont parfaitement plausibles.
+
+### Les graphiques
+
+**Trois séries sur un seul axe, ce que D13 donne comme la raison même de les
+faire à la main.** Des barres pour les jours, un **escalier** pour l'objectif,
+une courbe pour la moyenne à sept jours.
+
+**L'objectif est un escalier, jamais une pente.** Il tient une journée entière
+puis change d'un modèle à l'autre : une pente entre deux jours dessinerait des
+objectifs que personne n'a posés. `curveStepAfter` porte la valeur jusqu'au
+sommet suivant avant de sauter, ce qui est la forme qu'un objectif quotidien a
+réellement.
+
+**L'axe part toujours de zéro.** Les barres encodent une quantité par leur
+longueur : un axe démarrant à 1 800 ferait paraître 2 000 quatre fois 1 900 —
+et mentirait dans le sens flatteur, qui est celui qui compte.
+
+**Un trou est un trou dans les trois séries**, sinon l'image contredirait la
+légende. `defined()` le fait pour les lignes ; pour les barres, c'est
+simplement ne pas émettre de `Rect`.
+
+**Les barres s'amincissent, le graphique ne défile pas.** Quatre-vingt-dix
+jours sur trois cent cinquante points font moins de quatre points par jour :
+l'écart entre deux barres est donc une **part** du créneau et non un nombre de
+points fixe, qui serait devenu négatif quelque part entre sept jours et
+quatre-vingt-dix. Un plancher d'un point, parce qu'une barre arrondie à zéro ne
+dessine rien et qu'une journée pourtant loguée manquerait.
+
+**Ce que `d3-scale` achète n'est pas la multiplication linéaire**, qui est une
+ligne. C'est `nice()` et `ticks()` : choisir des nombres ronds pour un axe est
+un petit problème déjà résolu, et la version qu'on écrit soi-même gradue à
+1 837 et 3 674.
+
+**Et le graphique n'est testé nulle part.** Seule son arithmétique l'est —
+`scale.ts` — parce qu'une barre au mauvais endroit ressemble exactement à une
+barre au bon endroit. C'est dit dans le fichier de test plutôt que laissé
+entendre.
+
+### Ce qui a été vérifié plutôt que supposé
+
+- **`react-native-svg` est autolié** : confirmé en exécutant la commande exacte
+  que le Podfile lance (`expo-modules-autolinking react-native-config`), pas en
+  lisant une documentation. Neuf paquets, svg dedans.
+- **`d3-scale` et `d3-shape` se résolvent**, sous vitest *et* dans un bundle
+  réel, **avant** qu'une ligne ne soit écrite dessus. Ils sont ESM pur et rien
+  ne garantissait que Metro les prenne. Le bundle passe de 5,3 à 5,9 Mo.
+- **Le lockfile a re-cassé**, cinquième fois, et le remède documenté l'a réparé.
+- **Aucune permission n'est ajoutée** par svg : l'`Info.plist` du pré-vol est
+  inchangé.
+
+### Trois pièges qui ne se devinent pas
+
+**Un module que la suite Node atteint ne doit JAMAIS importer le baril
+`@/core/theme`.** Il réexporte `ThemeProvider`, qui importe `react-native`,
+dont l'`index.js` est du Flow que rolldown refuse de parser. Dix-sept fichiers
+de test ont rougi d'un coup sur `Parse failure: Flow is not supported`, dont
+aucun ne parlait de thème. `core/theme/tokens` est pur — « des valeurs, pas des
+composants » — et c'est lui que la couche de données vise. Aucun test ne garde
+la règle : la panne est bruyante et le build la trouve en une exécution.
+
+**Le démarrage à froid doit être amorcé et CONSOMMÉ comme les trois autres
+transitions.** Lu depuis une constante posée au chargement du module, il aurait
+été re-mesuré depuis la naissance du bundle à **chaque** passage ultérieur par
+le Journal — un chiffre énorme, assuré, et vide de sens. Le mettre dans la même
+table que les autres, où `done` consomme le départ, le fait tirer exactement
+une fois.
+
+**Seule la page ACTIVE du carrousel rapporte une mesure.** Trois pages sont
+montées à la fois. Les deux voisines ne sont pas la journée où l'on vient
+d'écrire, donc leurs requêtes n'ont jamais été invalidées et leur `pending`
+tombe immédiatement : une voisine rapportant « validation → Journal à jour »
+chronométrerait une page qui n'avait rien à attendre et afficherait un beau
+résultat que personne n'a mérité. Exactement le chiffre faux et plausible que
+D15 vise.
+
+## Ce que la vérification de la tranche 7 a changé (14/09/2026)
+
+**Le refus G3 jetait les deux nombres qui l'expliquent.** `compareVersions`
+rend `databaseWhen` et `binaryWhen` ; `startup.ts` les perdait en mappant
+`too_recent` vers `blocked`. Le refus était donc correct et indiagnosticable.
+G3 existe pour être lu par quelqu'un debout devant une application qui ne
+démarre pas : retenir le seul fait qui identifie le problème est l'inverse de
+ça. L'écran nomme désormais la dernière migration du binaire avec sa date, et
+date celle de la base — qui ne peut pas être *nommée*, son tag étant par
+définition absent de ce bundle.
+
+**Et le piège qui l'a provoqué, qui n'a rien à voir avec la tranche 7 :
+`npm start` lancé dans le mauvais dossier.** Le build dev est en Debug, donc
+le JavaScript vient de Metro — et `bundle.generated.ts`, c'est-à-dire **le
+journal des migrations que G3 compare**, est dans ce JavaScript. Metro servi
+depuis un dossier resté à la tranche 4 donnait un binaire à `0003` contre une
+base à `0005` : refus, parfaitement légitime.
+
+> **Corollaire à retenir : la version du schéma vient de Metro, pas du binaire.**
+> Un dossier de travail périmé se présente comme une base corrompue. Le
+> symptôme et la cause n'ont aucun rapport visible.
+
+**Un aliment à soi peut porter son code-barres.** Le §6.1 lui en donnait un
+depuis le début et `FoodDraft` le transportait jusqu'en base ; l'éditeur
+n'avait simplement aucun champ. L'unicité se dit **avant** d'enregistrer :
+`requireFreeBarcode` la garde déjà mais en *levant*, ce qui est le bon filet et
+la mauvaise première ligne. Ce n'est pas un `FoodProblem` — `validateFoodDraft`
+est pur — et contrairement à l'écart kcal et à l'énergie impossible, qui se
+contentent d'être marqués, celui-là **bloque** : le §8.5 refuse une *valeur*
+douteuse, or deux aliments pour un produit est une question sans réponse.
+
+**Un scan qui n'aboutit pas ouvre le formulaire, quelle qu'en soit la raison.**
+Le §8.5 ne l'écrivait que pour un code-barres inconnu et D11 répond à un échec
+par un bandeau : ensemble, ils déposaient l'utilisateur sur la liste avec un
+code-barres qui n'avait servi à rien. **Rien n'est écrit en y arrivant** — le
+formulaire est une étape, donc un scan raté puis abandonné ne laisse
+exactement rien, ce qui est la propriété autour de laquelle `ensureOffFood` a
+été bâtie.
+
+**Conséquence obligatoire, et c'est elle qui demandait de l'attention : le
+message de quota a dû déménager.** D11 en fait le seul message qui interrompt,
+et il vivait dans un bandeau rendu **uniquement sur la liste**. Dériver vers le
+formulaire l'aurait emmené loin de la seule chose qui devait l'interrompre. Il
+est désormais la première ligne du formulaire — plus visible, pas moins.
+
+**Le graphique suit le doigt, et c'est un renversement consigné.**
+`calories-chart.tsx` disait qu'un glissement serait « une seconde interaction
+que personne n'a demandée », et le §10.6 pose « une seule interaction ». La
+demande l'a renversé, et l'objection ne survit pas : glisser ne zoome ni ne
+déplace — la fenêtre ne bouge jamais — donc c'est la **même** interaction lue
+en continu. Ce que la règle protégeait, le zoom et le déplacement, est intact.
+
+Le prix technique, nommé : un `Pan` remplace le `Pressable`, avec
+`activeOffsetX` **sans quoi l'écran Stats cesserait de défiler au-dessus de son
+propre tracé**. Coût assumé : commencer un défilement vertical sur le graphique
+fait clignoter une lecture avant que la `ScrollView` ne gagne.
+
+**La valeur touchée est passée au-dessus de la barre, et le motif est
+mécanique.** Un doigt qui atteint une barre vient du bas : la main couvrait la
+réponse à la question qu'elle posait. Au-dessus, le chiffre est dans la seule
+région du tracé qu'une main qui lit ne recouvre jamais. Trois bornages, chacun
+un cas réel — les deux barres des bouts poussent la bulle hors du tracé, et la
+barre la plus haute de la plage, qui est le cas le plus courant, la pousse hors
+du haut ; elle bascule alors à l'intérieur du sommet de la barre.
+
+### Ce que les graphiques ont coûté, et la règle qui en sort
+
+**Deux nombres devinés, deux défauts, et exactement le même remède.** L'axe
+perdait le haut de son chiffre du haut, et l'infobulle se posait en travers du
+sommet de la barre. Dans les deux cas j'avais écrit une taille en constante :
+
+- `.nice()` arrondit le domaine pour que la graduation haute tombe **exactement**
+  sur le maximum, donc à `y = 0`. Une étiquette centrée sur cette ligne a ses
+  jambages en `y` négatif et la fenêtre SVG les coupe. Seul le chiffre du haut
+  perd sa tête, ce qui se lit comme un défaut de rendu et non comme une réserve
+  manquante. D'où `GUTTER_TOP`, passé à `verticalScale`.
+- `TOOLTIP_HEIGHT = 54` était faux par construction : la bulle fait trois lignes
+  avec un objectif et deux sans. Quel que soit le nombre choisi, il était faux
+  pour l'une des deux formes.
+
+> **La règle : ne jamais positionner depuis une taille supposée.** Ancrer depuis
+> le côté qu'on connaît — l'infobulle est ancrée par son **bas**, donc sa hauteur
+> n'entre plus dans le calcul — ou mesurer par `onLayout`. Sa hauteur ne sert
+> plus qu'à décider d'un basculement, donc une valeur périmée ne peut plus que
+> retarder ce basculement d'une image.
+
+**Deux formes qui se recouvrent ne peuvent pas être atténuées.** Le rouge du
+dépassement était peint *sur* le vert. Atténuer une barre pour faire ressortir
+sa voisine envoyait alors 35 % de rouge à travers 35 % de vert et inventait une
+troisième couleur. Et ses coins bas arrondis laissaient voir le vert dessous,
+donc le cap se lisait comme un bloc collé.
+
+**Corollaire qui ne se devine pas : `rx` sur un `Rect` arrondit les QUATRE
+coins.** SVG n'a pas de rayon par coin. Une barre en deux segments veut un
+chemin — `barPath` — dont seul le sommet est capé, et les deux segments se
+touchent bord à bord sans jamais se recouvrir.
+
+**Un test a trouvé un défaut que la lecture n'avait pas vu.** En sortant le
+pilon des libellés d'axe dans `core/charts` pour pouvoir le tester, l'assertion
+« jamais deux libellés plus proches que le minimum » a rougi : le plancher
+`Math.max(1, slotWidth)`, posé pour rendre une division sûre, cassait
+silencieusement la seule garantie de la fonction. Le cas zéro est traité à part,
+et la garantie est inconditionnelle.
+
+**Les deux libellés des bouts se collent aux bords du tracé.** Centré sur sa
+barre, le dernier dépassait de la toile — la dernière barre est à deux points du
+bord droit à quatre-vingt-dix jours. Ancrage `end` et `start` : aucune mesure,
+donc pas de seconde devinette.
+
+**Un second axe ne trace aucune ligne d'horizon.** Les calories rejoignent le
+graphique des macros sur un axe à droite — deux mille contre cent cinquante
+écraserait les trois macros au sol. Celui de gauche possède les lignes, celui de
+droite n'étiquette que ses graduations, **teinté de la couleur de sa série**
+pour qu'il ne soit jamais à deviner lequel sert qui. Deux jeux de règles à deux
+hauteurs sont le bruit qui donne aux doubles axes leur mauvaise réputation.
+
+**Un objectif n'est pas une série.** Il était tracé en escalier pointillé
+au-dessus des barres, et ça ne se lisait pas : une règle glissant sur
+quatre-vingt-dix barres dit qu'un objectif existait sans permettre de voir, sur
+une barre donnée, si cette journée-là l'a tenu. C'est la **borne de chaque
+barre**, donc la barre est le volume de l'objectif et le consommé la remplit.
+
+**Un dépassement recouvre son propre objectif**, et c'est le dessin qui l'a
+révélé : le remplissage est plus haut, donc la borne disparaît dessous et la
+barre dit « beaucoup » sans dire « beaucoup de plus que quoi ». La bascule au
+rouge le remet en place — la frontière entre les deux teintes **est** l'objectif.
+
+**Deux seuils différents pour « dépassé », et c'est délibéré.** La jauge du
+Journal garde sa marge de 50 kcal (§14.6 n° 21) ; le graphique rougit au premier
+kilocalorie. Les deux ne posent pas la même question : la marge existe pour
+qu'un chiffre **vivant** ne clignote pas à +5 kcal, et un historique n'a pas ce
+problème. `KCAL_OVERSHOOT_KCAL` n'est donc **pas** importé dans les stats.
+
+**Et rien de tout ça n'est testé.** Seule l'arithmétique l'est — `scale.ts` —
+parce qu'une barre au mauvais endroit ressemble exactement à une barre au bon
+endroit. C'est écrit dans le fichier de test plutôt que laissé entendre.
+
+### Le dénominateur doit compter contre ce que l'utilisateur a choisi
+
+Retour d'usage, et le défaut était réel : choisir « 7 jours » et lire « sur 6 »
+partout. La règle — la journée en cours n'entre dans aucun chiffre — **reste
+juste** : à neuf heures du matin une journée a trois cents kilocalories au
+compteur. Ce qui était faux, c'est qu'elle se **taisait**.
+
+> Le §8.7 n° 2 rend le dénominateur obligatoire pour que la statistique ne
+> trompe pas. **Un dénominateur que le lecteur ne reconnaît pas fait exactement
+> ce qu'il devait empêcher.**
+
+`Adherence` porte donc `range` à côté de `span` — la plage choisie à côté des
+journées terminées — toutes les phrases comptent contre la première, et « la
+journée en cours » rejoint les exclusions nommées. Un test exige que
+`mesurées + non renseignées + sans objectif + en cours` fasse exactement la
+plage.
+
+## Points ouverts après la tranche 7
+
+- ~~**Vérification iPhone en attente.**~~ **Faite pour la tranche 7, Stats
+  compris** (14/09/2026). **La tranche 6 n'a toujours pas été touchée** : le
+  bloc groupé du Journal et les `SwipeBack` empilés restent inconnus.
+- **Le rendu des graphiques reste non testé, par construction.** Seule leur
+  arithmétique l'est : une barre au mauvais endroit ressemble à une barre au
+  bon endroit. Ce que l'appareil seul peut dire, et qui a déjà rendu neuf
+  retours, restera le seul juge.
+- **La journée en cours est exclue de tous les chiffres, et ça se paie sur
+  7 jours.** Une journée sur sept écartée, c'est 14 % de la plage ; sur 30 et
+  90 c'est du bruit. C'est nommé à l'écran depuis le retour d'usage, mais la
+  règle elle-même reste une hypothèse signalée. La sortie tient en une ligne :
+  `adherenceOf` cesse de filtrer sur la date, et le taux plafonne alors à 86 %
+  chaque matin jusqu'au dîner.
+- **La moyenne glissante est molle sur 7 jours**, forcément : chaque point ne
+  dispose que des jours qui le précèdent dans la plage. Correct et visible. La
+  sortie serait de garder le brut sous 30 jours, au prix d'un comportement qui
+  change avec la plage.
+- **Les chemins dégradés d'Open Food Facts n'ont toujours pas été provoqués.**
+  Le détour vers le formulaire les couvre désormais tous les quatre, mais seul
+  le mode avion est facile à essayer : le quota et la réponse illisible
+  demandent que le serveur se comporte mal.
+- **`fontVariant: ['tabular-nums']` reste non vérifié sur Nunito**, et la
+  tranche 7 en ajoute : le chiffre de tête de chaque carte, les trois parts de
+  la répartition, les quatre mesures de D16. Si Nunito ne porte pas `tnum`, ça
+  se verra d'abord ici.
+- **L'anneau n'est pas réécrit sur svg**, contrairement à ce que le §9.5 n° 11
+  annonçait. Reporté en tranche 8, où svg aura tourné et où les courbes de
+  poids le montent de toute façon. **C'est un renversement consigné, pas un
+  oubli.**
+- **Hypothèse signalée : la tolérance vaut 10 % par défaut.** Aucun document ne
+  donne ce nombre. La façon de savoir qu'il est faux est de regarder le taux
+  après un mois d'usage : s'il est toujours à 0 %, le seuil est trop serré.
+- **Hypothèse signalée : aujourd'hui est exclu des chiffres.** Défendable et non
+  demandé. À rouvrir si l'absence de la journée en cours dans la moyenne
+  surprend plus qu'elle n'aide.
+- **Le taux d'adhérence compare une journée entière à un objectif qui peut être
+  partiel**, quand un repas n'a pas de cible. Aligné sur le bandeau du Journal
+  délibérément, mais le défaut est réel et partagé par les deux. À rouvrir en
+  décidant des **deux** ensemble, jamais d'un seul.
+- **Rien ne montre la répartition dans le temps.** Les parts P/G/L sont une
+  moyenne sur la plage, pas une série : on ne peut pas voir qu'on a dérivé. Le
+  §8.7 ne le demande pas ; le graphique empilé serait le remède.
+- **`export_reminder_days` n'a toujours pas d'interface.** Le §8.8 ne le range
+  pas dans les Réglages et la tranche 9 lui donnera un second utilisateur
+  (la notification de rappel). Différé jusque-là plutôt qu'ajouté par symétrie.
+- **La séparation des rangées de choix est peut-être doublée dans
+  `meal-editor-screen.tsx`.** `FormSection` insère un `ListSeparator` entre ses
+  enfants, et ce fichier en insère un lui-même dans son `.map` — or
+  `Children.toArray` aplatit les tableaux, donc les deux devraient s'appliquer.
+  **Lu dans la source, jamais vu à l'écran** : la tranche 6 n'a pas tourné sur
+  l'appareil. Non corrigé pour ça — à confirmer d'un coup d'œil avant de
+  toucher du code livré.
+- **`tests/dev/seed.test.ts` a rougi une fois, sans être reproductible.**
+  « carries a long history without choking » — trois ans générés en une
+  transaction, le test le plus lourd de la suite — a échoué sous UTC et
+  America/New_York au cours d'une exécution, puis six suites complètes l'ont
+  passé. **Le message n'a pas été capturé**, donc l'hypothèse d'un dépassement
+  du délai de vitest sous charge (soixante-six workers) n'est qu'une hypothèse.
+  À regarder si la CI le refait : c'est le seul test dont le coût dépende de la
+  machine.
+- **`ios/Suivi/Info.plist` porte trois `UsageDescription`** là où une seule est
+  déclarée dans `app.config.ts`. Constaté au pré-vol, antérieur à cette tranche,
+  et sans rapport avec svg qui n'en demande aucune. À regarder un jour : une
+  permission qu'on ne demande pas est une permission qui fait refuser une app.
+
 ## Points ouverts après la tranche 6
 - **Vérification iPhone en attente.** Rien de l'interface des recettes n'a été
   touché sur l'appareil. À regarder en premier : le bloc groupé du Journal — le
@@ -2672,10 +3127,10 @@ ce qui est la seule moitié du défaut qu'un test puisse tenir.
   — le §8.3 laisse déjà vider une journée matérialisée de tous ses repas — mais
   l'écran n'offre alors rien à quoi ajouter. L'échappatoire existe (« Ajouter un
   repas » matérialise et crée), elle n'est simplement pas signalée.
-- **Le taux d'adhérence de la tranche 7 devra exclure les journées sans
-  objectif**, comme il exclut déjà celles sans entrée. Toute journée
-  matérialisée avant `0004` est dans ce cas, définitivement, sauf action
-  explicite de l'utilisateur.
+- ~~**Le taux d'adhérence de la tranche 7 devra exclure les journées sans
+  objectif.**~~ **Fait**, et l'écart est nommé à l'écran plutôt que laissé à
+  deviner : sans cette ligne l'arithmétique ne tomberait visiblement pas juste
+  sur tout historique antérieur à `0004`.
 - **`readDayPlan` fait trois lectures là où deux suffiraient** quand la
   surcharge répond : les trois candidats sont lus avant d'appeler la fonction
   pure, pour que la règle de préséance vive à un seul endroit au lieu d'être
@@ -2686,10 +3141,13 @@ ce qui est la seule moitié du défaut qu'un test puisse tenir.
   sa liste de tables pour le pointeur par défaut, et le limiteur y écrit à
   chaque 429 : scanner en magasin invalidera le Journal. Coût réel, le rejeu de
   quelques lectures sur index. Nommé plutôt que découvert.
-- **Le générateur de jeu de démonstration ne crée aucun modèle.** Il produit des
-  journées matérialisées sans objectif, donc le bandeau reste muet dessus. À
-  rouvrir si la tranche 7 a besoin de données avec objectifs pour éprouver
-  l'adhérence.
+- ~~**Le générateur de jeu de démonstration ne crée aucun modèle.**~~ **Fait en
+  tranche 7, exactement pour le motif prévu** : sans objectifs le bandeau reste
+  muet et l'adhérence a un dénominateur vide, donc la moitié de la tranche était
+  invisible sur l'appareil. Un seul modèle, par défaut, et **seulement s'il n'en
+  existe aucun** — le bouton promet de n'effacer rien. Sa collation n'a pas
+  d'objectif, délibérément : une journée partiellement ciblée est le cas que les
+  statistiques doivent traiter correctement.
 - **Deux piles natives déclarent les mêmes options d'en-tête**, celle du Journal
   et celle des Réglages. C'est le deuxième utilisateur, donc la règle du
   deuxième utilisateur est atteinte de justesse — mais le partage ferait un
@@ -2712,11 +3170,11 @@ ce qui est la seule moitié du défaut qu'un test puisse tenir.
 - **Le délai d'attente vaut 5 s et la suspension par défaut 5 min.** Deux
   nombres choisis, pas mesurés. La façon de savoir qu'ils sont faux est
   d'utiliser l'application dans un magasin.
-- **Aucune purge du cache n'est appelée.** `sweepCache` existe, est testée, et
-  n'a pas de site d'appel : il n'y a rien à balayer sur un téléphone qui ne
-  sert pas, et la faire tourner pendant un scan dépenserait des millisecondes
-  promises ailleurs. À brancher quand la table aura une taille observable —
-  probablement au démarrage, après la migration.
+- ~~**Aucune purge du cache n'est appelée.**~~ **Branchée en tranche 7**, mais
+  **pas** dans la séquence de démarrage comme prévu : celle-ci est normative à
+  cinq étapes et tourne dans le budget de 1,5 s, et `core/db` aurait dû importer
+  `features/nutrition` pour l'atteindre. Un effet monté après la première
+  peinture ne coûte rien au budget et garde le DELETE dans son domaine.
 - **`food.barcode` n'a pas de règle de validation à l'import.** Une archive
   réparée à la main pourrait y poser une chaîne vide, qui prendrait la place
   dans `ux_food_barcode` et refuserait tout autre aliment sans code-barres. Le
@@ -2734,10 +3192,11 @@ ce qui est la seule moitié du défaut qu'un test puisse tenir.
 - **Les portions d'un produit distant ne sont jamais devinées.** Les tailles de
   portion d'Open Food Facts sont du texte libre et les huit noms du §6.1 une
   liste fermée. Elles s'ajoutent à la main après coup.
-- **L'instrumentation des quatre transitions du parcours critique (D16) n'existe
-  toujours pas.** La cible des 5 s du scan est donc un vœu, pas une mesure —
-  c'est le bon moment pour que ça cesse, la tranche 4 étant la première à faire
-  du réseau sur le chemin critique.
+- ~~**L'instrumentation des quatre transitions du parcours critique (D16)
+  n'existe toujours pas.**~~ **Faite en tranche 7**, en `core/perf/`, inerte hors
+  développement, lue dans une section des Réglages dev. Reste non instrumenté le
+  parcours du **scan** : ses cinq secondes partent de la caméra et non d'un
+  toucher, donc c'est une cinquième mesure et pas une des quatre de D16.
 
 ## Points ouverts après la tranche 3
 - ~~Vérification iPhone en cours.~~ **Faite pour l'interface.** L'application
@@ -2805,13 +3264,16 @@ ce qui est la seule moitié du défaut qu'un test puisse tenir.
 ## Points ouverts après la tranche 1
 - ~~Vérification iPhone en attente.~~ **Résolu :** tranche 1 vérifiée sur
   l'appareil.
-- L'heure de bascule de la journée n'est **pas lue** : `currentLocalDate()`
-  utilise le défaut de minuit. Son réglage et sa lecture arrivent tranche 7.
+- ~~L'heure de bascule de la journée n'est **pas lue**.~~ **Faite en tranche 7**,
+  et `currentLocalDate` a perdu son défaut au passage : sans ça, un site qui
+  oublie le réglage répond minuit en silence, c'est-à-dire le mauvais jour.
 - ~~Pas d'anneau de progression : il réclame `react-native-svg`.~~ **Livré en
   tranche 5, dessiné en vues.** Le raisonnement tenait sauf sur un point : svg
   est **natif**, et le premier écran qui le monterait est le Journal — donc
   l'application cesserait de s'ouvrir jusqu'à un cycle CI. Voir
-  `progress-ring.tsx`, à réécrire sur svg en tranche 7 derrière les mêmes props.
+  `progress-ring.tsx`. **Toujours pas réécrit après la tranche 7**, et c'est un
+  renversement consigné : svg y est entré pour les graphiques, mais le porter
+  sur l'anneau remettrait le natif sur l'écran d'accueil. Tranche 8.
 - **Hypothèse signalée** : le §5.1 parle d'un écart kcal de 10 % sans nommer le
   dénominateur. La valeur théorique est retenue. Faux positif connu et sans
   remède dans les specs : l'alcool fait 7 kcal/g et n'est pas une macro suivie,

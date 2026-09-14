@@ -1,8 +1,9 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { currentLocalDate, parseLocalDate } from '@/core/date';
+import { parseLocalDate } from '@/core/date';
 import { GlassButton } from '@/core/ui/glass-button';
 import { OverlayPanel, useDismiss } from '@/core/ui/overlay-panel';
 import { MealEditorScreen } from '@/features/nutrition/screens/meal-editor-screen';
+import { useToday } from '@/features/settings/data/settings-queries';
 
 /**
  * Route wiring only (D10): read the parameters, hand them to the domain screen.
@@ -24,6 +25,7 @@ function CancelAction() {
 export default function MealRoute() {
   const router = useRouter();
   const params = useLocalSearchParams<{ date?: string; mealPosition?: string }>();
+  const today = useToday();
 
   const date = params.date === undefined ? null : parseLocalDate(params.date);
   const position =
@@ -32,7 +34,7 @@ export default function MealRoute() {
   return (
     <OverlayPanel onDismiss={() => router.back()} right={<CancelAction />}>
       <MealEditorScreen
-        date={date ?? currentLocalDate()}
+        date={date ?? today}
         mealPosition={Number.isInteger(position) && position >= 0 ? position : null}
       />
     </OverlayPanel>

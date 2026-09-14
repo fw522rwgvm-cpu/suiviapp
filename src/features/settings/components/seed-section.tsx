@@ -2,10 +2,10 @@ import Constants from 'expo-constants';
 import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { Text } from '@/core/ui/text';
-import { currentLocalDate } from '@/core/date';
 import { getAppDatabase } from '@/core/db/app-database';
 import { useTheme } from '@/core/theme';
 import { seedJournal } from '@/dev/seed';
+import { useToday } from '../data/settings-queries';
 
 /**
  * Demo data, on the development installation only (D15).
@@ -29,6 +29,9 @@ const HORIZONS = [
 
 export function SeedSection() {
   const theme = useTheme();
+  // Above the early return: hooks run unconditionally. On the production
+  // variant this section renders nothing, and one settings read costs nothing.
+  const today = useToday();
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<string | null>(null);
 
@@ -47,7 +50,7 @@ export function SeedSection() {
             setBusy(true);
             try {
               const report = seedJournal(getAppDatabase(), {
-                endDate: currentLocalDate(),
+                endDate: today,
                 days,
                 // Varies from run to run on purpose: a fixed seed here would
                 // write the same history twice over the same dates. Tests are

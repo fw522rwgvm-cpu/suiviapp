@@ -1,9 +1,10 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { currentLocalDate, type LocalDate } from '@/core/date';
+import { type LocalDate } from '@/core/date';
 import { GlassButton } from '@/core/ui/glass-button';
 import { OverlayPanel, useDismiss } from '@/core/ui/overlay-panel';
+import { useToday } from '@/features/settings/data/settings-queries';
 import { MonthCalendar } from '../components/month-calendar';
 import { useRequestDate } from '../hooks/requested-date';
 
@@ -63,6 +64,7 @@ export function CalendarScreen({ date }: { date: LocalDate }) {
 function TodayAction() {
   const requestDate = useRequestDate();
   const dismiss = useDismiss();
+  const today = useToday();
 
   return (
     <GlassButton
@@ -71,7 +73,7 @@ function TodayAction() {
         // Asked for first, then dismissed: the Journal applies it while the
         // window is still folding away, so the day underneath is already the
         // right one by the time it is uncovered.
-        requestDate(currentLocalDate());
+        requestDate(today);
         dismiss();
       }}
     />
@@ -87,10 +89,11 @@ function Grid({ date }: { date: LocalDate }) {
   const requestDate = useRequestDate();
   const dismiss = useDismiss();
 
-  // Read through the single function that decides what today is (D3). The
-  // Journal holds its own copy from its own mount; they can only differ across
-  // a midnight, and then both are right about their own moment.
-  const [today] = useState<LocalDate>(() => currentLocalDate());
+  // Read through the single function that decides what today is, cutoff
+  // included (D3). The Journal holds its own copy from its own mount; they can
+  // only differ across a midnight, and then both are right about their own
+  // moment.
+  const today = useToday();
   const [month, setMonth] = useState<LocalDate>(date);
 
   return (
