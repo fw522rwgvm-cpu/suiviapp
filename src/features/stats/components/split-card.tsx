@@ -37,7 +37,6 @@ export function SplitCard({
     return (
       <StatCard
         title="Répartition"
-        headline="—"
         caption="Aucune journée renseignée sur cette plage."
       />
     );
@@ -50,10 +49,21 @@ export function SplitCard({
   ];
 
   return (
+    /*
+      NO HEADLINE, AND NO CAPTION UNDER IT.
+
+      They stated the three shares as one big line, then the bar stated them as
+      lengths, then the rows stated them again beside their names. Three
+      readings of one fact, of which the first was the least useful: a
+      percentage read as text is compared by arithmetic, where the same
+      percentage read as a length is compared by looking — which is the entire
+      reason the bar is there.
+
+      What survives is the basis, because it is not redundant with anything:
+      nothing in the drawing says how many days it covers.
+    */
     <StatCard
       title="Répartition"
-      headline={rows.map((row) => formatShare(row.split.share)).join(' · ')}
-      caption="Protéines · Glucides · Lipides, en part des calories."
       note={`Moyenne par journée renseignée, sur ${recorded} sur ${span}.`}
     >
       <View style={styles.bar}>
@@ -87,7 +97,8 @@ export function SplitCard({
 }
 
 const styles = StyleSheet.create({
-  bar: { flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', marginTop: 12 },
+  // No headline above it any more, so the bar IS the top of the card.
+  bar: { flexDirection: 'row', height: 12, borderRadius: 6, overflow: 'hidden', marginTop: 4 },
   rows: { marginTop: 12, gap: 8 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   dot: { width: 9, height: 9, borderRadius: 5 },

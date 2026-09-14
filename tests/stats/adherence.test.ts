@@ -166,3 +166,68 @@ describe('adherenceOf', () => {
     expect(adherenceOf(days, 10, TODAY).rate).toBe(1);
   });
 });
+
+describe('a rate per macro', () => {
+  it('is null for each when nothing could be judged', () => {
+    const { byMacro } = adherenceOf([day('2026-09-13', null, null)], 10, TODAY);
+    expect(byMacro).toEqual({ protein: null, carbs: null, fat: null, kcal: null });
+  });
+
+  it('names WHICH macro is costing the days', () => {
+    // The whole reason they exist. One figure at 0 % says the month went badly
+    // and hides that three of the four were held all along.
+    const over = macros(150, 400, 70, 2200);
+    const result = adherenceOf(
+      [day('2026-09-12', over, GOAL), day('2026-09-13', over, GOAL)],
+      10,
+      TODAY,
+    );
+
+    expect(result.rate).toBe(0);
+    expect(result.byMacro.protein).toBe(1);
+    expect(result.byMacro.fat).toBe(1);
+    expect(result.byMacro.kcal).toBe(1);
+    expect(result.byMacro.carbs).toBe(0);
+  });
+
+  it('never lets the overall rate exceed the weakest of the four', () => {
+    // The invariant that makes the five figures readable side by side: a day
+    // counts overall only if it counted on every one of them.
+    const days = [
+      day('2026-09-08', GOAL, GOAL),
+      day('2026-09-09', macros(150, 400, 70, 2200), GOAL),
+      day('2026-09-10', macros(10, 250, 70, 2200), GOAL),
+      day('2026-09-11', macros(150, 250, 200, 2200), GOAL),
+      day('2026-09-12', macros(150, 250, 70, 900), GOAL),
+      day('2026-09-13', null, GOAL),
+    ];
+
+    for (const tolerance of [1, 10, 25, 100]) {
+      const result = adherenceOf(days, tolerance, TODAY);
+      const weakest = Math.min(
+        result.byMacro.protein ?? 0,
+        result.byMacro.carbs ?? 0,
+        result.byMacro.fat ?? 0,
+        result.byMacro.kcal ?? 0,
+      );
+      expect(result.rate ?? 0).toBeLessThanOrEqual(weakest);
+    }
+  });
+
+  it('shares the denominator with the headline, so the five compare', () => {
+    const result = adherenceOf(
+      [
+        day('2026-09-11', GOAL, GOAL),
+        // Excluded from every one of the five, not from some of them.
+        day('2026-09-12', null, GOAL),
+        day('2026-09-13', GOAL, null),
+      ],
+      10,
+      TODAY,
+    );
+
+    expect(result.judged).toBe(1);
+    expect(result.byMacro.protein).toBe(1);
+    expect(result.rate).toBe(1);
+  });
+});

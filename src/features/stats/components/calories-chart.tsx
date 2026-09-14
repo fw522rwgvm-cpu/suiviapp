@@ -183,16 +183,19 @@ export function CaloriesChart({ panel }: { panel: NutritionPanel }) {
               )}
 
               {/*
-                THE NOTCH, AND IT IS NOT DECORATION.
+                THE PART THAT STICKS OUT, IN RED — and it replaces the notch
+                rather than joining it.
 
-                A day that goes over covers its own track: the fill is taller,
-                so the goal disappears under it and the bar says "a lot" without
-                saying "a lot MORE THAN WHAT". The notch puts the goal back,
-                cut through the fill in the card's own colour.
+                A day that goes over covers its own goal: the fill is taller, so
+                the vessel's rim disappears under it. That needed a marker, and
+                it was a notch cut through the fill. The colour change does the
+                same work better — the boundary between the two IS the goal, so
+                the bar says "over, and by this much" in one reading instead of
+                two.
 
-                Only where it is hidden. Under the goal the track's top edge IS
-                the goal, and a second marker on the same line would be a rule
-                drawn twice.
+                Drawn over the accent bar rather than instead of its top: one
+                rectangle to place rather than two to keep flush, and what shows
+                through its rounded lower corners is the accent it caps.
               */}
               {panel.targetSeries.map((target, index) => {
                 const kcal = panel.kcalSeries[index];
@@ -201,15 +204,14 @@ export function CaloriesChart({ panel }: { panel: NutritionPanel }) {
 
                 return (
                   <Rect
-                    key={`notch-${index}`}
+                    key={`over-${index}`}
                     x={band.left(index)}
-                    // Centred ON the goal, not hanging below it: a goal is a
-                    // level, and a band starting at that level would read as
-                    // two kilocalories of tolerance nobody granted.
-                    y={scale.y(target) - NOTCH_THICKNESS / 2}
+                    y={scale.y(kcal)}
                     width={band.barWidth}
-                    height={NOTCH_THICKNESS}
-                    fill={theme.colors.surface}
+                    height={Math.max(1, scale.y(target) - scale.y(kcal))}
+                    fill={theme.colors.danger}
+                    opacity={touched === null || touched === index ? 1 : 0.35}
+                    rx={band.barWidth > 4 ? 2 : 0}
                   />
                 );
               })}
@@ -256,6 +258,7 @@ export function CaloriesChart({ panel }: { panel: NutritionPanel }) {
       <View style={styles.legend}>
         <Key color={theme.colors.macroKcal} label="Consommé" />
         <Key color={theme.colors.macroKcal} label="Objectif" faint />
+        <Key color={theme.colors.danger} label="Dépassement" />
         <Key color={theme.colors.text} label="Moyenne 7 jours" line />
       </View>
     </View>
@@ -414,8 +417,6 @@ const HEIGHT = 150;
 /** Gridlines asked for. d3 picks round numbers near this count, not exactly it. */
 const TICK_COUNT = 4;
 
-/** The goal marker cut through a bar that has passed it. */
-const NOTCH_THICKNESS = 2;
 
 function indices(count: number): number[] {
   return Array.from({ length: count }, (_, index) => index);

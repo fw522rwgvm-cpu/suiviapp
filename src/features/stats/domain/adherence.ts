@@ -34,6 +34,29 @@ export interface Adherence {
   within: number;
   /** null when nothing could be judged: a rate over zero days is not zero. */
   rate: number | null;
+  /**
+   * The same rate, macro by macro.
+   *
+   * ## IT DOES NOT REPLACE THE ONE ABOVE, IT EXPLAINS IT
+   *
+   * Specs 8.7 asks for a proportion of DAYS, and that stays the headline. What
+   * four rates add is the thing the single figure cannot say: WHICH of the four
+   * is costing the days. A month at 40 % reads very differently when protein is
+   * at 95 % and carbohydrates at 45 %.
+   *
+   * Over the same denominator — the judged days — so the five figures are
+   * comparable and one invariant holds them together: the overall rate can
+   * never exceed the smallest of the four, since a day counts overall only if
+   * it counted on every one of them. A test pins that.
+   */
+  byMacro: MacroAdherence;
+}
+
+export interface MacroAdherence {
+  protein: number | null;
+  carbs: number | null;
+  fat: number | null;
+  kcal: number | null;
 }
 
 /**
@@ -157,11 +180,27 @@ export function adherenceOf(
       : false,
   );
 
+  const rateOf = (macro: keyof Macros): number | null => {
+    if (judged.length === 0) return null;
+    const held = judged.filter((day) =>
+      day.consumed !== null && day.target !== null
+        ? isMacroWithin(day.consumed[macro], day.target[macro], tolerancePct)
+        : false,
+    );
+    return held.length / judged.length;
+  };
+
   return {
     span: finished.length,
     recorded: recorded.length,
     judged: judged.length,
     within: within.length,
     rate: judged.length === 0 ? null : within.length / judged.length,
+    byMacro: {
+      protein: rateOf('protein'),
+      carbs: rateOf('carbs'),
+      fat: rateOf('fat'),
+      kcal: rateOf('kcal'),
+    },
   };
 }

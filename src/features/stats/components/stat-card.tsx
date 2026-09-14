@@ -23,10 +23,22 @@ export function StatCard({
   children,
 }: {
   title: string;
-  /** The one figure of the card. */
-  headline: string;
-  /** What it is a figure OF. Never optional — a number alone is a riddle. */
-  caption: string;
+  /**
+   * The one figure of the card, when the card HAS one.
+   *
+   * Omitted where the drawing is already the figure: the split card states
+   * three shares in a bar and again in three rows, so a headline repeating
+   * them a third time was three numbers saying what the picture underneath
+   * said better.
+   */
+  headline?: string;
+  /**
+   * What the figure is a figure OF — a number alone is a riddle.
+   *
+   * Required in spirit and optional in type, for the same reason: where there
+   * is no headline there is nothing to caption.
+   */
+  caption?: string;
   /** A second line, when there is something to say. */
   note?: string | null;
   children?: React.ReactNode;
@@ -50,8 +62,12 @@ export function StatCard({
           theme.shadow,
         ]}
       >
-        <Text style={[styles.headline, { color: theme.colors.text }]}>{headline}</Text>
-        <Text style={[styles.caption, { color: theme.colors.textMuted }]}>{caption}</Text>
+        {headline === undefined ? null : (
+          <Text style={[styles.headline, { color: theme.colors.text }]}>{headline}</Text>
+        )}
+        {caption === undefined ? null : (
+          <Text style={[styles.caption, { color: theme.colors.textMuted }]}>{caption}</Text>
+        )}
         {note === undefined || note === null ? null : (
           <Text style={[styles.note, { color: theme.colors.textFaint }]}>{note}</Text>
         )}
