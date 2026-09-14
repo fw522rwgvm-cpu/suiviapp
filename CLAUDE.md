@@ -2785,6 +2785,71 @@ chronométrerait une page qui n'avait rien à attendre et afficherait un beau
 résultat que personne n'a mérité. Exactement le chiffre faux et plausible que
 D15 vise.
 
+## Ce que la vérification de la tranche 7 a changé (14/09/2026)
+
+**Le refus G3 jetait les deux nombres qui l'expliquent.** `compareVersions`
+rend `databaseWhen` et `binaryWhen` ; `startup.ts` les perdait en mappant
+`too_recent` vers `blocked`. Le refus était donc correct et indiagnosticable.
+G3 existe pour être lu par quelqu'un debout devant une application qui ne
+démarre pas : retenir le seul fait qui identifie le problème est l'inverse de
+ça. L'écran nomme désormais la dernière migration du binaire avec sa date, et
+date celle de la base — qui ne peut pas être *nommée*, son tag étant par
+définition absent de ce bundle.
+
+**Et le piège qui l'a provoqué, qui n'a rien à voir avec la tranche 7 :
+`npm start` lancé dans le mauvais dossier.** Le build dev est en Debug, donc
+le JavaScript vient de Metro — et `bundle.generated.ts`, c'est-à-dire **le
+journal des migrations que G3 compare**, est dans ce JavaScript. Metro servi
+depuis un dossier resté à la tranche 4 donnait un binaire à `0003` contre une
+base à `0005` : refus, parfaitement légitime.
+
+> **Corollaire à retenir : la version du schéma vient de Metro, pas du binaire.**
+> Un dossier de travail périmé se présente comme une base corrompue. Le
+> symptôme et la cause n'ont aucun rapport visible.
+
+**Un aliment à soi peut porter son code-barres.** Le §6.1 lui en donnait un
+depuis le début et `FoodDraft` le transportait jusqu'en base ; l'éditeur
+n'avait simplement aucun champ. L'unicité se dit **avant** d'enregistrer :
+`requireFreeBarcode` la garde déjà mais en *levant*, ce qui est le bon filet et
+la mauvaise première ligne. Ce n'est pas un `FoodProblem` — `validateFoodDraft`
+est pur — et contrairement à l'écart kcal et à l'énergie impossible, qui se
+contentent d'être marqués, celui-là **bloque** : le §8.5 refuse une *valeur*
+douteuse, or deux aliments pour un produit est une question sans réponse.
+
+**Un scan qui n'aboutit pas ouvre le formulaire, quelle qu'en soit la raison.**
+Le §8.5 ne l'écrivait que pour un code-barres inconnu et D11 répond à un échec
+par un bandeau : ensemble, ils déposaient l'utilisateur sur la liste avec un
+code-barres qui n'avait servi à rien. **Rien n'est écrit en y arrivant** — le
+formulaire est une étape, donc un scan raté puis abandonné ne laisse
+exactement rien, ce qui est la propriété autour de laquelle `ensureOffFood` a
+été bâtie.
+
+**Conséquence obligatoire, et c'est elle qui demandait de l'attention : le
+message de quota a dû déménager.** D11 en fait le seul message qui interrompt,
+et il vivait dans un bandeau rendu **uniquement sur la liste**. Dériver vers le
+formulaire l'aurait emmené loin de la seule chose qui devait l'interrompre. Il
+est désormais la première ligne du formulaire — plus visible, pas moins.
+
+**Le graphique suit le doigt, et c'est un renversement consigné.**
+`calories-chart.tsx` disait qu'un glissement serait « une seconde interaction
+que personne n'a demandée », et le §10.6 pose « une seule interaction ». La
+demande l'a renversé, et l'objection ne survit pas : glisser ne zoome ni ne
+déplace — la fenêtre ne bouge jamais — donc c'est la **même** interaction lue
+en continu. Ce que la règle protégeait, le zoom et le déplacement, est intact.
+
+Le prix technique, nommé : un `Pan` remplace le `Pressable`, avec
+`activeOffsetX` **sans quoi l'écran Stats cesserait de défiler au-dessus de son
+propre tracé**. Coût assumé : commencer un défilement vertical sur le graphique
+fait clignoter une lecture avant que la `ScrollView` ne gagne.
+
+**La valeur touchée est passée au-dessus de la barre, et le motif est
+mécanique.** Un doigt qui atteint une barre vient du bas : la main couvrait la
+réponse à la question qu'elle posait. Au-dessus, le chiffre est dans la seule
+région du tracé qu'une main qui lit ne recouvre jamais. Trois bornages, chacun
+un cas réel — les deux barres des bouts poussent la bulle hors du tracé, et la
+barre la plus haute de la plage, qui est le cas le plus courant, la pousse hors
+du haut ; elle bascule alors à l'intérieur du sommet de la barre.
+
 ## Points ouverts après la tranche 7
 
 - **Vérification iPhone en attente, et elle est double.** Rien de la tranche 6
