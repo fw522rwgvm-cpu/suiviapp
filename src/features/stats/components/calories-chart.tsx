@@ -1,4 +1,4 @@
-import { curveMonotoneX, curveStepAfter, line as d3Line } from 'd3-shape';
+import { curveMonotoneX, line as d3Line } from 'd3-shape';
 import { useState } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -99,16 +99,6 @@ export function CaloriesChart({ panel }: { panel: NutritionPanel }) {
     .y((index) => scale.y(panel.rollingKcalSeries[index] ?? 0))
     .curve(curveMonotoneX)(indices(count));
 
-  // The goal is a STEP, not a curve: it holds for the whole of its day and then
-  // changes, so a slope between two days would draw goals nobody set. curveStepAfter
-  // carries a value forward to the next vertex before it jumps, which is the
-  // shape a daily goal actually has.
-  const goalPath = d3Line<number>()
-    .defined((index) => isDrawable(panel.targetSeries[index]))
-    .x((index) => band.centre(index))
-    .y((index) => scale.y(panel.targetSeries[index] ?? 0))
-    .curve(curveStepAfter)(indices(count));
-
   const shown = touched === null ? null : panel.days[touched];
 
   const scrub = Gesture.Pan()
@@ -141,10 +131,44 @@ export function CaloriesChart({ panel }: { panel: NutritionPanel }) {
         >
           {() => (
             <>
+              {/*
+                THE BAR IS THE GOAL, AND THE FILL IS WHAT WAS EATEN.
+
+                It was a bar for the day with a dashed step line across for the
+                goal, and the line never read: a dashed rule sliding over ninety
+                bars says "a goal existed" without letting you see, at any one
+                bar, whether that day made it. As a vessel the question answers
+                itself — a track that is part full, full, or overflowing.
+
+                Three passes rather than one group per day, so the stacking
+                order is stated once instead of depending on the order elements
+                happen to be written in a fragment.
+              */}
+              {panel.targetSeries.map((target, index) =>
+                // NO TRACK ON A DAY WITH NOTHING RECORDED. An empty vessel
+                // reads as "ate nothing", where the truth is "wrote nothing
+                // down" — the distinction specs 8.7 no 1 rests on, and the one
+                // this whole panel keeps everywhere else. A gap stays a gap.
+                target === null || !isDrawable(panel.kcalSeries[index]) ? null : (
+                  <Rect
+                    key={`goal-${index}`}
+                    x={band.left(index)}
+                    y={scale.y(target)}
+                    width={band.barWidth}
+                    height={Math.max(1, plotHeight - scale.y(target))}
+                    // A ghost of the fill rather than a neutral grey: it is the
+                    // same quantity, not yet reached.
+                    fill={theme.colors.macroKcal}
+                    opacity={0.16}
+                    rx={band.barWidth > 4 ? 2 : 0}
+                  />
+                ),
+              )}
+
               {panel.kcalSeries.map((kcal, index) =>
                 kcal === null ? null : (
                   <Rect
-                    key={index}
+                    key={`eaten-${index}`}
                     x={band.left(index)}
                     y={scale.y(kcal)}
                     width={band.barWidth}
@@ -158,15 +182,37 @@ export function CaloriesChart({ panel }: { panel: NutritionPanel }) {
                 ),
               )}
 
-              {goalPath === null ? null : (
-                <Path
-                  d={goalPath}
-                  stroke={theme.colors.textFaint}
-                  strokeWidth={1.5}
-                  strokeDasharray="4 3"
-                  fill="none"
-                />
-              )}
+              {/*
+                THE NOTCH, AND IT IS NOT DECORATION.
+
+                A day that goes over covers its own track: the fill is taller,
+                so the goal disappears under it and the bar says "a lot" without
+                saying "a lot MORE THAN WHAT". The notch puts the goal back,
+                cut through the fill in the card's own colour.
+
+                Only where it is hidden. Under the goal the track's top edge IS
+                the goal, and a second marker on the same line would be a rule
+                drawn twice.
+              */}
+              {panel.targetSeries.map((target, index) => {
+                const kcal = panel.kcalSeries[index];
+                if (target === null || kcal === null || kcal === undefined) return null;
+                if (kcal <= target) return null;
+
+                return (
+                  <Rect
+                    key={`notch-${index}`}
+                    x={band.left(index)}
+                    // Centred ON the goal, not hanging below it: a goal is a
+                    // level, and a band starting at that level would read as
+                    // two kilocalories of tolerance nobody granted.
+                    y={scale.y(target) - NOTCH_THICKNESS / 2}
+                    width={band.barWidth}
+                    height={NOTCH_THICKNESS}
+                    fill={theme.colors.surface}
+                  />
+                );
+              })}
 
               {meanPath === null ? null : (
                 <Path d={meanPath} stroke={theme.colors.text} strokeWidth={2} fill="none" />
@@ -208,9 +254,9 @@ export function CaloriesChart({ panel }: { panel: NutritionPanel }) {
         pointing at.
       */}
       <View style={styles.legend}>
-        <Key color={theme.colors.macroKcal} label="Par jour" />
-        <Key color={theme.colors.text} label="Moyenne 7 jours" />
-        <Key color={theme.colors.textFaint} label="Objectif" dashed />
+        <Key color={theme.colors.macroKcal} label="Consommé" />
+        <Key color={theme.colors.macroKcal} label="Objectif" faint />
+        <Key color={theme.colors.text} label="Moyenne 7 jours" line />
       </View>
     </View>
   );
@@ -334,7 +380,19 @@ const GAP = 6;
  */
 const ESTIMATED_TOOLTIP_HEIGHT = 62;
 
-function Key({ color, label, dashed }: { color: string; label: string; dashed?: boolean }) {
+function Key({
+  color,
+  label,
+  faint,
+  line,
+}: {
+  color: string;
+  label: string;
+  /** The unfilled vessel: the same colour, at the same opacity the track uses. */
+  faint?: boolean;
+  /** A stroke rather than a block, for the rolling mean. */
+  line?: boolean;
+}) {
   const theme = useTheme();
   return (
     <View style={styles.key}>
@@ -342,7 +400,8 @@ function Key({ color, label, dashed }: { color: string; label: string; dashed?: 
         style={[
           styles.swatch,
           { backgroundColor: color },
-          dashed === true ? styles.swatchThin : null,
+          faint === true ? styles.swatchFaint : null,
+          line === true ? styles.swatchLine : null,
         ]}
       />
       <Text style={[styles.keyLabel, { color: theme.colors.textMuted }]}>{label}</Text>
@@ -354,6 +413,9 @@ const HEIGHT = 150;
 
 /** Gridlines asked for. d3 picks round numbers near this count, not exactly it. */
 const TICK_COUNT = 4;
+
+/** The goal marker cut through a bar that has passed it. */
+const NOTCH_THICKNESS = 2;
 
 function indices(count: number): number[] {
   return Array.from({ length: count }, (_, index) => index);
@@ -409,6 +471,8 @@ const styles = StyleSheet.create({
   legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 10, minHeight: 20 },
   key: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   swatch: { width: 10, height: 10, borderRadius: 3 },
-  swatchThin: { height: 2, borderRadius: 1 },
+  // The same opacity the track is drawn at, so the key IS the thing.
+  swatchFaint: { opacity: 0.16 },
+  swatchLine: { height: 2, borderRadius: 1 },
   keyLabel: { fontSize: 12 },
 });
