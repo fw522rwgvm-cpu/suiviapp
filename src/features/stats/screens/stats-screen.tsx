@@ -7,6 +7,7 @@ import { Segmented } from '@/core/ui/segmented';
 import { usePreferences, useToday } from '@/features/settings/data/settings-queries';
 import { AdherenceCard } from '../components/adherence-card';
 import { CaloriesCard } from '../components/calories-card';
+import { CaloriesChart } from '../components/calories-chart';
 import { SplitCard } from '../components/split-card';
 import { useDailyFigures } from '../data/stats-queries';
 import { nutritionPanel } from '../domain/panel';
@@ -106,7 +107,7 @@ export function StatsScreen() {
         </View>
       ) : (
         <>
-          <CaloriesCard panel={panel} />
+          <CaloriesCard panel={panel} chart={<CaloriesChart panel={panel} />} />
           <SplitCard
             splits={panel.splits}
             recorded={panel.recorded}
