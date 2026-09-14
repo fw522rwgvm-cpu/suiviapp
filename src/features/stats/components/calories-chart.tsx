@@ -4,7 +4,7 @@ import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Path, Rect } from 'react-native-svg';
 import { Text } from '@/core/ui/text';
-import { formatDayShort, formatKcal } from '@/core/format';
+import { formatDayCompact, formatDayShort, formatKcal } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import {
   ChartFrame,
@@ -13,7 +13,7 @@ import {
   GUTTER_LEFT,
   GUTTER_TOP,
 } from '@/core/charts/chart-frame';
-import { bandGeometry, verticalScale } from '@/core/charts/scale';
+import { bandGeometry, labelledIndices, verticalScale } from '@/core/charts/scale';
 import type { LocalDate } from '@/core/date';
 import type { DayFigure } from '../domain/adherence';
 import type { NutritionPanel } from '../domain/panel';
@@ -137,7 +137,7 @@ export function CaloriesChart({ panel }: { panel: NutritionPanel }) {
           height={HEIGHT}
           width={width}
           scale={scale}
-          xLabels={labelsFor(panel, count)}
+          xLabels={labelsFor(panel, count, plotWidth / Math.max(1, count))}
         >
           {() => (
             <>
@@ -372,20 +372,24 @@ function isDrawable(value: number | null | undefined): boolean {
 }
 
 /**
- * Dates under the axis, thinned so they never collide.
+ * Dates under the axis, thinned to whatever the width actually holds.
  *
- * Only the two ends are labelled: at ninety days there is room for perhaps
- * five, and choosing which five is a decision with no good answer — the reader
- * wants "where does this start and where does it end", and touching a bar
- * answers everything in between exactly.
+ * Which positions carry one is geometry, and lives in core/charts with the
+ * rest of it. This only turns them into words.
+ *
+ * ## THE COMPACT FORM, DELIBERATELY
+ *
+ * "15/09", not "mar. 15/09" and not "Aujourd'hui". An axis is read sideways to
+ * place a bar; it is not read for itself. Widening every label so the last one
+ * could say a word would have cost two of the intermediates — and touching a
+ * bar already says "Aujourd'hui" in full, where the question is actually
+ * being asked.
  */
-function labelsFor(panel: NutritionPanel, count: number): string[] {
-  const last = panel.days[count - 1]?.date;
-  return panel.days.map((day, index) => {
-    if (last === undefined) return '';
-    if (index === 0 || index === count - 1) return formatDayShort(day.date, last);
-    return '';
-  });
+function labelsFor(panel: NutritionPanel, count: number, slotWidth: number): string[] {
+  const shown = new Set(labelledIndices(count, slotWidth));
+  return panel.days.map((day, index) =>
+    shown.has(index) ? formatDayCompact(day.date) : '',
+  );
 }
 
 const styles = StyleSheet.create({

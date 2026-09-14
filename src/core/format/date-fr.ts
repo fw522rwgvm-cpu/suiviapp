@@ -121,6 +121,23 @@ export function formatDayShort(date: LocalDate, today: LocalDate): string {
   return year === localDateParts(today).year ? base : `${base}/${year}`;
 }
 
+/**
+ * "15/09" — the shortest a date gets, for an axis.
+ *
+ * No weekday and no year: this is a SCALE, read sideways to place a bar, not a
+ * label read for its own sake. The named days and the weekday live in
+ * formatDayShort, which is what the chart's readout uses when a bar is
+ * actually touched — the axis says where, the readout says what.
+ *
+ * The width is the whole reason it exists. Four or five of these fit across a
+ * phone where two of "mar. 15/09" already crowd each other.
+ */
+export function formatDayCompact(date: LocalDate): string {
+  const { month, day } = localDateParts(date);
+  const pad = (value: number): string => String(value).padStart(2, '0');
+  return `${pad(day)}/${pad(month)}`;
+}
+
 export function formatDayTitle(date: LocalDate, today: LocalDate): string {
   const offset = diffDays(today, date);
   if (offset === 0) return "Aujourd'hui";

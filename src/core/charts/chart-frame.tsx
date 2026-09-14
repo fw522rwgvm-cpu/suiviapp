@@ -48,6 +48,12 @@ export function ChartFrame({
   const family = fontFamilyFor('normal', theme.fontsLoaded);
   const slot = plotWidth / Math.max(1, xLabels.length);
 
+  // Which positions actually carry a label: the caller thins them, and the two
+  // survivors at the ends are the ones that need a different anchor.
+  const labelled = xLabels.flatMap((label, index) => (label === '' ? [] : [index]));
+  const firstLabelled = labelled[0];
+  const lastLabelled = labelled[labelled.length - 1];
+
   return (
     <View style={styles.frame}>
       <Svg width={width} height={height}>
@@ -85,21 +91,39 @@ export function ChartFrame({
             strokeWidth={1.5}
           />
 
-          {xLabels.map((label, index) =>
-            label === '' ? null : (
+          {xLabels.map((label, index) => {
+            if (label === '') return null;
+
+            /**
+             * THE TWO END LABELS HUG THE PLOT, THE REST ARE CENTRED.
+             *
+             * Centring every one of them is what clipped the last: half of it
+             * sits beyond the final band's centre, which at ninety days is
+             * within two points of the plot's right edge — and past that edge
+             * is past the canvas, where the SVG viewport simply cuts it off.
+             *
+             * Anchoring the outermost to the plot's own edges costs nothing and
+             * needs no measurement, which is the point: a clamp computed from a
+             * guessed text width would be the same mistake the tooltip's height
+             * already was.
+             */
+            const last = index === lastLabelled;
+            const first = index === firstLabelled;
+
+            return (
               <SvgText
                 key={`${label}-${index}`}
-                x={index * slot + slot / 2}
+                x={last ? plotWidth : first ? 0 : index * slot + slot / 2}
                 y={height - 2}
                 fill={theme.colors.textFaint}
                 fontSize={10}
                 fontFamily={family}
-                textAnchor="middle"
+                textAnchor={last ? 'end' : first ? 'start' : 'middle'}
               >
                 {label}
               </SvgText>
-            ),
-          )}
+            );
+          })}
 
           {children({ width: plotWidth, height: plotHeight })}
         </G>

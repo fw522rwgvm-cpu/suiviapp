@@ -121,3 +121,57 @@ export function bandGeometry(
     indexAt: (x) => Math.min(slots - 1, Math.max(0, Math.floor(x / slot))),
   };
 }
+
+/**
+ * Points between two labels on a date axis.
+ *
+ * "15/09" is about thirty points at ten-point type, so sixty leaves as much
+ * air between two labels as a label takes. Below that they read as one string
+ * of digits rather than as a scale.
+ */
+export const MIN_LABEL_SPACING = 60;
+
+/**
+ * Which positions of a dense series carry a label.
+ *
+ * ## THE STEP COMES FROM THE PLOT, NOT FROM A CHOSEN NUMBER
+ *
+ * How many labels fit is a question about points, not about days: the same
+ * four dates are comfortable on a large phone and touching on a small one. So
+ * the step is derived — the fewest positions whose slots add up to the minimum
+ * spacing — and the ranges fall out of it rather than being special-cased.
+ *
+ * ## COUNTED BACK FROM THE END, WHICH IS THE SIDE THE READER KNOWS
+ *
+ * The LAST position is always labelled, whatever the step divides into.
+ * Counting forward from zero would leave the right-hand end unlabelled on most
+ * ranges — on a date axis ending today, that is the one date the reader is
+ * surest of and the anchor for every other.
+ */
+export function labelledIndices(
+  count: number,
+  slotWidth: number,
+  minSpacing = MIN_LABEL_SPACING,
+): number[] {
+  if (count <= 0) return [];
+  // A slot of zero or less has no geometry to reason from; one label is the
+  // honest answer, and it is the end one for the reason above.
+  if (slotWidth <= 0) return [count - 1];
+
+  /**
+   * The true slot width, NOT floored at one point.
+   *
+   * Flooring it read as harmless — it was there to keep the division safe —
+   * and it quietly broke the only guarantee this function makes: below a point
+   * per slot the step stopped growing, so two labels could still land closer
+   * than the minimum. The zero case is handled above, where it belongs, so
+   * nothing here has to defend against it.
+   */
+  const step = Math.max(1, Math.ceil(minSpacing / slotWidth));
+
+  const indices: number[] = [];
+  for (let index = count - 1; index >= 0; index -= step) {
+    indices.push(index);
+  }
+  return indices.reverse();
+}

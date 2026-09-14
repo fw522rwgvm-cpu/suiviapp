@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { bandGeometry, verticalScale } from '../../src/core/charts/scale';
+import {
+  bandGeometry,
+  labelledIndices,
+  MIN_LABEL_SPACING,
+  verticalScale,
+} from '../../src/core/charts/scale';
 
 /**
  * The arithmetic that decides where a bar goes (D13).
@@ -123,5 +128,51 @@ describe('bandGeometry', () => {
     const band = bandGeometry(0, 300);
     expect(Number.isFinite(band.centre(0))).toBe(true);
     expect(band.indexAt(150)).toBe(0);
+  });
+});
+
+describe('labelledIndices', () => {
+  /** What the three ranges of specs 8.7 actually look like on a phone. */
+  const PLOT = 292;
+
+  it('always labels the last position, whatever the step divides into', () => {
+    // The decisive property. On a date axis ending today, that is the one date
+    // the reader is surest of and the anchor for every other — and counting
+    // forward from zero leaves it unlabelled on most ranges.
+    for (const count of [7, 30, 90, 11, 13]) {
+      expect(labelledIndices(count, PLOT / count).at(-1)).toBe(count - 1);
+    }
+  });
+
+  it('never puts two labels closer than the minimum', () => {
+    for (const count of [7, 30, 90]) {
+      const slot = PLOT / count;
+      const indices = labelledIndices(count, slot);
+
+      for (let at = 1; at < indices.length; at += 1) {
+        const gap = ((indices[at] ?? 0) - (indices[at - 1] ?? 0)) * slot;
+        expect(gap).toBeGreaterThanOrEqual(MIN_LABEL_SPACING);
+      }
+    }
+  });
+
+  it('gives more than the two ends on every range specs 8.7 offers', () => {
+    // The complaint this answers: two dates and ninety bars is not a scale.
+    for (const count of [7, 30, 90]) {
+      expect(labelledIndices(count, PLOT / count).length).toBeGreaterThanOrEqual(4);
+    }
+  });
+
+  it('labels every position when they are wide enough to deserve it', () => {
+    expect(labelledIndices(4, 100)).toEqual([0, 1, 2, 3]);
+  });
+
+  it('falls back to one label rather than none when nothing fits', () => {
+    const indices = labelledIndices(90, 0.2);
+    expect(indices).toEqual([89]);
+  });
+
+  it('answers nothing for an empty series, rather than [-1]', () => {
+    expect(labelledIndices(0, 50)).toEqual([]);
   });
 });
