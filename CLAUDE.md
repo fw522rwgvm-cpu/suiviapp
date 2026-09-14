@@ -61,35 +61,43 @@ L'application doit tolérer un arrêt forcé à tout moment sans perte.
 ---
 
 ## État du projet
-Tranches 0 à 7 livrées — **fin de la V1**. 981 tests verts sous les trois
+Tranches 0 à 7 livrées — **fin de la V1**. 1011 tests verts sous les trois
 fuseaux, `tsc` vert, bundle produit.
 
-**La tranche 7 demande UN cycle CI, et un seul.** `react-native-svg` est la
+**La tranche 7 a tourné sur l'iPhone** (14/09/2026), Stats compris : le binaire
+`dev-b19` porte `react-native-svg`, l'onglet s'ouvre, et neuf retours d'usage
+ont été traités — le code-barres saisissable, le détour du scan, le graphique
+qui suit le doigt, l'objectif en récipient, l'axe rogné, les graduations
+intermédiaires, le dépassement en rouge, les macros lissées, et le
+dénominateur qui ne comptait pas contre la plage choisie.
+
+**La tranche 7 demandait UN cycle CI, et un seul.** `react-native-svg` est la
 seule dépendance native qui entre, elle n'est importée qu'à la dernière étape,
 et **le binaire de développement doit être reconstruit avant que l'onglet Stats
 ne puisse s'ouvrir**. Tout le reste de la tranche — thème, heure de bascule,
 tolérance, écran À propos, les chiffres des statistiques — est vérifiable par
 Metro sur le binaire actuel.
 
-**Réserve que je n'ai pas pu lever depuis le poste de développement** : je ne
-sais pas si importer `react-native-svg` sans son module natif fait rougir
-*seulement* l'onglet Stats ou empêche l'application de s'ouvrir. `expo-router`
-construit sa table de routes par `require.context`, et rien ne dit ici si le
-module d'une route est évalué au montage ou au démarrage. Ce n'est pas un
-problème tant que la reconstruction précède l'essai ; c'est un problème si on
-lance Metro sur l'ancien binaire en s'attendant à ce que seul Stats casse.
+**Réserve jamais levée, et sans conséquence tant que la reconstruction précède
+l'essai** : on ne sait toujours pas si importer `react-native-svg` sans son
+module natif fait rougir *seulement* l'onglet Stats ou empêche l'application de
+s'ouvrir. Elle n'a pas eu l'occasion de se poser — le binaire a été reconstruit
+avant le premier lancement.
 
 **La tranche 6 n'a toujours pas tourné sur l'appareil**, à deux défauts près
 corrigés sur retour d'usage. La tranche 7 n'y change rien et s'empile dessus :
 la vérification devra regarder les deux, et dans cet ordre.
 
-Ce que la vérification devra regarder en premier :
+Ce qui reste à regarder sur l'appareil, et qui n'a pas été touché :
 - **le bloc groupé du Journal** — le repli, l'indent, et surtout que le tap de
   repli n'ait pas volé le balayage de suppression ;
 - **les deux `SwipeBack` empilés** dans la fenêtre d'ajout ;
-- puis, pour la tranche 7 : **le thème qui doit tenir au redémarrage ET peindre
-  le chrome natif**, l'heure de bascule sur le Journal du lendemain matin, et
-  **le graphique**, dont aucun test ne dit à quoi il ressemble.
+- **le thème face au chrome natif** : que « Sombre » sous un iOS clair peigne
+  bien la barre d'onglets, les en-têtes, les molettes et les alertes. C'est le
+  seul point de la tranche décidé sur une lecture de source
+  (`RCTAppearance.mm`) sans jamais être observé ;
+- **l'heure de bascule**, qui demande d'être devant le Journal avant l'heure
+  choisie.
 
 La tranche 5 a été éprouvée sur l'iPhone en plusieurs tours : jauge, couleurs,
 icônes, police, modèles, planning, calendrier.
@@ -2850,20 +2858,118 @@ un cas réel — les deux barres des bouts poussent la bulle hors du tracé, et 
 barre la plus haute de la plage, qui est le cas le plus courant, la pousse hors
 du haut ; elle bascule alors à l'intérieur du sommet de la barre.
 
+### Ce que les graphiques ont coûté, et la règle qui en sort
+
+**Deux nombres devinés, deux défauts, et exactement le même remède.** L'axe
+perdait le haut de son chiffre du haut, et l'infobulle se posait en travers du
+sommet de la barre. Dans les deux cas j'avais écrit une taille en constante :
+
+- `.nice()` arrondit le domaine pour que la graduation haute tombe **exactement**
+  sur le maximum, donc à `y = 0`. Une étiquette centrée sur cette ligne a ses
+  jambages en `y` négatif et la fenêtre SVG les coupe. Seul le chiffre du haut
+  perd sa tête, ce qui se lit comme un défaut de rendu et non comme une réserve
+  manquante. D'où `GUTTER_TOP`, passé à `verticalScale`.
+- `TOOLTIP_HEIGHT = 54` était faux par construction : la bulle fait trois lignes
+  avec un objectif et deux sans. Quel que soit le nombre choisi, il était faux
+  pour l'une des deux formes.
+
+> **La règle : ne jamais positionner depuis une taille supposée.** Ancrer depuis
+> le côté qu'on connaît — l'infobulle est ancrée par son **bas**, donc sa hauteur
+> n'entre plus dans le calcul — ou mesurer par `onLayout`. Sa hauteur ne sert
+> plus qu'à décider d'un basculement, donc une valeur périmée ne peut plus que
+> retarder ce basculement d'une image.
+
+**Deux formes qui se recouvrent ne peuvent pas être atténuées.** Le rouge du
+dépassement était peint *sur* le vert. Atténuer une barre pour faire ressortir
+sa voisine envoyait alors 35 % de rouge à travers 35 % de vert et inventait une
+troisième couleur. Et ses coins bas arrondis laissaient voir le vert dessous,
+donc le cap se lisait comme un bloc collé.
+
+**Corollaire qui ne se devine pas : `rx` sur un `Rect` arrondit les QUATRE
+coins.** SVG n'a pas de rayon par coin. Une barre en deux segments veut un
+chemin — `barPath` — dont seul le sommet est capé, et les deux segments se
+touchent bord à bord sans jamais se recouvrir.
+
+**Un test a trouvé un défaut que la lecture n'avait pas vu.** En sortant le
+pilon des libellés d'axe dans `core/charts` pour pouvoir le tester, l'assertion
+« jamais deux libellés plus proches que le minimum » a rougi : le plancher
+`Math.max(1, slotWidth)`, posé pour rendre une division sûre, cassait
+silencieusement la seule garantie de la fonction. Le cas zéro est traité à part,
+et la garantie est inconditionnelle.
+
+**Les deux libellés des bouts se collent aux bords du tracé.** Centré sur sa
+barre, le dernier dépassait de la toile — la dernière barre est à deux points du
+bord droit à quatre-vingt-dix jours. Ancrage `end` et `start` : aucune mesure,
+donc pas de seconde devinette.
+
+**Un second axe ne trace aucune ligne d'horizon.** Les calories rejoignent le
+graphique des macros sur un axe à droite — deux mille contre cent cinquante
+écraserait les trois macros au sol. Celui de gauche possède les lignes, celui de
+droite n'étiquette que ses graduations, **teinté de la couleur de sa série**
+pour qu'il ne soit jamais à deviner lequel sert qui. Deux jeux de règles à deux
+hauteurs sont le bruit qui donne aux doubles axes leur mauvaise réputation.
+
+**Un objectif n'est pas une série.** Il était tracé en escalier pointillé
+au-dessus des barres, et ça ne se lisait pas : une règle glissant sur
+quatre-vingt-dix barres dit qu'un objectif existait sans permettre de voir, sur
+une barre donnée, si cette journée-là l'a tenu. C'est la **borne de chaque
+barre**, donc la barre est le volume de l'objectif et le consommé la remplit.
+
+**Un dépassement recouvre son propre objectif**, et c'est le dessin qui l'a
+révélé : le remplissage est plus haut, donc la borne disparaît dessous et la
+barre dit « beaucoup » sans dire « beaucoup de plus que quoi ». La bascule au
+rouge le remet en place — la frontière entre les deux teintes **est** l'objectif.
+
+**Deux seuils différents pour « dépassé », et c'est délibéré.** La jauge du
+Journal garde sa marge de 50 kcal (§14.6 n° 21) ; le graphique rougit au premier
+kilocalorie. Les deux ne posent pas la même question : la marge existe pour
+qu'un chiffre **vivant** ne clignote pas à +5 kcal, et un historique n'a pas ce
+problème. `KCAL_OVERSHOOT_KCAL` n'est donc **pas** importé dans les stats.
+
+**Et rien de tout ça n'est testé.** Seule l'arithmétique l'est — `scale.ts` —
+parce qu'une barre au mauvais endroit ressemble exactement à une barre au bon
+endroit. C'est écrit dans le fichier de test plutôt que laissé entendre.
+
+### Le dénominateur doit compter contre ce que l'utilisateur a choisi
+
+Retour d'usage, et le défaut était réel : choisir « 7 jours » et lire « sur 6 »
+partout. La règle — la journée en cours n'entre dans aucun chiffre — **reste
+juste** : à neuf heures du matin une journée a trois cents kilocalories au
+compteur. Ce qui était faux, c'est qu'elle se **taisait**.
+
+> Le §8.7 n° 2 rend le dénominateur obligatoire pour que la statistique ne
+> trompe pas. **Un dénominateur que le lecteur ne reconnaît pas fait exactement
+> ce qu'il devait empêcher.**
+
+`Adherence` porte donc `range` à côté de `span` — la plage choisie à côté des
+journées terminées — toutes les phrases comptent contre la première, et « la
+journée en cours » rejoint les exclusions nommées. Un test exige que
+`mesurées + non renseignées + sans objectif + en cours` fasse exactement la
+plage.
+
 ## Points ouverts après la tranche 7
 
-- **Vérification iPhone en attente, et elle est double.** Rien de la tranche 6
-  ni de la tranche 7 n'a été touché sur l'appareil. **Le binaire doit être
-  reconstruit avant que l'onglet Stats ne s'ouvre.**
-- **On ne sait pas ce que fait un import de `react-native-svg` sans son module
-  natif** : rougir l'onglet Stats seul, ou empêcher l'application de s'ouvrir.
-  `expo-router` bâtit ses routes par `require.context` et rien ici ne dit quand
-  le module d'une route est évalué. Sans conséquence si la reconstruction
-  précède l'essai.
-- **Le graphique n'a jamais été peint.** Son arithmétique est testée, son rendu
-  non. Ce qu'il faut regarder : les barres à 7 jours (larges) et à 90 (des
-  cheveux), l'escalier de l'objectif qui ne doit pas s'interpoler, la coupure
-  de la courbe sur un trou, et les deux dates sous l'axe.
+- ~~**Vérification iPhone en attente.**~~ **Faite pour la tranche 7, Stats
+  compris** (14/09/2026). **La tranche 6 n'a toujours pas été touchée** : le
+  bloc groupé du Journal et les `SwipeBack` empilés restent inconnus.
+- **Le rendu des graphiques reste non testé, par construction.** Seule leur
+  arithmétique l'est : une barre au mauvais endroit ressemble à une barre au
+  bon endroit. Ce que l'appareil seul peut dire, et qui a déjà rendu neuf
+  retours, restera le seul juge.
+- **La journée en cours est exclue de tous les chiffres, et ça se paie sur
+  7 jours.** Une journée sur sept écartée, c'est 14 % de la plage ; sur 30 et
+  90 c'est du bruit. C'est nommé à l'écran depuis le retour d'usage, mais la
+  règle elle-même reste une hypothèse signalée. La sortie tient en une ligne :
+  `adherenceOf` cesse de filtrer sur la date, et le taux plafonne alors à 86 %
+  chaque matin jusqu'au dîner.
+- **La moyenne glissante est molle sur 7 jours**, forcément : chaque point ne
+  dispose que des jours qui le précèdent dans la plage. Correct et visible. La
+  sortie serait de garder le brut sous 30 jours, au prix d'un comportement qui
+  change avec la plage.
+- **Les chemins dégradés d'Open Food Facts n'ont toujours pas été provoqués.**
+  Le détour vers le formulaire les couvre désormais tous les quatre, mais seul
+  le mode avion est facile à essayer : le quota et la réponse illisible
+  demandent que le serveur se comporte mal.
 - **`fontVariant: ['tabular-nums']` reste non vérifié sur Nunito**, et la
   tranche 7 en ajoute : le chiffre de tête de chaque carte, les trois parts de
   la répartition, les quatre mesures de D16. Si Nunito ne porte pas `tnum`, ça
