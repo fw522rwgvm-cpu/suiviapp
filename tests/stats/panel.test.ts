@@ -146,8 +146,10 @@ describe('what the card says', () => {
     );
 
     expect(formatAdherenceRate(panel.adherence.rate)).toBe('67 %');
+    // Against the range the reader CHOSE — three days handed in — never
+    // against the two that happened to be finished.
     expect(describeAdherenceDenominator(panel.adherence)).toBe(
-      '2 sur 3 journées mesurées, sur 3 terminées.',
+      '2 sur 3 journées mesurées, sur 3 jours.',
     );
   });
 
@@ -172,7 +174,54 @@ describe('what the card says', () => {
   it('agrees in the singular', () => {
     const panel = nutritionPanel([day('2026-09-13', GOAL, GOAL)], 10, TODAY);
     expect(describeAdherenceDenominator(panel.adherence)).toBe(
-      '1 sur 1 journée mesurée, sur 1 terminée.',
+      '1 sur 1 journée mesurée, sur 1 jour.',
+    );
+  });
+
+  it('names today among the exclusions, so the subtraction adds up', () => {
+    // THE DEFECT THIS ANSWERS. Choosing seven days and reading "sur 6" was a
+    // rule applied in silence: nothing on the screen accounted for the missing
+    // day, and a denominator nobody can check is the thing specs 8.7 no 2
+    // exists to prevent.
+    const panel = nutritionPanel(
+      [
+        day('2026-09-12', GOAL, GOAL),
+        day('2026-09-13', GOAL, GOAL),
+        day('2026-09-14', GOAL, GOAL),
+      ],
+      10,
+      TODAY,
+    );
+
+    expect(panel.range).toBe(3);
+    expect(panel.span).toBe(2);
+    expect(describeAdherenceDenominator(panel.adherence)).toBe(
+      '2 sur 2 journées mesurées, sur 3 jours.',
+    );
+    expect(describeAdherenceExclusions(panel.adherence)).toBe(
+      'Non comptées : la journée en cours.',
+    );
+  });
+
+  it('adds up: judged plus every exclusion is the range', () => {
+    const panel = nutritionPanel(
+      [
+        day('2026-09-10', GOAL, GOAL),
+        day('2026-09-11', null, GOAL),
+        day('2026-09-12', GOAL, null),
+        day('2026-09-13', GOAL, GOAL),
+        day('2026-09-14', GOAL, GOAL),
+      ],
+      10,
+      TODAY,
+    );
+
+    const blank = panel.adherence.span - panel.adherence.recorded;
+    const goalless = panel.adherence.recorded - panel.adherence.judged;
+    const inProgress = panel.adherence.range - panel.adherence.span;
+
+    expect(panel.adherence.judged + blank + goalless + inProgress).toBe(
+      panel.adherence.range,
     );
   });
 
@@ -183,13 +232,17 @@ describe('what the card says', () => {
     const panel = nutritionPanel([day('2026-09-13', null, null)], 10, TODAY);
     expect(formatAdherenceRate(panel.adherence.rate)).toBe('—');
     expect(describeAdherenceDenominator(panel.adherence)).toBe(
-      'Aucune journée à mesurer sur 1 terminée.',
+      'Aucune journée à mesurer sur 1 jour.',
     );
   });
 
   it('says how many days a mean actually covers', () => {
-    expect(describeMeanBasis(18, 30)).toBe('Moyenne sur 18 journées renseignées, sur 30.');
-    expect(describeMeanBasis(1, 30)).toBe('Moyenne sur 1 journée renseignée, sur 30.');
-    expect(describeMeanBasis(0, 30)).toBe('Aucune journée renseignée sur 30.');
+    expect(describeMeanBasis(18, 30)).toBe(
+      'Moyenne sur 18 journées renseignées, sur 30 jours — la journée en cours n’est pas comptée.',
+    );
+    expect(describeMeanBasis(1, 30)).toBe(
+      'Moyenne sur 1 journée renseignée, sur 30 jours — la journée en cours n’est pas comptée.',
+    );
+    expect(describeMeanBasis(0, 30)).toBe('Aucune journée renseignée sur 30 jours.');
   });
 });

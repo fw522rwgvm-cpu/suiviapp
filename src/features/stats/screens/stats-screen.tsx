@@ -112,7 +112,7 @@ export function StatsScreen() {
           <SplitCard
             splits={panel.splits}
             recorded={panel.recorded}
-            span={panel.span}
+            range={panel.range}
             chart={<MacrosChart panel={panel} />}
           />
           <AdherenceCard

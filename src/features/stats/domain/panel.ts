@@ -62,7 +62,9 @@ export interface NutritionPanel {
    */
   rollingMacroSeries: MacroSeries;
 
-  /** Finished days of the range — its length is the honest denominator. */
+  /** Every day of the range the user chose, today included. */
+  range: number;
+  /** Of those, the finished ones — what every figure is actually computed over. */
   span: number;
   /** Of those, how many carry at least one entry. */
   recorded: number;
@@ -129,6 +131,7 @@ export function nutritionPanel(
       fat: rollingMean(macroSeries.fat, WEEKLY_WINDOW_DAYS),
     },
 
+    range: days.length,
     span: finished.length,
     recorded: recorded.length,
 

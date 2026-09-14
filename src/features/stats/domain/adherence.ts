@@ -24,6 +24,19 @@ export interface DayFigure {
 }
 
 export interface Adherence {
+  /**
+   * Every day of the range the user chose — today included.
+   *
+   * IT EXISTS BECAUSE THE DENOMINATOR HAS TO BE RECOGNISABLE. `span` is the
+   * range minus today, and a card that answered "7 jours" with "sur 6" was
+   * arithmetic nobody could check: the missing day was a rule applied in
+   * silence. Specs 8.7 no 2 makes the denominator obligatory precisely so the
+   * figure cannot mislead, and a denominator the reader does not recognise
+   * does the very thing it was there to prevent.
+   *
+   * So the sentences count against this, and name what was taken out of it.
+   */
+  range: number;
   /** Days in the range that could be judged at all — the range minus today. */
   span: number;
   /** Of those, how many have at least one entry. */
@@ -191,6 +204,7 @@ export function adherenceOf(
   };
 
   return {
+    range: days.length,
     span: finished.length,
     recorded: recorded.length,
     judged: judged.length,

@@ -2,7 +2,7 @@ import { StyleSheet, View } from 'react-native';
 import { Text } from '@/core/ui/text';
 import { useTheme, type ColorTokens } from '@/core/theme';
 import type { MacroSplit, MacroSplits } from '../domain/series';
-import { formatMeanGrams, formatShare } from '../domain/stats-text';
+import { describeMeanBasis, formatMeanGrams, formatShare } from '../domain/stats-text';
 import { StatCard } from './stat-card';
 
 /**
@@ -25,12 +25,13 @@ import { StatCard } from './stat-card';
 export function SplitCard({
   splits,
   recorded,
-  span,
+  range,
   chart,
 }: {
   splits: MacroSplits | null;
   recorded: number;
-  span: number;
+  /** The range the user chose, today included — what the sentence counts against. */
+  range: number;
   /**
    * The three macros over time.
    *
@@ -74,7 +75,7 @@ export function SplitCard({
     */
     <StatCard
       title="Répartition"
-      note={`Moyenne par journée renseignée, sur ${recorded} sur ${span}.`}
+      note={describeMeanBasis(recorded, range)}
     >
       <View style={styles.bar}>
         {rows.map((row) => (

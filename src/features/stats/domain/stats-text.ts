@@ -34,22 +34,28 @@ export function formatAdherenceRate(rate: number | null): string {
  * > dénominateur — « 92 % sur 18 jours renseignés / 30 ». Sans cela, la
  * > statistique récompense l'abandon du journal.
  *
- * `span` rather than the range's own length, because the day in progress is
- * not one of the days being judged: saying "sur 30" when only 29 could ever
- * have counted would misstate the denominator in exactly the way this rule
- * exists to prevent.
+ * ## AGAINST THE RANGE THAT WAS CHOSEN, AND THIS WAS WRONG ONCE
+ *
+ * It counted against `span` — the range minus today — so choosing "7 jours"
+ * produced "sur 6". Defensible in this file and unreadable on the screen: the
+ * missing day was a rule applied in silence, and a denominator the reader
+ * cannot recognise does exactly what point 2 exists to prevent. The exclusion
+ * stays; what changed is that it is now NAMED, beside the others.
  */
 export function describeAdherenceDenominator(adherence: Adherence): string {
-  const finished = `${adherence.span} ${plural(adherence.span, 'terminée')}`;
+  // Against the range the reader CHOSE, never against the internal span. See
+  // Adherence.range: a card answering "7 jours" with "sur 6" was a rule applied
+  // in silence, which is what a denominator exists to prevent.
+  const range = `${adherence.range} ${plural(adherence.range, 'jour')}`;
 
   if (adherence.judged === 0) {
-    return adherence.span === 0
-      ? 'Aucune journée terminée sur cette plage.'
-      : `Aucune journée à mesurer sur ${finished}.`;
+    return adherence.range === 0
+      ? 'Rien à mesurer sur cette plage.'
+      : `Aucune journée à mesurer sur ${range}.`;
   }
 
   const measured = plural(adherence.judged, 'journée mesurée', 'journées mesurées');
-  return `${adherence.within} sur ${adherence.judged} ${measured}, sur ${finished}.`;
+  return `${adherence.within} sur ${adherence.judged} ${measured}, sur ${range}.`;
 }
 
 /**
@@ -72,6 +78,10 @@ export function describeAdherenceExclusions(adherence: Adherence): string | null
   const goalless = adherence.recorded - adherence.judged;
 
   const parts: string[] = [];
+  // First, because it is the one the arithmetic cannot otherwise explain: the
+  // reader picked seven days and the figure covers six. Naming it is what makes
+  // the subtraction add up on screen instead of only in this file.
+  if (adherence.range > adherence.span) parts.push('la journée en cours');
   if (blank > 0) {
     parts.push(`${blank} ${plural(blank, 'journée non renseignée', 'journées non renseignées')}`);
   }
@@ -83,9 +93,15 @@ export function describeAdherenceExclusions(adherence: Adherence): string | null
   return `Non comptées : ${parts.join(', ')}.`;
 }
 
-/** "± 10 % sur les quatre macros. La journée en cours n'est pas comptée." */
+/**
+ * "± 10 % sur les quatre macros."
+ *
+ * It used to carry "la journée en cours n'est pas comptée" as well, and that
+ * sentence has moved: it belongs with the other exclusions, where it explains
+ * a subtraction, rather than beside the tolerance, where it explained nothing.
+ */
 export function describeAdherenceRule(tolerancePct: number): string {
-  return `± ${tolerancePct} % sur les quatre macros. La journée en cours n’est pas comptée.`;
+  return `± ${tolerancePct} % sur les quatre macros.`;
 }
 
 /** "2 145 kcal", or a dash. Whole calories, as specs 5.1 requires. */
@@ -111,9 +127,19 @@ export function formatShare(share: number): string {
   return `${Math.round(share * 100)} %`;
 }
 
-/** "sur 18 jours renseignés" — how many days a mean actually covers. */
-export function describeMeanBasis(recorded: number, span: number): string {
-  if (recorded === 0) return `Aucune journée renseignée sur ${span}.`;
+/**
+ * How many days a mean actually covers, against the range that was CHOSEN.
+ *
+ * The second sentence is not padding. Without it the first reads as an
+ * accusation — "6 sur 7" when six days were logged out of seven looks like a
+ * missed day, where the truth is that today is simply not finished. One of the
+ * two numbers is always short by exactly that, and saying so once is cheaper
+ * than the reader working it out every time.
+ */
+export function describeMeanBasis(recorded: number, range: number): string {
+  const scope = `sur ${range} ${plural(range, 'jour')}`;
+  if (recorded === 0) return `Aucune journée renseignée ${scope}.`;
+
   const days = plural(recorded, 'journée renseignée', 'journées renseignées');
-  return `Moyenne sur ${recorded} ${days}, sur ${span}.`;
+  return `Moyenne sur ${recorded} ${days}, ${scope} — la journée en cours n’est pas comptée.`;
 }

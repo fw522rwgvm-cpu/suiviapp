@@ -34,7 +34,7 @@ export function CaloriesCard({
           ? 'Moyenne par jour. Aucun objectif sur cette plage.'
           : `Moyenne par jour, pour un objectif moyen de ${formatMeanKcal(panel.meanTargetKcal)}.`
       }
-      note={describeMeanBasis(panel.recorded, panel.span)}
+      note={describeMeanBasis(panel.recorded, panel.range)}
     >
       {chart}
     </StatCard>
