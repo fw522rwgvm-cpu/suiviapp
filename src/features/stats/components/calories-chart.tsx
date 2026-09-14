@@ -1,12 +1,20 @@
 import { curveMonotoneX, curveStepAfter, line as d3Line } from 'd3-shape';
 import { useState } from 'react';
-import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Path, Rect } from 'react-native-svg';
 import { Text } from '@/core/ui/text';
 import { formatDayShort, formatKcal } from '@/core/format';
 import { useTheme } from '@/core/theme';
-import { ChartFrame, GUTTER_LEFT } from '@/core/charts/chart-frame';
+import {
+  ChartFrame,
+  FRAME_TOP,
+  GUTTER_BOTTOM,
+  GUTTER_LEFT,
+} from '@/core/charts/chart-frame';
 import { bandGeometry, verticalScale } from '@/core/charts/scale';
+import type { LocalDate } from '@/core/date';
+import type { DayFigure } from '../domain/adherence';
 import type { NutritionPanel } from '../domain/panel';
 
 /**
@@ -30,15 +38,33 @@ import type { NutritionPanel } from '../domain/panel';
  * the same rule the figures follow, and the chart has to agree with them or the
  * picture contradicts the caption.
  *
- * ## ONE INTERACTION, AND ONLY ONE
+ * ## ONE INTERACTION, MADE CONTINUOUS
  *
  * > Aucun zoom ni déplacement au doigt : les sélecteurs de plage y pourvoient
  * > déjà. Une seule interaction : toucher un point affiche sa valeur et sa
  * > date. (Specs 10.6, D13)
  *
- * So: a Pressable over the plot, mapping x to a slot. A press-and-drag would be
- * a scrub, which is a second interaction nobody asked for; this reads on press
- * and clears on release, which keeps the readout tied to a deliberate act.
+ * This file used to say a scrub would be "a second interaction nobody asked
+ * for". It was asked for, and the objection does not survive the ask: dragging
+ * neither zooms nor pans — the viewport never moves — so it is the SAME
+ * interaction, read continuously. Lifting a finger ninety times to read ninety
+ * bars is not a rule worth keeping. Amended rather than left as a divergence
+ * (specs 14.13, architecture 9.8).
+ *
+ * A Pan rather than a Pressable, because a Pressable cannot follow a finger:
+ *  - onBegin selects at the touch, before any movement, so a plain tap still
+ *    reads exactly as it did;
+ *  - onUpdate follows;
+ *  - onFinalize clears, including when the ScrollView takes the gesture away.
+ *
+ * activeOffsetX is what keeps the page scrollable. Without it a vertical drag
+ * starting on the chart would be claimed here and the Stats screen would stop
+ * scrolling over its own graph. The cost, accepted: beginning a vertical scroll
+ * on the chart flashes a readout for an instant before the ScrollView wins.
+ *
+ * runOnJS because the readout is React state and a date string — it has to
+ * cross to the JS thread whatever happens, so there is nothing to gain by
+ * hopping through a shared value first.
  */
 export function CaloriesChart({ panel }: { panel: NutritionPanel }) {
   const theme = useTheme();
@@ -48,7 +74,9 @@ export function CaloriesChart({ panel }: { panel: NutritionPanel }) {
   // Card padding (16 each side) inside a screen padded by 16 each side.
   const width = Math.max(160, screenWidth - 64);
   const plotWidth = Math.max(1, width - GUTTER_LEFT);
-  const plotHeight = HEIGHT - 16;
+  // The frame's own bottom gutter, not a coincidence with FRAME_TOP: one is
+  // room for the dates under the baseline, the other is air above the plot.
+  const plotHeight = HEIGHT - GUTTER_BOTTOM;
 
   const count = panel.days.length;
   const band = bandGeometry(count, plotWidth);
@@ -77,6 +105,17 @@ export function CaloriesChart({ panel }: { panel: NutritionPanel }) {
     .curve(curveStepAfter)(indices(count));
 
   const shown = touched === null ? null : panel.days[touched];
+
+  const scrub = Gesture.Pan()
+    // Only claims the touch once the movement is clearly horizontal, so a
+    // vertical drag is left to the ScrollView this chart sits in.
+    .activeOffsetX([-8, 8])
+    .runOnJS(true)
+    .onBegin((event) => setTouched(band.indexAt(event.x)))
+    .onUpdate((event) => setTouched(band.indexAt(event.x)))
+    // onFinalize rather than onEnd: it also fires when another recogniser wins
+    // the gesture, which is exactly what a vertical scroll does.
+    .onFinalize(() => setTouched(null));
 
   return (
     <View>
@@ -117,38 +156,126 @@ export function CaloriesChart({ panel }: { panel: NutritionPanel }) {
         )}
       </ChartFrame>
 
+      {shown === undefined || shown === null ? null : (
+        <Tooltip
+          x={GUTTER_LEFT + band.centre(touched ?? 0)}
+          y={scale.y(shown.consumed?.kcal ?? 0)}
+          plotLeft={GUTTER_LEFT}
+          plotRight={GUTTER_LEFT + plotWidth}
+          day={shown}
+          today={panel.days[count - 1]?.date ?? shown.date}
+        />
+      )}
+
       {/*
         Over the plot only, offset by the gutter the frame reserves for its
         labels — otherwise a touch on the axis figures would read as day zero.
       */}
-      <Pressable
-        style={[styles.touch, { left: GUTTER_LEFT, width: plotWidth }]}
-        onPressIn={(event) => setTouched(band.indexAt(event.nativeEvent.locationX))}
-        onPressOut={() => setTouched(null)}
-        accessibilityRole="image"
-        accessibilityLabel="Calories par jour sur la plage choisie"
-      />
+      <GestureDetector gesture={scrub}>
+        <View
+          style={[styles.touch, { left: GUTTER_LEFT, width: plotWidth }]}
+          accessibilityRole="image"
+          accessibilityLabel="Calories par jour sur la plage choisie"
+        />
+      </GestureDetector>
 
+      {/*
+        The legend STAYS while a bar is being read, where it used to be
+        replaced by the readout. The readout moved above the bar, so the two no
+        longer compete for the same line — and a legend that vanished the
+        moment you touched the chart took away the key to what you were
+        pointing at.
+      */}
       <View style={styles.legend}>
-        {shown === undefined || shown === null ? (
-          <>
-            <Key color={theme.colors.macroKcal} label="Par jour" />
-            <Key color={theme.colors.text} label="Moyenne 7 jours" />
-            <Key color={theme.colors.textFaint} label="Objectif" dashed />
-          </>
-        ) : (
-          <Text style={[styles.readout, { color: theme.colors.text }]}>
-            {formatDayShort(shown.date, panel.days[count - 1]?.date ?? shown.date)} ·{' '}
-            {shown.consumed === null
-              ? 'rien enregistré'
-              : `${formatKcal(shown.consumed.kcal)} kcal`}
-            {shown.target === null ? '' : ` · objectif ${formatKcal(shown.target.kcal)}`}
-          </Text>
-        )}
+        <Key color={theme.colors.macroKcal} label="Par jour" />
+        <Key color={theme.colors.text} label="Moyenne 7 jours" />
+        <Key color={theme.colors.textFaint} label="Objectif" dashed />
       </View>
     </View>
   );
 }
+
+/**
+ * The readout, ABOVE the bar it describes.
+ *
+ * It was a line under the chart, and it was in the worst place there is: a
+ * finger reaching a bar comes from below, so the hand covered the answer to
+ * the question it was asking. Above the bar the figure sits in the one region
+ * of the chart a reading hand is never over.
+ *
+ * ## IT IS A VIEW, NOT AN SvgText
+ *
+ * It needs a rounded background, a shadow and two weights of Nunito — all
+ * three of which are ordinary layout and none of which an SVG text node does
+ * without being rebuilt. It is positioned in the same coordinates the chart
+ * uses, so it tracks the bar exactly while costing the drawing nothing.
+ *
+ * ## THREE CLAMPS, AND EACH ONE IS A REAL CASE
+ *
+ * The first and last bar would push it off the sides — at ninety days those
+ * are one point wide and the bubble is a hundred and forty. A bar near the top
+ * of the scale would push it off the top, which is the commonest day of all:
+ * the highest day of the range. So it is held inside the plot horizontally,
+ * and flips to sit INSIDE the bar's top when there is no room above it.
+ */
+function Tooltip({
+  x,
+  y,
+  plotLeft,
+  plotRight,
+  day,
+  today,
+}: {
+  /** Centre of the bar, in chart coordinates. */
+  x: number;
+  /** Top of the bar. */
+  y: number;
+  plotLeft: number;
+  plotRight: number;
+  day: DayFigure;
+  today: LocalDate;
+}) {
+  const theme = useTheme();
+
+  const half = TOOLTIP_WIDTH / 2;
+  const left = Math.min(Math.max(x - half, plotLeft), plotRight - TOOLTIP_WIDTH);
+  // FRAME_TOP is where the plot begins; above it there is nothing to draw on.
+  const above = y - TOOLTIP_HEIGHT - 6;
+  const top = FRAME_TOP + Math.max(0, above);
+
+  return (
+    <View
+      pointerEvents="none"
+      style={[
+        styles.tooltip,
+        {
+          left,
+          top,
+          width: TOOLTIP_WIDTH,
+          backgroundColor: theme.colors.surface,
+          borderColor: theme.colors.border,
+          borderRadius: theme.radius.md,
+        },
+        theme.shadow,
+      ]}
+    >
+      <Text style={[styles.tooltipDay, { color: theme.colors.textMuted }]} numberOfLines={1}>
+        {formatDayShort(day.date, today)}
+      </Text>
+      <Text style={[styles.tooltipValue, { color: theme.colors.text }]} numberOfLines={1}>
+        {day.consumed === null ? 'rien enregistré' : `${formatKcal(day.consumed.kcal)} kcal`}
+      </Text>
+      {day.target === null ? null : (
+        <Text style={[styles.tooltipGoal, { color: theme.colors.textFaint }]} numberOfLines={1}>
+          objectif {formatKcal(day.target.kcal)}
+        </Text>
+      )}
+    </View>
+  );
+}
+
+const TOOLTIP_WIDTH = 132;
+const TOOLTIP_HEIGHT = 54;
 
 function Key({ color, label, dashed }: { color: string; label: string; dashed?: boolean }) {
   const theme = useTheme();
@@ -202,11 +329,22 @@ function labelsFor(panel: NutritionPanel, count: number): string[] {
 }
 
 const styles = StyleSheet.create({
-  touch: { position: 'absolute', top: 16, height: HEIGHT - 16 },
+  touch: { position: 'absolute', top: FRAME_TOP, height: HEIGHT - FRAME_TOP },
+  tooltip: {
+    position: 'absolute',
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    gap: 1,
+  },
+  tooltipDay: { fontSize: 11 },
+  // Tabular, like every other figure of this panel: the bubble must not change
+  // width as the finger moves from a three-digit day to a four-digit one.
+  tooltipValue: { fontSize: 15, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  tooltipGoal: { fontSize: 11, fontVariant: ['tabular-nums'] },
   legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 10, minHeight: 20 },
   key: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   swatch: { width: 10, height: 10, borderRadius: 3 },
   swatchThin: { height: 2, borderRadius: 1 },
   keyLabel: { fontSize: 12 },
-  readout: { fontSize: 13, fontWeight: '600' },
 });

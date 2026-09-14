@@ -112,7 +112,16 @@ export function ChartFrame({
 export const GUTTER_LEFT = 34;
 /** Room for one line of dates under the baseline. */
 export const GUTTER_BOTTOM = 16;
+/**
+ * Air between the card's text and the plot — and the offset anything drawn
+ * OVER the chart has to add.
+ *
+ * Exported rather than left as a number in a stylesheet because a caller
+ * positioning a tooltip in plot coordinates needs the same value, and two 16s
+ * meaning two different things is how they come to disagree.
+ */
+export const FRAME_TOP = 16;
 
 const styles = StyleSheet.create({
-  frame: { marginTop: 16 },
+  frame: { marginTop: FRAME_TOP },
 });
