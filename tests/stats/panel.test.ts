@@ -1,0 +1,161 @@
+import { describe, expect, it } from 'vitest';
+import { toLocalDate } from '../../src/core/date';
+import type { Macros } from '../../src/features/nutrition/domain/macros';
+import type { DayFigure } from '../../src/features/stats/domain/adherence';
+import { nutritionPanel } from '../../src/features/stats/domain/panel';
+import {
+  describeAdherenceDenominator,
+  describeAdherenceExclusions,
+  describeMeanBasis,
+  formatAdherenceRate,
+} from '../../src/features/stats/domain/stats-text';
+
+/**
+ * What the panel computes, and what it says about it.
+ *
+ * Specs 8.7 no 2 makes the denominator obligatory — "sans cela, la statistique
+ * récompense l'abandon du journal" — so the sentences are as much a
+ * requirement as the arithmetic, and they are tested as one.
+ */
+
+const TODAY = toLocalDate('2026-09-14');
+
+function macros(protein: number, carbs: number, fat: number, kcal: number): Macros {
+  return { protein, carbs, fat, kcal };
+}
+
+const GOAL = macros(150, 250, 70, 2200);
+
+function day(date: string, consumed: Macros | null, target: Macros | null): DayFigure {
+  return { date: toLocalDate(date), consumed, target };
+}
+
+describe('nutritionPanel', () => {
+  it('draws today but does not average it in', () => {
+    // The case the whole design turns on: a morning's 300 kcal is a bar on the
+    // chart and is not part of the mean printed beside it.
+    const panel = nutritionPanel(
+      [
+        day('2026-09-13', macros(150, 250, 70, 2000), GOAL),
+        day('2026-09-14', macros(20, 30, 5, 300), GOAL),
+      ],
+      10,
+      TODAY,
+    );
+
+    expect(panel.kcalSeries).toEqual([2000, 300]);
+    expect(panel.meanConsumed?.kcal).toBe(2000);
+    expect(panel.span).toBe(1);
+    expect(panel.recorded).toBe(1);
+  });
+
+  it('leaves a gap in the series rather than a zero', () => {
+    const panel = nutritionPanel(
+      [
+        day('2026-09-11', macros(0, 0, 0, 2000), GOAL),
+        day('2026-09-12', null, GOAL),
+        day('2026-09-13', macros(0, 0, 0, 2000), GOAL),
+      ],
+      10,
+      TODAY,
+    );
+
+    expect(panel.kcalSeries).toEqual([2000, null, 2000]);
+    // And the mean is 2000, not 1333.
+    expect(panel.meanConsumed?.kcal).toBe(2000);
+  });
+
+  it('rolls a seven-day mean lined up with the dates', () => {
+    const panel = nutritionPanel(
+      [
+        day('2026-09-12', macros(0, 0, 0, 1000), null),
+        day('2026-09-13', macros(0, 0, 0, 3000), null),
+      ],
+      10,
+      TODAY,
+    );
+
+    expect(panel.rollingKcalSeries).toEqual([1000, 2000]);
+  });
+
+  it('averages the goal only over the days that had one', () => {
+    const panel = nutritionPanel(
+      [
+        day('2026-09-12', macros(0, 0, 0, 2000), GOAL),
+        // No goal. Must not drag the mean goal towards zero.
+        day('2026-09-13', macros(0, 0, 0, 2000), null),
+      ],
+      10,
+      TODAY,
+    );
+
+    expect(panel.meanTargetKcal).toBe(2200);
+  });
+
+  it('has no split when nothing was recorded', () => {
+    const panel = nutritionPanel([day('2026-09-13', null, GOAL)], 10, TODAY);
+    expect(panel.splits).toBeNull();
+    expect(panel.meanConsumed).toBeNull();
+  });
+});
+
+describe('what the card says', () => {
+  it('never shows a percentage without its denominator', () => {
+    const panel = nutritionPanel(
+      [
+        day('2026-09-11', GOAL, GOAL),
+        day('2026-09-12', GOAL, GOAL),
+        day('2026-09-13', macros(10, 10, 10, 100), GOAL),
+      ],
+      10,
+      TODAY,
+    );
+
+    expect(formatAdherenceRate(panel.adherence.rate)).toBe('67 %');
+    expect(describeAdherenceDenominator(panel.adherence)).toBe(
+      '2 sur 3 journées mesurées, sur 3 terminées.',
+    );
+  });
+
+  it('names both kinds of excluded day, and only when there are some', () => {
+    const clean = nutritionPanel([day('2026-09-13', GOAL, GOAL)], 10, TODAY);
+    expect(describeAdherenceExclusions(clean.adherence)).toBeNull();
+
+    const messy = nutritionPanel(
+      [
+        day('2026-09-11', GOAL, GOAL),
+        day('2026-09-12', null, GOAL),
+        day('2026-09-13', GOAL, null),
+      ],
+      10,
+      TODAY,
+    );
+    expect(describeAdherenceExclusions(messy.adherence)).toBe(
+      'Non comptées : 1 journée non renseignée, 1 journée sans objectif.',
+    );
+  });
+
+  it('agrees in the singular', () => {
+    const panel = nutritionPanel([day('2026-09-13', GOAL, GOAL)], 10, TODAY);
+    expect(describeAdherenceDenominator(panel.adherence)).toBe(
+      '1 sur 1 journée mesurée, sur 1 terminée.',
+    );
+  });
+
+  it('says a dash and an explanation rather than nought per cent', () => {
+    // Nought per cent is a measurement: it says every judged day missed. No
+    // judged day is not that, and printing 0 % would tell someone they had
+    // failed completely on the day they installed the application.
+    const panel = nutritionPanel([day('2026-09-13', null, null)], 10, TODAY);
+    expect(formatAdherenceRate(panel.adherence.rate)).toBe('—');
+    expect(describeAdherenceDenominator(panel.adherence)).toBe(
+      'Aucune journée à mesurer sur 1 terminée.',
+    );
+  });
+
+  it('says how many days a mean actually covers', () => {
+    expect(describeMeanBasis(18, 30)).toBe('Moyenne sur 18 journées renseignées, sur 30.');
+    expect(describeMeanBasis(1, 30)).toBe('Moyenne sur 1 journée renseignée, sur 30.');
+    expect(describeMeanBasis(0, 30)).toBe('Aucune journée renseignée sur 30.');
+  });
+});

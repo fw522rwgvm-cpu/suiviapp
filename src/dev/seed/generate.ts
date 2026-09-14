@@ -5,10 +5,16 @@ import { addFoodEntry, addFreeEntry } from '@/features/nutrition/data/day-writes
 import { listFoods } from '@/features/nutrition/data/food-reads';
 import { createFood } from '@/features/nutrition/data/food-writes';
 import { emptyFoodDraft } from '@/features/nutrition/domain/food-draft';
+import { readTemplates } from '@/features/nutrition/data/planning-reads';
+import {
+  createTemplate,
+  setDefaultTemplate,
+} from '@/features/nutrition/data/planning-writes';
 import { listRecipes } from '@/features/nutrition/data/recipe-reads';
 import { createRecipe } from '@/features/nutrition/data/recipe-writes';
 import { emptyRecipeDraft } from '@/features/nutrition/domain/recipe-draft';
 import type { Macros } from '@/features/nutrition/domain/macros';
+import { MEAL_KINDS } from '@/features/nutrition/domain/meal-kinds';
 import { baseQuantity, portionQuantity } from '@/features/nutrition/domain/portions';
 import { createRandom, type Random } from './random';
 
@@ -374,6 +380,53 @@ function seedRecipes(tx: AppDatabase, foods: readonly SeededFood[]): number {
   return created;
 }
 
+/**
+ * One day template, made the default, so the generated days have goals.
+ *
+ * ## WITHOUT IT, HALF OF SLICE 7 IS INVISIBLE ON THE DEVICE
+ *
+ * A day materialises from whatever the planning resolves to, and until slice 7
+ * the generator created no template — so every generated day came out with no
+ * goal at all. That is a legitimate state (it is what a fresh installation
+ * looks like), but it is also the one state in which the remaining banner stays
+ * silent and the adherence rate has an empty denominator. Nothing about either
+ * could be judged by looking.
+ *
+ * ## ONLY WHEN THERE IS NONE, BECAUSE THE BUTTON PROMISES NOT TO ERASE
+ *
+ * The Settings button says nothing is erased and can be pressed twice — to
+ * stack thirty days on ninety, which is a reasonable thing to want. Creating a
+ * template every time would leave a pile of identical ones; assigning the
+ * default every time would silently replace a planning the user set up by hand
+ * on the development installation. Reused by absence, like the foods are
+ * reused by name.
+ *
+ * The figures are an ordinary day rather than anyone's: roughly 2 000 kcal
+ * split over four meals, with the snack left without goals on purpose —
+ * amendment 14.6 no 10 allows a meal to carry none, and a PARTIALLY targeted
+ * day is the case the statistics have to get right.
+ */
+function seedTemplate(tx: AppDatabase): void {
+  if (readTemplates(tx).length > 0) return;
+
+  // Names taken from MEAL_KINDS, never typed again: they are a closed list
+  // (amendment 14.6 no 14), matching is BY NAME, and a near-miss on an accent
+  // would produce a template whose meals no day could ever be paired with.
+  const [breakfast, lunch, dinner, snack] = MEAL_KINDS;
+
+  const id = createTemplate(tx, {
+    name: 'Jour ordinaire',
+    meals: [
+      { name: breakfast, targets: { protein: 30, carbs: 55, fat: 15, kcal: 475 } },
+      { name: lunch, targets: { protein: 45, carbs: 85, fat: 22, kcal: 720 } },
+      { name: dinner, targets: { protein: 45, carbs: 75, fat: 22, kcal: 680 } },
+      { name: snack, targets: null },
+    ],
+  });
+
+  setDefaultTemplate(tx, id);
+}
+
 export function seedJournal(db: AppDatabase, options: SeedOptions): SeedReport {
   const { endDate, days, seed = 1, coverage = 0.85 } = options;
   if (days < 1) throw new Error('Nothing to generate');
@@ -390,6 +443,7 @@ export function seedJournal(db: AppDatabase, options: SeedOptions): SeedReport {
   let recipes = 0;
 
   db.transaction((tx) => {
+    seedTemplate(tx);
     seeded = seedFoods(tx);
     recipes = seedRecipes(tx, seeded);
 
