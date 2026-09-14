@@ -175,3 +175,48 @@ export function labelledIndices(
   }
   return indices.reverse();
 }
+
+/**
+ * A bar as a path, so only its TOP corners are rounded.
+ *
+ * ## WHY NOT A Rect
+ *
+ * SVG's `rx` rounds all four corners, which is fine for a bar standing alone
+ * and wrong for a bar made of two stacked segments: the upper one's rounded
+ * BOTTOM corners let the lower one show through, and the joint reads as one
+ * block pasted onto another rather than as one bar in two colours.
+ *
+ * The overlap that produces has a second cost, and it is the one that actually
+ * bites: two shapes drawn over each other cannot be dimmed. Fading a bar to
+ * make its neighbour stand out blends the two colours through each other and
+ * invents a third.
+ *
+ * So the segments are drawn edge to edge, never overlapping, and the rounding
+ * is asked for only where a cap belongs — the very top of the bar.
+ */
+export function barPath(
+  x: number,
+  width: number,
+  top: number,
+  bottom: number,
+  radius: number,
+): string {
+  // Never more than half the width, or the two corners cross and the curve
+  // turns inside out; never more than the height, for the same reason on a bar
+  // barely taller than its own cap.
+  const r = Math.max(0, Math.min(radius, width / 2, Math.abs(bottom - top)));
+  const right = x + width;
+
+  if (r === 0) {
+    return `M${x},${bottom} L${x},${top} L${right},${top} L${right},${bottom} Z`;
+  }
+
+  return (
+    `M${x},${bottom}` +
+    ` L${x},${top + r}` +
+    ` Q${x},${top} ${x + r},${top}` +
+    ` L${right - r},${top}` +
+    ` Q${right},${top} ${right},${top + r}` +
+    ` L${right},${bottom} Z`
+  );
+}

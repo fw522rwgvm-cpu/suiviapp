@@ -40,6 +40,14 @@ export interface NutritionPanel {
   targetSeries: (number | null)[];
   /** Trailing seven-day mean of kcalSeries (specs 8.7). */
   rollingKcalSeries: (number | null)[];
+  /**
+   * Grams per day of each macro, gaps included.
+   *
+   * The split card answers "what is my balance", averaged over the range; these
+   * answer "has it moved", which no average can. Same shape as kcalSeries and
+   * the same rule: a day with no entry is null, never zero.
+   */
+  macroSeries: MacroSeries;
 
   /** Finished days of the range — its length is the honest denominator. */
   span: number;
@@ -56,6 +64,12 @@ export interface NutritionPanel {
   adherence: Adherence;
 }
 
+export interface MacroSeries {
+  protein: (number | null)[];
+  carbs: (number | null)[];
+  fat: (number | null)[];
+}
+
 export function nutritionPanel(
   days: readonly DayFigure[],
   tolerancePct: number,
@@ -63,6 +77,11 @@ export function nutritionPanel(
 ): NutritionPanel {
   const kcalSeries = days.map((day) => day.consumed?.kcal ?? null);
   const targetSeries = days.map((day) => day.target?.kcal ?? null);
+  const macroSeries: MacroSeries = {
+    protein: days.map((day) => day.consumed?.protein ?? null),
+    carbs: days.map((day) => day.consumed?.carbs ?? null),
+    fat: days.map((day) => day.consumed?.fat ?? null),
+  };
 
   const finished = days.filter((day) => compareLocalDate(day.date, today) < 0);
   const recorded = finished.flatMap((day) => (day.consumed === null ? [] : [day.consumed]));
@@ -90,6 +109,7 @@ export function nutritionPanel(
     kcalSeries,
     targetSeries,
     rollingKcalSeries: rollingMean(kcalSeries, WEEKLY_WINDOW_DAYS),
+    macroSeries,
 
     span: finished.length,
     recorded: recorded.length,

@@ -1,8 +1,7 @@
 import { curveMonotoneX, line as d3Line } from 'd3-shape';
-import { useState } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { Path, Rect } from 'react-native-svg';
+import { GestureDetector } from 'react-native-gesture-handler';
+import { G, Path, Rect } from 'react-native-svg';
 import { Text } from '@/core/ui/text';
 import { formatDayCompact, formatDayShort, formatKcal } from '@/core/format';
 import { useTheme } from '@/core/theme';
@@ -13,7 +12,14 @@ import {
   GUTTER_LEFT,
   GUTTER_TOP,
 } from '@/core/charts/chart-frame';
-import { bandGeometry, labelledIndices, verticalScale } from '@/core/charts/scale';
+import { ChartTooltip } from '@/core/charts/chart-tooltip';
+import { useScrub } from '@/core/charts/use-scrub';
+import {
+  bandGeometry,
+  barPath,
+  labelledIndices,
+  verticalScale,
+} from '@/core/charts/scale';
 import type { LocalDate } from '@/core/date';
 import type { DayFigure } from '../domain/adherence';
 import type { NutritionPanel } from '../domain/panel';
@@ -70,7 +76,6 @@ import type { NutritionPanel } from '../domain/panel';
 export function CaloriesChart({ panel }: { panel: NutritionPanel }) {
   const theme = useTheme();
   const { width: screenWidth } = useWindowDimensions();
-  const [touched, setTouched] = useState<number | null>(null);
 
   // Card padding (16 each side) inside a screen padded by 16 each side.
   const width = Math.max(160, screenWidth - 64);
@@ -99,18 +104,8 @@ export function CaloriesChart({ panel }: { panel: NutritionPanel }) {
     .y((index) => scale.y(panel.rollingKcalSeries[index] ?? 0))
     .curve(curveMonotoneX)(indices(count));
 
+  const { touched, gesture: scrub } = useScrub(band);
   const shown = touched === null ? null : panel.days[touched];
-
-  const scrub = Gesture.Pan()
-    // Only claims the touch once the movement is clearly horizontal, so a
-    // vertical drag is left to the ScrollView this chart sits in.
-    .activeOffsetX([-8, 8])
-    .runOnJS(true)
-    .onBegin((event) => setTouched(band.indexAt(event.x)))
-    .onUpdate((event) => setTouched(band.indexAt(event.x)))
-    // onFinalize rather than onEnd: it also fires when another recogniser wins
-    // the gesture, which is exactly what a vertical scroll does.
-    .onFinalize(() => setTouched(null));
 
   return (
     <View>
@@ -165,54 +160,66 @@ export function CaloriesChart({ panel }: { panel: NutritionPanel }) {
                 ),
               )}
 
-              {panel.kcalSeries.map((kcal, index) =>
-                kcal === null ? null : (
-                  <Rect
-                    key={`eaten-${index}`}
-                    x={band.left(index)}
-                    y={scale.y(kcal)}
-                    width={band.barWidth}
-                    height={Math.max(1, plotHeight - scale.y(kcal))}
-                    // The accent, like the gauge on the Journal: calories wear
-                    // one colour across the application (amendment 14.4 no 15).
-                    fill={theme.colors.macroKcal}
-                    opacity={touched === null || touched === index ? 1 : 0.35}
-                    rx={band.barWidth > 4 ? 2 : 0}
-                  />
-                ),
-              )}
-
               {/*
-                THE PART THAT STICKS OUT, IN RED — and it replaces the notch
-                rather than joining it.
+                ONE BAR, TWO SEGMENTS, AND THEY DO NOT OVERLAP.
 
-                A day that goes over covers its own goal: the fill is taller, so
-                the vessel's rim disappears under it. That needed a marker, and
-                it was a notch cut through the fill. The colour change does the
-                same work better — the boundary between the two IS the goal, so
-                the bar says "over, and by this much" in one reading instead of
-                two.
+                The red used to be a rectangle painted ON the green one. Two
+                faults came with that, and the second is the one that bit: its
+                rounded lower corners let the green show through, so the cap
+                read as a block pasted on — and dimming a bar to make its
+                neighbour stand out sent 35 % of red through 35 % of green and
+                invented a third colour.
 
-                Drawn over the accent bar rather than instead of its top: one
-                rectangle to place rather than two to keep flush, and what shows
-                through its rounded lower corners is the accent it caps.
+                Now the green stops at the goal and the red starts there, edge
+                to edge. Only the topmost segment is capped, which is what
+                barPath is for; the boundary between the two IS the goal, so the
+                bar says "over, and by this much" in one reading.
               */}
-              {panel.targetSeries.map((target, index) => {
-                const kcal = panel.kcalSeries[index];
-                if (target === null || kcal === null || kcal === undefined) return null;
-                if (kcal <= target) return null;
+              {panel.kcalSeries.map((kcal, index) => {
+                if (kcal === null) return null;
+
+                const target = panel.targetSeries[index] ?? null;
+                const over = target !== null && kcal > target;
+                const radius = band.barWidth > 4 ? 2 : 0;
+                const dim = touched === null || touched === index ? 1 : 0.35;
+                const x = band.left(index);
 
                 return (
-                  <Rect
-                    key={`over-${index}`}
-                    x={band.left(index)}
-                    y={scale.y(kcal)}
-                    width={band.barWidth}
-                    height={Math.max(1, scale.y(target) - scale.y(kcal))}
-                    fill={theme.colors.danger}
-                    opacity={touched === null || touched === index ? 1 : 0.35}
-                    rx={band.barWidth > 4 ? 2 : 0}
-                  />
+                  <G key={`bar-${index}`} opacity={dim}>
+                    {/*
+                      The excess, drawn FIRST so it sits under the green rather
+                      than over it — asked for, and it also means a future
+                      change to either segment cannot make one paint across the
+                      other.
+                    */}
+                    {over ? (
+                      <Path
+                        d={barPath(
+                          x,
+                          band.barWidth,
+                          scale.y(kcal),
+                          scale.y(target),
+                          radius,
+                        )}
+                        fill={theme.colors.danger}
+                      />
+                    ) : null}
+
+                    <Path
+                      d={barPath(
+                        x,
+                        band.barWidth,
+                        scale.y(over && target !== null ? target : kcal),
+                        plotHeight,
+                        // Square where the red continues above it: a cap in the
+                        // middle of a bar is a seam.
+                        over ? 0 : radius,
+                      )}
+                      // The accent, like the gauge on the Journal: calories wear
+                      // one colour across the application (amendment 14.4 no 15).
+                      fill={theme.colors.macroKcal}
+                    />
+                  </G>
                 );
               })}
 
@@ -224,15 +231,15 @@ export function CaloriesChart({ panel }: { panel: NutritionPanel }) {
         </ChartFrame>
 
         {shown === undefined || shown === null ? null : (
-          <Tooltip
+          <ChartTooltip
             x={GUTTER_LEFT + band.centre(touched ?? 0)}
-            barTop={scale.y(shown.consumed?.kcal ?? 0)}
+            anchorY={scale.y(shown.consumed?.kcal ?? 0)}
             plotHeight={plotHeight}
             plotLeft={GUTTER_LEFT}
             plotRight={GUTTER_LEFT + plotWidth}
-            day={shown}
-            today={panel.days[count - 1]?.date ?? shown.date}
-          />
+          >
+            <DayReadout day={shown} today={panel.days[count - 1]?.date ?? shown.date} />
+          </ChartTooltip>
         )}
 
         {/*
@@ -266,99 +273,16 @@ export function CaloriesChart({ panel }: { panel: NutritionPanel }) {
 }
 
 /**
- * The readout, ABOVE the bar it describes.
+ * What the bubble says about one day of the calories chart.
  *
- * It was a line under the chart, and it was in the worst place there is: a
- * finger reaching a bar comes from below, so the hand covered the answer to
- * the question it was asking. Above the bar the figure sits in the one region
- * of the chart a reading hand is never over.
- *
- * ## IT IS A VIEW, NOT AN SvgText
- *
- * It needs a rounded background, a shadow and two weights of Nunito — all
- * three of which are ordinary layout and none of which an SVG text node does
- * without being rebuilt. It is positioned in the same coordinates the chart
- * uses, so it tracks the bar exactly while costing the drawing nothing.
- *
- * ## THREE CLAMPS, AND EACH ONE IS A REAL CASE
- *
- * The first and last bar would push it off the sides — at ninety days those
- * are one point wide and the bubble is a hundred and forty. A bar near the top
- * of the scale would push it off the top, which is the commonest day of all:
- * the highest day of the range. So it is held inside the plot horizontally,
- * and flips to sit INSIDE the bar's top when there is no room above it.
+ * Content only: where it sits is ChartTooltip's problem, and the same one the
+ * macro chart has.
  */
-function Tooltip({
-  x,
-  barTop,
-  plotHeight,
-  plotLeft,
-  plotRight,
-  day,
-  today,
-}: {
-  /** Centre of the bar, in chart coordinates. */
-  x: number;
-  /** Top of the bar, in plot coordinates: 0 is the top of the canvas. */
-  barTop: number;
-  plotHeight: number;
-  plotLeft: number;
-  plotRight: number;
-  day: DayFigure;
-  today: LocalDate;
-}) {
+function DayReadout({ day, today }: { day: DayFigure; today: LocalDate }) {
   const theme = useTheme();
 
-  const half = TOOLTIP_WIDTH / 2;
-  const left = Math.min(Math.max(x - half, plotLeft), plotRight - TOOLTIP_WIDTH);
-
-  /**
-   * ANCHORED BY ITS BOTTOM, so its own height never enters the sum.
-   *
-   * It was anchored by its top, against a height written down as a constant —
-   * and the constant was a guess, because the bubble is three lines with a goal
-   * and two without. Whatever number was chosen was wrong for one of the two
-   * shapes, which is how it came to sit across the top of the bar instead of
-   * above it.
-   *
-   * With `bottom` there is nothing to guess: the bubble's lower edge is placed
-   * a fixed gap above the bar's top and it grows upwards from there, at two
-   * lines or three.
-   *
-   * The container's bottom is the bottom of the whole chart box, hence the
-   * bottom gutter in the sum — the dates under the baseline live there.
-   */
-  const bottom = plotHeight + GUTTER_BOTTOM - barTop + GAP;
-
-  /**
-   * The flip, and it is the ONLY thing the height is still needed for.
-   *
-   * A tall bar leaves no room above itself, so the bubble goes to the top of
-   * the plot instead. Measured rather than assumed — one frame on an estimate,
-   * then exact and stable, since the height only changes between a day with a
-   * goal and a day without. And a stale height can now only make the bubble
-   * flip a frame late; it can no longer place it wrongly.
-   */
-  const [height, setHeight] = useState(ESTIMATED_TOOLTIP_HEIGHT);
-  const fitsAbove = barTop - GAP - height >= 0;
-
   return (
-    <View
-      pointerEvents="none"
-      onLayout={(event) => setHeight(event.nativeEvent.layout.height)}
-      style={[
-        styles.tooltip,
-        fitsAbove ? { bottom } : { top: FRAME_TOP },
-        {
-          left,
-          width: TOOLTIP_WIDTH,
-          backgroundColor: theme.colors.surface,
-          borderColor: theme.colors.border,
-          borderRadius: theme.radius.md,
-        },
-        theme.shadow,
-      ]}
-    >
+    <>
       <Text style={[styles.tooltipDay, { color: theme.colors.textMuted }]} numberOfLines={1}>
         {formatDayShort(day.date, today)}
       </Text>
@@ -370,18 +294,9 @@ function Tooltip({
           objectif {formatKcal(day.target.kcal)}
         </Text>
       )}
-    </View>
+    </>
   );
 }
-
-const TOOLTIP_WIDTH = 132;
-/** Air between the bubble's lower edge and the top of the bar it names. */
-const GAP = 6;
-/**
- * First-frame guess, and nothing more: onLayout replaces it immediately and it
- * only ever decides whether to flip, never where to sit.
- */
-const ESTIMATED_TOOLTIP_HEIGHT = 62;
 
 function Key({
   color,
@@ -457,13 +372,6 @@ function labelsFor(panel: NutritionPanel, count: number, slotWidth: number): str
 
 const styles = StyleSheet.create({
   touch: { position: 'absolute', top: FRAME_TOP, height: HEIGHT - FRAME_TOP },
-  tooltip: {
-    position: 'absolute',
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    gap: 1,
-  },
   tooltipDay: { fontSize: 11 },
   // Tabular, like every other figure of this panel: the bubble must not change
   // width as the finger moves from a three-digit day to a four-digit one.

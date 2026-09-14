@@ -8,6 +8,7 @@ import { usePreferences, useToday } from '@/features/settings/data/settings-quer
 import { AdherenceCard } from '../components/adherence-card';
 import { CaloriesCard } from '../components/calories-card';
 import { CaloriesChart } from '../components/calories-chart';
+import { MacrosChart } from '../components/macros-chart';
 import { SplitCard } from '../components/split-card';
 import { useDailyFigures } from '../data/stats-queries';
 import { nutritionPanel } from '../domain/panel';
@@ -112,6 +113,7 @@ export function StatsScreen() {
             splits={panel.splits}
             recorded={panel.recorded}
             span={panel.span}
+            chart={<MacrosChart panel={panel} />}
           />
           <AdherenceCard
             adherence={panel.adherence}

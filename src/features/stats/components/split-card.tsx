@@ -26,10 +26,20 @@ export function SplitCard({
   splits,
   recorded,
   span,
+  chart,
 }: {
   splits: MacroSplits | null;
   recorded: number;
   span: number;
+  /**
+   * The three macros over time.
+   *
+   * A slot rather than a chart, like the calories card's: the bar above states
+   * a balance AVERAGED over the range, and averages cannot say whether it has
+   * moved. The two belong on one card because they answer the same question at
+   * two time scales.
+   */
+  chart?: React.ReactNode;
 }) {
   const theme = useTheme();
 
@@ -73,8 +83,34 @@ export function SplitCard({
             // flexGrow on a share, so the three fill the row exactly whatever
             // the numbers. A width in per cent would round three times and
             // leave a hairline of background showing at the end.
-            style={{ flexGrow: row.split.share, backgroundColor: theme.colors[row.color] }}
-          />
+            style={[
+              styles.segment,
+              { flexGrow: row.split.share, backgroundColor: theme.colors[row.color] },
+            ]}
+          >
+            {/*
+              THE FIGURE INSIDE THE COLOUR, and hidden where it would not fit.
+
+              A segment narrower than a share of about an eighth cannot hold
+              "8 %" without the text spilling over its neighbours — and a
+              percentage printed across two colours belongs to neither. The row
+              below states every one of them in full, so nothing is lost by the
+              bar staying silent where it is thin.
+
+              Punched out in the CARD's colour rather than in white: on the
+              light theme that is white on a mid tone, on the dark theme it is
+              near-black on a lighter one. One token, right in both, by
+              construction rather than by a pair of values kept in step.
+            */}
+            {row.split.share < MIN_LABELLED_SHARE ? null : (
+              <Text
+                style={[styles.segmentLabel, { color: theme.colors.surface }]}
+                numberOfLines={1}
+              >
+                {formatShare(row.split.share)}
+              </Text>
+            )}
+          </View>
         ))}
       </View>
 
@@ -92,13 +128,27 @@ export function SplitCard({
           </View>
         ))}
       </View>
+
+      {chart}
     </StatCard>
   );
 }
 
+/**
+ * Below this share, a segment is too narrow to hold its own percentage.
+ *
+ * An eighth of the bar is some forty points on a phone, against about
+ * twenty-eight for "12 %". Under that the text would spill across the
+ * neighbouring colour, where it belongs to neither.
+ */
+const MIN_LABELLED_SHARE = 0.12;
+
 const styles = StyleSheet.create({
-  // No headline above it any more, so the bar IS the top of the card.
-  bar: { flexDirection: 'row', height: 12, borderRadius: 6, overflow: 'hidden', marginTop: 4 },
+  // No headline above it any more, so the bar IS the top of the card — and it
+  // is tall enough to read a figure inside, which is what it is now for.
+  bar: { flexDirection: 'row', height: 26, borderRadius: 8, overflow: 'hidden', marginTop: 4 },
+  segment: { alignItems: 'center', justifyContent: 'center' },
+  segmentLabel: { fontSize: 12, fontWeight: '700', fontVariant: ['tabular-nums'] },
   rows: { marginTop: 12, gap: 8 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   dot: { width: 9, height: 9, borderRadius: 5 },

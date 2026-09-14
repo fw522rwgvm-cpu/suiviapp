@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   bandGeometry,
+  barPath,
   labelledIndices,
   MIN_LABEL_SPACING,
   verticalScale,
@@ -174,5 +175,41 @@ describe('labelledIndices', () => {
 
   it('answers nothing for an empty series, rather than [-1]', () => {
     expect(labelledIndices(0, 50)).toEqual([]);
+  });
+});
+
+describe('barPath', () => {
+  it('closes, so it fills rather than strokes', () => {
+    expect(barPath(0, 10, 20, 100, 2).endsWith('Z')).toBe(true);
+  });
+
+  it('rounds only the top when asked, and nothing when not', () => {
+    // The whole reason it is a path: `rx` on a Rect rounds all four corners,
+    // and the lower corners of a stacked segment let the segment beneath show
+    // through — the joint then reads as one block pasted onto another.
+    expect(barPath(0, 10, 20, 100, 0)).not.toContain('Q');
+    expect(barPath(0, 10, 20, 100, 2)).toContain('Q');
+  });
+
+  it('never lets the two corners cross on a narrow bar', () => {
+    // At ninety days a bar is some two points wide against a radius of two:
+    // uncapped, the curves would meet past each other and turn inside out.
+    const path = barPath(0, 2, 20, 100, 6);
+    expect(path).toContain('Q');
+    expect(path).not.toContain('NaN');
+    // The radius is held to half the width, so no ABSCISSA leaves the bar.
+    // Coordinates come in x,y pairs; only the first of each is an x.
+    for (const point of [...path.matchAll(/(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/g)]) {
+      const x = Number(point[1]);
+      expect(x).toBeGreaterThanOrEqual(0);
+      expect(x).toBeLessThanOrEqual(2);
+    }
+  });
+
+  it('never rounds more than the bar is tall', () => {
+    // A segment barely taller than its own cap — a day one kilocalorie over
+    // its goal draws exactly that.
+    const path = barPath(0, 20, 98, 100, 6);
+    expect(path).not.toContain('NaN');
   });
 });
