@@ -2480,6 +2480,48 @@ vouloir dire. Il est là parce que les trois listes se lisent maintenant comme
 une seule grammaire — et parce qu'un « plus » décoratif entre deux vrais serait
 celui qui ne répond pas.
 
+## Un défaut trouvé sur l'appareil : la molette qui s'ouvrait en grammes
+
+**Une entrée loguée « 2 tranches » rouvrait son écran de quantité sur les
+grammes.** Sur le journal comme au panier, et de façon déterministe.
+
+**La cause n'est pas dans `wheelFor`**, qui est juste : il résout le nom de
+portion de l'entrée contre les portions que l'aliment propose *aujourd'hui* et
+retombe sur l'unité de base quand il ne l'y trouve pas. C'est le bon
+comportement pour une portion renommée ou supprimée depuis.
+
+Elle est dans ce que l'appelant lui passait. **Une liste vide est une vraie
+réponse** — un aliment sans portions, un produit Open Food Facts, un aliment
+supprimé — et elle est *indiscernable* d'une liste simplement en retard. Or le
+formulaire n'attendait que la **quantité** :
+
+- au journal, la requête de l'aliment ne peut même pas démarrer avant que celle
+  de l'entrée ait répondu, l'aliment étant trouvé *à travers* l'entrée. Les
+  molettes se montaient donc toujours contre une liste vide ;
+- au panier, `amending` est une prop, donc la quantité est là dès la première
+  image pendant que la requête de pré-remplissage, elle, ne l'est pas.
+
+Dans les deux cas la portion ne se résolvait contre rien, et l'unité tombait
+sur zéro.
+
+**C'est la règle « null veut dire *pas encore*, jamais *aucune* » — appliquée à
+un seul des deux entrants.** Elle était écrite, testée et respectée pour la
+quantité ; le second entrant du même écran ne l'avait pas. Le remède est de
+l'étendre : `portions` devient nullable, `null` retient les molettes, `[]` est
+passé uniquement quand il n'y a rien à attendre — un produit distant, une
+saisie libre, un aliment supprimé.
+
+**Prix payé, et il est du bon côté** : une correction au panier coûte désormais
+un battement de points de chargement là où elle était instantanée. Instantanée
+et sur la mauvaise unité.
+
+**Ce que le test peut et ne peut pas dire.** L'écran ne se rend pas depuis
+Node, donc rien ne peut vérifier le garde lui-même. Ce qui est fixé est le
+**piège** : `wheelFor(portion, [])` retombe sur l'unité de base, et
+`wheelFor(portion, [la portion])` ne le fait pas. Le test dit donc pourquoi
+l'appelant n'a pas le droit de passer une liste vide qu'il n'a pas encore lue —
+ce qui est la seule moitié du défaut qu'un test puisse tenir.
+
 ## Points ouverts après la tranche 6
 - **Vérification iPhone en attente.** Rien de l'interface des recettes n'a été
   touché sur l'appareil. À regarder en premier : le bloc groupé du Journal — le

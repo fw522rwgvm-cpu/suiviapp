@@ -185,7 +185,13 @@ function CollectQuantity({
       subtitle={loaded?.food.brand ?? null}
       baseUnit={loaded?.food.baseUnit ?? 'g'}
       reference={loaded?.food.reference ?? null}
-      portions={loaded?.food.portions ?? []}
+      /*
+        NULL UNTIL THE FOOD HAS ANSWERED, even when `amending` means the
+        quantity is already in hand. The two used to be independent, so a
+        correction rendered its wheels immediately against an empty portion
+        list and landed on grams — see the note on this prop.
+      */
+      portions={loaded === null ? null : loaded.food.portions}
       // A correction shows what was chosen, and it is there from the first
       // frame rather than a query away: the basket carries it.
       initial={amending ?? loaded?.quantity ?? null}
@@ -215,7 +221,19 @@ function EditQuantity({ entryId, onDone }: Common & { entryId: JournalEntryId })
       subtitle={loaded?.brand ?? null}
       baseUnit={loaded?.baseUnit ?? 'g'}
       reference={loaded?.reference ?? null}
-      portions={source.data?.portions ?? []}
+      /*
+        Null while the food is still being read, and EMPTY when there is none
+        to read — a free entry has no source, and a food deleted since answers
+        with null. Both of those are real answers and must not hold the wheels;
+        only the wait must.
+      */
+      portions={
+        loaded === null || loaded.sourceFoodId === null
+          ? []
+          : source.data === undefined
+            ? null
+            : (source.data?.portions ?? [])
+      }
       initial={
         loaded === null || loaded.quantity === null
           ? null
@@ -246,7 +264,28 @@ function QuantityForm({
   subtitle: string | null;
   baseUnit: string;
   reference: Macros | null;
-  portions: readonly FoodPortionView[];
+  /**
+   * The portions the food offers TODAY, or null while they are still being
+   * read.
+   *
+   * ## NULL MEANS "NOT YET", NEVER "NONE" — AND HERE IT WAS THE BUG
+   *
+   * An empty list is a real answer: a food with no named portions, an Open
+   * Food Facts product, a food deleted since. wheelFor resolves the entry's
+   * portion name against this list and falls back to base units when it is not
+   * there, which is right for a portion that was renamed or dropped.
+   *
+   * It is exactly wrong while the list is merely LATE. The two inputs of this
+   * screen come from two queries, and for a journal entry the second cannot
+   * even start until the first has answered — the food is found through the
+   * entry. So an entry logged as "2 tranches" reliably mounted its wheels on
+   * an empty list, resolved to nothing, and opened on grams.
+   *
+   * Waiting for both is the same rule the quantity already followed, applied
+   * to the second input. The cost is one tick of the loading dots where a
+   * correction used to be instant — instant and on the wrong unit.
+   */
+  portions: readonly FoodPortionView[] | null;
   /**
    * The quantity to open on, or null while it is still being read.
    *
@@ -274,11 +313,13 @@ function QuantityForm({
    * render has been painted, so that is a frame of wrong value followed by a
    * visible spin — every single time the screen opened.
    *
-   * Holding the body back until `initial` is known makes the wheels' first
-   * frame their right one. And the scroll view stays the same element in both
-   * states on purpose: swapping a View for a ScrollView is what made the
-   * Journal's day page jump, because UIKit recomputes a fresh scroll view's
-   * content inset from nothing.
+   * Holding the body back until `initial` AND `portions` are known makes the
+   * wheels' first frame their right one. Both, because the unit wheel is as
+   * much a part of that frame as the number — see the note on `portions`.
+   *
+   * And the scroll view stays the same element in both states on purpose:
+   * swapping a View for a ScrollView is what made the Journal's day page jump,
+   * because UIKit recomputes a fresh scroll view's content inset from nothing.
    */
   return (
     <ScrollView
@@ -286,7 +327,7 @@ function QuantityForm({
       contentContainerStyle={styles.content}
       contentInsetAdjustmentBehavior="automatic"
     >
-      {initial === null ? (
+      {initial === null || portions === null ? (
         <LoadingDots />
       ) : (
         <QuantityBody

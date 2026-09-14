@@ -134,6 +134,27 @@ describe('where the wheels stand when the screen opens', () => {
     ).toEqual({ whole: 2, fraction: 0, unit: 0 });
   });
 
+  it('cannot tell a dropped portion from a list that has not arrived', () => {
+    // THE TRAP THE CALLER HAS TO AVOID, pinned here because it caused a real
+    // defect and the screen that caused it cannot be tested from Node.
+    //
+    // An empty list is a real answer — a food with no named portions, an Open
+    // Food Facts product, a food deleted since — and this function is right to
+    // fall back to base units for it. It has no way to know the list is merely
+    // LATE, and for a journal entry it always was: the food is found THROUGH
+    // the entry, so its query cannot even start until the entry has answered.
+    // An entry logged as "2 tranches" therefore mounted its wheels against an
+    // empty list and opened on grams, every time.
+    //
+    // So the rule lives with the caller: `null` means "not yet" and holds the
+    // wheels back; `[]` means "none" and is passed only when there is nothing
+    // to wait for.
+    const chosen = portionQuantity({ name: 'tranche', quantity: 25 }, 2);
+
+    expect(wheelFor(chosen, []).unit).toBe(0);
+    expect(wheelFor(chosen, [{ name: 'tranche' }]).unit).toBe(1);
+  });
+
   it('lands a fractional count on the nearest face the wheel has', () => {
     // 2,4 slices is not a face. Of the eight the wheel carries, 1/3 (0,333)
     // is nearer to 0,4 than 1/2 is — which is the point of asking for the
