@@ -141,6 +141,30 @@ export function SettingsScreen() {
         </Note>
       </Section>
 
+      {/*
+        POIDS (specs 12, 9.2: "modifiable et désactivable depuis les Réglages").
+
+        Placed between Nutrition and Données rather than where the table of
+        specs 12 lists it — after "À propos". That table is an inventory of what
+        the Settings hold, not a running order, and À PROPOS has been the
+        closing section of this screen since slice 7. Putting a live setting
+        after it would read as an appendix.
+      */}
+      <Section title="POIDS">
+        <Card>
+          <LinkRow
+            label="Objectif de poids"
+            first
+            onPress={() => router.push('/(tabs)/settings/weight-goal')}
+          />
+        </Card>
+        <Note>
+          Poids cible, défini par un rythme hebdomadaire ou par une date. L’autre
+          moitié se calcule : elle n’est jamais enregistrée, donc elle suit vos
+          pesées au lieu de vieillir.
+        </Note>
+      </Section>
+
       {/* The safety net comes first among the rest: it is the only one there
           is (specs 5.4). */}
       <DataSection />
