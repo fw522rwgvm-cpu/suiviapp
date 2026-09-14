@@ -5,6 +5,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { DatabaseGate } from '@/core/db/database-gate';
 import { QueryProvider } from '@/core/query';
 import { ThemeProvider, useTheme } from '@/core/theme';
+import { useSweepOffCacheOnce } from '@/features/nutrition/off/off-queries';
 import { usePreferences } from '@/features/settings/data/settings-queries';
 
 // Route wiring only. No logic, no queries (D10).
@@ -71,6 +72,10 @@ function ThemeFromPreference({ children }: { children: ReactNode }) {
 function RootStack() {
   const theme = useTheme();
   const glass = isLiquidGlassAvailable();
+
+  // Once per launch, after the first paint. Mounting it is wiring; what it
+  // does and why it is not in the startup sequence is written where it lives.
+  useSweepOffCacheOnce();
 
   return (
     <Stack
