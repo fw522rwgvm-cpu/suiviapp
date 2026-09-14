@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { addDays, startOfWeek, toLocalDate, type LocalDate } from '../../src/core/date';
+import { bucketOf } from '../../src/core/db/date-bucket';
 import {
-  bucketOf,
   bucketsOf,
   readActiveGoal,
   readFirstWeightDate,

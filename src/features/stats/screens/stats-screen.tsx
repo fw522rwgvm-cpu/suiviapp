@@ -10,6 +10,7 @@ import { CaloriesCard } from '../components/calories-card';
 import { CaloriesChart } from '../components/calories-chart';
 import { MacrosChart } from '../components/macros-chart';
 import { SplitCard } from '../components/split-card';
+import { WeightPanelSection } from '../components/weight-panel-section';
 import { useDailyFigures } from '../data/stats-queries';
 import { nutritionPanel } from '../domain/panel';
 import {
@@ -18,14 +19,29 @@ import {
   STAT_RANGE_DAYS,
   type StatRangeDays,
 } from '../domain/stat-range';
+import {
+  DEFAULT_WEIGHT_RANGE,
+  type WeightRangeKey,
+} from '@/features/weight/domain/weight-range';
 
 /**
  * The Stats tab — nutrition panel (specs 7, 8.7).
  *
- * Weight arrives at slice 8 and strength at slice 12, as further panels under
- * these. Specs 7 makes this one dashboard across every module rather than a
- * statistics screen per feature, which is why the range control sits at the
- * top of the screen and not inside a card: it will govern all of them.
+ * Weight arrived at slice 8 and strength comes at slice 12, as further panels
+ * under this one. Specs 7 makes this one dashboard across every module rather
+ * than a statistics screen per feature.
+ *
+ * ## THE RANGE CONTROL AT THE TOP DOES NOT GOVERN ALL OF THEM, AND CANNOT
+ *
+ * It was written to. Specs 8.7 gives the nutrition panel 7, 30 and 90 days and
+ * specs 9.2 gives the weight panel 30 days, 90 days, a year and everything —
+ * two normative lists, and different ones. A single control would have to
+ * invent a range neither document asks for: seven days of a curve smoothed over
+ * seven days has one usable point, and "tout" over the calories is three years
+ * of bars specs 8.7 never wanted.
+ *
+ * So this one keeps the panel it has always governed, unchanged and in place,
+ * and the weight panel carries its own beneath its own heading.
  *
  * ## NOT A CALCULATION IN SIGHT
  *
@@ -51,6 +67,7 @@ export function StatsScreen() {
   const today = useToday();
   const { adherenceTolerancePct } = usePreferences();
   const [range, setRange] = useState<StatRangeDays>(DEFAULT_STAT_RANGE);
+  const [weightRange, setWeightRange] = useState<WeightRangeKey>(DEFAULT_WEIGHT_RANGE);
 
   const figures = useDailyFigures(today, range);
   const rows = figures.data;
@@ -121,6 +138,21 @@ export function StatsScreen() {
           />
         </>
       )}
+
+      {/*
+        THE WEIGHT PANEL SITS OUTSIDE THE NUTRITION BRANCH, DELIBERATELY.
+
+        A journal nobody has kept says "Rien à agréger" above — and that must not
+        hide the weight curve, which is a different measurement with a different
+        emptiness. Someone who weighs themselves daily and logs no food has a
+        full weight panel and an empty nutrition one, and the screen has to be
+        able to say both at once.
+      */}
+      <WeightPanelSection
+        today={today}
+        range={weightRange}
+        onRangeChange={setWeightRange}
+      />
     </ScrollView>
   );
 }

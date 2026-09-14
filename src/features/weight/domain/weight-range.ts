@@ -1,4 +1,5 @@
 import { addDays, compareLocalDate, diffDays, type LocalDate } from '@/core/date';
+import type { Grain } from '@/core/db/date-bucket';
 
 /**
  * The ranges of the weight panel, and the grain each one is read at
@@ -45,13 +46,18 @@ export function weightRangeLabel(key: WeightRangeKey): string {
   }
 }
 
-/** One point per day, per week, or per month. */
-export type Grain = 'day' | 'week' | 'month';
-
 /** D9: "au-delà de 90 jours". Ninety itself is not beyond ninety. */
 export const WEEKLY_BEYOND_DAYS = 90;
 /** D9: "au-delà d'un an". */
 export const MONTHLY_BEYOND_DAYS = 365;
+
+/**
+ * Re-exported so a caller reasoning about ranges has one import rather than
+ * two. It is DEFINED in core/db/date-bucket, beside the SQL that groups by it —
+ * two features bucket on it, and a second spelling would let one chart's series
+ * sit six days off the other's.
+ */
+export type { Grain };
 
 export interface WeightRange {
   from: LocalDate;

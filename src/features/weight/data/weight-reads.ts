@@ -1,5 +1,6 @@
 import { desc, eq, sql } from 'drizzle-orm';
-import { addDays, compareLocalDate, toLocalDate, weekday, type LocalDate } from '@/core/date';
+import { addDays, compareLocalDate, toLocalDate, type LocalDate } from '@/core/date';
+import { bucketExpression, bucketOf, nextBucket } from '@/core/db/date-bucket';
 import type { AppDatabase } from '@/core/db/database';
 import { weightGoal, weightMeasure, type WeightGoalId } from '@/core/db/schema';
 import type { WeightGoal } from '../domain/weight-goal';
@@ -29,42 +30,6 @@ export interface WeightRow {
 }
 
 /**
- * The SQL expression grouping dates by grain, each yielding a CIVIL DATE.
- *
- * ## EVERY GRAIN ANSWERS WITH A LocalDate, WHICH IS WHAT KEEPS THE AXIS HONEST
- *
- * A grain could have returned '2026-W11' or '2026-03'. It returns the Monday of
- * the week and the first of the month instead, so that every point — daily,
- * weekly or monthly — carries a real date the axis can place and core/date can
- * do arithmetic on. Nothing downstream needs to know which grain it is looking
- * at.
- *
- * ## THE WEEK EXPRESSION IS SQLITE'S, AND IT IS VERIFIED AGAINST core/date
- *
- * `date(d, 'weekday 0', '-6 days')` walks forward to the coming Sunday then
- * back six days, which lands on the Monday of d's own week — including when d
- * IS a Sunday, since SQLite does not move a date already on the named weekday.
- *
- * That is a SECOND implementation of "the Monday of this week", the first being
- * startOfWeek in core/date. Two implementations of one question are exactly
- * what this project keeps finding in its own bugs, so they are not held in
- * agreement by care but BY A TEST, on the pattern slice 4 set for the window
- * function: every date over several years, compared one by one.
- */
-function bucketExpression(grain: Grain) {
-  switch (grain) {
-    case 'day':
-      return sql<string>`${weightMeasure.date}`;
-    case 'week':
-      return sql<string>`date(${weightMeasure.date}, 'weekday 0', '-6 days')`;
-    case 'month':
-      // The first of the month. substr rather than strftime: the column is
-      // already 'YYYY-MM-DD' text, so this is a slice rather than a parse.
-      return sql<string>`substr(${weightMeasure.date}, 1, 7) || '-01'`;
-  }
-}
-
-/**
  * The measurements of a range, one row per bucket, sparse.
  *
  * SPARSE ON PURPOSE. SQL returns rows only for buckets that hold something, and
@@ -85,7 +50,7 @@ function bucketExpression(grain: Grain) {
  * TypeScript would need every daily row loaded, which is the thing D13 forbids.
  */
 export function readWeights(db: AppDatabase, range: WeightRange): WeightRow[] {
-  const bucket = bucketExpression(range.grain);
+  const bucket = bucketExpression(weightMeasure.date, range.grain);
 
   const rows = db
     .select({ date: bucket, valueKg: sql<number>`avg(${weightMeasure.valueKg})` })
@@ -109,7 +74,15 @@ export function readWeights(db: AppDatabase, range: WeightRange): WeightRow[] {
  */
 export function bucketsOf(range: WeightRange): LocalDate[] {
   const buckets: LocalDate[] = [];
-  let cursor = firstBucket(range.from, range.grain);
+  /**
+   * The START OF THE BUCKET containing `from`, never `from` itself.
+   *
+   * A range rarely begins on a Monday, and the bucket its first day belongs to
+   * starts BEFORE it. An axis starting at the range's own first date would
+   * never draw the date SQL grouped that measurement into, so the first
+   * measurement of the range would silently vanish.
+   */
+  let cursor = bucketOf(range.from, range.grain);
 
   while (compareLocalDate(cursor, range.to) <= 0) {
     buckets.push(cursor);
@@ -117,56 +90,6 @@ export function bucketsOf(range: WeightRange): LocalDate[] {
   }
 
   return buckets;
-}
-
-/**
- * The bucket a date falls in — the TypeScript half of bucketExpression.
- *
- * Exported so the test that holds the two implementations in agreement can
- * reach it. Nothing else should need it: the reads bucket in SQL.
- */
-export function bucketOf(date: LocalDate, grain: Grain): LocalDate {
-  switch (grain) {
-    case 'day':
-      return date;
-    case 'week':
-      // core/date's weekday is ISO, 1 = Monday, by day-number arithmetic — the
-      // single entry point for anything calendar (D3). Never a Date object.
-      return addDays(date, -(weekday(date) - 1));
-    case 'month':
-      return toLocalDate(`${date.slice(0, 7)}-01`);
-  }
-}
-
-/**
- * The start of the bucket containing `from`.
- *
- * The range's first day is rarely a Monday or a first of the month, and the
- * bucket it belongs to starts BEFORE it. Starting the axis at `from` itself
- * would leave the first point half a bucket adrift from the one SQL grouped it
- * into — the rows would land on a date the axis never drew, and the first
- * measurement of the range would silently vanish.
- */
-function firstBucket(from: LocalDate, grain: Grain): LocalDate {
-  return bucketOf(from, grain);
-}
-
-function nextBucket(bucket: LocalDate, grain: Grain): LocalDate {
-  switch (grain) {
-    case 'day':
-      return addDays(bucket, 1);
-    case 'week':
-      return addDays(bucket, 7);
-    case 'month': {
-      const year = Number(bucket.slice(0, 4));
-      const month = Number(bucket.slice(5, 7));
-      const nextYear = month === 12 ? year + 1 : year;
-      const nextMonth = month === 12 ? 1 : month + 1;
-      return toLocalDate(
-        `${String(nextYear).padStart(4, '0')}-${String(nextMonth).padStart(2, '0')}-01`,
-      );
-    }
-  }
 }
 
 /** One measurement, or null when that date was never weighed. */
