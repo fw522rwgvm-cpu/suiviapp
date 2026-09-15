@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { formatKcal } from '../../src/core/format';
 import { toLocalDate } from '../../src/core/date';
-import { applyPlan, cancelAll } from '../../src/features/notifications/domain/apply';
+import { applyPlan } from '../../src/features/notifications/domain/apply';
 import { diffSchedule } from '../../src/features/notifications/domain/diff';
 import type {
   NotificationHost,
@@ -123,7 +123,24 @@ describe('diffSchedule', () => {
     ];
 
     const diff = diffSchedule(pending, [ours]);
-    expect(diff.toCancel).toEqual(['rest_timer:abc']);
+    expect(diff.toCancel).toEqual([]);
+    expect(diff.toSchedule).toEqual([]);
+  });
+
+  it('would cancel a rest timer if ownership were not checked', () => {
+    // The mutation that proves the clause above is load-bearing rather than
+    // decorative: drop `isOurs` and this is what happens — "pending and not in
+    // the plan" describes the rest timer perfectly, and it gets cancelled in
+    // the middle of a workout by a scheduler that has never heard of it.
+    //
+    // Pinned from the other side: an identifier that merely LOOKS like ours is
+    // still not ours unless its prefix is one of the four kinds.
+    const pending = [
+      { id: 'rest_timer:abc', title: 'Repos terminé', body: '' },
+      { id: 'weigh_in_reminder:2026-09-16', title: 'Presque', body: '' },
+    ];
+
+    expect(diffSchedule(pending, []).toCancel).toEqual([]);
   });
 });
 
@@ -180,11 +197,12 @@ describe('applyPlan', () => {
   });
 });
 
-describe('cancelAll', () => {
-  it('removes only the kinds it is given', async () => {
-    // Deliberately not cancelAllScheduledNotificationsAsync: that would also
-    // drop anything a future slice scheduled, and slice 11's rest timer is not
-    // ours to remove.
+describe('turning everything off', () => {
+  it('empties our queue and leaves everyone else’s alone', async () => {
+    // There is no separate "cancel all" path, and there should not be: with no
+    // setting enabled the plan is empty, and an empty plan already cancels
+    // everything of ours through the ordinary diff. A second path would be a
+    // second place that decides what is ours.
     const host = new FakeHost();
     host.pending = [
       { id: 'weigh_in:2026-09-16', title: 'Pesée du matin', body: '' },
@@ -192,7 +210,7 @@ describe('cancelAll', () => {
       { id: 'rest_timer:abc', title: 'Repos terminé', body: '' },
     ];
 
-    await cancelAll(host, ['weigh_in', 'daily_summary']);
+    await applyPlan(host, []);
 
     expect(host.pending.map((item) => item.id)).toEqual(['rest_timer:abc']);
   });

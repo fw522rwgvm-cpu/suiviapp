@@ -5,6 +5,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { DatabaseGate } from '@/core/db/database-gate';
 import { QueryProvider } from '@/core/query';
 import { ThemeProvider, useTheme } from '@/core/theme';
+import { useNotificationScheduling } from '@/features/notifications/hooks/use-notification-scheduling';
 import { useSweepOffCacheOnce } from '@/features/nutrition/off/off-queries';
 import { usePreferences } from '@/features/settings/data/settings-queries';
 
@@ -76,6 +77,13 @@ function RootStack() {
   // Once per launch, after the first paint. Mounting it is wiring; what it
   // does and why it is not in the startup sequence is written where it lives.
   useSweepOffCacheOnce();
+
+  // For the lifetime of the application, on the same precedent: the scheduler
+  // has to re-read on every foreground (D14), so it cannot live on a screen —
+  // a screen that is not mounted schedules nothing, and the Settings screen is
+  // the least visited one there is. Everything it decides is written where it
+  // lives; mounting it here is wiring.
+  useNotificationScheduling();
 
   return (
     <Stack

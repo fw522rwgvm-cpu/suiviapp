@@ -1,3 +1,4 @@
+import { NOTIFICATION_KINDS } from './kinds';
 import type { PlannedNotification } from './plan';
 
 /**
@@ -41,6 +42,26 @@ export interface ScheduleDiff {
  * appears in neither list, so a quiet day costs one read of the pending queue
  * and nothing else.
  */
+/**
+ * WE ONLY TOUCH WHAT WE PUT THERE, and this is not a nicety.
+ *
+ * The notification centre is one queue for the whole application. Slice 11 puts
+ * the rest timer in it — a single notification scheduled when a set is
+ * validated and cancelled when the next one is — and this function runs on
+ * every foreground and every invalidation the bus raises.
+ *
+ * Without this test, "pending and not in the plan" would describe that rest
+ * timer perfectly, and it would be cancelled somewhere in the middle of a
+ * workout by a scheduler that has never heard of it. Nothing would report it:
+ * the timer simply would not ring.
+ *
+ * The identifiers this slice mints are `<kind>:<date>`, so ownership is the
+ * prefix, read from the constant rather than respelled.
+ */
+function isOurs(id: string): boolean {
+  return NOTIFICATION_KINDS.some((kind) => id.startsWith(`${kind}:`));
+}
+
 export function diffSchedule(
   pending: readonly { id: string; title: string; body: string }[],
   desired: readonly PlannedNotification[],
@@ -50,6 +71,7 @@ export function diffSchedule(
 
   const toCancel: string[] = [];
   for (const item of pending) {
+    if (!isOurs(item.id)) continue;
     const wanted = desiredById.get(item.id);
     // Not wanted any more — the condition was met, or the setting was turned
     // off, or the day moved on and this occurrence is in the past.

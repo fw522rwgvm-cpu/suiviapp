@@ -32,26 +32,3 @@ export async function applyPlan(
 
   return diff;
 }
-
-/**
- * Removes everything this application has pending.
- *
- * Called when the last setting is turned off, and it is the reason applyPlan
- * alone is not enough: with no settings enabled the desired plan is empty, so
- * applyPlan would already cancel everything — but only if it is still being
- * called. This exists so that turning the feature off does not depend on
- * something continuing to run afterwards.
- *
- * Deliberately NOT cancelAllScheduledNotificationsAsync: that would also remove
- * anything scheduled by a future slice — the rest timer of slice 11 lives in
- * the same queue and is not ours to drop. Only what is pending under an
- * identifier we recognise goes.
- */
-export async function cancelAll(host: NotificationHost, prefixes: readonly string[]): Promise<void> {
-  const pending = await host.getPending();
-  for (const item of pending) {
-    if (prefixes.some((prefix) => item.id.startsWith(`${prefix}:`))) {
-      await host.cancel(item.id);
-    }
-  }
-}
