@@ -61,7 +61,7 @@ L'application doit tolérer un arrêt forcé à tout moment sans perte.
 ---
 
 ## État du projet
-Tranches 0 à 8 livrées. La tranche 8 (poids) ouvre la V2. **1138 tests verts**
+Tranches 0 à 8 livrées. La tranche 8 (poids) ouvre la V2. **1165 tests verts**
 sous les trois fuseaux, `tsc` vert, bundle produit.
 
 **La tranche 8 ne demande AUCUN cycle CI.** Aucune dépendance n'entre :
@@ -3260,6 +3260,102 @@ est une décision, pas un mécanisme que trois piles ont en commun. Et l'écran
 Stats garde `headerShown: false` avec son grand titre à lui — une pile ajoutée
 dessous est du câblage, pas un changement visuel que personne n'a demandé.
 
+## Ce que les retours sur le poids ont établi (15/09/2026)
+
+**Une date sans mesure propose la dernière pesée qui la précède**, et c'est le
+levier du §8.4 appliqué au poids : un corps bouge de quelques centaines de
+grammes d'un jour à l'autre, donc partir du dernier connu met la valeur juste à
+un ou deux touchers là où un champ vide la fait retaper chaque matin.
+
+**Interprétation signalée** : « la journée précédente » est lue comme *la
+dernière pesée antérieure*, pas comme J-1 au sens strict. La lecture littérale
+laisserait le défaut vide dès qu'une veille est manquée — c'est-à-dire la
+plupart du temps, sur un historique qui a délibérément des trous.
+
+**Et c'est là que cette fonctionnalité pouvait produire un chiffre faux et
+plausible.** Une carte affichant « 78,4 kg » sur une journée non pesée énoncerait
+un poids sur lequel personne ne s'est tenu. D'où **trois cas et non deux** —
+`measured`, `carried`, `none` — plutôt qu'un `number | null` : un nombre
+nullable aurait suffi à afficher un chiffre et aurait rendu les deux
+indiscernables. Le chiffre repris est atténué et porte la date dont il vient
+(« repris du 14 sept. ») ; rien n'atteint la base tant que l'utilisateur n'a pas
+agi, ce qui est la règle qu'`ensureMaterialized` et `ensureOffFood` suivent déjà.
+
+C'est la même distinction que `undefined` contre `null` ailleurs, et elle se
+paie au même endroit.
+
+**La carte, les deux boutons et la fenêtre lisent UNE fonction, une seule
+fois.** Le motif de la tranche 4 appliqué tel quel : trois chemins vers « la
+valeur courante » s'accorderaient presque toujours, et le jour où ils
+divergeraient **la rangée mentirait sur ce que fait son propre bouton**. Chaque
+test l'assert contre `weightPrefill` et `stepWeight`, jamais contre un littéral.
+
+Le cas qui décide : hier dit 78,4, aujourd'hui ne dit rien, un appui sur « − »
+doit écrire **78,3** — ni 78,4, ni une mesure vide, ni rien du tout.
+
+**`stepWeight` arrondit au dixième, et ce n'est pas de la cosmétique.**
+`78.4 - 0.1` vaut `78.30000000000001` en virgule flottante binaire. Stocké tel
+quel, ce serait un poids à quatorze décimales en base, **exporté tel quel dans
+l'archive**, et affiché « 78,3 » — donc le chiffre à l'écran et le chiffre dans
+le fichier cesseraient d'être le même nombre dès le premier toucher. Un test le
+fixe sur douze touchers d'affilée.
+
+**Et il est borné par le bas à 0,1 kg**, parce que `ck_weight_value` refuse zéro
+et qu'une violation de CHECK est une exception SQLite levée, pas un bouton grisé.
+Personne ne descendra depuis 0,1 kg — mais « personne ne le fera » n'est pas une
+raison de laisser un plantage atteignable.
+
+**Un appui écrit immédiatement, et sans confirmation d'écrasement.** C'est une
+lecture du §9.1 plutôt qu'une exception : la confirmation y protège une
+*nouvelle saisie* tapée par-dessus une mesure qu'on ne voit pas, alors qu'un
+incrément part de la valeur **affichée** et la décale d'un chiffre visible.
+Demander confirmation tous les cent grammes serait l'alerte qu'on congédie sans
+lire. Et un bouton qui ne déplacerait qu'un brouillon réclamerait un second
+toucher pour valider — exactement celui que ces boutons existent pour supprimer.
+
+**`readWeightPrefill` est UNE lecture, pas deux hooks joints dans le
+composant.** La forme évidente — un hook pour la mesure, un pour la précédente —
+donnerait à la carte **deux états `undefined` à réconcilier**, et replier « pas
+encore » sur « aucune » est le défaut que la tranche 4 a payé deux fois.
+
+**Trois cibles tactiles sœurs, jamais imbriquées** : « − », le chiffre, « + ».
+Un `Pressable` dans un `Pressable` est le piège déjà payé une fois, et il n'y a
+aucune raison de tester si l'intérieur gagne. La boîte du chiffre a une largeur
+minimale fixe : un contrôle qui change de largeur sous un doigt qui le tape en
+rafale est la seule chose que ces boutons ne doivent pas faire.
+
+### Le futur est refusé, et la règle ne peut pas vivre en base
+
+**Divergence explicite avec le §9.1, demandée et appliquée.** Il disait « saisie
+possible sur n'importe quelle date, **passée comme future**, sans limite ». La
+phrase est amendée, pas contournée (`specs §14.15` n° 3).
+
+**Aucune CHECK ne peut la porter**, et c'est le même raisonnement que pour
+`target_date` : « dans le futur » n'est pas une propriété de la ligne mais une
+relation entre la ligne et l'horloge, qui change toute seule pendant la nuit. Une
+CHECK évaluée à l'écriture serait silencieusement fausse pour toute mesure qui
+vieillit — ce qui n'est pas une corruption, c'est hier.
+
+Elle vit donc **à deux endroits, et ce n'est pas une redite** : la carte et
+l'écran de saisie. L'écran est une **route**, sa date arrive en paramètre de
+chaîne, et le schéma d'URL est enregistré — un lien profond peut demander
+n'importe quelle date.
+
+**Une mesure future déjà enregistrée reste visible partout**, y compris sur sa
+page de Journal. Corrigé avant livraison : la première version masquait tout sur
+une date future, donc une pesée venue d'une archive disparaissait du Journal
+tout en restant dans la courbe et dans l'historique — le Journal aurait été le
+seul écran à faire comme si elle n'existait pas. Ce qui est refusé est d'en
+**créer** une.
+
+**Réserve inscrite, à regarder sur l'appareil.** Un appui sur « − » ou « + »
+écrit, le bus invalide, la requête se relit — le tout en local et synchrone.
+Sur un appui en rafale, rien ne garantit que l'affichage suive sans battement.
+Aucun état optimiste n'a été posé : ce serait une seconde source de vérité pour
+la même valeur, exactement ce que la règle de la fonction unique existe pour
+éviter. Si ça bat à l'usage, la réponse sera un regroupement, jamais un second
+chiffre.
+
 ## Points ouverts après la tranche 8
 
 - **Vérification iPhone en attente, et elle s'empile sur deux dettes.** La
@@ -3322,6 +3418,20 @@ dessous est du câblage, pas un changement visuel que personne n'a demandé.
   tranche 8 en ajoute : le chiffre de tête des trois cartes de poids, la colonne
   de l'historique, les valeurs des infobulles. Si Nunito ne porte pas `tnum`, la
   colonne de l'historique est l'endroit où ça se verra le plus.
+- **Le battement possible des boutons ± n'a pas été observé.** Un appui écrit,
+  le bus invalide, la requête se relit — en local et synchrone, donc en
+  dizaines de millisecondes, mais rien ne le garantit sur un appui en rafale.
+  Aucun état optimiste n'a été posé délibérément : ce serait une seconde source
+  de vérité pour la même valeur. Si ça bat, la réponse est un regroupement.
+- **Rien ne permet d'enregistrer la valeur reprise TELLE QUELLE en un
+  toucher.** Se peser exactement comme la veille demande d'ouvrir la fenêtre et
+  de valider, soit deux touchers, là où un écart d'un dixième n'en coûte qu'un.
+  Le cas est réel mais rare — un poids identique au gramme près d'un jour sur
+  l'autre — et un troisième bouton « valider » sur la carte coûterait plus qu'il
+  ne rapporte. À rouvrir si ça gêne.
+- **L'interdiction du futur n'est pas rétroactive**, et c'est voulu : une
+  archive écrite avant cette règle peut porter des pesées futures, qui restent
+  lues, dessinées et supprimables. Elles ne sont refusées qu'à la création.
 - **Le seuil de « objectif atteint » vaut 100 g.** Choisi parce que c'est une
   graduation de balance domestique. Sans lui, « atteint » serait une égalité
   exacte de deux flottants, qui n'arrive jamais — donc l'écran dirait pour

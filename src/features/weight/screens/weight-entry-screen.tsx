@@ -7,7 +7,9 @@ import { useTheme } from '@/core/theme';
 import { FormInput, FormRow, FormSection } from '@/core/ui/form-section';
 import { useDismiss, usePanelHeading } from '@/core/ui/overlay-panel';
 import { Text } from '@/core/ui/text';
-import { useDeleteWeight, useSetWeight, useWeight } from '../data/weight-queries';
+import { useToday } from '@/features/settings/data/settings-queries';
+import { useDeleteWeight, useSetWeight, useWeightPrefill } from '../data/weight-queries';
+import { canWeighOn, prefillValue } from '../domain/weight-prefill';
 
 /**
  * Recording a weight on one date (specs 9.1).
@@ -29,6 +31,18 @@ import { useDeleteWeight, useSetWeight, useWeight } from '../data/weight-queries
  * everywhere else — an answered question asked again, which is how a dialog
  * becomes something dismissed without reading.
  *
+ * ## IT OPENS ON THE FIGURE THE CARD WAS SHOWING
+ *
+ * Its own measurement if the date has one, otherwise the last weighing before
+ * it (specs 14.15). Both come from `weightPrefill`, the same function the card
+ * reads — so the window never opens on a different number from the one that was
+ * tapped, whatever the state.
+ *
+ * A CARRIED figure is pre-filled but nothing is written until Enregistrer:
+ * "ce que l'utilisateur enregistre explicitement s'écrit ; ce qu'il se contente
+ * de consulter non", the rule ensureMaterialized and ensureOffFood both follow.
+ * Opening this window on a date and closing it leaves exactly nothing.
+ *
  * ## THE FIELD IS FILLED FROM A QUERY, SO autoFocus IS WRONG HERE
  *
  * Slice 3 established the rule and slice 4 the exception. autoFocus fires at
@@ -47,7 +61,8 @@ export function WeightEntryScreen({ date }: { date: LocalDate }) {
 
   usePanelHeading('Poids', formatLongDate(date));
 
-  const existing = useWeight(date);
+  const today = useToday();
+  const prefill = useWeightPrefill(date);
   const setWeight = useSetWeight();
   const deleteWeight = useDeleteWeight();
 
@@ -63,12 +78,13 @@ export function WeightEntryScreen({ date }: { date: LocalDate }) {
    * measurement, and the user would type a second one over it.
    */
   useEffect(() => {
-    if (loaded || existing.data === undefined) return;
+    if (loaded || prefill.data === undefined) return;
 
-    if (existing.data !== null) {
+    const proposed = prefillValue(prefill.data);
+    if (proposed !== null) {
       // Written with the separator the field accepts and the user types, not
       // the one JavaScript prints.
-      setText(String(existing.data).replace('.', ','));
+      setText(String(proposed).replace('.', ','));
     }
     setLoaded(true);
 
@@ -76,13 +92,32 @@ export function WeightEntryScreen({ date }: { date: LocalDate }) {
     // is overwritten. One frame later it holds.
     const frame = requestAnimationFrame(() => field.current?.focus());
     return () => cancelAnimationFrame(frame);
-  }, [existing.data, loaded]);
+  }, [prefill.data, loaded]);
 
   const valueKg = parseDecimal(text);
+  /**
+   * Weighing ahead is refused (specs 14.15, amending 9.1).
+   *
+   * Checked here as well as on the card, because this screen is a ROUTE: the
+   * date arrives as a string parameter, and the scheme is registered, so a deep
+   * link can ask for any date at all. The rule cannot be a CHECK — "in the
+   * future" is a relation to the clock, not a property of the row — so the
+   * boundary is where it has to live.
+   */
+  const weighable = canWeighOn(date, today);
   // Zero is not a weight, and ck_weight_value would refuse it — but a CHECK
   // gives a SQLite error, and this is the line that can say so in French.
-  const valid = valueKg !== null && valueKg > 0;
-  const previous = existing.data ?? null;
+  const valid = weighable && valueKg !== null && valueKg > 0;
+  /**
+   * Only a MEASUREMENT counts as something to overwrite or delete.
+   *
+   * A carried figure is a proposal: there is nothing on this date to confirm
+   * replacing, and nothing to offer to delete. Reading `prefillValue` here
+   * instead would put a "Supprimer la mesure" button under a date that has
+   * none.
+   */
+  const previous =
+    prefill.data?.kind === 'measured' ? prefill.data.valueKg : null;
 
   const close = { onSuccess: dismiss };
 
@@ -124,10 +159,18 @@ export function WeightEntryScreen({ date }: { date: LocalDate }) {
         keyboardShouldPersistTaps="handled"
         contentInsetAdjustmentBehavior="automatic"
       >
+        {weighable ? null : (
+          <Text style={[styles.refusal, { color: theme.colors.textMuted }]}>
+            Cette date est à venir. Le poids se saisit le jour même ou après, jamais
+            à l’avance.
+          </Text>
+        )}
+
         <FormSection>
           <FormRow label="Poids (kg)">
             <FormInput
               ref={field}
+              editable={weighable}
               value={text}
               onChangeText={setText}
               placeholder="0,0"
@@ -174,6 +217,7 @@ export function WeightEntryScreen({ date }: { date: LocalDate }) {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   content: { padding: 16, gap: 16, paddingBottom: 56 },
+  refusal: { fontSize: 14, lineHeight: 20 },
   // The same shapes free-entry-screen uses: these two buttons sit in the same
   // kind of window and must not be a second dialect of the same control.
   primary: { borderRadius: 18, paddingVertical: 16, alignItems: 'center' },

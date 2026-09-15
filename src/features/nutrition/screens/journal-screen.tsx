@@ -260,6 +260,15 @@ export function JournalScreen() {
 
   const pageProps = {
     width,
+    /**
+     * Handed down rather than read again in the page.
+     *
+     * The weight card needs it to refuse a date in the future (specs 14.15),
+     * and three pages are mounted at once — so reading useToday in each of them
+     * would be three subscriptions to one answer the screen already holds. One
+     * source, and the cutoff setting moves all three together.
+     */
+    today,
     onAdd: openAdd,
     onEditEntry: openEdit,
     onDeleteEntry: removeEntry,

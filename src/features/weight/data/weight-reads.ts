@@ -1,9 +1,10 @@
-import { desc, eq, sql } from 'drizzle-orm';
+import { desc, eq, lt, sql } from 'drizzle-orm';
 import { addDays, compareLocalDate, toLocalDate, type LocalDate } from '@/core/date';
 import { bucketExpression, bucketOf, nextBucket } from '@/core/db/date-bucket';
 import type { AppDatabase } from '@/core/db/database';
 import { weightGoal, weightMeasure, type WeightGoalId } from '@/core/db/schema';
 import type { WeightGoal } from '../domain/weight-goal';
+import { weightPrefill, type WeightPrefill } from '../domain/weight-prefill';
 import type { Grain, WeightRange } from '../domain/weight-range';
 
 /**
@@ -101,6 +102,67 @@ export function readWeight(db: AppDatabase, date: LocalDate): number | null {
     .get();
 
   return row?.valueKg ?? null;
+}
+
+/**
+ * The last weighing STRICTLY BEFORE a date, if there is one.
+ *
+ * What the default of specs 9.1 (amended) is carried from: a date with no
+ * measurement of its own proposes the previous one rather than an empty field.
+ *
+ * ## STRICTLY BEFORE, WHICH IS THE WHOLE POINT
+ *
+ * `<` and not `<=`. A date that has its own measurement is not carrying
+ * anything, and including it would make weightPrefill's two cases collapse into
+ * one — the card would then have no way to say whether the figure it shows was
+ * measured or proposed, which is the distinction the three kinds exist for.
+ *
+ * ## IT LOOKS BACKWARDS, NEVER FORWARDS
+ *
+ * Specs 9.1 allows measurements on any past date, so a database can hold a
+ * weighing AFTER the date being looked at — correcting last Tuesday from
+ * today's Journal is ordinary. Carrying one backwards would propose a future
+ * weight as today's default, which is the opposite of what a default is for.
+ *
+ * Ordered on the primary key, which SQLite indexes, so `limit(1)` reads one row
+ * however long the history is.
+ */
+export function readLastWeightBefore(
+  db: AppDatabase,
+  date: LocalDate,
+): { date: LocalDate; valueKg: number } | null {
+  const row = db
+    .select({ date: weightMeasure.date, valueKg: weightMeasure.valueKg })
+    .from(weightMeasure)
+    .where(lt(weightMeasure.date, date))
+    .orderBy(desc(weightMeasure.date))
+    .limit(1)
+    .get();
+
+  return row ?? null;
+}
+
+/**
+ * What a date proposes, measurement and carried-over default in ONE read.
+ *
+ * ## ONE QUERY, BECAUSE TWO WOULD BE TWO "NOT YET"s
+ *
+ * The obvious shape is a hook for the measurement and another for the previous
+ * weighing, joined in the component. It would give the card two independent
+ * `undefined` states to reconcile — and folding "not yet" into "none" is the
+ * defect slice 4 paid for twice, on the quantity wheels and on the portions
+ * list. One read, one pending state, one answer.
+ *
+ * Two statements, not one: the second is only needed when the first finds
+ * nothing, and both are single-row reads on the primary key's index.
+ */
+export function readWeightPrefill(db: AppDatabase, date: LocalDate): WeightPrefill {
+  const measured = readWeight(db, date);
+  // Asked for only when it can be used: a date with its own measurement is not
+  // carrying anything.
+  const previous = measured === null ? readLastWeightBefore(db, date) : null;
+
+  return weightPrefill(measured, previous);
 }
 
 /**

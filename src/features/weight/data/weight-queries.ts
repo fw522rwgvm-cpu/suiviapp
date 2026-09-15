@@ -5,6 +5,7 @@ import { weightGoal, weightMeasure, type WeightGoalId } from '@/core/db/schema';
 import { readsFrom } from '@/core/query';
 import { RATE_LOAD_DAYS } from '../domain/rate';
 import type { WeightGoalDraft } from '../domain/weight-goal';
+import type { WeightPrefill } from '../domain/weight-prefill';
 import type { WeightRange } from '../domain/weight-range';
 import {
   readActiveGoal,
@@ -13,6 +14,7 @@ import {
   readRateWindow,
   readWeight,
   readWeightHistory,
+  readWeightPrefill,
   readWeightSeries,
   type ActiveGoal,
   type SeriesRow,
@@ -38,6 +40,7 @@ import {
 
 export const weightKeys = {
   onDate: (date: LocalDate) => ['weight', 'date', date] as const,
+  prefill: (date: LocalDate) => ['weight', 'prefill', date] as const,
   series: (from: LocalDate, to: LocalDate, grain: string) =>
     ['weight', 'series', from, to, grain] as const,
   rateWindow: (today: LocalDate) => ['weight', 'rate-window', today] as const,
@@ -61,6 +64,22 @@ export function useWeight(date: LocalDate) {
   return useQuery<number | null>({
     queryKey: weightKeys.onDate(date),
     queryFn: () => readWeight(getAppDatabase(), date),
+    meta: readsFrom(weightMeasure),
+  });
+}
+
+/**
+ * What a date proposes: its own measurement, or the last weighing before it.
+ *
+ * ONE query rather than two, so the card has ONE pending state to reason about.
+ * `undefined` is "not read yet"; the answer, when it comes, distinguishes a
+ * measurement from a carried figure by its `kind` — which is what stops the
+ * card from stating a weight nobody stood on a scale for.
+ */
+export function useWeightPrefill(date: LocalDate) {
+  return useQuery<WeightPrefill>({
+    queryKey: weightKeys.prefill(date),
+    queryFn: () => readWeightPrefill(getAppDatabase(), date),
     meta: readsFrom(weightMeasure),
   });
 }

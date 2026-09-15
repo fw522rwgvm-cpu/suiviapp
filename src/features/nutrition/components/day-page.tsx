@@ -44,6 +44,7 @@ export function DayPage({
   onMealActions,
   onAddMeal,
   onWeigh,
+  today,
 }: {
   date: LocalDate;
   width: number;
@@ -56,6 +57,8 @@ export function DayPage({
   onAddMeal: (date: LocalDate) => void;
   /** Opens the window that records this date's weight (specs 9.1). */
   onWeigh: (date: LocalDate) => void;
+  /** What the application considers today — the weight card refuses to weigh past it. */
+  today: LocalDate;
 }) {
   const theme = useTheme();
   const scroll = useRef<ScrollView>(null);
@@ -272,6 +275,7 @@ export function DayPage({
         <WeightCard
           date={date}
           interactive={active}
+          today={today}
           onPress={() => onWeigh(date)}
         />
 
