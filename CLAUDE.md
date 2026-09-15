@@ -3560,6 +3560,67 @@ le bus est refusée, une fraîche acceptée, `undefined` n'est jamais une répon
 et `null` en est une. La séquence des trois rendus d'un écran rouvert est jouée
 telle quelle.
 
+## Deux icônes, et un PNG écrit à la main (15/09/2026)
+
+**Les deux variantes partageaient la même icône.** `app.config.ts` nommait
+`./assets/icon.png` une seule fois, donc la quotidienne et la dev étaient
+indiscernables sur l'écran d'accueil — alors que le §2.2 en fait deux
+identifiants, deux conteneurs, l'un avec les vraies données et l'autre jetable.
+Lancer la mauvaise ne coûte rien ; **exporter depuis la mauvaise**, ou croire un
+chiffre lu sur la mauvaise, si.
+
+**Aucun outil de rendu n'existe sur cette machine** — pas d'ImageMagick, pas de
+rsvg, pas de PIL — et le §5 n'admet aucune dépendance pour dessiner un carré.
+Donc `scripts/generate-icons.mjs` **écrit le PNG à la main** : `zlib` est natif
+à Node, et un PNG est une signature, un IHDR, un IDAT dégonflé et un IEND, avec
+un CRC par bloc. Le dessin passe par des **champs de distance signés**
+échantillonnés une fois par pixel, ce qui donne des bords propres sans
+suréchantillonner seize millions de points.
+
+Un script plutôt que deux fichiers binaires, pour le motif du module de
+migrations : **un asset que personne ne peut régénérer est une décision que
+personne ne peut revoir.**
+
+**La forme est celle de l'application** : la jauge trois quarts de
+`progress-ring.tsx`, 270° à partir de 225°, embouts arrondis compris. Le fond
+sombre n'est pas un goût mais une mesure — le mint est à **2,13:1 sur blanc et
+9,60:1 sur le fond sombre**, et une icône se lit à soixante points par-dessus un
+fond d'écran que personne ne contrôle.
+
+**L'icône dev cumule trois différences**, parce qu'une seule ne porte pas à
+cette taille : fond ambre au lieu du presque noir, jauge réduite et remontée, et
+**DEV** en toutes lettres en bas. Ambre et non rouge : le rouge est la couleur
+destructive de cette application (`#e02d1f`, tenue par un test de contraste), et
+une icône qui crierait « danger » à chaque ouverture apprendrait à l'œil à
+l'ignorer. `warning` veut déjà dire « regarde » et ne veut dire que ça.
+
+**Les lettres sont des traits, pas de la typographie.** Aucune fonte n'est
+embarquée : trois lettres géométriques sont une douzaine de segments, là où une
+fonte devrait être licenciée, lue et rasterisée pour un mot qui ne change
+jamais.
+
+### Le script se vérifie lui-même, parce que personne ici ne peut regarder
+
+**« Il a écrit un fichier » n'est pas une preuve qu'il a dessiné quelque
+chose.** Le script imprime donc un aperçu ASCII en luminance *et* sonde des
+pixels dont la couleur découle de la géométrie : le montant d'un D est sombre,
+le contre-poinçon qu'il enferme ne l'est pas. Dix-neuf sondes.
+
+**Et elles ont attrapé un vrai défaut avant livraison.** La première version
+posait un trait de `0.055` pour une hauteur de `0.17` : trois barres de 56
+pixels dans 174, ce qui **laisse trois pixels entre elles**. Le E se serait lu
+comme un rectangle plein à taille d'icône, et rien dans le dessin ne l'aurait
+dit. La règle qui en sort : une lettre à trois barres a besoin de **cinq
+bandes** — barre, air, barre, air, barre — donc le trait vaut un cinquième de la
+hauteur.
+
+**Conséquence de chaîne de build : les icônes entrent dans le binaire par
+`expo prebuild`.** Les voir demande donc **un cycle CI et une réinstallation**,
+pour les deux variantes. Rien dans le bundle JS ne les porte, donc `npm run
+bundle:ios` reste vert sans rien prouver — la même famille de piège que
+`expo-camera` et `react-native-svg`, à ceci près qu'ici il n'y a aucun plantage
+au bout, seulement l'ancienne image.
+
 ## Points ouverts après la tranche 8
 
 - **Vérification iPhone en attente, et elle s'empile sur deux dettes.** La
@@ -3622,6 +3683,13 @@ telle quelle.
   tranche 8 en ajoute : le chiffre de tête des trois cartes de poids, la colonne
   de l'historique, les valeurs des infobulles. Si Nunito ne porte pas `tnum`, la
   colonne de l'historique est l'endroit où ça se verra le plus.
+- **Les deux icônes n'ont jamais été vues sur un téléphone.** Elles sont
+  vérifiées par sondes de pixels et par aperçu ASCII, ce qui dit que les formes
+  sont aux bonnes coordonnées — pas qu'elles sont belles ni que « DEV » se lit à
+  soixante points. Le prochain cycle CI le dira.
+- **Le splash (`assets/splash-icon.png`) n'a pas été refait** et reste commun
+  aux deux variantes. Non demandé, et il n'a pas le même rôle : on le voit une
+  seconde au lancement, quand on sait déjà quelle application on a ouverte.
 - **Le battement qu'ajoute `useSettled` n'a pas été observé.** Un formulaire
   rouvert après édition attend désormais la relecture avant de se remplir, ce
   qui sur SQLite local se compte en dizaines de millisecondes — et c'est déjà ce
