@@ -4,6 +4,7 @@ import type { TextInput } from 'react-native';
 import type { LocalDate } from '@/core/date';
 import { formatLongDate, formatWeight, parseDecimal } from '@/core/format';
 import { useTheme } from '@/core/theme';
+import { useSettled } from '@/core/query/use-settled';
 import { FormInput, FormRow, FormSection } from '@/core/ui/form-section';
 import { useDismiss, usePanelHeading } from '@/core/ui/overlay-panel';
 import { Text } from '@/core/ui/text';
@@ -63,6 +64,11 @@ export function WeightEntryScreen({ date }: { date: LocalDate }) {
 
   const today = useToday();
   const prefill = useWeightPrefill(date);
+  // Only once the bus has stopped flagging it: correcting a weight and
+  // reopening the same date would otherwise fill the field from the value
+  // BEFORE the correction, and saving would write it back. See
+  // core/query/use-settled.
+  const settled = useSettled(prefill);
   const setWeight = useSetWeight();
   const deleteWeight = useDeleteWeight();
 
@@ -78,9 +84,9 @@ export function WeightEntryScreen({ date }: { date: LocalDate }) {
    * measurement, and the user would type a second one over it.
    */
   useEffect(() => {
-    if (loaded || prefill.data === undefined) return;
+    if (loaded || settled === undefined) return;
 
-    const proposed = prefillValue(prefill.data);
+    const proposed = prefillValue(settled);
     if (proposed !== null) {
       // Written with the separator the field accepts and the user types, not
       // the one JavaScript prints.
@@ -92,7 +98,7 @@ export function WeightEntryScreen({ date }: { date: LocalDate }) {
     // is overwritten. One frame later it holds.
     const frame = requestAnimationFrame(() => field.current?.focus());
     return () => cancelAnimationFrame(frame);
-  }, [prefill.data, loaded]);
+  }, [settled, loaded]);
 
   const valueKg = parseDecimal(text);
   /**
@@ -116,8 +122,7 @@ export function WeightEntryScreen({ date }: { date: LocalDate }) {
    * instead would put a "Supprimer la mesure" button under a date that has
    * none.
    */
-  const previous =
-    prefill.data?.kind === 'measured' ? prefill.data.valueKg : null;
+  const previous = settled?.kind === 'measured' ? settled.valueKg : null;
 
   const close = { onSuccess: dismiss };
 

@@ -61,7 +61,7 @@ L'application doit tolérer un arrêt forcé à tout moment sans perte.
 ---
 
 ## État du projet
-Tranches 0 à 8 livrées. La tranche 8 (poids) ouvre la V2. **1174 tests verts**
+Tranches 0 à 8 livrées. La tranche 8 (poids) ouvre la V2. **1180 tests verts**
 sous les trois fuseaux, `tsc` vert, bundle produit.
 
 **La tranche 8 ne demande AUCUN cycle CI.** Aucune dépendance n'entre :
@@ -3494,6 +3494,72 @@ libre, quantité, objectifs de repas et de modèle, poids, objectif de poids.
 `recipe.prepMinutes` reste lié à un nombre et n'est pas concerné, son clavier
 `number-pad` ne portant aucun séparateur.
 
+## Un formulaire ne se fige plus sur une valeur périmée (15/09/2026)
+
+**Signalé à l'usage** : modifier un aliment de la bibliothèque, l'enregistrer,
+puis le rouvrir affichait les valeurs d'**avant** la modification. Sortir et
+revenir une seconde fois donnait les bonnes.
+
+**Trois pièces, et aucune n'est fausse toute seule** :
+
+1. enregistrer navigue en arrière dans le `onSuccess` de la mutation, donc
+   **l'écran est démonté tout de suite** ;
+2. le bus regroupe à 60 ms, donc il invalide **après**, sur une requête devenue
+   **inactive** — React Query la marque périmée et ne la relit pas, personne ne
+   la regardant ;
+3. à la réouverture il sert d'abord la valeur **en cache** et lance une relecture
+   derrière. Le formulaire se figeait sur cette première valeur — « réappliquer
+   à chaque rendu écraserait ce qui est en train d'être tapé » — et ignorait la
+   fraîche arrivée un instant plus tard.
+
+D'où le symptôme exact : première ouverture périmée, seconde correcte, la
+relecture ayant entre-temps rendu le cache juste.
+
+**Et ce n'est pas un défaut d'affichage.** Un formulaire ouvert sur une valeur
+périmée puis **enregistré** la réécrit par-dessus la valeur courante. Corriger
+le nom d'un aliment aujourd'hui, le rouvrir pour corriger sa marque, et ses
+macros repartent à ce qu'elles étaient ce matin. Rien ne le dit, et l'export
+emporte le résultat. C'est ce qui fait que ça se corrige plutôt que se signale.
+
+**`isStale` est la bonne question ici, et le couplage se dit.** Le client pose
+`staleTime: Infinity` — délibéré, « il n'y a pas de serveur, pas d'autre
+écrivain, pas de synchronisation ». Donc `isStale` ne veut pas dire « vieux » :
+il veut dire **exactement** « le bus a signalé un changement sur une table que
+cette requête lit, et elle n'a pas été relue depuis ». Avec un `staleTime` fini,
+tout serait périmé tôt ou tard et **aucun formulaire ne se remplirait jamais** —
+raison pour laquelle `use-settled` vit dans `core/query`, à côté du client qui
+le rend vrai.
+
+**L'état est ajusté pendant le rendu**, jamais dans un effet : un effet tourne
+après que son rendu a été peint, donc le formulaire serait vide une image puis
+se remplirait. Même règle que le `key` du carrousel et les molettes de la
+tranche 4.
+
+**Et il ne change jamais d'avis.** Une fois une valeur fraîche rendue, c'est
+celle-là pour la vie de l'écran — sinon une écriture faite depuis ce formulaire
+lui reviendrait et écraserait ce qui est en train d'être tapé, ce que les
+drapeaux `loaded` protégeaient depuis le début.
+
+**Sept écrans corrigés, pas un.** Le patron « drapeau `loaded` + effet qui capte
+la première donnée » était partout : éditeur d'aliment (rapporté), saisie libre,
+éditeur de recette, éditeur de modèle, éditeur de repas, écran de quantité,
+saisie du poids. Tous rouvrables après édition, tous capables de réécrire
+l'ancienne valeur.
+
+Deux prennent la valeur figée **à un seul endroit**, et c'est délibéré :
+`meal-editor` dérive son repas d'une requête de journée qui sert aussi à décider
+quels **types** sont encore libres — la faire attendre offrirait brièvement les
+quatre, ce qui est un vacillement là où la valeur périmée était inoffensive. Et
+`quantity` initialise ses molettes depuis `initial` dans un initialiseur d'état,
+ce qui les a empêchées de tourner en s'ouvrant en tranche 4 : ce qu'il reçoit au
+montage est ce qu'il garde.
+
+**Ce que le test peut dire** : le hook ne se rend pas depuis Node, donc ce qui
+est fixé est la **décision**, sortie en fonction pure — une valeur signalée par
+le bus est refusée, une fraîche acceptée, `undefined` n'est jamais une réponse
+et `null` en est une. La séquence des trois rendus d'un écran rouvert est jouée
+telle quelle.
+
 ## Points ouverts après la tranche 8
 
 - **Vérification iPhone en attente, et elle s'empile sur deux dettes.** La
@@ -3556,6 +3622,16 @@ libre, quantité, objectifs de repas et de modèle, poids, objectif de poids.
   tranche 8 en ajoute : le chiffre de tête des trois cartes de poids, la colonne
   de l'historique, les valeurs des infobulles. Si Nunito ne porte pas `tnum`, la
   colonne de l'historique est l'endroit où ça se verra le plus.
+- **Le battement qu'ajoute `useSettled` n'a pas été observé.** Un formulaire
+  rouvert après édition attend désormais la relecture avant de se remplir, ce
+  qui sur SQLite local se compte en dizaines de millisecondes — et c'est déjà ce
+  que chaque écran fait à froid. Si ça se voit, la sortie est un indicateur
+  d'attente, jamais un remplissage depuis la valeur périmée.
+- **Si une relecture échoue, le formulaire reste vide** au lieu de s'ouvrir sur
+  du périmé. C'est le même comportement qu'avant en cas d'échec (`data`
+  `undefined` → rien), donc aucun risque nouveau — mais sur une base locale, une
+  lecture qui échoue veut dire que l'application a déjà des problèmes plus
+  graves que ce formulaire.
 - **Aucun champ décimal ne se rend depuis Node**, donc `DecimalInput` lui-même
   n'est pas testé : ce qui est fixé est l'arithmétique du round-trip qu'il
   supprime, des deux côtés — la liaison par nombre qui transforme « 1,2 » en 12,

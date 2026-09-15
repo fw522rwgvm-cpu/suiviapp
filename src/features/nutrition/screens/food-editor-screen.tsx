@@ -31,6 +31,7 @@ import {
 import { hasKcalWarning, theoreticalKcal } from '../domain/macros';
 import { IMPOSSIBLE_KCAL_PER_100, isImpossibleEnergy } from '../off/off-product';
 import { toCanonical } from '../domain/food-macros';
+import { useSettled } from '@/core/query/use-settled';
 import { FormInput, FormNavigation, FormRow, FormSection } from '@/core/ui/form-section';
 import { MACRO_FIELDS, MacroFieldRow, type MacroKey } from '../components/macro-fields';
 import { UnitToggle } from '../components/unit-toggle';
@@ -139,6 +140,19 @@ export function FoodEditorScreen({
   const [loaded, setLoaded] = useState(false);
 
   const stored = useFoodDraft(foodId);
+  /**
+   * The value the form freezes on, and only once the bus has stopped flagging it.
+   *
+   * Reported from use: editing a food and reopening it showed the figures from
+   * BEFORE the edit, and only a second visit was right. Saving navigates back
+   * inside onSuccess, so this screen is unmounted before the bus invalidates
+   * sixty milliseconds later — React Query then serves the cached, stale value
+   * first on reopening, and the effect below froze on it.
+   *
+   * Not merely a display fault: a form opened on a stale value and saved writes
+   * it back over the current one. See core/query/use-settled.
+   */
+  const settled = useSettled(stored);
   const create = useCreateFood();
   const update = useUpdateFood();
   const remove = useDeleteFood();
@@ -177,7 +191,7 @@ export function FoodEditorScreen({
   useEffect(() => {
     // Filled once, when the food arrives. Reapplying it on every render would
     // overwrite what is being typed.
-    const value = stored.data;
+    const value = settled;
     if (loaded || foodId === null || value === null || value === undefined) return;
 
     // A FOOD ENTERED AGAINST ANOTHER REFERENCE IS BROUGHT BACK TO 100 HERE.
@@ -195,7 +209,7 @@ export function FoodEditorScreen({
     // the numbers change without anyone typing.
     setMacroText(macroTextOf(arriving));
     setLoaded(true);
-  }, [stored.data, loaded, foodId]);
+  }, [settled, loaded, foodId]);
 
   const problems = validateFoodDraft(draft);
 

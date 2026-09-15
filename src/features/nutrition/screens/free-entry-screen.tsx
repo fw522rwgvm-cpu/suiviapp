@@ -10,6 +10,7 @@ import { Text } from '@/core/ui/text';
 import type { LocalDate } from '@/core/date';
 import { formatKcal, parseDecimal } from '@/core/format';
 import { useTheme } from '@/core/theme';
+import { useSettled } from '@/core/query/use-settled';
 import { useDismiss, usePanelHeading } from '@/core/ui/overlay-panel';
 import { FormInput, FormNavigation, FormRow, FormSection } from '@/core/ui/form-section';
 import { MACRO_FIELDS, MacroFieldRow, type MacroKey } from '../components/macro-fields';
@@ -99,6 +100,10 @@ export function FreeEntryScreen({
   usePanelHeading('Saisie libre', null);
 
   const existing = useEntry(entryId);
+  // Only once the bus has stopped flagging it: correcting an entry and
+  // reopening it would otherwise fill the four figures from BEFORE the
+  // correction, and saving would write them back. See core/query/use-settled.
+  const settled = useSettled(existing);
   const addEntry = useAddFreeEntry();
   const updateEntry = useUpdateFreeEntry();
   const deleteEntry = useDeleteEntry();
@@ -111,7 +116,7 @@ export function FreeEntryScreen({
     // held in the basket, or an entry read back from the database. Reapplying
     // on every render would overwrite what is being typed.
     if (loaded) return;
-    const entry = existing.data;
+    const entry = settled;
     // Macros stay nullable on the read side: only childless rows carry them,
     // and a name with no figures is still a name worth putting back.
     const source: { name: string; macros: Macros | null } | null =
@@ -135,7 +140,7 @@ export function FreeEntryScreen({
       kcal: filled === null ? '' : show(filled.kcal),
     });
     setLoaded(true);
-  }, [existing.data, initial, loaded]);
+  }, [settled, initial, loaded]);
 
   const macros = toMacros(fields);
   const theoretical = macros === null ? 0 : theoreticalKcal(macros);

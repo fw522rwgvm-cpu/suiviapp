@@ -1097,3 +1097,28 @@ divergence vivre dans le code.
 | 7 | §3 | **`MacroFieldRow` n'a PAS bouge ; c'est son appelant qui a ete corrige** | Le fichier nommait deja le fautif : « the editor as numbers on a draft, free entry as the strings that were typed — **and the string is the one that can be shared** ». La saisie libre tenait du texte et etait juste ; l'editeur d'aliment tenait des nombres et etait faux. Il tient desormais quatre chaines a cote du brouillon, ecrites ensemble dans `setMacro` pour qu'elles ne puissent pas deriver. Zero changement sur une rangee partagee et verifiee sur l'appareil |
 
 **Audit consigne.** Tout champ decimal restant tient deja du texte — saisie libre, quantite, objectifs de repas et de modele, poids, objectif de poids. `recipe.prepMinutes` reste lie a un nombre et n'est pas concerne : son clavier est `number-pad`, qui ne porte aucun separateur, donc le defaut n'y est pas atteignable.
+
+### 9.12 Un formulaire ne se fige plus sur une valeur perimee (15/09/2026)
+
+Signale a l'usage : modifier un aliment de la bibliotheque, l'enregistrer, puis
+le rouvrir affichait les valeurs d'AVANT la modification. Sortir et revenir une
+seconde fois donnait les bonnes.
+
+| No | Section | Amendement | Motif |
+| --- | --- | --- | --- |
+| 1 | D8, §3 | **`core/query/use-settled.ts`** — la premiere valeur d'une requete sur laquelle un formulaire a le droit de se figer | Trois pieces, dont aucune n'est fausse seule : enregistrer navigue en arriere dans le `onSuccess` de la mutation, **donc l'ecran est demonte tout de suite** ; le bus regroupe a 60 ms, donc il invalide APRES, sur une requete devenue **inactive** — React Query la marque perimee et ne la relit pas, personne ne la regardant ; a la reouverture il sert d'abord la valeur EN CACHE et lance une relecture derriere. Le formulaire se figeait sur cette premiere valeur, et ignorait la fraiche arrivee un instant plus tard |
+| 2 | D8 | **Ce n'est pas un defaut d'affichage** | Un formulaire ouvert sur une valeur perimee puis ENREGISTRE la reecrit par-dessus la valeur courante. Corriger le nom d'un aliment aujourd'hui, le rouvrir pour corriger sa marque, et ses macros repartent a ce qu'elles etaient ce matin. Rien ne le dit, et l'export emporte le resultat. C'est ce qui fait que ca se corrige et ne se signale pas seulement |
+| 3 | D8 | **`isStale` est la bonne question ICI, et c'est un couplage a dire** | Le client pose `staleTime: Infinity` — delibere, « il n'y a pas de serveur, pas d'autre ecrivain, pas de synchronisation ». Donc `isStale` ne veut pas dire « vieux » : il veut dire EXACTEMENT « le bus a signale un changement sur une table que cette requete lit, et elle n'a pas ete relue depuis ». Avec un `staleTime` fini, tout serait perime tot ou tard et aucun formulaire ne se remplirait jamais — raison pour laquelle le hook vit a cote du client qui le rend vrai |
+| 4 | §4 | **L'etat est ajuste PENDANT le rendu, jamais dans un effet** | Un effet tourne apres que son rendu a ete peint : le formulaire serait vide une image puis se remplirait. Meme regle que le `key` du carrousel et les molettes de la tranche 4 |
+| 5 | D8 | **Il ne change jamais d'avis** | Une fois une valeur fraiche rendue, c'est celle-la pour la vie de l'ecran. Sinon une ecriture faite depuis ce formulaire lui reviendrait et ecraserait ce qui est en train d'etre tape — exactement ce que les drapeaux `loaded` protegeaient |
+| 6 | §3 | **Sept ecrans corriges, pas un** | Le patron « drapeau `loaded` + effet qui capte la premiere donnee » etait partout : editeur d'aliment (rapporte), saisie libre, editeur de recette, editeur de modele, editeur de repas, ecran de quantite, saisie du poids. Tous rouvrables apres edition, tous capables de reecrire l'ancienne valeur |
+| 7 | §3 | **`meal-editor` et `quantity` prennent la valeur figee a un seul endroit** | Le premier derive son repas d'une requete de journee qui sert aussi a decider quels TYPES sont encore libres : la faire attendre offrirait brievement les quatre, ce qui est un vacillement la ou la valeur perimee etait inoffensive. Le second initialise ses molettes depuis `initial` dans un initialiseur d'etat — ce qui les a empechees de tourner en s'ouvrant en tranche 4 — donc ce qu'il recoit au montage est ce qu'il garde |
+
+**Ce que le test peut et ne peut pas dire.** Le hook ne se rend pas depuis Node. Ce
+qui est fixe est la DECISION, sortie en fonction pure : une valeur signalee par
+le bus est refusee, une valeur fraiche est acceptee, `undefined` n'est jamais
+une reponse et `null` en est une. La sequence des trois rendus d'un ecran
+rouvert est jouee telle quelle. Ce qu'il faudra regarder sur l'appareil est le
+battement : le formulaire attend desormais la relecture, ce qui sur SQLite local
+se compte en dizaines de millisecondes — et c'est deja ce que chaque ecran fait
+a froid.

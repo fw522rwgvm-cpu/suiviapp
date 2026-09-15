@@ -24,6 +24,7 @@ import {
   type Portion,
   type QuantityChoice,
 } from '../domain/portions';
+import { useSettled } from '@/core/query/use-settled';
 import { useDismiss, usePanelHeading } from '@/core/ui/overlay-panel';
 import { FormRow, FormSection } from '@/core/ui/form-section';
 import { MacroRow } from '../components/macro-row';
@@ -301,7 +302,20 @@ function EditQuantity({ entryId, onDone }: Common & { entryId: JournalEntryId })
   const update = useUpdateFoodEntryQuantity();
   const done = useEnding(onDone);
 
-  const loaded = entry.data ?? null;
+  /**
+   * SETTLED, because the wheels are initialised from this and never corrected.
+   *
+   * The body takes its state from `initial` in a state initialiser — that is
+   * what stopped the wheels spinning as they opened in slice 4 — so whatever it
+   * is mounted with is what it keeps. Correcting a quantity and reopening the
+   * same entry served the cached, stale value first (this screen is unmounted
+   * inside onSuccess, the bus invalidates sixty milliseconds later on a query
+   * nobody is watching), and the wheels would have opened on the quantity from
+   * before the correction. Saving from there writes it back.
+   *
+   * See core/query/use-settled.
+   */
+  const loaded = useSettled(entry) ?? null;
   // Only for the portions it offers today. Its macros are deliberately unused:
   // the entry froze its own, and they are what this screen scales.
   const source = useFood(loaded?.sourceFoodId ?? null);
