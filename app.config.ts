@@ -85,16 +85,25 @@ const config: ExpoConfig = {
     /**
      * The barcode scanner (specs 8.5, slice 4).
      *
-     * DECLARED HERE RATHER THAN LEFT TO AUTOLINKING, unlike expo-sharing,
-     * because this plugin does something autolinking cannot: it writes
-     * NSCameraUsageDescription into Info.plist. iOS kills an application that
-     * opens the camera without one, so the alternative is not a missing string
-     * — it is a crash the JS bundle cannot reproduce.
+     * ## THE REASON RECORDED IN SLICE 4 WAS WRONG, AND THE DECLARATION IS
+     * ## RIGHT ANYWAY
      *
-     * The text is shown in the system prompt, so it is in French like every
-     * other displayed string. It says what the camera is FOR: a permission
-     * prompt that only says "this app would like to use the camera" is the
-     * prompt people refuse.
+     * Slice 4 wrote that this had to be declared because autolinking cannot
+     * write NSCameraUsageDescription, so the alternative was a crash. Measured
+     * in slice 9, by running prebuild with this entry removed: the key IS
+     * written without it, carrying the package's own default —
+     * "Allow $(PRODUCT_NAME) to access your camera". There is no crash to
+     * avoid, because a package's config plugin is auto-applied on SDK 57.
+     *
+     * What the declaration actually buys is the TEXT, and that is reason
+     * enough. The string is shown in the system prompt, so it is French like
+     * every other displayed string (conventions section 4), and it says what
+     * the camera is FOR: a prompt that only says "this app would like to use
+     * the camera" is the prompt people refuse.
+     *
+     * Kept rather than corrected into nothing — but the belief it rested on is
+     * corrected here, because the same belief is what nearly shipped an APNs
+     * entitlement three slices later.
      *
      * No microphone permission: the barcode scanner does not record audio, and
      * asking for something unused is how an application gets refused.
@@ -107,6 +116,33 @@ const config: ExpoConfig = {
         recordAudioAndroid: false,
       },
     ],
+    /**
+     * REMOVES the APNs entitlement expo-notifications adds on its own (slice 9).
+     *
+     * Not a plugin for a feature — a plugin that UNDOES one, and it is here
+     * because a belief this project held turned out to be false.
+     *
+     * Slice 2 recorded that expo-sharing's plugin does not run because it is
+     * not listed here. It does run: on SDK 57 a package's config plugin is
+     * AUTO-APPLIED, and the reason expo-sharing never added a share extension
+     * target is that its plugin is inert unless props.ios.enabled is passed.
+     * The effect was true, the cause was not.
+     *
+     * So leaving expo-notifications unlisted does not keep its plugin away.
+     * `expo prebuild` with nothing declared wrote aps-environment into
+     * Suivi.entitlements — the push capability, which a free Apple account does
+     * not have and SideStore cannot sign. Exactly the failure test B had with
+     * HealthKit, and D14 refused to bet on anything the signature could shave
+     * off.
+     *
+     * Local notifications need none of it: registerForRemoteNotifications lives
+     * only in PushTokenModule, reached only from getDevicePushTokenAsync, which
+     * nothing in this project calls.
+     *
+     * LAST IN THE LIST, so it runs after the plugin it undoes. Verified by the
+     * preflight rather than assumed — see the file.
+     */
+    './plugins/with-no-aps-environment',
   ],
 
   extra: {

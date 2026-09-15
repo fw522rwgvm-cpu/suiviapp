@@ -5,8 +5,25 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { DatabaseGate } from '@/core/db/database-gate';
 import { QueryProvider } from '@/core/query';
 import { ThemeProvider, useTheme } from '@/core/theme';
+import { useNotificationScheduling } from '@/features/notifications/hooks/use-notification-scheduling';
+import { setNotificationHost } from '@/features/notifications/host-registry';
+import { expoNotificationHost } from '@/features/notifications/native/expo-host';
 import { useSweepOffCacheOnce } from '@/features/nutrition/off/off-queries';
 import { usePreferences } from '@/features/settings/data/settings-queries';
+
+// THE ONE LINE THAT MAKES NOTIFICATIONS REAL, and it is wiring.
+//
+// Everything in features/notifications runs against an inert host until this
+// runs. Module scope rather than an effect, because the registry has to hold
+// the real host before the first render reads it — a screen that asked for the
+// permission status one tick early would get the inert 'undetermined' and show
+// the wrong banner.
+//
+// This import is what puts expo-notifications in the bundle, and it is the
+// reason slice 9 needs exactly one CI cycle: the JS bundle does not carry a
+// native module, so nothing below this line can be trusted on the device until
+// GitHub Actions has rebuilt the development binary.
+setNotificationHost(expoNotificationHost);
 
 // Route wiring only. No logic, no queries (D10).
 //
@@ -76,6 +93,13 @@ function RootStack() {
   // Once per launch, after the first paint. Mounting it is wiring; what it
   // does and why it is not in the startup sequence is written where it lives.
   useSweepOffCacheOnce();
+
+  // For the lifetime of the application, on the same precedent: the scheduler
+  // has to re-read on every foreground (D14), so it cannot live on a screen —
+  // a screen that is not mounted schedules nothing, and the Settings screen is
+  // the least visited one there is. Everything it decides is written where it
+  // lives; mounting it here is wiring.
+  useNotificationScheduling();
 
   return (
     <Stack

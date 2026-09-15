@@ -39,8 +39,18 @@ export default function SettingsLayout() {
         headerTitleStyle: { color: theme.colors.text, fontSize: 20 },
       }}
     >
-      {/* The Settings screen carries its own large title, as it always has. */}
-      <Stack.Screen name="index" options={{ headerShown: false }} />
+      {/*
+        The Settings screen carries its own large title, as it always has — and
+        it is ALSO named here, which is a different thing.
+        `title` is what the pushed screens put on their back button. Without it
+        the navigator falls back to the route's own name, so every sub-page of
+        the Settings had a chevron labelled "index". `headerShown: false` still
+        wins, so nothing is drawn on this screen; the name is only for the
+        screens above it.
+        Deeper pushes are unaffected: templates/[id] still says "Modèles de
+        journée", because a back button names the screen it returns TO.
+      */}
+      <Stack.Screen name="index" options={{ headerShown: false, title: 'Réglages' }} />
     </Stack>
   );
 }

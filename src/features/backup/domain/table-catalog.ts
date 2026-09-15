@@ -40,9 +40,11 @@ import {
   recipeIngredient,
   recipeStep,
   recipeTag,
+  notificationSetting,
   setting,
   weightGoal,
   weightMeasure,
+  NOTIFICATION_KINDS,
   PORTION_NAMES,
   WEIGHT_GOAL_MODES,
   YIELD_TYPES,
@@ -139,6 +141,25 @@ export interface TableExclusion {
  */
 const EXPORT_ORDER: readonly { table: SQLiteTable; introducedIn: string }[] = [
   { table: setting, introducedIn: '0000_initial_setting' },
+  /**
+   * Notification settings sit beside `setting`, and the position is genuinely
+   * free — the table carries no foreign key in either direction, which is the
+   * same freedom the weight block has at the bottom.
+   *
+   * Filed WITH the configuration rather than as a domain of its own, because
+   * that is what a reader repairing this file by hand (D7) would expect: the
+   * two tables holding what the user chose about the application read together,
+   * at the top, before any data. The weight block is kept together for the
+   * opposite reason — it is a domain with measurements of its own, and one
+   * table of four rows is not.
+   *
+   * WHAT IT CARRIES IS WORTH STATING: only the enabled flags and the hours.
+   * What iOS holds pending is not here and is not anywhere, being derivable
+   * from this plus the clock (D9). So importing an archive restores the
+   * CHOICES, and the schedule is rebuilt from them on the next foreground —
+   * which is exactly what happens after any reinstall.
+   */
+  { table: notificationSetting, introducedIn: '0007_notifications' },
   /**
    * The planning block sits here, between the settings and the reference data,
    * so the order reads top-down as configuration, then reference data, then
@@ -380,6 +401,42 @@ const VALUE_RULES: Record<string, Record<string, ValueRule>> = {
      * numeric rule at all, and adding one is exactly the deferral already taken
      * for food.barcode's non_empty — the catalogue assumes its rules may be
      * incomplete, which only ever makes validation weaker, never wrong.
+     */
+  },
+  notification_setting: {
+    /**
+     * THE ONLY BARRIER THIS COLUMN HAS, and that is deliberate rather than an
+     * omission.
+     *
+     * notification_setting.kind carries NO CHECK, unlike journal_entry.kind and
+     * weight_goal.mode, because widening it breaks no calculation: nothing is
+     * summed and nothing is derived from it, and the Settings screen enumerates
+     * the four kinds from the CODE, reading this table by key. A row with an
+     * unknown kind is a row nothing reads.
+     *
+     * So this rule is the whole barrier, and it is the STRONGER form by the
+     * food_portion.name argument: it runs before the first insert and names the
+     * table, the row index and the column, where a CHECK would cite a
+     * constraint. D7 wants a file repairable by hand.
+     *
+     * Named from the schema rather than respelled, the shape PORTION_NAMES set.
+     * Slice 11 adds a kind here for the rest timer; widening it is a one-line
+     * deliberate act with a diff attached, where a CHECK would be a table
+     * rebuild.
+     */
+    kind: { rule: 'one_of', allowed: NOTIFICATION_KINDS },
+    /**
+     * enabled, hour and minute carry NO rule, for the reason
+     * planning_weekday.weekday carries none: the one_of rule takes strings and
+     * these are integers.
+     *
+     * enabled is held by ck_notification_enabled in SQL, which it can afford
+     * because a boolean will never widen. hour and minute are held by NEITHER,
+     * and that is the refusal written up in the schema module: this project
+     * answers a bad settings value by CLAMPING it, on the way in and on the way
+     * out, exactly as normalizeCutoffHour does. An hour of 25 in a
+     * hand-repaired archive imports, reads back as 23, and breaks nothing — a
+     * settings row is never a reason to refuse to work.
      */
   },
   weight_goal: {

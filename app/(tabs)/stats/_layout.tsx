@@ -38,7 +38,14 @@ export default function StatsLayout() {
         headerTitleStyle: { color: theme.colors.text, fontSize: 20 },
       }}
     >
-      <Stack.Screen name="index" options={{ headerShown: false }} />
+      {/*
+        Named for the same reason the Settings index is: `title` is what a
+        pushed screen writes on its back button, and without it the navigator
+        falls back to the route name — so returning from the weight history
+        offered a chevron labelled "index". Found while fixing the Settings;
+        same defect, same line.
+      */}
+      <Stack.Screen name="index" options={{ headerShown: false, title: 'Stats' }} />
     </Stack>
   );
 }

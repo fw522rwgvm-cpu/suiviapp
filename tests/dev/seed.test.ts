@@ -233,11 +233,29 @@ describe('seedJournal', () => {
     expect(mismatched.n).toBe(0);
   });
 
-  it('carries a long history without choking', () => {
-    // Three years, which is what D15 means by checking performance on long
-    // histories. One transaction for the lot.
-    const report = seedJournal(fixture.db, { endDate: END, days: 1095, seed: 17 });
-    expect(report.entries).toBeGreaterThan(1000);
-    expect(readDayTotals(fixture.db, END).kcal).toBeGreaterThanOrEqual(0);
-  });
+  it(
+    'carries a long history without choking',
+    () => {
+      // Three years, which is what D15 means by checking performance on long
+      // histories. One transaction for the lot.
+      const report = seedJournal(fixture.db, { endDate: END, days: 1095, seed: 17 });
+      expect(report.entries).toBeGreaterThan(1000);
+      expect(readDayTotals(fixture.db, END).kcal).toBeGreaterThanOrEqual(0);
+    },
+    // AN EXPLICIT TIMEOUT, because the default one was acting as an accidental
+    // performance budget and losing.
+    //
+    // Measured on an idle machine: 4905 ms against vitest's 5000 ms default. It
+    // passed alone and failed whenever the full suite ran it alongside
+    // eighty-eight other workers — which is a test that fails AT RANDOM, and a
+    // suite that goes red for no reason is worse than one test fewer: it is
+    // what teaches you to rerun instead of reading.
+    //
+    // Nothing here asserts a duration. This test checks that three years of
+    // history GOES IN, not that it goes in quickly, so the default timeout was
+    // never the guard it looked like. If a performance budget is wanted it
+    // belongs in an assertion that says so, with a number chosen rather than
+    // inherited from a test runner.
+    30_000,
+  );
 });

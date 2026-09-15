@@ -149,6 +149,27 @@ export function readDayTotals(db: AppDatabase, date: LocalDate): Macros {
 }
 
 /**
+ * Whether anything at all has been logged on a date.
+ *
+ * Its own read rather than readDayTotals(date).kcal > 0, which would be wrong
+ * in a way nobody would notice: an entry can carry zero calories — black
+ * coffee, a free entry typed as all zeros, a recipe parent whose macros are
+ * NULL by design (D5/R2). "Nothing logged" and "nothing that counts" are
+ * different questions, and specs 9.3 asks the first one.
+ *
+ * EXISTS rather than COUNT, so SQLite stops at the first row.
+ */
+export function readDayHasEntries(db: AppDatabase, date: LocalDate): boolean {
+  const rows = db
+    .select({ id: journalEntry.id })
+    .from(journalEntry)
+    .where(eq(journalEntry.date, date))
+    .limit(1)
+    .all();
+  return rows.length > 0;
+}
+
+/**
  * Sub-total per meal, in one grouped query. Meals are collapsed by default
  * (specs 8.3), so their entries must not be loaded to show a sub-total.
  */
