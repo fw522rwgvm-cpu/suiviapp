@@ -1,0 +1,305 @@
+import type { ExerciseId, SetType } from '@/core/db/schema';
+
+/**
+ * A routine being built or edited, and what makes it valid (specs 10.2).
+ *
+ * Pure: it knows neither the database nor React. The editor holds one of these
+ * in state, this module says what is wrong with it and how to change it, and
+ * routine-writes.ts turns a valid one into rows.
+ *
+ * ## THE SHAPE IS THE SPECIFICATION'S, NOT THE SCHEMA'S
+ *
+ * The tables are flat — routine_block, then routine_line pointing at a block.
+ * A draft is NESTED, because that is what the editor manipulates: a block holds
+ * its lines, and moving a block moves them. Flattening happens once, on the way
+ * to SQL, where positions are assigned from array order.
+ *
+ * That also means NOTHING IN A DRAFT CARRIES A POSITION. An array already has
+ * one, and two sources for an order is how a list ends up disagreeing with
+ * itself — the defect shape this project has chased out of quantity prefill and
+ * refused again in exercise.increment_kg.
+ */
+
+export interface LineDraft {
+  /** Null for a line being added. Set for one already stored. */
+  id: string | null;
+  exerciseId: ExerciseId;
+  /** Carried so the editor can show a name without a query per line. */
+  exerciseName: string;
+  setType: SetType;
+  /** Null means "not stated". Both null is a set with no target range. */
+  repsMin: number | null;
+  repsMax: number | null;
+  targetLoadKg: number | null;
+  targetRir: number | null;
+  /** Ignored when the block carries one: see restForLine. */
+  restSeconds: number | null;
+  progressionEnabled: boolean;
+  note: string;
+}
+
+export interface BlockDraft {
+  id: string | null;
+  /**
+   * The rest between rounds of a superset (specs 10.2).
+   *
+   * > le temps de repos étant défini au niveau du superset
+   *
+   * Null on a single-exercise block, where each line carries its own. Set on a
+   * superset, where the lines' own values stop applying. Which of the two is
+   * read is decided by the block's SHAPE, never by comparing their values —
+   * see restForLine, which is the only place that decision is taken.
+   */
+  restSeconds: number | null;
+  lines: LineDraft[];
+}
+
+export interface RoutineDraft {
+  name: string;
+  /** One step per line typed (specs 10.2). Blank lines are dropped on save. */
+  warmupSteps: string[];
+  blocks: BlockDraft[];
+}
+
+export type RoutineProblem =
+  | { kind: 'name_missing' }
+  | { kind: 'no_blocks' }
+  | { kind: 'empty_block'; blockIndex: number }
+  | { kind: 'reps_inverted'; blockIndex: number; lineIndex: number };
+
+/**
+ * Whether a block is a superset — which is the question everything else turns
+ * on.
+ *
+ * TWO DISTINCT EXERCISES, not two lines. A block holding three sets of one
+ * exercise is not a superset; it is one exercise done three times, and its rest
+ * belongs to its lines. Counting LINES instead would have made every
+ * multi-set block a superset and silently moved its rest.
+ */
+export function isSuperset(block: BlockDraft): boolean {
+  return new Set(block.lines.map((line) => line.exerciseId)).size > 1;
+}
+
+/**
+ * The rest that actually applies to a line.
+ *
+ * THE ONE PLACE THIS DECISION IS TAKEN, so the screen, the writer and the
+ * session (slice 11) cannot disagree about it. Two columns hold a rest and only
+ * one of them is in force; which one is decided by the block's shape.
+ *
+ * A superset whose block states no rest falls back to the line's, rather than
+ * to nothing: the user has built a superset without saying how long to rest,
+ * and the line's own value is the only number anybody entered.
+ */
+export function restForLine(block: BlockDraft, line: LineDraft): number | null {
+  if (isSuperset(block) && block.restSeconds !== null) return block.restSeconds;
+  return line.restSeconds;
+}
+
+/**
+ * The set index of a line: its rank FOR ITS EXERCISE within the block.
+ *
+ * Derived from the array rather than stored in the draft, because it is a
+ * function of the order (D9) — a line moved or removed changes every index
+ * after it, and a stored copy would need updating at four call sites.
+ *
+ * In a superset of A and B at three sets each, the lines sit grouped by
+ * exercise: A,A,A,B,B,B at positions 0..5, with set indices 1,2,3,1,2,3. The
+ * routine is a list to be READ; the session decides the order they are
+ * performed in.
+ */
+export function setIndexOf(block: BlockDraft, lineIndex: number): number {
+  const line = block.lines[lineIndex];
+  if (line === undefined) return 1;
+  let rank = 0;
+  for (let i = 0; i <= lineIndex; i += 1) {
+    if (block.lines[i]?.exerciseId === line.exerciseId) rank += 1;
+  }
+  return rank;
+}
+
+export function validateRoutineDraft(draft: RoutineDraft): RoutineProblem[] {
+  const problems: RoutineProblem[] = [];
+
+  if (draft.name.trim() === '') problems.push({ kind: 'name_missing' });
+
+  const blocks = draft.blocks;
+  if (blocks.length === 0) problems.push({ kind: 'no_blocks' });
+
+  blocks.forEach((block, blockIndex) => {
+    if (block.lines.length === 0) problems.push({ kind: 'empty_block', blockIndex });
+
+    block.lines.forEach((line, lineIndex) => {
+      // ck_line_reps refuses this in SQL too. Caught here so the form can point
+      // at the set rather than the write failing with a constraint name.
+      if (
+        line.repsMin !== null &&
+        line.repsMax !== null &&
+        line.repsMin > line.repsMax
+      ) {
+        problems.push({ kind: 'reps_inverted', blockIndex, lineIndex });
+      }
+    });
+  });
+
+  return problems;
+}
+
+export function isValidRoutineDraft(draft: RoutineDraft): boolean {
+  return validateRoutineDraft(draft).length === 0;
+}
+
+export function emptyRoutineDraft(): RoutineDraft {
+  return { name: '', warmupSteps: [], blocks: [] };
+}
+
+/** A set with nothing filled in, which is what adding an exercise produces. */
+export function newLine(exerciseId: ExerciseId, exerciseName: string): LineDraft {
+  return {
+    id: null,
+    exerciseId,
+    exerciseName,
+    // Specs 6.3 makes `travail` the default, and it is a fact about the FORM
+    // rather than about the table — which is why the column has no SQL default.
+    setType: 'work',
+    repsMin: null,
+    repsMax: null,
+    targetLoadKg: null,
+    targetRir: null,
+    restSeconds: null,
+    progressionEnabled: false,
+    note: '',
+  };
+}
+
+/**
+ * Adding an exercise: a new block holding ONE set (specs 10.2).
+ *
+ * > l'exercice s'ajoute avec une série unique
+ *
+ * One set rather than three, because one is the smallest thing that is already
+ * correct: duplicating it is a tap, and deleting two guesses is two swipes.
+ */
+export function addExerciseBlock(
+  draft: RoutineDraft,
+  exerciseId: ExerciseId,
+  exerciseName: string,
+): RoutineDraft {
+  return {
+    ...draft,
+    blocks: [...draft.blocks, { id: null, restSeconds: null, lines: [newLine(exerciseId, exerciseName)] }],
+  };
+}
+
+/**
+ * Adding an exercise INTO an existing block, which is how a superset is made.
+ *
+ * Specs 10.2 describes a superset as "plusieurs exercices dans un bloc" and
+ * gives no separate creation gesture, so this is it: the block becomes a
+ * superset by holding a second exercise, and isSuperset says so from then on
+ * without anything being flagged.
+ */
+export function addExerciseToBlock(
+  draft: RoutineDraft,
+  blockIndex: number,
+  exerciseId: ExerciseId,
+  exerciseName: string,
+): RoutineDraft {
+  return mapBlock(draft, blockIndex, (block) => ({
+    ...block,
+    lines: [...block.lines, newLine(exerciseId, exerciseName)],
+  }));
+}
+
+/**
+ * Duplicating a set, which is how a line gets its second and third.
+ *
+ * The copy keeps every target — the whole point is "the same again" — and drops
+ * the stored id, because it is a new row. Inserted directly after its original
+ * so the sets of one exercise stay together, which is what setIndexOf reads.
+ */
+export function duplicateLine(
+  draft: RoutineDraft,
+  blockIndex: number,
+  lineIndex: number,
+): RoutineDraft {
+  return mapBlock(draft, blockIndex, (block) => {
+    const line = block.lines[lineIndex];
+    if (line === undefined) return block;
+    const copy: LineDraft = { ...line, id: null };
+    const lines = [...block.lines];
+    lines.splice(lineIndex + 1, 0, copy);
+    return { ...block, lines };
+  });
+}
+
+/**
+ * Removing a set (specs 10.2, "Balayer une série vers la gauche la supprime").
+ *
+ * REMOVING THE LAST SET REMOVES ITS BLOCK. A block with no lines is a row
+ * nobody can explain, and it is what deleteExercise cleans up on the other
+ * path — the two agree rather than one of them leaving work for the other.
+ */
+export function removeLine(
+  draft: RoutineDraft,
+  blockIndex: number,
+  lineIndex: number,
+): RoutineDraft {
+  const block = draft.blocks[blockIndex];
+  if (block === undefined) return draft;
+
+  const lines = block.lines.filter((_, index) => index !== lineIndex);
+  if (lines.length === 0) {
+    return { ...draft, blocks: draft.blocks.filter((_, index) => index !== blockIndex) };
+  }
+  return mapBlock(draft, blockIndex, (current) => ({ ...current, lines }));
+}
+
+export function removeBlock(draft: RoutineDraft, blockIndex: number): RoutineDraft {
+  return { ...draft, blocks: draft.blocks.filter((_, index) => index !== blockIndex) };
+}
+
+export function updateLine(
+  draft: RoutineDraft,
+  blockIndex: number,
+  lineIndex: number,
+  change: Partial<LineDraft>,
+): RoutineDraft {
+  return mapBlock(draft, blockIndex, (block) => ({
+    ...block,
+    lines: block.lines.map((line, index) => (index === lineIndex ? { ...line, ...change } : line)),
+  }));
+}
+
+export function setBlockRest(
+  draft: RoutineDraft,
+  blockIndex: number,
+  restSeconds: number | null,
+): RoutineDraft {
+  return mapBlock(draft, blockIndex, (block) => ({ ...block, restSeconds }));
+}
+
+/** Every muscle the routine works, for the body map (specs 10.2). */
+export function musclesOfDraft(
+  draft: RoutineDraft,
+  musclesOf: (id: ExerciseId) => readonly string[],
+): Set<string> {
+  const worked = new Set<string>();
+  for (const block of draft.blocks) {
+    for (const line of block.lines) {
+      for (const muscle of musclesOf(line.exerciseId)) worked.add(muscle);
+    }
+  }
+  return worked;
+}
+
+function mapBlock(
+  draft: RoutineDraft,
+  blockIndex: number,
+  change: (block: BlockDraft) => BlockDraft,
+): RoutineDraft {
+  return {
+    ...draft,
+    blocks: draft.blocks.map((block, index) => (index === blockIndex ? change(block) : block)),
+  };
+}
