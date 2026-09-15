@@ -64,12 +64,24 @@ L'application doit tolérer un arrêt forcé à tout moment sans perte.
 Tranches 0 à 9 livrées. La tranche 9 (notifications) **clôt la V2**.
 **1260 tests verts** sous les trois fuseaux, `tsc` vert, bundle produit.
 
-**Rien de la tranche 9 n'a tourné sur l'appareil, et le binaire de
-développement doit être reconstruit avant d'y toucher.** `expo-notifications`
-est la première dépendance native ajoutée depuis `expo-camera` et porte la même
-conséquence : le bundle JS ne contient pas son module natif, donc
-`npm run bundle:ios` reste vert pendant que l'écran planterait. Elle s'empile
-sur les tranches 6 et 8, qui n'ont jamais tourné non plus.
+**Une notification locale a été reçue sur l'appareil (15/09/2026).** C'est le
+premier constat de la tranche 9, et il en emporte trois autres par déduction —
+signalée comme telle, puisque seul le résultat a été rapporté :
+
+- le binaire a nécessairement été **reconstruit**, sans quoi l'écran aurait
+  planté au montage faute de module natif ;
+- il s'est donc **compilé et installé** avec le greffon d'entitlements
+  neutralisé. C'était la réserve la plus lourde : `aps-environment` retiré au
+  pré-vol ne dit rien de ce qu'un build CI produit ni de ce que SideStore
+  accepte de signer. Maintenant si ;
+- l'autorisation a été demandée et accordée, et une occurrence programmée par
+  l'application s'est déclenchée.
+
+**Ce que ça ne dit pas**, et qu'il faut continuer à lire comme non exercé : les
+**conditions**. Qu'un rappel de pesée disparaisse quand on s'est pesé, qu'il
+revienne le lendemain, et que le bilan porte les chiffres du soir et non ceux du
+matin — c'est le critère de sortie, et il demande de dormir une nuit. Restent
+aussi non exercées les tranches 6 et 8, qui n'ont jamais tourné sur l'appareil.
 
 **La tranche 8 ne demande AUCUN cycle CI.** Aucune dépendance n'entre :
 `react-native-svg`, `d3-scale` et `d3-shape` sont dans le binaire depuis
@@ -3978,8 +3990,13 @@ rien dedans.
 
 ## Points ouverts après la tranche 9
 
-- **Rien de la tranche 9 n'a tourné sur l'appareil**, et c'est la seule
-  vérification qui compte : le critère de sortie demande de dormir une nuit.
+- ~~**Rien de la tranche 9 n'a tourné sur l'appareil.**~~ **Une notification a
+  été reçue (15/09/2026)** : la chaîne build → installation → autorisation →
+  planification → déclenchement fonctionne, entitlement neutralisé compris.
+  **Restent non exercées les CONDITIONS**, qui sont la moitié qui peut produire
+  un résultat faux et plausible : qu'un rappel de pesée s'annule quand on s'est
+  pesé et revienne le lendemain, et que le bilan annonce les chiffres du soir.
+  C'est le critère de sortie, et il demande de dormir une nuit.
   **S'y ajoutent deux choses signalées à l'usage et corrigées sans être
   observées ici** : que la molette d'heure ne revienne plus en arrière avant de
   tourner toute seule (certain — la cause est diagnostiquée), et qu'elle ne se
@@ -3992,10 +4009,10 @@ rien dedans.
   l'activation et **pas avant** ; que le rappel de pesée sonne le lendemain
   matin et **ne sonne pas** si la pesée est faite ; que le bilan annonce les
   chiffres du **soir**.
-- **L'entitlement est retiré au pré-vol, pas à la signature.** Ce qui est
-  constaté est que `expo prebuild` produit un `<dict/>` vide. Ce qui ne l'est
-  pas : qu'un build CI complet produise le même fichier, et que SideStore
-  installe le résultat. Le premier cycle le dira.
+- ~~**L'entitlement est retiré au pré-vol, pas à la signature.**~~ **Levé
+  (15/09/2026)** : une notification reçue suppose une application installée et
+  lancée, donc un build CI et une signature SideStore qui ont accepté le
+  greffon neutralisé.
 - **Les heures par défaut sont choisies, pas mesurées** (§13 n° 4 des specs,
   toujours ouvert). La façon de savoir qu'elles sont fausses est de vivre avec
   une semaine.
