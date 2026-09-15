@@ -61,8 +61,15 @@ L'application doit tolérer un arrêt forcé à tout moment sans perte.
 ---
 
 ## État du projet
-Tranches 0 à 8 livrées. La tranche 8 (poids) ouvre la V2. **1180 tests verts**
-sous les trois fuseaux, `tsc` vert, bundle produit.
+Tranches 0 à 9 livrées. La tranche 9 (notifications) **clôt la V2**.
+**1260 tests verts** sous les trois fuseaux, `tsc` vert, bundle produit.
+
+**Rien de la tranche 9 n'a tourné sur l'appareil, et le binaire de
+développement doit être reconstruit avant d'y toucher.** `expo-notifications`
+est la première dépendance native ajoutée depuis `expo-camera` et porte la même
+conséquence : le bundle JS ne contient pas son module natif, donc
+`npm run bundle:ios` reste vert pendant que l'écran planterait. Elle s'empile
+sur les tranches 6 et 8, qui n'ont jamais tourné non plus.
 
 **La tranche 8 ne demande AUCUN cycle CI.** Aucune dépendance n'entre :
 `react-native-svg`, `d3-scale` et `d3-shape` sont dans le binaire depuis
@@ -648,6 +655,27 @@ temporaire. Une dépendance native de moins, pour toujours.
 recevoir des fichiers. Avec un compte Apple gratuit et SideStore, une cible de
 plus veut dire un second identifiant et un second profil. `shareAsync` n'en a
 pas besoin : le module natif est autolinké par `expo-module.config.json`.
+
+> **⚠️ CORRECTION (tranche 9) : le raisonnement ci-dessus attribue l'effet à la
+> mauvaise cause, et la cause fausse a été réutilisée deux fois.** Ne pas
+> déclarer un paquet dans `plugins` **n'empêche pas son greffon de tourner** :
+> sur le SDK 57 un config plugin de paquet est **auto-appliqué**. Si
+> `expo-sharing` n'ajoute aucune cible, c'est que `withShareExtension` est
+> **inerte sans `props.ios.enabled`**, qui vaut `false` par défaut — constaté en
+> lisant `plugin/build/withShareExtension.js` et en comptant les cibles du
+> `.xcodeproj` généré : une seule. La conclusion tient, le motif non.
+>
+> Ce que ça a coûté : le plan de la tranche 9 comptait éviter l'entitlement
+> `aps-environment` d'`expo-notifications` en ne le déclarant pas. Le pré-vol a
+> montré qu'il s'écrit quand même. Il faut un greffon **qui en défait un autre**
+> — voir `plugins/with-no-aps-environment.js`. Et la justification
+> d'`expo-camera` en tranche 4 repose sur la même erreur : sans déclaration, la
+> clé `NSCameraUsageDescription` est écrite quand même, en anglais par défaut.
+>
+> **La règle qui remplace celle-ci : pour toute dépendance native, un pré-vol
+> `expo prebuild` puis lecture de l'`Info.plist` ET des `.entitlements`.** Aucun
+> test en Node ne peut le remplacer — un greffon auto-appliqué ajoute un
+> entitlement sans jamais apparaître dans `app.config.ts`.
 
 **La bascule ne redémarre pas l'application, et c'est vérifié sur l'appareil.**
 `backupDatabaseSync` est l'API de sauvegarde en ligne de SQLite : elle copie
@@ -3620,6 +3648,273 @@ pour les deux variantes. Rien dans le bundle JS ne les porte, donc `npm run
 bundle:ios` reste vert sans rien prouver — la même famille de piège que
 `expo-camera` et `react-native-svg`, à ceci près qu'ici il n'y a aucun plantage
 au bout, seulement l'ancienne image.
+
+## Ce que la tranche 9 a établi
+
+**Le greffon d'un paquet Expo s'applique TOUT SEUL, et la tranche 2 avait écrit
+le contraire.** C'est le constat le plus important de la tranche, et il a failli
+coûter un cycle CI plus une installation refusée.
+
+La tranche 2 avait inscrit qu'`expo-sharing` n'ajoute pas sa cible d'extension
+« parce qu'il n'est pas déclaré dans `plugins` ». C'est faux. Sur le SDK 57 un
+config plugin de paquet est **auto-appliqué** ; si `expo-sharing` n'ajoute rien,
+c'est que `withShareExtension` est **inerte sans `props.ios.enabled`**, qui vaut
+`false` par défaut. L'effet observé était vrai, la cause inscrite ne l'était pas
+— et une cause fausse se réutilise.
+
+Elle a été réutilisée deux fois :
+
+- **Le plan de la tranche 9 prévoyait de ne pas déclarer `expo-notifications`**
+  pour éviter son entitlement. Le pré-vol a montré que `expo prebuild` avec rien
+  de déclaré écrit `aps-environment: development` dans `Suivi.entitlements` —
+  la capacité Push, qu'un compte Apple gratuit n'a pas et que SideStore ne peut
+  pas signer. La forme exacte de l'échec du test B avec HealthKit.
+- **La justification d'`expo-camera` en tranche 4** — « sans la déclaration, iOS
+  tue l'application faute de `NSCameraUsageDescription` » — est fausse aussi.
+  Mesuré en retirant la déclaration puis en relançant le pré-vol : la clé est
+  écrite quand même, avec le texte anglais du paquet, `Allow $(PRODUCT_NAME) to
+  access your camera`. Ce que la déclaration achète est le **texte français**,
+  ce qui suffit à la garder — mais la raison était la mauvaise.
+
+**Le remède est un greffon qui en défait un autre** : `plugins/with-no-aps-environment.js`,
+déclaré **en dernier** pour s'exécuter après celui qu'il annule. Il `delete` la
+clé plutôt que de l'écraser, `withNotificationsIOS` ne l'écrivant que
+`if (!config.modResults['aps-environment'])` — poser une autre valeur ne ferait
+que choisir la valeur. Vérifié, pas déduit : le fichier d'entitlements sort avec
+un `<dict/>` vide et `NSCameraUsageDescription` survit.
+
+**La règle qui en sort, pour toute dépendance native à venir : un pré-vol
+`expo prebuild` puis une lecture de l'`Info.plist` ET des `.entitlements`.**
+Il est local, il coûte une minute, et aucun test en Node ne peut le remplacer —
+un greffon auto-appliqué ajoute un entitlement sans jamais apparaître dans
+`app.config.ts`.
+
+**Une notification LOCALE ne demande aucun entitlement.** Lu dans la source du
+paquet, pas de mémoire : `registerForRemoteNotifications` ne vit que dans
+`ios/.../PushToken/PushTokenModule.swift`, atteint seulement par
+`getDevicePushTokenAsync` ; le subscriber AppDelegate autolinké n'implémente que
+des rappels passifs et ne déclenche rien ; et l'effet auto-exécuté à l'import,
+`DevicePushTokenAutoRegistration.fx`, sort immédiatement faute d'information
+d'enregistrement stockée — seul `setAutoServerRegistrationEnabledAsync(true)`
+l'arme. Rien ici n'appelle ces chemins.
+
+**Le déclencheur `DATE` d'`expo-notifications` n'est pas une date.** Lu dans
+`TriggerRecords.swift` : `DateTriggerRecord` construit un
+`UNTimeIntervalNotificationTrigger` depuis `timeIntervalSinceNow`, c'est-à-dire
+**un délai en secondes figé à la planification** — il dérive au changement
+d'heure et lève si l'instant est passé. Seul `CalendarTriggerRecord` produit un
+vrai `UNCalendarNotificationTrigger`, apparié sur des composantes murales. Une
+occurrence porte donc `year/month/day/hour/minute` et pas seulement son instant.
+C'est D3 à la frontière native : une date civile est la clé métier, et un délai
+en millisecondes est précisément ce qu'`addDays` existe pour ne pas faire.
+
+**Les quatre sortes n'anticipent pas pareil, et D14 en parle comme si.** C'est
+la forme de toute la tranche :
+
+- **Pesée et journal vide** anticipent pleinement : leur texte ne porte aucun
+  chiffre, la condition de demain est inconnue aujourd'hui, donc les sept
+  occurrences sont programmées et celle du jour est retirée dès que la condition
+  est satisfaite.
+- **Le bilan ne le peut pas.** Son texte EST les chiffres du jour. En programmer
+  sept mettrait six notifications en file annonçant les chiffres d'aujourd'hui
+  des jours où ils n'ont rien à voir. Seule l'occurrence du jour est planifiée.
+  Prix assumé : un jour où l'application n'est pas ouverte, aucun bilan ne
+  sonne — ce qui est juste, une journée sans saisie n'ayant rien à annoncer.
+- **Le rappel d'export anticipe MIEUX que les autres**, seul à le pouvoir :
+  `last_export_at` ne bouge que si l'application tourne, donc savoir si le jour
+  J+k sera en retard est une arithmétique d'aujourd'hui. Les jours qui ne le
+  seront pas ne sont jamais programmés, au lieu d'être programmés puis annulés.
+
+**Aucun déclencheur répétitif, et c'est une contradiction interne à D14 qu'il
+fallait trancher.** Le même paragraphe demande « déclencheurs répétitifs
+préférés » (pour le plafond de 64) et « annulation immédiate dès que la
+condition devient satisfaite ». Incompatible : un répétitif est **une** entrée
+en file, donc l'occurrence de demain ne s'annule pas sans tuer toutes les
+suivantes. Et le plafond n'est pas approché — quatre sortes sur sept jours font
+vingt-huit contre soixante-quatre.
+
+**Le bilan se reprogramme par la VALEUR de ses chiffres, jamais par un filtre de
+date.** C'est le point le plus délicat, et il se résout en ne le résolvant pas
+là où il se pose. D14 veut une reprogrammation à chaque écriture concernant la
+journée courante et surtout pas sur une date passée ; le bus invalide par
+prédicat de table et ne dit rien de la date (D8) ; et écrire une invalidation à
+la main est un interdit absolu.
+
+La discrimination n'est donc pas faite à l'écriture. La requête compose les
+chiffres du jour, le bus l'invalide sur tout changement de `journal_entry`, elle
+se relit — et une écriture sur une date **passée** rend exactement les mêmes
+chiffres, donc exactement le même texte, donc le diff ne trouve rien à faire.
+La règle de D14 est obtenue **comme conséquence de la donnée qui n'a pas bougé**.
+Coût : un rafraîchissement pour rien, celui que le bus assume déjà par écrit.
+
+Corollaire : la comparaison porte sur le **texte rendu**, pas sur l'objet de la
+requête — React Query en rend un neuf à chaque relecture. Et un effet de bord
+qui n'en est pas un : un dixième de kilocalorie ne déplace rien à l'écran, donc
+ne reprogramme rien.
+
+**L'horloge est lue dans la requête, jamais par `useToday`.** `useToday` est
+**figé contre l'horloge** à dessein — il ne se relit que si le seuil change,
+pour qu'un libellé ne bouge pas sous une liste parce que minuit est passé. Un
+planificateur veut l'inverse : le jour qu'il planifie doit être le jour qu'il
+est, à chaque fois qu'il tourne.
+
+**`refetch()` au passage au premier plan, jamais `invalidateQueries`.** Rien
+n'énumère de clé et le bus reste seul à traduire table vers invalidation.
+Revenir dans l'application n'est pas une écriture : c'est l'horloge qui a bougé,
+donc une raison pour **cette** requête de se relire et pour rien d'autre de se
+produire. C'est aussi ce qui fait rouler la fenêtre de sept jours — chaque
+retour au premier plan planifie un jour de plus au bout et laisse tomber ceux
+qui sont passés.
+
+**Personne n'annule jamais une notification : elle est annulée en n'étant plus
+dans le plan.** `applyPlan` est un diff entre le plan voulu et ce qu'iOS tient,
+sur des identifiants `<sorte>:<date>` stables — donc idempotent, donc sans
+risque à lancer à chaque rendu. L'alternative — un `cancel` au site d'écriture
+du poids — serait un second endroit qui connaît les règles, libre de diverger de
+`buildPlan`, et le désaccord se lirait comme un rappel qui sonne après qu'on
+s'est pesé.
+
+**Et le diff ne touche qu'à ce qu'il a posé.** Défaut trouvé en chemin, qui
+aurait mordu en tranche 11 : « en attente et pas dans le plan » décrit
+parfaitement le minuteur de repos, qui vit dans la même file. Il aurait été
+annulé au milieu d'une séance par un planificateur qui n'en a jamais entendu
+parler, et rien ne l'aurait signalé — le minuteur n'aurait simplement pas sonné.
+L'appartenance est le préfixe de l'identifiant, lu depuis `NOTIFICATION_KINDS`.
+
+**`cancelAll` a existé une heure puis a disparu** : un plan vide annule déjà
+tout ce qui est à nous par le diff ordinaire. Un second chemin aurait été un
+second endroit qui décide ce qui nous appartient.
+
+**`annule avant de programmer`, et l'ordre n'est pas cosmétique.** Quand une
+occurrence est remplacée parce que son texte a changé — le bilan, à chaque
+repas logué — programmer d'abord laisserait les deux versions en file un
+instant, et si l'annulation échouait ensuite, ce sont les **anciens** chiffres
+qui survivraient. Le mauvais sens de panne pour la notification dont tout le
+rôle est de porter des chiffres à jour.
+
+**La réserve du §14.15 se résout sans arbitrage.** Le §9.1 place la pesée « au
+réveil » et le §8.2 laisse régler l'heure de bascule entre 0 h et 6 h ; ici le
+rappel doit décider seul de « la date du jour ». La sortie est de ne pas
+raisonner en « le rappel du jour J » : **une occurrence est un instant, et la
+date qu'elle concerne est `currentLocalDate(cutoff, cet instant)`** — la même
+fonction que tout l'écran. La condition lit la même date, donc les deux ne
+peuvent pas se contredire, à n'importe quelle heure.
+
+Le cas ordinaire est sûr sans rien de tout ça : le seuil est **plafonné à 6 h**,
+donc toute heure ≥ 6 h tombe sur la date civile du jour. Le cas qui l'exige est
+un rappel réglé **avant** le seuil — 5h30 avec un seuil à 6 h — qui porte alors
+sur la veille. Ce n'est pas un défaut : à 5h30 toute l'application dit qu'on est
+encore hier, ce que le §14.15 énonçait déjà d'une pesée à 3 h du matin.
+
+**La lecture itère sur le CODE, jamais sur la table**, et c'est cette direction
+qui rend sûre l'absence de CHECK sur `kind` plutôt qu'un pari sur ce qu'une
+archive contiendra. Les quatre sortes viennent de `NOTIFICATION_KINDS` et
+chacune s'interroge par clé : une ligne de sorte inconnue ne peut atteindre ni
+le planificateur, ni l'écran, ni être activée par un import. Écrite dans l'autre
+sens — `SELECT *` puis brancher sur ce qui revient — la même archive aurait
+tendu au planificateur une sorte sans branche, et le schéma aurait **dû** porter
+une CHECK. La structure achète la liberté dont la tranche 11 aura besoin.
+
+**`readDayHasEntries` plutôt que `readDayTotals().kcal > 0`.** Une entrée peut
+ne porter aucune calorie — un café noir, une saisie libre à zéro, un parent de
+recette dont les macros sont `NULL` par conception. « Rien de logué » et « rien
+qui compte » sont deux questions, et le §9.3 pose la première.
+
+**Une molette pour l'heure, là où le §14.12 n° 9 avait choisi des rangées à
+coche.** Ce n'est pas une exception à cet arbitrage mais le même raisonnement
+arrivant à l'autre réponse : il tenait à ce qu'un `UIPickerView` coûte un
+défilement pour ce qui peut être un toucher, et à ce qu'en rangées « bornée
+entre 0 h et 6 h » se **voie**. Une heure de notification a 24 × 12 valeurs — la
+liste serait exactement le défilement qu'on refusait — et aucune borne n'y est à
+montrer. Minutes par pas de cinq ; une valeur hors grille garde son propre
+élément, pour que la molette montre la vérité au lieu de s'aimanter sur un
+chiffre que personne n'a choisi.
+
+**Un refus d'autorisation ne rabat pas l'interrupteur.** Le faire mentirait à
+l'écran sur ce qui a été demandé et laisserait un contrôle qui se défait tout
+seul. Maintenu, le jour où l'autorisation est donnée dans les Réglages iOS tout
+se met à sonner sans qu'on retouche quoi que ce soit. Le bandeau nomme le
+chemin, parce qu'un utilisateur qui ne sait pas où aller n'a pas de recours.
+
+**`setNotificationHandler` au niveau module**, sinon iOS délivre en silence à
+une application au premier plan — et la notification la plus susceptible
+d'arriver téléphone en main est justement le bilan. **Aucun badge** :
+l'application n'a pas de compteur de non-lus, et un nombre sur l'icône que rien
+n'efface est un défaut qui survit à la notification.
+
+**Une seule porte vers iOS, et un test de conventions la tient.**
+`expo-notifications` ne s'importe que depuis `features/notifications/native/`.
+Même dispositif que la frontière zod, pour un problème plus tranchant : zod au
+mauvais endroit coûte une seconde déclaration du schéma ; une dépendance
+**native** au mauvais endroit coûte **un cycle CI** pour être diagnostiquée, le
+bundle JS restant vert pendant que l'écran plante. C'est aussi ce qui a permis
+d'écrire et de vérifier par Metro tout ce qui précède le natif, sur le binaire
+déjà installé, et de ne payer qu'un seul cycle.
+
+**Ce qu'aucun test ne pourra couvrir, dit plutôt que laissé croire.** iOS ne
+déclenche rien en Node, et la moitié de cette tranche est une conversation avec
+le système.
+
+*Testable, et testé* : les conditions contre un vrai fichier SQLite ; la
+sélection des occurrences et leurs dates sous les trois fuseaux ; le texte du
+bilan ; qu'une écriture sur une date passée ne le change pas ; le diff et son
+idempotence ; que le plan reste sous 64 ; la normalisation des heures ; la
+présence du greffon de retrait, en dernière position.
+
+*Non testable* : qu'iOS déclenche quoi que ce soit ; que l'autorisation arrive
+au bon moment ; que le plafond se comporte comme documenté ; que l'annulation
+atteigne réellement la file ; que le texte tienne dans la bannière. Le
+planificateur est exercé contre un hôte factice, ce qui fixe la **taxonomie** de
+ce qu'on demande à iOS et non qu'iOS l'honore — exactement la limite du client
+Open Food Facts contre un `fetch` injecté.
+
+**Le piège du lockfile a mordu une SIXIÈME fois**, à l'installation
+d'`expo-notifications` : **zéro** liaison rolldown au lieu de quinze. Le compte
+reste le seul contrôle qui veuille dire quelque chose, et
+`rm -rf node_modules && npm ci --ignore-scripts` la seule vérification qui
+vaille.
+
+**Dépendance native transitive, signalée** : `expo-application` arrive avec
+`expo-notifications`. Elle n'a pas été choisie, elle est autolinkée, et elle lit
+l'identifiant de bundle et la version. Consignée plutôt que laissée entrer en
+silence, l'ajout d'une dépendance native sans validation étant un interdit
+absolu.
+
+## Points ouverts après la tranche 9
+
+- **Rien de la tranche 9 n'a tourné sur l'appareil**, et c'est la seule
+  vérification qui compte : le critère de sortie demande de dormir une nuit.
+  **Le binaire de développement doit être reconstruit avant toute chose** —
+  `expo-notifications` est native, donc le bundle JS reste vert pendant que
+  l'écran planterait. À vérifier dans cet ordre : que l'installation réussit
+  malgré le greffon d'entitlements neutralisé ; qu'iOS demande l'autorisation à
+  l'activation et **pas avant** ; que le rappel de pesée sonne le lendemain
+  matin et **ne sonne pas** si la pesée est faite ; que le bilan annonce les
+  chiffres du **soir**.
+- **L'entitlement est retiré au pré-vol, pas à la signature.** Ce qui est
+  constaté est que `expo prebuild` produit un `<dict/>` vide. Ce qui ne l'est
+  pas : qu'un build CI complet produise le même fichier, et que SideStore
+  installe le résultat. Le premier cycle le dira.
+- **Les heures par défaut sont choisies, pas mesurées** (§13 n° 4 des specs,
+  toujours ouvert). La façon de savoir qu'elles sont fausses est de vivre avec
+  une semaine.
+- **Le bilan ne sonne pas un jour où l'application n'est pas ouverte.**
+  Conséquence assumée du n° 1 de `specs §14.18`. Si ça se sent à l'usage, le
+  remède n'est pas d'anticiper des chiffres qui n'existent pas : ce serait une
+  occurrence au texte générique, donc un amendement au §9.3 qui demande « l'état
+  des macros ».
+- **Le minuteur de repos de la tranche 11 est la prochaine sorte**, et la
+  question des déclencheurs répétitifs se reposera avec lui — cinq sortes, et
+  une notification unique qui n'a ni heure ni activation. `notification_setting`
+  l'accueillera sans migration si elle en veut une : c'est exactement ce que
+  l'absence de CHECK sur `kind` achète.
+- **`sweepCache` n'a toujours pas de site d'appel** (hérité de la tranche 4).
+  Inchangé.
+- **L'instrumentation des quatre transitions de D16 n'existe toujours pas.**
+  Inchangé, et la tranche 9 n'ajoute rien au chemin critique.
+- **L'aller-retour export / import n'a pas été refait sur l'appareil depuis
+  `0005`.** `0007` porte le total à **sept tables non vérifiées** dans l'unique
+  filet. C'est la dette la plus vieille et la plus chère de la liste.
 
 ## Points ouverts après la tranche 8
 

@@ -594,15 +594,28 @@ CREATE UNIQUE INDEX ux_weight_goal_active
 -- structurel — l'un des deux se dérive de l'autre (§6.2), donc aucun des deux
 -- ne peut coexister avec l'autre sans ambiguïté. Voir §9.9 n° 2.
 
-notification_setting(                 -- 0007, TRANCHE 9 — pas livrée en 0006
+notification_setting(                 -- 0007, tranche 9 — LIVRÉE
   kind TEXT PRIMARY KEY,              -- 'weigh_in'|'empty_journal'|'daily_summary'|'export_reminder'
   enabled INTEGER NOT NULL DEFAULT 0,
-  hour INTEGER, minute INTEGER
+  hour INTEGER, minute INTEGER,
+  CHECK (enabled IN (0,1))            -- ck_notification_enabled
 )
 -- Rangée ici parce que cette section classe par VERSION ; le §7 ordonne par
--- TRANCHE et place les notifications en 9. Différer ne coûte rien : la table ne
--- porte aucune clé étrangère dans un sens ni dans l'autre, donc 0007 la créera
+-- TRANCHE et place les notifications en 9. Différer n'a rien coûté : la table ne
+-- porte aucune clé étrangère dans un sens ni dans l'autre, donc 0007 l'a créée
 -- entière sans rien reconstruire (§9.9 n° 1).
+--
+-- UNE SEULE CHECK, et les deux qui manquent sont des refus (§9.13 n° 2 et 3).
+-- Aucune sur `kind` : élargir ne casse aucun calcul, la lecture itère sur les
+-- quatre sortes du CODE en interrogeant la table par clé — donc une sorte
+-- inconnue est inerte — et la tranche 11 en ajoutera une, où une CHECK forcerait
+-- une reconstruction. La barrière est la règle `one_of` du catalogue d'export.
+-- Aucune sur `hour`/`minute` : une valeur de réglage aberrante se BORNE, à
+-- l'aller comme au retour, jamais ne fait échouer un import.
+-- Aucun index : `kind` EST la clé primaire. Aucune ligne semée : une ligne
+-- absente et `enabled = 0` disent la même chose.
+-- Et rien n'enregistre ce qu'iOS tient en attente : c'est dérivable (D9), et
+-- iOS est la source de vérité de sa propre file.
 ```
 
 ### 2.6 Musculation (V3)
@@ -814,7 +827,7 @@ CREATE INDEX ix_activity_date ON activity(date);
 | `drizzle-kit` | Migrations générées | Migrations SQL versionnées et relisibles (D6) | dev |
 | `@tanstack/react-query` | Couche de requête | Locale et réseau, invalidation par le bus (D8) | non |
 | `expo-camera` | Scan de code-barres | §8.5. **[tranche 4] Installée**, et son greffon de configuration est **déclaré** — contrairement à `expo-sharing`, laissé à l'autolinking — parce qu'il écrit `NSCameraUsageDescription` dans l'`Info.plist`, ce que l'autolinking ne fait pas. Sans elle, iOS tue l'application à l'ouverture de l'appareil photo : l'alternative n'est pas une chaîne manquante, c'est un plantage que le bundle JS ne sait pas reproduire | oui |
-| `expo-notifications` | Notifications locales | §9.3, minuteur de repos (D14) | oui |
+| `expo-notifications` | Notifications locales | §9.3, minuteur de repos (D14). **[tranche 9] Installée**, et son greffon de configuration est **neutralisé** par `plugins/with-no-aps-environment.js` — il écrit `aps-environment` dans les entitlements, inconditionnellement et sans option, or c'est la capacité Push qu'un compte Apple gratuit n'a pas et que SideStore ne peut pas signer. Une notification **locale** n'en a aucun besoin : `registerForRemoteNotifications` ne vit que dans `PushTokenModule`, atteint seulement par `getDevicePushTokenAsync`, que rien n'appelle ici. **Et un greffon de paquet s'applique tout seul sur le SDK 57** — ne pas le déclarer ne suffit donc pas, contrairement à ce que la tranche 2 avait inscrit (§9.13 n° 8) | oui |
 | `expo-file-system` | Fichiers, sauvegardes | Export, copies pré-migration (D6, D7) | oui |
 | `expo-sharing` | Feuille de partage | Export (§5.4) | oui |
 | `expo-secure-store` | Trousseau | Clé intervals.icu, V4 (§11.1) | oui |
@@ -843,7 +856,7 @@ CREATE INDEX ix_activity_date ON activity(date);
 | 1 | ~~intervals.icu expose-t-il le poids COROS ?~~ | **Clos, négativement.** Double saisie définitive ; §11.2 abandonné ; l'export reste l'unique protection du poids |
 | 2 | **Le trousseau survit-il à la re-signature hebdomadaire ?** | À tester avant la V4 ; sinon, clé à ressaisir chaque semaine |
 | 3 | **Carte corporelle** : ressource graphique et cartographie vers les groupes musculaires | Ouvert, V3 |
-| 4 | **Heures par défaut des quatre notifications** | À définir à l'usage, V2 |
+| 4 | **Heures par défaut des quatre notifications** | **[tranche 9] Proposées et toujours ouvertes** : pesée 7h30, journal vide 20h30, bilan 21h30, export 19h00. Choisies, pas mesurées ; ce sont des réglages pour que la supposition se corrige sans migration (`specs §14.18` n° 7) |
 | 5 | **Table de résumé quotidien** si une vue dépasse ~250 ms | Volontairement non écrite : donnée dérivée, reconstructible (D9) |
 | 6 | **Fusion à l'import** | Rendue possible par D4, non implémentée, non prévue |
 | 7 | **Limites de débit Open Food Facts** | Constatées au 10/09/2026, susceptibles d'évoluer |
@@ -888,6 +901,7 @@ Saisie, historique corrigeable, objectif, lissage, régression, courbes, volet p
 
 ### Tranche 9 — Notifications → **fin de V2**
 Quatre notifications, planification à 7 jours, annulation conditionnelle, reprogrammation du bilan chiffré.
+**[livrée]** Avec trois amendements à D14 : aucun déclencheur répétitif, le bilan ne planifie que le jour courant, et le rappel d'export calcule ses occurrences à l'avance. Voir §9.13.
 
 ### Tranche 10 — Exercices et routines
 Base d'exercices, recherche filtrée, blocs, supersets, carte corporelle.
@@ -1122,3 +1136,29 @@ rouvert est jouee telle quelle. Ce qu'il faudra regarder sur l'appareil est le
 battement : le formulaire attend desormais la relecture, ce qui sur SQLite local
 se compte en dizaines de millisecondes — et c'est deja ce que chaque ecran fait
 a froid.
+
+---
+
+### 9.13 Tranche 9 (15/09/2026)
+
+| No | Section | Amendement | Motif |
+| --- | --- | --- | --- |
+| 1 | §2.5 | **`0007` cree `notification_setting` seule**, avec UNE seule CHECK : `enabled IN (0,1)` | Le report de la tranche 8 a tenu exactement ce qu'il promettait (§9.9 n° 1) : aucune cle etrangere dans un sens ni dans l'autre, donc la table est creee entiere sans rien reconstruire. Aucun index — `kind` EST la cle primaire. Aucune ligne semee — une ligne absente et `enabled = 0` disent la meme chose, et le lecteur rend le defaut pour les deux, donc une installation qui n'ouvre jamais l'ecran garde la table vide et n'emporte rien dans son export |
+| 2 | **§2.5** | **AUCUNE CHECK sur `kind`**, contrairement a `journal_entry.kind` et `weight_goal.mode` | Le critere de la tranche 3 applique honnetement : la ligne n'est pas la probabilite qu'un ensemble bouge, c'est CE QU'UN ELARGISSEMENT CASSERAIT. `journal_entry.kind` en porte une parce qu'elargir casse l'invariant d'agregation ; `weight_goal.mode` parce qu'il decide quelle colonne est lue et produit sinon un rythme plausible et faux. Ni l'un ni l'autre ici : rien n'est somme, rien n'est derive. **Et la lecture ITERE SUR LES QUATRE SORTES DU CODE en interrogeant la table par cle**, donc une ligne de sorte inconnue est une ligne que rien ne lit — inerte structurellement, pas par soin. Ecrite dans l'autre sens, le schema aurait DU porter une CHECK. Enfin l'elargissement est PREVU : la tranche 11 met le minuteur de repos sur une notification locale, ou une CHECK forcerait une reconstruction de table pour une valeur d'enumeration. La barriere est la regle `one_of` du catalogue d'export, qui s'execute avant la premiere insertion et nomme table, ligne et colonne — la barriere FORTE au sens de `food_portion.name` |
+| 3 | §2.5 | **Aucune CHECK sur `hour` ni `minute`**, la ou SQLite en permettrait une | `setting` ne pouvait pas en porter, etant cle/valeur TEXT ; ici c'est possible, et la possibilite ne change pas le critere. Ce projet repond partout a une valeur de reglage aberrante en la BORNANT, a l'aller comme au retour — `normalizeCutoffHour`, `normalizeAdherenceTolerance` — et une archive reparee a la main portant 25 h doit s'importer et se relire a 23, jamais echouer sur une contrainte. L'heure et la minute retombent chacune de son cote : faire retomber les deux sur le defaut jetterait une heure vraiment choisie |
+| 4 | **D14** | **Aucun declencheur repetitif**, alors que D14 les dit « preferes partout ou c'est possible » | **Contradiction interne a D14, tranchee.** Le meme paragraphe demande l'annulation immediate des que la condition est satisfaite. Un declencheur repetitif est UNE entree en file : l'occurrence de demain ne s'annule pas sans tuer toutes les suivantes. Le plafond de 64 qui motivait la preference n'est pas approche — quatre sortes sur sept jours font vingt-huit. La question se reposera en tranche 11, ou le minuteur de repos ajoute une cinquieme sorte |
+| 5 | **D14** | **Le bilan de fin de journee ne planifie que l'occurrence du jour** | D14 enonce « planification anticipee sur 7 jours » comme si les quatre sortes anticipaient pareil. Le bilan ne le peut pas : son texte EST les chiffres du jour, et ceux de demain n'existent pas. Le rappel d'export, lui, anticipe MIEUX que les autres et seul a le pouvoir — `last_export_at` ne bouge que si l'application tourne, donc les jours en retard sont connus d'avance et les autres ne sont jamais programmes. Voir `specs §14.18` n° 1 et 6 |
+| 6 | **D8, D14** | **Le bilan est reprogramme par la VALEUR de ses chiffres, jamais par un filtre de date** | Le point le plus delicat de la tranche. D14 veut une reprogrammation a chaque ecriture concernant la journee courante et surtout pas sur une date passee ; le bus invalide par predicat de table et ne dit rien de la date (D8) ; et ecrire une invalidation a la main est un interdit absolu. La discrimination n'est donc pas faite a l'ecriture : la requete compose les chiffres du jour, le bus l'invalide sur tout changement de `journal_entry`, elle se relit — une ecriture sur aujourd'hui donne un autre texte et le diff reprogramme, une ecriture sur une date passee donne le meme texte et le diff ne trouve rien a faire. La regle de D14 est obtenue comme consequence de la donnee qui n'a pas bouge. Cout : un rafraichissement pour rien, celui que le bus assume deja par ecrit |
+| 7 | D14 | **Personne n'annule jamais une notification** : elle est annulee en n'etant plus dans le plan | `applyPlan` est un diff entre le plan voulu et ce qu'iOS tient, sur des identifiants `<sorte>:<date>` stables. L'alternative — un `cancel` au site d'ecriture du poids — serait un second endroit qui connait les regles, libre de diverger de `buildPlan`, et le desaccord se lirait comme un rappel qui sonne apres qu'on s'est pese. **Le diff ne touche qu'aux identifiants dont le prefixe est une de nos quatre sortes** : sans cette clause il annulait tout ce qui etait en attente et non desire, minuteur de repos de la tranche 11 compris, au milieu d'une seance et sans que rien le signale |
+| 8 | **§5, D14** | **`expo-notifications` installee, et son greffon NEUTRALISE par un greffon local** | **La croyance de la tranche 2 est fausse, et le pre-vol l'a attrapee.** La tranche 2 avait ecrit que le greffon d'`expo-sharing` ne s'execute pas parce qu'il n'est pas declare dans `plugins`. Il s'execute : sur le SDK 57 un config plugin de paquet est AUTO-APPLIQUE, et si `expo-sharing` n'a jamais ajoute sa cible c'est que `withShareExtension` est inerte sans `props.ios.enabled`, qui vaut false par defaut. L'effet etait vrai, la cause etait fausse. Mesure : `expo prebuild` avec rien de declare ecrit `aps-environment: development` dans `Suivi.entitlements` — la capacite Push, qu'un compte gratuit n'a pas et que SideStore ne peut pas signer, la forme exacte de l'echec du test B. D'ou `plugins/with-no-aps-environment.js`, declare EN DERNIER pour s'executer apres ce qu'il defait. Verifie : dict vide, et `NSCameraUsageDescription` survit |
+| 9 | §5 | **Une notification LOCALE ne demande aucun entitlement**, seulement une autorisation a l'execution | Lu dans la source du paquet, pas de memoire. `registerForRemoteNotifications` ne vit que dans `PushTokenModule.swift`, atteint seulement par `getDevicePushTokenAsync` ; le subscriber AppDelegate autolinke n'implemente que des rappels passifs ; et l'effet d'auto-enregistrement importe avec le paquet sort immediatement faute d'information stockee. Rien ici n'appelle ces chemins, donc APNs n'est jamais touche |
+| 10 | §5 | **La justification d'`expo-camera` inscrite en tranche 4 etait fausse**, et sa declaration reste juste | Mesure en retirant sa declaration puis en relancant le pre-vol : `NSCameraUsageDescription` est ecrite quand meme, avec le texte anglais par defaut du paquet. Il n'y avait pas de plantage a eviter. Ce que la declaration achete est le TEXTE francais, ce qui suffit — mais la raison inscrite etait la mauvaise, et c'est la meme qui a failli livrer un entitlement trois tranches plus tard. Corrigee sur place |
+| 11 | D3, D14 | **Le declencheur est CALENDAR, jamais DATE** | Lu dans `TriggerRecords.swift` : `DateTriggerRecord` construit `UNTimeIntervalNotificationTrigger` depuis `timeIntervalSinceNow` — un delai en secondes fige a la planification, qui derive au changement d'heure et leve si l'instant est passe. Seul CALENDAR produit un vrai `UNCalendarNotificationTrigger`, apparie sur des composantes murales. Une occurrence porte donc `year/month/day/hour/minute` et pas seulement son instant : c'est D3 a la frontiere native, et la raison pour laquelle `addDays` existe |
+| 12 | §3, D14 | **`features/notifications/native/` est la seule porte vers iOS**, et un test de conventions le tient | `expo-notifications` ne s'importe que de la. Meme dispositif que la frontiere zod, pour un probleme plus tranchant : zod au mauvais endroit coute une seconde declaration du schema ; une dependance NATIVE au mauvais endroit coute UN CYCLE CI pour etre diagnostiquee, le bundle JS restant vert pendant que l'ecran plante. C'est aussi ce qui a permis d'ecrire et de verifier sur Metro les etapes 1 a 6 sur le binaire deja installe, et de ne payer qu'un seul cycle |
+| 13 | D15 | **La moitie de cette tranche n'est pas testable, et c'est dit plutot que laisse croire** | Testable : les conditions contre un vrai fichier SQLite, la selection des occurrences et leurs dates sous trois fuseaux, le texte du bilan, qu'une ecriture sur une date passee ne le change pas, le diff et son idempotence, le compte d'occurrences sous 64, la normalisation des heures, la presence du greffon de retrait. **Non testable** : qu'iOS declenche quoi que ce soit, que l'autorisation arrive au bon moment, que le plafond se comporte comme documente, que l'annulation atteigne la file, que le texte tienne dans la banniere. Le planificateur est exerce contre un hote factice, ce qui fixe la TAXONOMIE de ce qu'on demande a iOS et non qu'iOS l'honore — exactement la limite du client Open Food Facts contre un `fetch` injecte |
+
+**Reserve inscrite.** `expo-notifications` est la premiere dependance native ajoutee depuis `expo-camera`, et elle porte la meme consequence : **le binaire de developpement doit etre reconstruit**. Le bundle JS ne contient pas son module natif, donc `npm run bundle:ios` reste vert pendant que l'ecran planterait sur l'appareil. Tout le reste de la tranche — la migration `0007`, la table, l'ecran de reglages, les conditions, le texte du bilan, l'export — est verifiable par Metro **sans** reconstruire, ce qui est precisement pourquoi le natif est la derniere etape : un seul cycle CI au lieu de plusieurs.
+
+**Le piege du lockfile a mordu une SIXIEME fois**, a l'installation d'`expo-notifications` : zero liaison rolldown dans le lockfile au lieu de quinze. Reconstruit par `rm -rf node_modules package-lock.json && npm install --ignore-scripts`, puis verifie par le seul controle qui vaille, celui que fait la CI : `rm -rf node_modules && npm ci --ignore-scripts`.
+
+**Consequence a connaitre.** Une fois `0007` appliquee, la base de developpement devient plus recente que le binaire quotidien, qui reste a `0006` : un export dev importe dans la quotidienne sera refuse par G3. C'est le comportement voulu. Et l'aller-retour export / import n'a toujours pas ete refait sur l'appareil depuis `0005` — `0007` porte le total a **sept tables non verifiees** dans l'unique filet.
