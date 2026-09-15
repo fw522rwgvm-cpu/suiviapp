@@ -1,6 +1,14 @@
 import { addDays, type LocalDate } from '@/core/date';
 import type { AppDatabase } from '@/core/db/database';
-import type { BaseUnit, FoodId, PortionName, YieldType } from '@/core/db/schema';
+import type {
+  BaseUnit,
+  Equipment,
+  ExerciseId,
+  FoodId,
+  Muscle,
+  PortionName,
+  YieldType,
+} from '@/core/db/schema';
 import { addFoodEntry, addFreeEntry } from '@/features/nutrition/data/day-writes';
 import { listFoods } from '@/features/nutrition/data/food-reads';
 import { createFood } from '@/features/nutrition/data/food-writes';
@@ -17,6 +25,23 @@ import type { Macros } from '@/features/nutrition/domain/macros';
 import { MEAL_KINDS } from '@/features/nutrition/domain/meal-kinds';
 import { baseQuantity, portionQuantity } from '@/features/nutrition/domain/portions';
 import { readActiveGoal, readWeight } from '@/features/weight/data/weight-reads';
+import { listExercises } from '@/features/strength/data/exercise-reads';
+import { createExercise } from '@/features/strength/data/exercise-writes';
+import { listRoutines } from '@/features/strength/data/routine-reads';
+import { createRoutine } from '@/features/strength/data/routine-writes';
+import {
+  DEFAULT_PROGRESSION_INCREMENT_KG,
+  emptyExerciseDraft,
+} from '@/features/strength/domain/exercise-draft';
+import {
+  addExerciseBlock,
+  addExerciseToBlock,
+  duplicateLine,
+  emptyRoutineDraft,
+  setBlockRest,
+  updateLine,
+  type RoutineDraft,
+} from '@/features/strength/domain/routine-draft';
 import { setActiveGoal, setWeight } from '@/features/weight/data/weight-writes';
 import { createRandom, type Random } from './random';
 
@@ -194,6 +219,10 @@ export interface SeedReport {
   recipes: number;
   /** Weight measurements written (slice 8). */
   weights: number;
+  /** Exercises created in the personal database (slice 10). */
+  exercises: number;
+  /** Routines built from them (slice 10). */
+  routines: number;
   firstDate: LocalDate;
   lastDate: LocalDate;
 }
@@ -539,6 +568,192 @@ function seedWeightGoal(tx: AppDatabase): boolean {
   return true;
 }
 
+
+/**
+ * A small exercise database and two routines (specs 10.1, 10.2).
+ *
+ * D15 gives the generator four jobs, and three of them need these: testing
+ * migrations over populated data, populating the development installation, and
+ * reproducing a defect without real data. The fourth — checking performance on
+ * long histories — is slice 12's, when sessions exist to make a history.
+ *
+ * WRITTEN THROUGH THE ORDINARY WRITE FUNCTIONS, like every other part of this
+ * generator. It costs a little speed and buys the only thing that matters: the
+ * generated data is shaped exactly like real data — same validation, same
+ * transactions, same superset rule. A generator inserting rows by hand drifts
+ * from the application and quietly stops reproducing anything.
+ *
+ * Twelve exercises rather than a realistic hundred: enough to fill a routine,
+ * to give the filter strips something on both axes, and to light most of the
+ * body map. A bigger catalogue would make the seed slower without making any
+ * of those truer.
+ */
+const DEMO_EXERCISES: readonly {
+  name: string;
+  primaryMuscle: Muscle;
+  equipment: Equipment;
+  secondary: Muscle[];
+  incrementKg: string;
+}[] = [
+  { name: 'Développé couché', primaryMuscle: 'chest', equipment: 'barbell', secondary: ['triceps', 'shoulders'], incrementKg: '2,5' },
+  { name: 'Développé incliné haltères', primaryMuscle: 'chest', equipment: 'dumbbell', secondary: ['shoulders'], incrementKg: '2' },
+  { name: 'Tractions', primaryMuscle: 'lats', equipment: 'bodyweight', secondary: ['biceps'], incrementKg: '2,5' },
+  { name: 'Rowing barre', primaryMuscle: 'lats', equipment: 'barbell', secondary: ['biceps', 'traps'], incrementKg: '2,5' },
+  { name: 'Développé militaire', primaryMuscle: 'shoulders', equipment: 'barbell', secondary: ['triceps'], incrementKg: '2,5' },
+  { name: 'Élévations latérales', primaryMuscle: 'shoulders', equipment: 'dumbbell', secondary: [], incrementKg: '1' },
+  { name: 'Curl haltères', primaryMuscle: 'biceps', equipment: 'dumbbell', secondary: ['forearms'], incrementKg: '1' },
+  { name: 'Extensions poulie', primaryMuscle: 'triceps', equipment: 'cable', secondary: [], incrementKg: '2,5' },
+  { name: 'Squat', primaryMuscle: 'quads', equipment: 'barbell', secondary: ['glutes', 'adductors'], incrementKg: '5' },
+  { name: 'Soulevé de terre roumain', primaryMuscle: 'hamstrings', equipment: 'barbell', secondary: ['glutes', 'lower_back'], incrementKg: '5' },
+  { name: 'Mollets debout', primaryMuscle: 'calves', equipment: 'machine', secondary: [], incrementKg: '2,5' },
+  { name: 'Gainage', primaryMuscle: 'abs', equipment: 'bodyweight', secondary: ['obliques'], incrementKg: '2,5' },
+];
+
+function seedExercises(tx: AppDatabase): Map<string, ExerciseId> {
+  const byName = new Map<string, ExerciseId>();
+  // Idempotent, like seedFoods: running the generator twice must not double the
+  // catalogue, since the development installation seeds on demand.
+  for (const existing of listExercises(tx)) byName.set(existing.name, existing.id);
+
+  for (const demo of DEMO_EXERCISES) {
+    if (byName.has(demo.name)) continue;
+    const id = createExercise(tx, {
+      ...emptyExerciseDraft(DEFAULT_PROGRESSION_INCREMENT_KG),
+      name: demo.name,
+      primaryMuscle: demo.primaryMuscle,
+      equipment: demo.equipment,
+      secondaryMuscles: new Set(demo.secondary),
+      incrementKg: demo.incrementKg,
+      // A couple of favourites, so the "favoris en tête" ordering has something
+      // to order rather than being a rule with no data behind it.
+      isFavorite: demo.name === 'Squat' || demo.name === 'Développé couché',
+    });
+    byName.set(demo.name, id);
+  }
+
+  return byName;
+}
+
+/**
+ * Two routines, one of which holds a SUPERSET — which is the point.
+ *
+ * The superset is what makes this worth seeding at all: it is the shape where
+ * the rest moves from the line to the block, and having one in the development
+ * data means the page and the editor are exercised on it every time rather than
+ * only when somebody remembers to build one.
+ */
+function seedRoutines(tx: AppDatabase, exercises: Map<string, ExerciseId>): number {
+  if (listRoutines(tx).length > 0) return 0;
+
+  const idOf = (name: string): ExerciseId | null => exercises.get(name) ?? null;
+
+  const pushDay = (): RoutineDraft | null => {
+    const bench = idOf('Développé couché');
+    const press = idOf('Développé militaire');
+    const lateral = idOf('Élévations latérales');
+    const triceps = idOf('Extensions poulie');
+    if (bench === null || press === null || lateral === null || triceps === null) return null;
+
+    let draft: RoutineDraft = {
+      ...emptyRoutineDraft(),
+      name: 'Poussée A',
+      warmupSteps: ['5 min de rameur', 'Rotations d’épaules', 'Barre à vide × 10'],
+    };
+
+    draft = addExerciseBlock(draft, bench, 'Développé couché');
+    draft = updateLine(draft, 0, 0, {
+      repsMin: 5,
+      repsMax: 8,
+      targetLoadKg: 70,
+      targetRir: 2,
+      restSeconds: 180,
+      progressionEnabled: true,
+    });
+    draft = duplicateLine(draft, 0, 0);
+    draft = duplicateLine(draft, 0, 0);
+
+    draft = addExerciseBlock(draft, press, 'Développé militaire');
+    draft = updateLine(draft, 1, 0, {
+      repsMin: 8,
+      repsMax: 10,
+      targetLoadKg: 40,
+      targetRir: 2,
+      restSeconds: 120,
+      progressionEnabled: true,
+    });
+    draft = duplicateLine(draft, 1, 0);
+
+    // THE SUPERSET: two exercises in one block, the rest owned by the block.
+    draft = addExerciseBlock(draft, lateral, 'Élévations latérales');
+    draft = updateLine(draft, 2, 0, { repsMin: 12, repsMax: 15, targetLoadKg: 8, targetRir: 1 });
+    draft = addExerciseToBlock(draft, 2, triceps, 'Extensions poulie');
+    draft = updateLine(draft, 2, 1, { repsMin: 12, repsMax: 15, targetLoadKg: 25, targetRir: 1 });
+    draft = duplicateLine(draft, 2, 0);
+    draft = duplicateLine(draft, 2, 2);
+    draft = setBlockRest(draft, 2, 90);
+
+    return draft;
+  };
+
+  const legDay = (): RoutineDraft | null => {
+    const squat = idOf('Squat');
+    const romanian = idOf('Soulevé de terre roumain');
+    const calves = idOf('Mollets debout');
+    if (squat === null || romanian === null || calves === null) return null;
+
+    let draft: RoutineDraft = {
+      ...emptyRoutineDraft(),
+      name: 'Jambes',
+      warmupSteps: ['10 min de vélo', 'Fentes au poids du corps × 10'],
+    };
+
+    draft = addExerciseBlock(draft, squat, 'Squat');
+    draft = updateLine(draft, 0, 0, {
+      repsMin: 5,
+      repsMax: 5,
+      targetLoadKg: 100,
+      targetRir: 2,
+      restSeconds: 240,
+      progressionEnabled: true,
+    });
+    draft = duplicateLine(draft, 0, 0);
+    draft = duplicateLine(draft, 0, 0);
+    draft = duplicateLine(draft, 0, 0);
+
+    draft = addExerciseBlock(draft, romanian, 'Soulevé de terre roumain');
+    draft = updateLine(draft, 1, 0, {
+      repsMin: 8,
+      repsMax: 10,
+      targetLoadKg: 80,
+      targetRir: 3,
+      restSeconds: 150,
+    });
+    draft = duplicateLine(draft, 1, 0);
+    draft = duplicateLine(draft, 1, 0);
+
+    draft = addExerciseBlock(draft, calves, 'Mollets debout');
+    draft = updateLine(draft, 2, 0, {
+      repsMin: 12,
+      repsMax: 20,
+      targetLoadKg: 60,
+      restSeconds: 60,
+      setType: 'long',
+    });
+    draft = duplicateLine(draft, 2, 0);
+
+    return draft;
+  };
+
+  let count = 0;
+  for (const build of [pushDay, legDay]) {
+    const draft = build();
+    if (draft === null) continue;
+    createRoutine(tx, draft);
+    count += 1;
+  }
+  return count;
+}
+
 export function seedJournal(db: AppDatabase, options: SeedOptions): SeedReport {
   const { endDate, days, seed = 1, coverage = 0.85 } = options;
   if (days < 1) throw new Error('Nothing to generate');
@@ -554,6 +769,8 @@ export function seedJournal(db: AppDatabase, options: SeedOptions): SeedReport {
   let seeded: SeededFood[] = [];
   let recipes = 0;
   let weights = 0;
+  let exerciseCount = 0;
+  let routineCount = 0;
 
   db.transaction((tx) => {
     seedTemplate(tx);
@@ -561,6 +778,10 @@ export function seedJournal(db: AppDatabase, options: SeedOptions): SeedReport {
     seeded = seedFoods(tx);
     recipes = seedRecipes(tx, seeded);
     weights = seedWeights(tx, firstDate, days, random);
+
+    const exercises = seedExercises(tx);
+    exerciseCount = exercises.size;
+    routineCount = seedRoutines(tx, exercises);
 
     for (let offset = 0; offset < days; offset += 1) {
       const date = addDays(firstDate, offset);
@@ -600,6 +821,8 @@ export function seedJournal(db: AppDatabase, options: SeedOptions): SeedReport {
     foods: seeded.length,
     recipes,
     weights,
+    exercises: exerciseCount,
+    routines: routineCount,
     firstDate,
     lastDate: endDate,
   };

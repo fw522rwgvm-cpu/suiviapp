@@ -88,6 +88,16 @@ export function SettingsScreen() {
             label="Objectif de poids"
             onPress={() => router.push('/(tabs)/settings/weight-goal')}
           />
+          {/*
+            Under the weight goal and above the notifications, which is where
+            specs 12 puts it in its own table: Nutrition, Poids, Musculation.
+            The sections of this screen follow that order rather than the order
+            the slices happened to land in.
+          */}
+          <LinkRow
+            label="Musculation"
+            onPress={() => router.push('/(tabs)/settings/strength')}
+          />
           <LinkRow
             label="Notifications"
             // The count rather than the names: four would not fit, and "Aucune"
