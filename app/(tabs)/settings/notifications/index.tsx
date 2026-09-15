@@ -4,10 +4,9 @@ import { NotificationsScreen } from '@/features/notifications/screens/notificati
 /**
  * Route wiring only (D10).
  *
- * Pushed inside the Settings stack, beside the templates, the planning and the
- * weight goal. Specs 12 puts "Activation et heure des quatre notifications"
- * there, and specs 9.3 attaches the authorisation prompt to activation in the
- * Settings — so this screen is the only place the prompt can come from.
+ * A folder with an index rather than a leaf file, on the precedent
+ * settings/templates set: the four kinds are pushed on top of this one, and a
+ * leaf route pushes nothing.
  */
 export default function NotificationsRoute() {
   return (

@@ -1,210 +1,119 @@
-import { SymbolView } from 'expo-symbols';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
+import { useTheme } from '@/core/theme';
+import { LinkRow, SettingsCard, SettingsSection } from '@/core/ui/settings-list';
 import { Text } from '@/core/ui/text';
-import { parseDecimal } from '@/core/format';
-import { fontFamilyFor, useTheme, type ThemePreference } from '@/core/theme';
-import { KeypadAccessory } from '@/core/ui/keypad-accessory';
-import { ListSeparator } from '@/core/ui/list-separator';
-import { DataSection } from '@/features/backup/components/data-section';
+import { useExportFreshness } from '@/features/backup/data/backup-queries';
+import { shortAge } from '@/features/backup/domain/export-age';
+import { useNotificationSettings } from '@/features/notifications/data/notification-queries';
 import { PerfSection } from '../components/perf-section';
 import { SearchDiagnosticSection } from '../components/search-diagnostic-section';
 import { SeedSection } from '../components/seed-section';
-import {
-  usePreferences,
-  useSetAdherenceTolerance,
-  useSetCutoffHour,
-  useSetTheme,
-} from '../data/settings-queries';
-import { normalizeAdherenceTolerance } from '../domain/preferences';
-import { MAX_CUTOFF_HOUR, MIN_CUTOFF_HOUR } from '@/core/date';
+import { usePreferences } from '../data/settings-queries';
+import { themeLabel } from './appearance-screen';
+import { cutoffLabel } from './display-screen';
 
 /**
  * The Réglages tab (specs 8.8, 12).
  *
- * Sections in the order specs 12 tabulates them: Apparence, Affichage,
- * Nutrition, Données, À propos.
+ * ## A PAGE PER CATEGORY, AND THE INDEX IS A LIST OF DESTINATIONS
  *
- * ## WHAT IS NOT HERE, AND IT IS NOT AN OVERSIGHT
+ * It was one long scroll holding every setting the application has, which
+ * worked while there were three. Slice 9 added a seventh category and the
+ * screen became something you scroll THROUGH to reach what you came for — and
+ * specs 12 tabulates the settings by category in the first place.
  *
- * Specs 8.8 and 12 both list "Unités et préférences d'affichage" for V1, and
- * there is nothing to put in it. The base units g and ml are sealed and belong
- * to a food, not to a preference (specs 5.1: no conversion, no density);
- * rounding is normative, one decimal on the macros and whole calories; the
- * language is French only (D10 rules out an internationalisation library).
- * Weight in kg is the first unit anyone could have an opinion about, and it
- * arrives in V2. Recorded in the specs rather than filled with an invented
- * setting.
+ * So the index lists where to go and each category owns its page. That is the
+ * arrangement iOS itself uses, and it buys two things beyond the scrolling: a
+ * category gets room for the note that explains it, and a control that needs
+ * space — a picker wheel, a keypad — stops being wedged between two unrelated
+ * rows on a page that scrolls under a transparent header.
  *
- * ## THE TWO CHOICES ARE ROWS WITH A TICK, NOT A PICKER
+ * ## EACH ROW SAYS ITS OWN ANSWER
  *
- * Amendment 9.5 no 10 settled this for meal names after trying two native
- * controls: a UIPickerView costs a scroll for what could be a tap and eats a
- * hundred and fifty points, and an action sheet asks a second question —
- * Cancel — about a choice that already has an answer. Rows show the whole set
- * without touching anything, which is what makes "bounded between 0h and 6h"
- * VISIBLE rather than merely true.
+ * A list of links with nothing on the right is a table of contents: you open a
+ * page to find out what it says. The theme, the cutoff hour, how many reminders
+ * are on and how old the last export is are each one short string, so putting
+ * them on the row means the common case — checking — costs no navigation at
+ * all.
  *
- * Both sections push nothing: browsing is a push, and neither of these is a
- * place. Only À propos is, because it is six rows of version numbers nobody
- * scrolls past three groups to reach.
+ * The groups are not specs 12's table read out. That table is an inventory;
+ * this is a running order, and it puts what changes the look first, what the
+ * application tracks second, and what it keeps about itself last. Same
+ * reasoning that moved POIDS out of its tabulated position in slice 8.
+ *
+ * Route wiring stays in app/ (D10); this decides what the list contains.
  */
-
-/** The three, in the order specs 8.8 writes them. */
-const THEME_OPTIONS: readonly { value: ThemePreference; label: string }[] = [
-  { value: 'light', label: 'Clair' },
-  { value: 'dark', label: 'Sombre' },
-  { value: 'system', label: 'Système' },
-];
-
-/**
- * Midnight to six, which is exactly the range specs 8.2 bounds it to.
- *
- * Built from the bounds rather than written out, so the list and the clamp can
- * never disagree: an option the clamp would refuse could otherwise be offered.
- */
-const CUTOFF_HOURS: readonly number[] = Array.from(
-  { length: MAX_CUTOFF_HOUR - MIN_CUTOFF_HOUR + 1 },
-  (_, index) => MIN_CUTOFF_HOUR + index,
-);
-
-function cutoffLabel(hour: number): string {
-  return hour === 0 ? 'Minuit' : `${hour} h`;
-}
-
 export function SettingsScreen() {
   const theme = useTheme();
   const router = useRouter();
   const preferences = usePreferences();
-  const setTheme = useSetTheme();
-  const setCutoffHour = useSetCutoffHour();
+  const notifications = useNotificationSettings();
+  const freshness = useExportFreshness();
+
+  const enabledCount = notifications.filter((setting) => setting.enabled).length;
 
   return (
     <ScrollView
       style={{ backgroundColor: theme.colors.background }}
       contentContainerStyle={styles.container}
-      keyboardShouldPersistTaps="handled"
     >
       {/* NativeTabs provides no JS header, so the screen carries its own title. */}
       <Text style={[styles.screenTitle, { color: theme.colors.text }]}>Réglages</Text>
 
-      <Section title="APPARENCE">
-        <Card>
-          {THEME_OPTIONS.map((option, index) => (
-            <ChoiceRow
-              key={option.value}
-              label={option.label}
-              selected={preferences.theme === option.value}
-              first={index === 0}
-              onPress={() => setTheme.mutate(option.value)}
-            />
-          ))}
-        </Card>
-      </Section>
-
-      <Section title="AFFICHAGE">
-        <Card>
-          {CUTOFF_HOURS.map((hour, index) => (
-            <ChoiceRow
-              key={hour}
-              label={cutoffLabel(hour)}
-              selected={preferences.cutoffHour === hour}
-              first={index === 0}
-              onPress={() => setCutoffHour.mutate(hour)}
-            />
-          ))}
-        </Card>
-        <Note>
-          Heure à laquelle la journée bascule. Avant elle, le Journal s’ouvre encore sur
-          la veille. Ça ne change que la date proposée par défaut : rien de ce qui est
-          déjà enregistré ne bouge, et une date se corrige en un geste.
-        </Note>
-      </Section>
-
-      <Section title="NUTRITION">
-        <Card>
+      <SettingsSection title="AFFICHAGE">
+        <SettingsCard>
           <LinkRow
-            label="Modèles de journée"
+            label="Apparence"
+            value={themeLabel(preferences.theme)}
             first
-            onPress={() => router.push('/(tabs)/settings/templates')}
+            onPress={() => router.push('/(tabs)/settings/appearance')}
           />
           <LinkRow
-            label="Planning et modèle par défaut"
-            onPress={() => router.push('/(tabs)/settings/planning')}
+            label="Heure de bascule"
+            value={cutoffLabel(preferences.cutoffHour)}
+            onPress={() => router.push('/(tabs)/settings/display')}
           />
-          <ToleranceRow />
-        </Card>
-        <Note>
-          Marge tolérée sur chacune des quatre macros pour qu’une journée compte comme
-          tenue. Une journée n’est dans la cible que si les quatre y sont.
-        </Note>
-      </Section>
+        </SettingsCard>
+      </SettingsSection>
 
-      {/*
-        POIDS (specs 12, 9.2: "modifiable et désactivable depuis les Réglages").
-
-        Placed between Nutrition and Données rather than where the table of
-        specs 12 lists it — after "À propos". That table is an inventory of what
-        the Settings hold, not a running order, and À PROPOS has been the
-        closing section of this screen since slice 7. Putting a live setting
-        after it would read as an appendix.
-      */}
-      <Section title="POIDS">
-        <Card>
+      <SettingsSection title="SUIVI">
+        <SettingsCard>
+          <LinkRow
+            label="Nutrition"
+            first
+            onPress={() => router.push('/(tabs)/settings/nutrition')}
+          />
           <LinkRow
             label="Objectif de poids"
-            first
             onPress={() => router.push('/(tabs)/settings/weight-goal')}
           />
-        </Card>
-        <Note>
-          Poids cible, défini par un rythme hebdomadaire ou par une date. L’autre
-          moitié se calcule : elle n’est jamais enregistrée, donc elle suit vos
-          pesées au lieu de vieillir.
-        </Note>
-      </Section>
-
-      {/*
-        NOTIFICATIONS (specs 12, 9.3).
-
-        After POIDS and before DONNÉES, for the reason POIDS sits where it
-        does: the table of specs 12 is an inventory of what the Settings hold
-        rather than a running order, and À PROPOS has closed this screen since
-        slice 7.
-
-        A pushed screen rather than rows here, because four notifications each
-        carrying a switch and an hour is not a card — and because the
-        authorisation prompt belongs to a deliberate visit, not to a screen you
-        scroll past.
-      */}
-      <Section title="NOTIFICATIONS">
-        <Card>
           <LinkRow
-            label="Rappels et bilan"
-            first
+            label="Notifications"
+            // The count rather than the names: four would not fit, and "Aucune"
+            // is the one answer worth seeing without opening anything — it is
+            // what a reminder that never came looks like from here.
+            value={enabledCount === 0 ? 'Aucune' : `${enabledCount} sur 4`}
             onPress={() => router.push('/(tabs)/settings/notifications')}
           />
-        </Card>
-        <Note>
-          Quatre rappels locaux, chacun à son heure. iOS vous demandera
-          l’autorisation au moment où vous en activerez un, jamais avant.
-        </Note>
-      </Section>
+        </SettingsCard>
+      </SettingsSection>
 
-      {/* The safety net comes first among the rest: it is the only one there
-          is (specs 5.4). */}
-      <DataSection />
-
-      <Section title="À PROPOS">
-        <Card>
+      <SettingsSection title="APPLICATION">
+        <SettingsCard>
           <LinkRow
-            label="Version et schéma"
+            label="Données"
+            // The age of the last export, on the row, because specs 5.4 makes
+            // it the one figure that must never reassure wrongly. Behind a push
+            // it would be a figure nobody sees; here it is the reason to open
+            // the page. Through the same function the page itself uses.
+            value={shortAge(freshness.data)}
             first
-            onPress={() => router.push('/(tabs)/settings/about')}
+            onPress={() => router.push('/(tabs)/settings/data')}
           />
-        </Card>
-      </Section>
+          <LinkRow label="À propos" onPress={() => router.push('/(tabs)/settings/about')} />
+        </SettingsCard>
+      </SettingsSection>
 
       {/* Render nothing on the daily installation (D15). */}
       <PerfSection />
@@ -214,213 +123,9 @@ export function SettingsScreen() {
   );
 }
 
-/**
- * The adherence tolerance (specs 8.7).
- *
- * A typed number rather than a short list of percentages, because specs 8.7
- * says "adjustable" and gives no list: offering four values would be inventing
- * a rule nobody wrote. The price is a keypad on a screen that otherwise has
- * none, which is what KeypadAccessory is for — iOS number pads have no return
- * key, so without it there is no way to say "done".
- *
- * ## APPLIED ON BLUR, LIKE THE QUANTITY FIELD
- *
- * Writing on every keystroke would store 1, then 15, then 150 — and the middle
- * ones are values the clamp would answer, so the row would flicker through
- * settings nobody chose. Blur is the moment the answer is finished.
- *
- * An unreadable entry falls back to the stored value rather than to a default:
- * clearing the field and tapping OK means "never mind", not "reset".
- */
-function ToleranceRow() {
-  const theme = useTheme();
-  const preferences = usePreferences();
-  const setTolerance = useSetAdherenceTolerance();
-  const [text, setText] = useState(String(preferences.adherenceTolerancePct));
-
-  function apply(): void {
-    const parsed = parseDecimal(text);
-    if (parsed === null) {
-      setText(String(preferences.adherenceTolerancePct));
-      return;
-    }
-    setTolerance.mutate(parsed);
-    // Shows what will actually be STORED, clamp included, rather than what was
-    // typed: a setting must never read back as something other than its value.
-    //
-    // Through the same function the write uses, never a clamp spelled out
-    // again here. Two readings of one rule are free to disagree, and the one
-    // that would drift is the one the user is looking at.
-    setText(String(normalizeAdherenceTolerance(parsed)));
-  }
-
-  return (
-    <View>
-      <ListSeparator />
-      <View style={styles.row}>
-        <Text style={[styles.label, { color: theme.colors.text, fontSize: 17 }]}>
-          Tolérance d’adhérence
-        </Text>
-        <View style={styles.field}>
-          <KeypadAccessory label="Valider la tolérance">
-            {(accessoryId) => (
-              <TextInput
-                value={text}
-                onChangeText={setText}
-                onBlur={apply}
-                selectTextOnFocus
-                keyboardType="number-pad"
-                inputAccessoryViewID={accessoryId}
-                accessibilityLabel="Tolérance d’adhérence, en pourcent"
-                style={[
-                  styles.input,
-                  {
-                    color: theme.colors.text,
-                    fontFamily: fontFamilyFor('normal', theme.fontsLoaded),
-                  },
-                ]}
-              />
-            )}
-          </KeypadAccessory>
-          <Text style={[styles.unit, { color: theme.colors.textMuted }]}>%</Text>
-        </View>
-      </View>
-    </View>
-  );
-}
-
-/**
- * A caption and what it names, as siblings rather than a wrapper.
- *
- * A fragment, so the rows lay out in the screen's own flex gap — which is what
- * makes these groups spaced exactly like DataSection's, written before them and
- * built the same way. Wrapping them in a View would have given the group its
- * own inner spacing and left it sitting differently from its neighbour.
- */
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  const theme = useTheme();
-  return (
-    <>
-      <Text style={[styles.sectionTitle, { color: theme.colors.textFaint }]}>{title}</Text>
-      {children}
-    </>
-  );
-}
-
-function Card({ children }: { children: React.ReactNode }) {
-  const theme = useTheme();
-  return (
-    <View
-      style={[
-        styles.card,
-        { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-      ]}
-    >
-      {children}
-    </View>
-  );
-}
-
-function Note({ children }: { children: React.ReactNode }) {
-  const theme = useTheme();
-  return <Text style={[styles.note, { color: theme.colors.textMuted }]}>{children}</Text>;
-}
-
-/**
- * One option of a closed set.
- *
- * A tick, and nothing where there is no tick: a column of empty circles would
- * draw seven controls where there is one choice. `first` rather than a
- * separator between siblings, so a caller can map without wrapping each row in
- * a fragment that carries its own rule.
- */
-function ChoiceRow({
-  label,
-  selected,
-  first,
-  onPress,
-}: {
-  label: string;
-  selected: boolean;
-  first?: boolean;
-  onPress: () => void;
-}) {
-  const theme = useTheme();
-  return (
-    <View>
-      {first === true ? null : <ListSeparator />}
-      <Pressable
-        onPress={onPress}
-        accessibilityRole="radio"
-        accessibilityState={{ selected }}
-        style={styles.row}
-      >
-        <Text style={[styles.label, { color: theme.colors.text, fontSize: 17 }]}>
-          {label}
-        </Text>
-        {selected ? (
-          <SymbolView name="checkmark" size={15} tintColor={theme.colors.accent} />
-        ) : null}
-      </Pressable>
-    </View>
-  );
-}
-
-/** A row that goes somewhere, as against a row that states a fact. */
-function LinkRow({
-  label,
-  first,
-  onPress,
-}: {
-  label: string;
-  first?: boolean;
-  onPress: () => void;
-}) {
-  const theme = useTheme();
-  return (
-    <View>
-      {first === true ? null : <ListSeparator />}
-      <Pressable onPress={onPress} accessibilityRole="button" style={styles.row}>
-        <Text style={[styles.label, { color: theme.colors.text, fontSize: 17 }]}>
-          {label}
-        </Text>
-        <SymbolView name="chevron.right" size={13} tintColor={theme.colors.textFaint} />
-      </Pressable>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  // Generous bottom padding: the tab bar is translucent now, and content is
-  // meant to scroll under it rather than stop short of it.
+  // The tab bar is glass and the content is meant to scroll under it rather
+  // than stop short of it.
   container: { padding: 16, paddingTop: 24, paddingBottom: 48, gap: 8 },
   screenTitle: { fontSize: 34, fontWeight: '700', marginBottom: 4 },
-  // marginTop, not a wrapper: it is the air ABOVE a group, and it has to
-  // match DataSection's, which is written the same way.
-  sectionTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.6,
-    marginLeft: 4,
-    marginTop: 16,
-  },
-  card: { borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 16,
-    paddingHorizontal: 14,
-    // The system's own row height: below it a row stops being comfortable to
-    // hit, above it a form starts to look like a list of cards.
-    minHeight: 44,
-    paddingVertical: 11,
-  },
-  label: { fontSize: 15 },
-  field: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  // Right-aligned so the figure sits where every other row's value does, and
-  // wide enough for three digits without the row shifting as they are typed.
-  input: { fontSize: 17, minWidth: 44, textAlign: 'right' },
-  unit: { fontSize: 15 },
-  note: { fontSize: 13, lineHeight: 19, marginLeft: 4, marginRight: 4 },
 });

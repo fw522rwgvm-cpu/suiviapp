@@ -10,7 +10,7 @@ import {
   useRunImport,
   useExportFreshness,
 } from '../data/backup-queries';
-import type { ExportFreshness } from '../domain/export-age';
+import { describeAge, type ExportFreshness } from '../domain/export-age';
 import { summariseProblems } from './problem-text';
 import { ListSeparator } from '@/core/ui/list-separator';
 
@@ -201,12 +201,6 @@ function FreshnessBanner({ freshness }: { freshness: ExportFreshness | undefined
       </Text>
     </View>
   );
-}
-
-function describeAge(days: number): string {
-  if (days === 0) return "aujourd’hui";
-  if (days === 1) return 'hier';
-  return `il y a ${days} jours`;
 }
 
 function Action({

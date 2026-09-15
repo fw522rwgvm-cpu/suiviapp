@@ -3880,10 +3880,111 @@ l'identifiant de bundle et la version. Consignée plutôt que laissée entrer en
 silence, l'ajout d'une dépendance native sans validation étant un interdit
 absolu.
 
+## Les Réglages prennent une page par catégorie, et une molette cesse de tourner seule (15/09/2026)
+
+**Une molette pilotée par une valeur qui fait l'aller-retour en base revient à
+sa position, puis tourne toute seule jusqu'à la valeur choisie.** Constaté à
+l'usage sur l'écran d'heure de notification, diagnostiqué dans le code.
+
+La première version alimentait le `Picker` directement depuis la requête :
+`value` venait de `notification_setting`, `onChange` y écrivait. Tourner la
+molette faisait alors ceci — elle bouge, `onChange` écrit, et React rend de
+nouveau avec l'**ancienne** valeur, puisque l'écriture doit traverser SQLite et
+que le bus groupe 60 ms avant d'invalider. React Native commande alors
+consciencieusement le picker à la valeur qu'on lui a tendue : il revient. Un
+instant plus tard la nouvelle valeur arrive, et il traverse tout seul jusqu'à
+elle.
+
+**Un `UIPickerView` n'est pas un champ de texte.** Il *anime* vers le
+`selectedValue` qu'on lui donne, donc une valeur contrôlée qui passe par une
+base de données ne peut pas en piloter un. Un `TextInput` dans la même
+situation se contenterait de clignoter ; une molette joue toute la transition,
+ce qui la rend spectaculaire et parfaitement illisible.
+
+**Le remède est la règle que la tranche 4 avait déjà écrite, arrivant par
+l'autre bout** : « les molettes restent l'unique source de vérité, ce qui est
+tapé atterrit **dessus** ». La molette possède la valeur tant que l'écran est
+ouvert ; la base est écrite **en conséquence**, et ce qui en revient ne
+l'atteint jamais.
+
+Et la valeur de départ est prise **une seule fois, pendant le rendu** qui l'a en
+premier — jamais dans un effet. C'est le même piège que les molettes de
+quantité de la tranche 4 et que le `key` du carrousel de la tranche 3 : un effet
+tourne **après** que son rendu a été peint, donc la molette serait montée sur
+autre chose avant de bouger.
+
+**Corollaire, valable pour tout contrôle natif animé** : la question à se poser
+n'est pas « d'où vient la valeur » mais « que fait le contrôle quand on lui en
+tend une autre ». Un contrôle qui *anime* vers sa valeur ne peut pas être
+contrôlé par un état asynchrone. Ça vaut pour `Picker`, et ça vaudra pour tout
+`UIDatePicker` ou `UISlider` qui arriverait.
+
+**Les Réglages prennent une page par catégorie**, et l'onglet devient une liste
+de destinations. C'était un seul défilement contenant tous les réglages de
+l'application, ce qui marchait à trois catégories ; la tranche 9 en a ajouté une
+septième et l'écran est devenu quelque chose qu'on **traverse** pour atteindre
+ce qu'on est venu chercher. Le §12 des specs range d'ailleurs déjà les réglages
+par catégorie : une page par catégorie l'applique plutôt qu'elle n'en diverge.
+
+Deux gains au-delà du défilement, et le second est celui qui comptait :
+
+- une catégorie a enfin la place de la note qui l'explique ;
+- **un contrôle qui demande de la place — une molette, un pavé numérique —
+  cesse d'être coincé entre deux rangées sans rapport, sur une page qui défile
+  sous un en-tête transparent.**
+
+**Chaque rangée de l'index énonce sa propre réponse** : le thème en vigueur,
+l'heure de bascule, combien de rappels sont actifs, l'ancienneté du dernier
+export. Une liste de liens sans rien à droite est une table des matières — il
+faut ouvrir une page pour savoir ce qu'elle dit. Ces quatre réponses tiennent en
+une chaîne courte, donc le cas courant, **vérifier**, ne coûte aucune
+navigation. L'ancienneté de l'export y est parce que le §5.4 en fait le seul
+chiffre qui ne doit jamais rassurer à tort : derrière un empilement, c'est un
+chiffre que personne ne voit.
+
+**Et chaque notification a sa propre page.** Les quatre étaient en ligne, la
+molette se dépliant sous sa rangée. C'est ce que fait iOS avec ses propres
+réglages de notifications — une rangée par application, les interrupteurs à
+l'intérieur — et surtout c'est ce qui donne à la molette une page où elle est
+simplement un élément de la disposition : rien en dessous à bousculer, rien
+au-dessus qui la fasse passer sous la barre.
+
+**Réserve inscrite** : le défaut d'affichage — la molette qui se superposait à
+ce qui la suivait — a été **rapporté, pas observé ici**. Ce qui est certain est
+que cette disposition supprime la cause la plus probable, un picker natif qui
+déborde de sa rangée sur la suivante. La confirmation appartient à l'appareil.
+
+**`core/ui/settings-list.tsx` naît à son second utilisateur**, ce que la règle
+demande : `SettingsPage`, `SettingsSection`, `SettingsCard`, `SettingsNote`,
+`ChoiceRow` et `LinkRow` étaient privés à `settings-screen.tsx` depuis la
+tranche 7, ce qui était juste tant qu'un seul écran s'en servait. Le découpage
+leur donne six utilisateurs réels dans **deux** features. Sortis tels quels
+plutôt que redessinés : leur espacement est celui de `DataSection`, écrit avant
+eux et que ces pages côtoient, et un « rangement » au passage aurait fait
+cohabiter deux groupes espacés différemment sur une même page.
+
+**`describeAge` descend dans le domaine**, pour la même règle : la rangée
+Données énonce l'ancienneté et la page derrière la redit en entier. Deux
+orthographes d'un même chiffre seraient libres de diverger, et celle qui
+dériverait est celle qu'on lit d'un coup d'œil.
+
+**Le paramètre de route est rétréci dans `app/`, et c'est du câblage.** Un
+paramètre est une chaîne venue du dehors — lien profond, historique périmé,
+faute de frappe. `NOTIFICATION_KINDS` est la constante que les lectures
+parcourent déjà et que le catalogue d'export valide : la comparer est l'unique
+vérification qu'il y a, et l'écran reçoit une valeur déjà rétrécie. Une sorte
+inconnue revient en arrière au lieu de rendre une page vide avec un titre et
+rien dedans.
+
 ## Points ouverts après la tranche 9
 
 - **Rien de la tranche 9 n'a tourné sur l'appareil**, et c'est la seule
   vérification qui compte : le critère de sortie demande de dormir une nuit.
+  **S'y ajoutent deux choses signalées à l'usage et corrigées sans être
+  observées ici** : que la molette d'heure ne revienne plus en arrière avant de
+  tourner toute seule (certain — la cause est diagnostiquée), et qu'elle ne se
+  superpose plus à ce qui la suit (probable — la cause la plus vraisemblable est
+  supprimée par la page dédiée, mais le défaut a été rapporté, pas observé).
   **Le binaire de développement doit être reconstruit avant toute chose** —
   `expo-notifications` est native, donc le bundle JS reste vert pendant que
   l'écran planterait. À vérifier dans cet ordre : que l'installation réussit

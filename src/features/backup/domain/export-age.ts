@@ -46,3 +46,27 @@ export function exportFreshness(
     ? { state: 'stale', days, at: lastExportAt }
     : { state: 'fresh', days, at: lastExportAt };
 }
+
+/**
+ * How long ago, in words (specs 5.4).
+ *
+ * Moved here from data-section.tsx when the Settings index gained a second
+ * user: the row for Données says the age without being opened, and the page
+ * behind it says it again in full. Two spellings of one figure would be free to
+ * disagree, and the one the user checks at a glance is the one that would drift.
+ *
+ * Days rather than a duration, because that is what ExportFreshness carries —
+ * and the indicator itself is measured in duration and floored to days there,
+ * which is the deliberate reading of D3 recorded in slice 2.
+ */
+export function describeAge(days: number): string {
+  if (days === 0) return 'aujourd’hui';
+  if (days === 1) return 'hier';
+  return `il y a ${days} jours`;
+}
+
+/** The same answer, short enough for a settings row. */
+export function shortAge(freshness: ExportFreshness | undefined): string | undefined {
+  if (freshness === undefined) return undefined;
+  return freshness.state === 'never' ? 'Jamais' : describeAge(freshness.days);
+}
