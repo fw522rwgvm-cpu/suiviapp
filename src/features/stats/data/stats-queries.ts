@@ -5,7 +5,8 @@ import { dayMeal, journalEntry } from '@/core/db/schema';
 import { readsFrom } from '@/core/query';
 import type { DayFigure } from '../domain/adherence';
 import { rangeEndingOn } from '../domain/stat-range';
-import { readDailyFigures } from './stats-reads';
+import type { Grain } from '@/core/db/date-bucket';
+import { readDailyFigures, readKcalBuckets } from './stats-reads';
 
 /**
  * Reads are hooks; there is nothing to write here (D8).
@@ -21,6 +22,8 @@ import { readDailyFigures } from './stats-reads';
 
 export const statsKeys = {
   daily: (today: LocalDate, days: number) => ['stats', 'daily', today, days] as const,
+  kcalBuckets: (from: LocalDate, to: LocalDate, grain: Grain) =>
+    ['stats', 'kcal-buckets', from, to, grain] as const,
 };
 
 /**
@@ -44,5 +47,20 @@ export function useDailyFigures(today: LocalDate, days: number) {
     queryKey: statsKeys.daily(today, days),
     queryFn: () => readDailyFigures(getAppDatabase(), rangeEndingOn(today, days)),
     meta: readsFrom(journalEntry, dayMeal),
+  });
+}
+
+/**
+ * Calories per bucket for the crossed chart of specs 9.4.
+ *
+ * Keyed by the range AND the grain, because the same dates read at two grains
+ * are two different answers — and the grain is what the weight panel's range
+ * control changes.
+ */
+export function useKcalBuckets(from: LocalDate, to: LocalDate, grain: Grain) {
+  return useQuery<Map<LocalDate, number>>({
+    queryKey: statsKeys.kcalBuckets(from, to, grain),
+    queryFn: () => readKcalBuckets(getAppDatabase(), from, to, grain),
+    meta: readsFrom(journalEntry),
   });
 }

@@ -1,5 +1,8 @@
-import type { LocalDate } from '@/core/date';
+import { sql } from 'drizzle-orm';
+import { toLocalDate, type LocalDate } from '@/core/date';
 import type { AppDatabase } from '@/core/db/database';
+import { bucketExpression, type Grain } from '@/core/db/date-bucket';
+import { journalEntry } from '@/core/db/schema';
 import {
   readDailyTargets,
   readDailyTotals,
@@ -42,4 +45,58 @@ export function readDailyFigures(db: AppDatabase, range: DateRange): DayFigure[]
     consumed: consumed.get(date) ?? null,
     target: targets.get(date) ?? null,
   }));
+}
+
+/**
+ * Calories per bucket over a range, at whatever grain it asks for (specs 9.4).
+ *
+ * For the crossed chart, and the reason readDailyFigures could not simply be
+ * reused: the weight panel's ranges go out to "tout", where one point a day is
+ * a thousand points. D13 settles the point count IN SQL, and the grouping is
+ * the very expression weight_measure is grouped by — literally the same, from
+ * core/db/date-bucket, because two series of one chart landing on buckets six
+ * days apart is the defect that sharing avoids.
+ *
+ * ## THE AGGREGATE IS avg() OF DAYS, NOT sum() AND NOT avg() OF ENTRIES
+ *
+ * > Toute valeur quotidienne s'agrège PAR MOYENNE. La somme n'est licite que
+ * > pour les compteurs. (D9)
+ *
+ * A week of calories summed is a number nobody eats and has no target to be
+ * read against. And averaging the ENTRIES would be the mean of a mouthful
+ * rather than of a day — so the inner query sums each day and the outer one
+ * averages those sums.
+ *
+ * A day with no entry contributes nothing rather than a zero, because it has no
+ * row at all. That is the same rule as everywhere in specs 8.7: an absence of
+ * measurement is not a zero.
+ *
+ * Written as one SQL statement rather than as two round trips: the inner
+ * grouping is a subquery, which the query builder cannot express with these
+ * types, so the Drizzle objects are interpolated into a template instead. The
+ * column names still come from the schema objects, so a rename is still a
+ * compile error rather than a silent empty map.
+ */
+export function readKcalBuckets(
+  db: AppDatabase,
+  from: LocalDate,
+  to: LocalDate,
+  grain: Grain,
+): Map<LocalDate, number> {
+  const bucket = bucketExpression(journalEntry.date, grain);
+
+  const rows = db.all<{ bucket: string; kcal: number }>(sql`
+    SELECT bucket, avg(day_kcal) AS kcal
+    FROM (
+      SELECT ${bucket} AS bucket,
+             sum(${journalEntry.quantity} * ${journalEntry.kcal100} / 100.0) AS day_kcal
+      FROM ${journalEntry}
+      WHERE ${journalEntry.date} BETWEEN ${from} AND ${to}
+      GROUP BY ${journalEntry.date}
+    )
+    GROUP BY bucket
+    ORDER BY bucket
+  `);
+
+  return new Map(rows.map((row) => [toLocalDate(row.bucket), row.kcal]));
 }

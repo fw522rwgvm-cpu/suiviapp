@@ -5,6 +5,7 @@ import { ActionSheetIOS, Pressable, ScrollView, StyleSheet, View } from 'react-n
 import { Text } from '@/core/ui/text';
 import { formatKcal, formatMacroWhole } from '@/core/format';
 import type { DayTemplateId } from '@/core/db/schema';
+import { useSettled } from '@/core/query/use-settled';
 import { useTheme } from '@/core/theme';
 import { FormInput, FormNavigation, FormRow, FormSection } from '@/core/ui/form-section';
 import { ListSeparator } from '@/core/ui/list-separator';
@@ -56,14 +57,21 @@ export function TemplateEditorScreen({ templateId }: { templateId: DayTemplateId
   );
   const [loaded, setLoaded] = useState(templateId === null);
 
+  /**
+   * Only once the bus has stopped flagging it — editing a template and
+   * reopening it otherwise filled the form from before the edit, and saving
+   * wrote that back. See core/query/use-settled.
+   */
+  const settled = useSettled(existing);
+
   useEffect(() => {
     // Loaded once, not on every change: after this the draft is the truth on
     // screen, and re-seeding it from the query would undo what is being typed
     // the moment the change bus refetched for any reason at all.
-    if (loaded || existing.data === undefined || existing.data === null) return;
-    setDraft(draftOfTemplate(existing.data));
+    if (loaded || settled === undefined || settled === null) return;
+    setDraft(draftOfTemplate(settled));
     setLoaded(true);
-  }, [existing.data, loaded]);
+  }, [settled, loaded]);
 
   const total = draftTargetsTotal(draft);
   const problems = validateTemplateDraft(draft);

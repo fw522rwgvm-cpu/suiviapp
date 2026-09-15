@@ -47,7 +47,20 @@ const config: ExpoConfig = {
   slug: 'suiviapp',
   version: '0.1.0',
   orientation: 'portrait',
-  icon: './assets/icon.png',
+  /**
+   * ONE ICON PER VARIANT, because there was one for both.
+   *
+   * Both installations sit on the same home screen — specs 2.2 makes them two
+   * identifiers, two containers, one holding real data and one a throwaway —
+   * and until now they looked identical. Launching the wrong one is cheap;
+   * exporting from the wrong one, or trusting a figure read on the wrong one,
+   * is not.
+   *
+   * Both are drawn by scripts/generate-icons.mjs rather than stored as opaque
+   * binaries: see that file for why the development one is amber with DEV
+   * across it rather than a tinted version of the same picture.
+   */
+  icon: isProduction ? './assets/icon.png' : './assets/icon-dev.png',
   scheme: isProduction ? 'suiviapp' : 'suiviapp-dev',
 
   // Light / dark / system theme tokens follow the OS setting (D10).

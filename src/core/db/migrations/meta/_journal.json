@@ -43,6 +43,13 @@
       "when": 1789290298180,
       "tag": "0005_recipes",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1789417492823,
+      "tag": "0006_weight",
+      "breakpoints": true
     }
   ]
 }

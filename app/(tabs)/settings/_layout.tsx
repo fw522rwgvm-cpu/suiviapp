@@ -1,6 +1,6 @@
-import { isLiquidGlassAvailable } from 'expo-glass-effect';
 import { Stack } from 'expo-router';
 import { useTheme } from '@/core/theme';
+import { useStackHeaderOptions } from '@/core/ui/stack-header';
 
 /**
  * A native stack inside the Settings tab, so templates and the planning can be
@@ -19,30 +19,24 @@ import { useTheme } from '@/core/theme';
  * A plain folder gives /settings, /settings/templates and /settings/planning,
  * and the tab trigger keeps naming it exactly as it always did.
  *
- * Header options are copied from the Journal's stack rather than shared: two
- * stacks with the same options are not yet a component, and the rule is that
- * something moves to core/ui at its second REAL user. This is the second, so
- * the next one settles it.
+ * Header options come from core/ui/stack-header. They were copied from the
+ * Journal's stack for three slices — two stacks with the same options are not
+ * yet a component — and the Stats stack of slice 8 is the third user, which is
+ * what the rule says settles it. The title style stays here: this bar wants an
+ * ordinary title where the Journal's wants extra-bold Nunito, and that is a
+ * decision rather than a mechanism.
  *
  * Route wiring only (D10): this reads the theme and declares screen options.
  */
 export default function SettingsLayout() {
   const theme = useTheme();
-  const glass = isLiquidGlassAvailable();
+  const header = useStackHeaderOptions();
 
   return (
     <Stack
       screenOptions={{
-        headerTransparent: true,
-        headerShadowVisible: false,
-        headerTintColor: theme.colors.accent,
+        ...header,
         headerTitleStyle: { color: theme.colors.text, fontSize: 20 },
-        // Never a backgroundColor here: headerTransparent only clears the
-        // background if headerStyle does not set one, and opacity is exactly
-        // what cancels the glass.
-        ...(glass
-          ? { scrollEdgeEffects: { top: 'soft' as const } }
-          : { headerBlurEffect: 'systemChromeMaterial' as const }),
       }}
     >
       {/* The Settings screen carries its own large title, as it always has. */}

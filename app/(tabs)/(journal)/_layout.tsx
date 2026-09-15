@@ -1,6 +1,6 @@
-import { isLiquidGlassAvailable } from 'expo-glass-effect';
 import { Stack } from 'expo-router';
 import { fontFamilyFor, useTheme } from '@/core/theme';
+import { useStackHeaderOptions } from '@/core/ui/stack-header';
 import { RequestedDateProvider } from '@/features/nutrition/hooks/requested-date';
 
 /**
@@ -36,8 +36,9 @@ import { RequestedDateProvider } from '@/features/nutrition/hooks/requested-date
  *    is the native answer and the better-looking one;
  *  - before that, a blur behind the bar is what does it.
  *
- * The conditional follows the precedent already set in the tabs layout, which
- * asks isLiquidGlassAvailable() before requesting an iOS 26 behaviour.
+ * That conditional now lives in core/ui/stack-header, shared by the three
+ * stacks; it still asks isLiquidGlassAvailable() before requesting an iOS 26
+ * behaviour, which is the precedent the tabs layout set.
  *
  * This rests on the screens using contentInsetAdjustmentBehavior="automatic" —
  * they do — so that the content starts below the bar rather than under it.
@@ -46,7 +47,10 @@ import { RequestedDateProvider } from '@/features/nutrition/hooks/requested-date
  */
 export default function JournalLayout() {
   const theme = useTheme();
-  const glass = isLiquidGlassAvailable();
+  // The four options every stack shares now live in core/ui/stack-header; the
+  // title style below stays here, because extra-bold Nunito is this bar's
+  // decision and not a mechanism three stacks have in common.
+  const header = useStackHeaderOptions();
 
   return (
     /*
@@ -58,9 +62,7 @@ export default function JournalLayout() {
     <RequestedDateProvider>
     <Stack
       screenOptions={{
-        headerTransparent: true,
-        headerShadowVisible: false,
-        headerTintColor: theme.colors.accent,
+        ...header,
         /**
          * THE TITLE WAS THE ONE PIECE OF TEXT STILL IN THE SYSTEM FACE.
          *
@@ -82,9 +84,6 @@ export default function JournalLayout() {
           fontWeight: '800',
           fontFamily: fontFamilyFor('800', theme.fontsLoaded),
         },
-        ...(glass
-          ? { scrollEdgeEffects: { top: 'soft' as const } }
-          : { headerBlurEffect: 'systemChromeMaterial' as const }),
       }}
     >
       <Stack.Screen name="index" />

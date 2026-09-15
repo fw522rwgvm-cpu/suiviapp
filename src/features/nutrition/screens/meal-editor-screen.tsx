@@ -7,6 +7,7 @@ import { useTheme } from '@/core/theme';
 import { FormInput, FormNavigation, FormRow, FormSection } from '@/core/ui/form-section';
 import { ListSeparator } from '@/core/ui/list-separator';
 import { useDismiss, usePanelHeading } from '@/core/ui/overlay-panel';
+import { useSettled } from '@/core/query/use-settled';
 import { useAddMeal, useDay, useUpdateMeal } from '../data/day-queries';
 import { MACRO_FIELDS } from '../components/macro-fields';
 import { mealColor, mealSymbol } from '../components/meal-symbol';
@@ -76,9 +77,24 @@ export function MealEditorScreen({
   const updateMeal = useUpdateMeal();
 
   const meals = day.data?.meals ?? [];
+  /**
+   * THE FORM FREEZES ON THE SETTLED DAY, THE REST READS THE LIVE ONE.
+   *
+   * Editing a meal and reopening it filled the fields from BEFORE the edit, and
+   * saving from there wrote that back — this screen is unmounted inside the
+   * mutation's onSuccess, so the bus invalidates sixty milliseconds later on a
+   * query nobody is watching, and the reopened screen is served the stale cache
+   * first. See core/query/use-settled.
+   *
+   * Only `existing` takes the settled value. `offered` and `names` keep reading
+   * day.data, because they decide which meal KINDS are still free — and a
+   * moment of "no meals yet" would briefly offer all four, which is a flicker
+   * where the stale answer was harmless.
+   */
+  const settledDay = useSettled(day);
   const existing = mealPosition === null
     ? undefined
-    : meals.find((meal) => meal.position === mealPosition);
+    : (settledDay?.meals ?? []).find((meal) => meal.position === mealPosition);
 
   /**
    * The kinds this meal may take, its own included when it already has one.

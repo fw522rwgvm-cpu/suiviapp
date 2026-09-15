@@ -41,7 +41,10 @@ import {
   recipeStep,
   recipeTag,
   setting,
+  weightGoal,
+  weightMeasure,
   PORTION_NAMES,
+  WEIGHT_GOAL_MODES,
   YIELD_TYPES,
 } from '@/core/db/schema';
 import * as schema from '@/core/db/schema';
@@ -169,6 +172,32 @@ const EXPORT_ORDER: readonly { table: SQLiteTable; introducedIn: string }[] = [
   { table: day, introducedIn: '0001_journal' },
   { table: dayMeal, introducedIn: '0001_journal' },
   { table: journalEntry, introducedIn: '0001_journal' },
+  /**
+   * The weight block sits last, and it is the one block whose position is
+   * genuinely free: neither table carries a foreign key, in either direction.
+   *
+   * Kept together rather than filed by kind — the goal with the configuration
+   * at the top, the measurements with the journal at the bottom — because
+   * weight is a domain of its own with nothing joining it to nutrition. A
+   * reader repairing this file by hand (D7) finds the whole of it in one place.
+   *
+   * The goal leads its own block, the way day_template and recipe lead theirs,
+   * even though nothing here requires it: an ordering that reads the same
+   * everywhere is one less thing to check.
+   *
+   * ## SPECS 9.1 MAKES THIS THE MOST IMPORTANT BLOCK IN THE FILE
+   *
+   * > La double saisie est définitive. intervals.icu n'expose pas le poids
+   * > remonté par COROS. La saisie manuelle dans cette application est donc la
+   * > seule source, sans échappatoire technique, et pour toutes les versions.
+   * > Cela renforce encore la criticité de l'export : LE POIDS N'EXISTE QU'ICI.
+   *
+   * Every other table in this export could in principle be reconstructed from
+   * something — a food from its barcode, a recipe from a photograph of a note.
+   * These two cannot be reconstructed from anything at all.
+   */
+  { table: weightGoal, introducedIn: '0006_weight' },
+  { table: weightMeasure, introducedIn: '0006_weight' },
 ];
 
 /**
@@ -333,6 +362,55 @@ const VALUE_RULES: Record<string, Record<string, ValueRule>> = {
     base_unit: { rule: 'one_of', allowed: ['g', 'ml'] },
     created_at: { rule: 'epoch_ms' },
     updated_at: { rule: 'epoch_ms' },
+  },
+  weight_measure: {
+    date: { rule: 'civil_date' },
+    created_at: { rule: 'epoch_ms' },
+    updated_at: { rule: 'epoch_ms' },
+    /**
+     * value_kg CARRIES NO RULE, AND THERE IS NONE TO GIVE IT YET.
+     *
+     * ck_weight_value holds it to a positive number in SQL, which makes this
+     * the one column in the export whose only barrier is a CHECK citing a
+     * constraint rather than a rule naming a row — the weaker form by the
+     * food_portion.name argument, and D7 wants a file repairable by hand.
+     *
+     * The reason it stays that way: every rule here is either a shape
+     * (civil_date, entity_id, epoch_ms) or a closed set (one_of). There is no
+     * numeric rule at all, and adding one is exactly the deferral already taken
+     * for food.barcode's non_empty — the catalogue assumes its rules may be
+     * incomplete, which only ever makes validation weaker, never wrong.
+     */
+  },
+  weight_goal: {
+    id: { rule: 'entity_id' },
+    /**
+     * The closed set named from the schema rather than respelled, the shape
+     * PORTION_NAMES set in slice 3.
+     *
+     * Like recipe.yield_type — and unlike food_portion.name — this one ALSO
+     * carries a CHECK, and the two barriers answer different questions. The
+     * CHECK exists because widening this set breaks a CALCULATION rather than a
+     * label: `mode` decides which column is read and which figure is derived
+     * from it, so a third mode falls through every branch and produces a
+     * plausible, wrong rate. The rule exists because D7 wants a hand-repaired
+     * file told the table, the row and the column.
+     */
+    mode: { rule: 'one_of', allowed: WEIGHT_GOAL_MODES },
+    target_date: { rule: 'civil_date' },
+    defined_at: { rule: 'epoch_ms' },
+    /**
+     * is_active carries NO rule, for the reason planning_weekday.weekday
+     * carries none: the one_of rule takes strings and this column is an
+     * integer. ck_weight_goal_active constrains it in SQL instead, which it can
+     * afford to because a boolean will never widen.
+     *
+     * And what NO rule here can express, stated so the gap is deliberate rather
+     * than forgotten: that the mode and its two terms must agree — target_date
+     * set in one mode, rate_kg_per_week in the other, never both.
+     * ck_weight_goal_terms carries that in SQL, because rules are per-column
+     * and this one spans three. Same position as ck_ingredient_link.
+     */
   },
 };
 

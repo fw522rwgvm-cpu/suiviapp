@@ -16,6 +16,8 @@ import { emptyRecipeDraft } from '@/features/nutrition/domain/recipe-draft';
 import type { Macros } from '@/features/nutrition/domain/macros';
 import { MEAL_KINDS } from '@/features/nutrition/domain/meal-kinds';
 import { baseQuantity, portionQuantity } from '@/features/nutrition/domain/portions';
+import { readActiveGoal, readWeight } from '@/features/weight/data/weight-reads';
+import { setActiveGoal, setWeight } from '@/features/weight/data/weight-writes';
 import { createRandom, type Random } from './random';
 
 /**
@@ -190,6 +192,8 @@ export interface SeedReport {
   foods: number;
   /** Recipes created in the library (slice 6). */
   recipes: number;
+  /** Weight measurements written (slice 8). */
+  weights: number;
   firstDate: LocalDate;
   lastDate: LocalDate;
 }
@@ -427,6 +431,114 @@ function seedTemplate(tx: AppDatabase): void {
   setDefaultTemplate(tx, id);
 }
 
+/**
+ * A plausible weight history, and a goal to read it against (slice 8).
+ *
+ * ## WITHOUT IT, HALF OF SLICE 8 IS INVISIBLE ON THE DEVICE
+ *
+ * Exactly the problem slice 7 met with the day templates: the curves, the real
+ * rate, the gap to the aimed rate and the crossed chart all have nothing to
+ * draw on a database nobody has weighed into, so the panel would be an empty
+ * frame and the whole of specs 9.2 would go unseen until someone had weighed
+ * themselves daily for a fortnight.
+ *
+ * ## THE SHAPE IS A SLOW DRIFT PLUS DAILY NOISE, AND BOTH HALVES MATTER
+ *
+ * A straight line would make the smoothing pointless and the regression
+ * trivially right — the one history on which a broken rate calculation still
+ * looks correct. Real weight wanders by several hundred grams a day around a
+ * trend that moves by a fraction of that, which is precisely why specs 9.2
+ * regresses on the smoothed series rather than the raw one.
+ *
+ * The drift is DOWNWARD, so the rate is negative and the sign is exercised.
+ *
+ * ## IT NEVER OVERWRITES A REAL MEASUREMENT, AND THAT IS NOT A DETAIL
+ *
+ * The Settings button says nothing is erased and can be pressed twice. The
+ * journal half of this generator honours that for free — it ADDS entries. This
+ * half does not: setWeight is an upsert on a primary key, so a second press
+ * would silently replace every real weighing in the generated span with an
+ * invented one. There is no undo, and the export is the only net.
+ *
+ * So each date is read first. Skipping rather than replacing also means the
+ * generated history knits around whatever is already there instead of flattening
+ * it.
+ *
+ * ## NOT EVERY DAY, BUT MORE OFTEN THAN MEALS ARE LOGGED
+ *
+ * Weighing is one action on waking; logging a day is a dozen. So a higher share
+ * than the journal's coverage — and still short of every day, because specs 9.2
+ * precision 1 exists for the holes and a history without any would never
+ * exercise it.
+ */
+const WEIGHT_COVERAGE = 0.75;
+const WEIGHT_START_KG = 84;
+const WEIGHT_DRIFT_KG_PER_DAY = -0.012;
+/** Peak-to-peak daily wobble, in kilograms. */
+const WEIGHT_NOISE_KG = 0.9;
+
+function seedWeights(
+  tx: AppDatabase,
+  firstDate: LocalDate,
+  days: number,
+  random: Random,
+): number {
+  let written = 0;
+
+  for (let offset = 0; offset < days; offset += 1) {
+    if (!random.chance(WEIGHT_COVERAGE)) continue;
+
+    const date = addDays(firstDate, offset);
+    // Never over a real weighing: see the note above.
+    if (readWeight(tx, date) !== null) continue;
+
+    const trend = WEIGHT_START_KG + WEIGHT_DRIFT_KG_PER_DAY * offset;
+    const noise = (random.next() - 0.5) * WEIGHT_NOISE_KG;
+    // A domestic scale reads to a tenth, and a generated history that carried
+    // more decimals than a real one would be the one place the display rounding
+    // is never exercised.
+    const valueKg = Math.round((trend + noise) * 10) / 10;
+
+    setWeight(tx, date, valueKg);
+    written += 1;
+  }
+
+  return written;
+}
+
+/**
+ * One weight goal, so the curve has a line and the rate has something to be
+ * compared against.
+ *
+ * ## ONLY WHEN THERE IS NONE, BECAUSE THE BUTTON PROMISES NOT TO ERASE
+ *
+ * The same rule seedTemplate follows. The Settings button says nothing is
+ * erased and can be pressed twice; replacing a goal the user set would break
+ * that promise, and setActiveGoal deliberately retires whatever was active.
+ *
+ * ## BY RATE, NOT BY DATE, AND THE FIGURE IS NOT THE DRIFT
+ *
+ * 'rate' mode is the one whose derived half — the projected date — moves as the
+ * weight does, so it is the mode that shows something on screen from the first
+ * launch. And the aimed rate is deliberately NOT the drift above: aiming at
+ * -0.35 against an actual -0.084 makes the gap a real, non-zero number, which
+ * is the figure specs 9.4 asks for. A goal that matched the trend exactly would
+ * display a gap of zero — the one value that looks the same whether the
+ * calculation works or not.
+ */
+function seedWeightGoal(tx: AppDatabase): boolean {
+  if (readActiveGoal(tx) !== null) return false;
+
+  setActiveGoal(tx, {
+    targetKg: 78,
+    mode: 'rate',
+    targetDate: null,
+    rateKgPerWeek: -0.35,
+  });
+
+  return true;
+}
+
 export function seedJournal(db: AppDatabase, options: SeedOptions): SeedReport {
   const { endDate, days, seed = 1, coverage = 0.85 } = options;
   if (days < 1) throw new Error('Nothing to generate');
@@ -441,11 +553,14 @@ export function seedJournal(db: AppDatabase, options: SeedOptions): SeedReport {
   // interrupted seed leaves the database exactly as it was.
   let seeded: SeededFood[] = [];
   let recipes = 0;
+  let weights = 0;
 
   db.transaction((tx) => {
     seedTemplate(tx);
+    seedWeightGoal(tx);
     seeded = seedFoods(tx);
     recipes = seedRecipes(tx, seeded);
+    weights = seedWeights(tx, firstDate, days, random);
 
     for (let offset = 0; offset < days; offset += 1) {
       const date = addDays(firstDate, offset);
@@ -484,6 +599,7 @@ export function seedJournal(db: AppDatabase, options: SeedOptions): SeedReport {
     entries: written,
     foods: seeded.length,
     recipes,
+    weights,
     firstDate,
     lastDate: endDate,
   };

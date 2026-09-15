@@ -8,6 +8,7 @@ import { useTheme } from '@/core/theme';
 import { LoadingDots } from '@/core/ui/loading-dots';
 import { done, TRANSITIONS } from '@/core/perf/marks';
 import { useMinimumVisible } from '@/core/ui/use-minimum-visible';
+import { WeightCard } from '@/features/weight/components/weight-card';
 import { useDay, useDayTotals, useMealTotals } from '../data/day-queries';
 import type { JournalEntryView } from '../data/day-reads';
 import { dayTargets, type DayMealView } from '../domain/day-plan';
@@ -42,6 +43,8 @@ export function DayPage({
   onDeleteEntry,
   onMealActions,
   onAddMeal,
+  onWeigh,
+  today,
 }: {
   date: LocalDate;
   width: number;
@@ -52,6 +55,10 @@ export function DayPage({
   onDeleteEntry: (entry: JournalEntryView) => void;
   onMealActions: (date: LocalDate, meal: DayMealView) => void;
   onAddMeal: (date: LocalDate) => void;
+  /** Opens the window that records this date's weight (specs 9.1). */
+  onWeigh: (date: LocalDate) => void;
+  /** What the application considers today — the weight card refuses to weigh past it. */
+  today: LocalDate;
 }) {
   const theme = useTheme();
   const scroll = useRef<ScrollView>(null);
@@ -245,6 +252,32 @@ export function DayPage({
             templateName={day.data?.templateName ?? null}
           />
         ) : null}
+
+        {/*
+          THE WEIGHT, UNDER THE MEALS, exactly where specs 9.1 puts it:
+          "champ de saisie SOUS LA LISTE DES REPAS de l'écran Journal, sur la
+          date consultée".
+
+          Its own heading, because it answers a third question. "Résumé" is what
+          the day comes to and "Alimentation" is what was eaten; a weight is
+          neither, and dropping it under the meals unheaded would read as one
+          more thing that was consumed.
+
+          It renders on the neighbours too — unlike the plan row above — but
+          inert. The card is the only thing on this page that shows a FIGURE for
+          the date, so hiding it on the two flanking pages would make the number
+          appear a frame after each swipe settles, which is the flicker the
+          carousel spent slice 3 removing. A tap, on the other hand, has no
+          business landing on a day nobody is looking at.
+        */}
+        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Poids</Text>
+
+        <WeightCard
+          date={date}
+          interactive={active}
+          today={today}
+          onPress={() => onWeigh(date)}
+        />
 
       </ScrollView>
 

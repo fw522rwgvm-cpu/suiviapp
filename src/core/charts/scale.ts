@@ -79,6 +79,82 @@ export function verticalScale(
   };
 }
 
+/**
+ * A vertical scale over the values themselves, with no zero in sight.
+ *
+ * ## WHY verticalScale COULD NOT SIMPLY BE RELAXED
+ *
+ * It starts at zero and must keep starting at zero: bars encode quantity by
+ * LENGTH, so a bar chart whose axis begins at 1 800 makes a 2 000 kcal day look
+ * four times a 1 900 kcal one — and it lies flatteringly, which is the
+ * direction that matters.
+ *
+ * A weight curve is the opposite case, and it is the opposite for a reason that
+ * is not taste. A LINE encodes change by SLOPE, not by length from a baseline:
+ * nothing about it invites the eye to compare 78 kg against zero, because the
+ * distance to the axis is not part of what it says. And on a domain of 0 to 80
+ * a three-kilo loss over a quarter — the whole subject — occupies four per cent
+ * of the plot and reads as a flat line.
+ *
+ * So: two functions, each honest about its own mark, rather than one with a
+ * flag. The flag version is how a bar chart eventually acquires a non-zero
+ * baseline by someone passing the wrong argument.
+ *
+ * ## THE PADDING IS A SHARE OF THE SPREAD, NOT A NUMBER OF UNITS
+ *
+ * Kilograms here, kilocalories in a crossed chart. A fixed 2 would be generous
+ * on a weight curve and invisible on calories. A share of the spread behaves
+ * the same on both.
+ *
+ * A flat series — one measurement, or several identical ones — has no spread to
+ * take a share of, so it falls back to a fixed band around the value. Without
+ * it the domain would be a point, d3 would map every value to NaN, and
+ * react-native-svg draws NaN as nothing at all rather than as an error.
+ */
+export function linearScale(
+  values: readonly (number | null)[],
+  height: number,
+  tickCount = 4,
+  topInset = 0,
+  /** Share of the spread left as air above and below. */
+  padShare = 0.1,
+  /** Half-height of the band used when every value is the same. */
+  flatBand = 1,
+): VerticalScale {
+  const finite = values.filter(
+    (value): value is number => value !== null && Number.isFinite(value),
+  );
+
+  if (finite.length === 0) {
+    // Nothing to draw. A degenerate domain would put every future point at NaN,
+    // so this answers with a small, arbitrary, harmless one.
+    const empty = scaleLinear().domain([0, 1]).range([height, topInset]).nice(tickCount);
+    const [, max = 1] = empty.domain();
+    return { y: (value) => empty(value), ticks: empty.ticks(tickCount), max };
+  }
+
+  const low = Math.min(...finite);
+  const high = Math.max(...finite);
+  const spread = high - low;
+  const pad = spread === 0 ? flatBand : spread * padShare;
+
+  const scale = scaleLinear()
+    .domain([low - pad, high + pad])
+    .range([height, topInset])
+    .nice(tickCount);
+
+  const [, max = high] = scale.domain();
+
+  return {
+    y: (value) => scale(value),
+    // EVERY tick, unlike verticalScale, which drops the one at zero because its
+    // axis draws that line itself. Here zero is not on the axis at all, and a
+    // tick dropped for being zero would leave a gap for no reason.
+    ticks: scale.ticks(tickCount),
+    max,
+  };
+}
+
 export interface BandGeometry {
   /** Left edge of the slot at `index`. */
   left: (index: number) => number;

@@ -178,6 +178,25 @@ function RootStack() {
           animation: 'none',
         }}
       />
+      {/*
+        Recording a weight (specs 9.1), declared for the reason the meal route
+        above had to be: an undeclared route under (modals)/ takes the stack's
+        default — an opaque card pushed in from the RIGHT — and the oversight
+        produces neither an error nor a warning. OverlayPanel would raise it
+        correctly and nobody would ever see that.
+
+        Same three options as its siblings, and animation 'none' so the panel
+        does the moving.
+      */}
+      <Stack.Screen
+        name="(modals)/weight"
+        options={{
+          presentation: 'transparentModal',
+          headerShown: false,
+          contentStyle: { backgroundColor: 'transparent' },
+          animation: 'none',
+        }}
+      />
     </Stack>
   );
 }

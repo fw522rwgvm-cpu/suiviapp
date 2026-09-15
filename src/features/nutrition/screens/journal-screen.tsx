@@ -245,13 +245,36 @@ export function JournalScreen() {
     ]);
   }
 
+  /**
+   * Recording a weight, on the date of the page it was asked from (specs 9.1).
+   *
+   * The date travels as a route parameter here, where a chosen date travels as
+   * a consumed request in the other direction. The difference is which way it
+   * points: an INPUT to a window is harmless if stale — the window closes and
+   * the parameter goes with it — whereas a date coming BACK has to be taken
+   * once and cleared, or the Journal would reopen on it (specs 7).
+   */
+  function openWeight(pageDate: LocalDate): void {
+    router.push({ pathname: '/(modals)/weight', params: { date: pageDate } });
+  }
+
   const pageProps = {
     width,
+    /**
+     * Handed down rather than read again in the page.
+     *
+     * The weight card needs it to refuse a date in the future (specs 14.15),
+     * and three pages are mounted at once — so reading useToday in each of them
+     * would be three subscriptions to one answer the screen already holds. One
+     * source, and the cutoff setting moves all three together.
+     */
+    today,
     onAdd: openAdd,
     onEditEntry: openEdit,
     onDeleteEntry: removeEntry,
     onMealActions: promptMealActions,
     onAddMeal: promptAddMeal,
+    onWeigh: openWeight,
   };
 
   const previous = addDays(date, -1);

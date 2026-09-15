@@ -6,6 +6,8 @@ import { Text } from '@/core/ui/text';
 import { formatKcal, formatMacro, parseDecimal } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import type { FoodId, RecipeId } from '@/core/db/schema';
+import { useSettled } from '@/core/query/use-settled';
+import { DecimalInput } from '@/core/ui/decimal-input';
 import { FormInput, FormNavigation, FormRow, FormSection } from '@/core/ui/form-section';
 import { ListSeparator } from '@/core/ui/list-separator';
 import { SwipeBack } from '@/core/ui/swipe-back';
@@ -73,14 +75,25 @@ export function RecipeEditorScreen({ recipeId }: { recipeId: RecipeId | null }) 
   const remove = useDeleteRecipe();
   const favorite = useSetRecipeFavorite();
 
+  /**
+   * The value the form freezes on, once the bus has stopped flagging it.
+   *
+   * Saving navigates back inside onSuccess, so this screen is unmounted before
+   * the bus invalidates sixty milliseconds later; React Query then serves the
+   * cached, stale value first on reopening. Freezing on it showed the recipe
+   * from before the edit — and saving from there wrote it back.
+   * See core/query/use-settled.
+   */
+  const settled = useSettled(stored);
+
   useEffect(() => {
     // Filled once, when the recipe arrives. Reapplying it on every render
     // would overwrite what is being typed.
-    const value = stored.data;
+    const value = settled;
     if (loaded || recipeId === null || value === null || value === undefined) return;
     setDraft(value);
     setLoaded(true);
-  }, [stored.data, loaded, recipeId]);
+  }, [settled, loaded, recipeId]);
 
   /**
    * THE FAVOURITE IS NOT PART OF THE FORM, once the recipe exists — the rule
@@ -276,13 +289,16 @@ export function RecipeEditorScreen({ recipeId }: { recipeId: RecipeId | null }) 
           </FormRow>
 
           <FormRow label={draft.yieldType === 'portions' ? 'Portions' : 'Poids fini'}>
-            <FormInput
-              value={draft.yieldValue === 0 ? '' : String(draft.yieldValue).replace('.', ',')}
-              onChangeText={(text) =>
-                setDraft((current) => ({ ...current, yieldValue: parseDecimal(text) ?? 0 }))
+            {/*
+              A DecimalInput: bound to a number through String() this field ate
+              the separator, so a yield of 1,5 kg became 15 (core/ui/decimal-input).
+            */}
+            <DecimalInput
+              value={draft.yieldValue === 0 ? null : draft.yieldValue}
+              onChangeValue={(value) =>
+                setDraft((current) => ({ ...current, yieldValue: value ?? 0 }))
               }
               placeholder="4"
-              keyboardType="decimal-pad"
               selectTextOnFocus
               accessibilityLabel={
                 draft.yieldType === 'portions' ? 'Nombre de portions' : 'Poids fini en grammes'

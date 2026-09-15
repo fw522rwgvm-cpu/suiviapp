@@ -13,6 +13,7 @@ import {
   type RecipeId,
   type RecipeIngredientId,
   type RecipeStepId,
+  type WeightGoalId,
 } from '../../src/core/db/schema';
 import { buildDatabase } from '../../src/features/backup/domain/build-database';
 import type { BinarySchema } from '../../src/features/backup/domain/envelope';
@@ -348,6 +349,43 @@ function fillEveryColumn(raw: Database.Database): void {
     childId, mealId, '2026-03-04', parentId, 1, 'recipe_item',
     plainFoodId, newId(), 'Pois chiches', 'Sans marque', 'ml', 0.5,
     'cuillère à café', 12.5, 0.125, 0.25, 0.375, 3.5, 1_789_000_000_004, 1_789_000_000_005,
+  );
+
+  const insertWeight = raw.prepare(
+    'INSERT INTO weight_measure (date, value_kg, created_at, updated_at) VALUES (?, ?, ?, ?)',
+  );
+  // A fractional value, because a balance reads to a tenth and a serialiser
+  // that rounded on the way out would otherwise pass. Two dates rather than
+  // one, so a gap between measurements survives the trip as a gap.
+  insertWeight.run('2026-03-04', 78.35, 1_789_000_000_030, 1_789_000_000_031);
+  insertWeight.run('2026-03-06', 77.9, 1_789_000_000_032, 1_789_000_000_033);
+
+  /**
+   * TWO GOALS, AND THE SCHEMA IS WHAT INSISTS ON IT.
+   *
+   * ck_weight_goal_terms makes target_date and rate_kg_per_week mutually
+   * exclusive, so NO SINGLE ROW can fill both columns — the coverage assertion
+   * below asks that every column hold a real value in at least one row, never
+   * that one row hold them all, and this is the case that proves the difference
+   * matters.
+   *
+   * So one goal per mode, which also means both branches of the calculation
+   * have a row in the archive. And ux_weight_goal_active forces one of them to
+   * be deactivated, which is how is_active gets a value other than its default
+   * — a column left at its default is a column a dropped-column bug survives.
+   *
+   * The rate is NEGATIVE, because losing weight is what a rate ordinarily says
+   * and a sign dropped in serialisation would turn a diet into a gain.
+   */
+  const insertGoal = raw.prepare(
+    'INSERT INTO weight_goal (id, target_kg, mode, target_date, rate_kg_per_week, ' +
+      'defined_at, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)',
+  );
+  insertGoal.run(
+    newId<WeightGoalId>(), 74.5, 'rate', null, -0.35, 1_789_000_000_040, 1,
+  );
+  insertGoal.run(
+    newId<WeightGoalId>(), 80.25, 'target_date', '2026-12-31', null, 1_789_000_000_041, 0,
   );
 }
 

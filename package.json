@@ -9,6 +9,7 @@
     "bundle:ios": "expo export --platform ios --output-dir dist",
     "test": "node scripts/run-tests.mjs",
     "test:watch": "vitest",
+    "icons:generate": "node scripts/generate-icons.mjs",
     "migrations:bundle": "node scripts/generate-migrations-bundle.mjs",
     "migrations:generate": "drizzle-kit generate && npm run migrations:bundle",
     "test:single": "vitest run"
