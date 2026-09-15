@@ -8,8 +8,10 @@ import {
   routineBlock,
   routineLine,
   routineWarmupStep,
+  type ExerciseId,
   type Muscle,
   type RoutineId,
+  type SetType,
 } from '@/core/db/schema';
 import type { BlockDraft, LineDraft, RoutineDraft } from '../domain/routine-draft';
 import { isSetType } from '../domain/vocabulary';
@@ -40,9 +42,18 @@ export interface RoutineListItem {
 
 export interface RoutineLineView {
   id: string;
-  exerciseId: string;
+  /**
+   * Narrowed HERE, once, rather than by every reader.
+   *
+   * The value comes off a column, so it is outside data — and conventions
+   * section 4 refuses to type outside data by assertion. Narrowing it at the
+   * single point where it enters the application means no screen has to, and
+   * the one place that can be wrong is the one place that checks.
+   */
+  exerciseId: ExerciseId;
   exerciseName: string;
-  setType: string;
+  /** set_type carries no CHECK, so an unknown value reads as a working set. */
+  setType: SetType;
   repsMin: number | null;
   repsMax: number | null;
   targetLoadKg: number | null;
@@ -162,9 +173,9 @@ export function readRoutine(db: AppDatabase, routineId: RoutineId): RoutineView 
     const current = byBlock.get(line.blockId);
     const view: RoutineLineView = {
       id: line.id,
-      exerciseId: line.exerciseId,
+      exerciseId: toExerciseId(line.exerciseId),
       exerciseName: line.exerciseName,
-      setType: line.setType,
+      setType: toSetType(line.setType),
       repsMin: line.repsMin,
       repsMax: line.repsMax,
       targetLoadKg: line.targetLoadKg,
@@ -246,9 +257,9 @@ export function readRoutineDraft(db: AppDatabase, routineId: RoutineId): Routine
         lines: block.lines.map(
           (line): LineDraft => ({
             id: line.id,
-            exerciseId: toExerciseId(line.exerciseId),
+            exerciseId: line.exerciseId,
             exerciseName: line.exerciseName,
-            setType: toSetType(line.setType),
+            setType: line.setType,
             repsMin: line.repsMin,
             repsMax: line.repsMax,
             targetLoadKg: line.targetLoadKg,
@@ -273,8 +284,8 @@ export function readRoutineDraft(db: AppDatabase, routineId: RoutineId): Routine
  * branded type has a constructor for exactly this. An unparseable one would be
  * a row no version of this application wrote.
  */
-function toExerciseId(value: string): LineDraft['exerciseId'] {
-  const parsed = toEntityId<LineDraft['exerciseId']>(value);
+function toExerciseId(value: string): ExerciseId {
+  const parsed = toEntityId<ExerciseId>(value);
   if (parsed === null) throw new Error(`routine_line.exercise_id is not an identifier: ${value}`);
   return parsed;
 }
@@ -284,6 +295,6 @@ function toExerciseId(value: string): LineDraft['exerciseId'] {
  * An unknown value is carried through rather than corrected — the rule since
  * meal-kinds.ts — and the editor displays it as it stands.
  */
-function toSetType(value: string): LineDraft['setType'] {
+function toSetType(value: string): SetType {
   return isSetType(value) ? value : 'work';
 }

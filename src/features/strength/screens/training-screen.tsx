@@ -10,7 +10,9 @@ import { useTheme } from '@/core/theme';
 import { SearchField } from '@/features/nutrition/components/search-field';
 import { ExerciseFilterStrips } from '../components/exercise-filter';
 import { ExerciseRow } from '../components/exercise-row';
+import { RoutineRow } from '../components/routine-row';
 import { useExercises, useSetExerciseFavorite } from '../data/exercise-queries';
+import { useRoutines } from '../data/routine-queries';
 import {
   availableEquipment,
   availableMuscles,
@@ -63,6 +65,7 @@ export function TrainingScreen() {
   const [filter, setFilter] = useState<ExerciseFilter>(NO_FILTER);
 
   const exercises = useExercises();
+  const routines = useRoutines();
   const setFavorite = useSetExerciseFavorite();
 
   const held = useMemo(() => exercises.data ?? [], [exercises.data]);
@@ -93,6 +96,46 @@ export function TrainingScreen() {
         />
       ) : (
         <>
+          <View style={styles.sectionHead}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Routines</Text>
+            <Pressable
+              onPress={() => router.push('/(modals)/routine-edit')}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="Nouvelle routine"
+            >
+              <SymbolView name="plus" size={19} tintColor={theme.colors.accent} />
+            </Pressable>
+          </View>
+
+          {(routines.data ?? []).length === 0 ? (
+            <Text style={[styles.empty, { color: theme.colors.textMuted }]}>
+              Aucune routine. Touchez + pour en bâtir une.
+            </Text>
+          ) : (
+            <View
+              style={[
+                styles.list,
+                {
+                  backgroundColor: theme.colors.surface,
+                  borderColor: theme.colors.border,
+                  borderRadius: theme.radius.lg,
+                },
+                theme.shadow,
+              ]}
+            >
+              {(routines.data ?? []).map((routine, index) => (
+                <View key={routine.id}>
+                  {index === 0 ? null : <ListSeparator />}
+                  <RoutineRow
+                    routine={routine}
+                    onPress={() => router.push(`/(tabs)/training/routine/${routine.id}`)}
+                  />
+                </View>
+              ))}
+            </View>
+          )}
+
           <View style={styles.sectionHead}>
             <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Exercices</Text>
             <Pressable
