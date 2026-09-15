@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Text } from '@/core/ui/text';
 import { formatKcal, parseDecimal } from '@/core/format';
 import { useTheme } from '@/core/theme';
+import { DecimalInput } from '@/core/ui/decimal-input';
 import { FormInput, FormRow, FormSection } from '@/core/ui/form-section';
 import type { IngredientDraft } from '../domain/recipe-draft';
 import { scaleMacros } from '../domain/recipe-macros';
@@ -40,11 +41,10 @@ export function IngredientEditor({
 }) {
   const theme = useTheme();
 
-  function setQuantity(index: number, text: string): void {
-    const parsed = parseDecimal(text);
+  function setQuantity(index: number, value: number | null): void {
     onChange(
       ingredients.map((ingredient, at) =>
-        at === index ? { ...ingredient, quantity: parsed ?? 0 } : ingredient,
+        at === index ? { ...ingredient, quantity: value ?? 0 } : ingredient,
       ),
     );
   }
@@ -85,11 +85,14 @@ export function IngredientEditor({
               />
             )}
 
-            <FormInput
-              value={ingredient.quantity === 0 ? '' : String(ingredient.quantity).replace('.', ',')}
-              onChangeText={(text) => setQuantity(index, text)}
+            {/*
+              A DecimalInput: bound to a number through String() this field ate
+              the separator, so "1,2" became 12 (core/ui/decimal-input).
+            */}
+            <DecimalInput
+              value={ingredient.quantity === 0 ? null : ingredient.quantity}
+              onChangeValue={(value) => setQuantity(index, value)}
               placeholder="0"
-              keyboardType="decimal-pad"
               selectTextOnFocus
               accessibilityLabel={`Quantité de ${ingredient.name}`}
             />

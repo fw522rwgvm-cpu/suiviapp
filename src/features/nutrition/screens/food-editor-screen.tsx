@@ -72,6 +72,21 @@ function show(value: number): string {
   return value === 0 ? '' : String(value).replace('.', ',');
 }
 
+/**
+ * The four fields, written from a draft.
+ *
+ * Used twice: to start the form, and when a stored food arrives. Never on every
+ * render — that is what would overwrite a half-typed comma.
+ */
+function macroTextOf(draft: FoodDraft): Record<MacroKey, string> {
+  return {
+    protein: show(draft.macros.protein),
+    carbs: show(draft.macros.carbs),
+    fat: show(draft.macros.fat),
+    kcal: show(draft.macros.kcal),
+  };
+}
+
 export function FoodEditorScreen({
   foodId,
   initial,
@@ -102,6 +117,25 @@ export function FoodEditorScreen({
   const router = useRouter();
 
   const [draft, setDraft] = useState<FoodDraft>(() => initial ?? emptyFoodDraft());
+  /**
+   * THE FOUR MACROS ARE HELD AS TEXT, and the draft keeps the parsed numbers.
+   *
+   * Binding the field straight to draft.macros — String() out, parseDecimal in
+   * — ate the decimal separator and MOVED THE DIGITS: typing "1,2" left "1" on
+   * screen after the comma, then "12". One point two grams became twelve.
+   * Plausible, wrong, invisible.
+   *
+   * macro-fields.tsx said so in as many words and named which caller was at
+   * fault: "the editor as numbers on a draft, free entry as the strings that
+   * were typed — and the string is the one that can be shared". This is the
+   * editor being brought into line, rather than the shared row being changed
+   * for it.
+   *
+   * The two are written together in setMacro, so they cannot drift.
+   */
+  const [macroText, setMacroText] = useState<Record<MacroKey, string>>(() =>
+    macroTextOf(initial ?? emptyFoodDraft()),
+  );
   const [loaded, setLoaded] = useState(false);
 
   const stored = useFoodDraft(foodId);
@@ -151,11 +185,15 @@ export function FoodEditorScreen({
     // would have its figures read as being for 100 the moment it was saved --
     // silently multiplying them by more than three. Converting on the way in
     // keeps what was eaten true and makes the change invisible.
-    setDraft(
+    const arriving =
       value.refQty === REFERENCE
         ? value
-        : { ...value, refQty: REFERENCE, macros: toCanonical(value.macros, value.refQty) },
-    );
+        : { ...value, refQty: REFERENCE, macros: toCanonical(value.macros, value.refQty) };
+
+    setDraft(arriving);
+    // The fields follow the draft they were just given — this is the one moment
+    // the numbers change without anyone typing.
+    setMacroText(macroTextOf(arriving));
     setLoaded(true);
   }, [stored.data, loaded, foodId]);
 
@@ -251,6 +289,9 @@ export function FoodEditorScreen({
   }
 
   function setMacro(key: MacroKey, text: string): void {
+    // Verbatim on screen, parsed in the draft. "1," is a legal state of typing
+    // "1,2" and has to survive; it simply reads as 1 for anyone who asks.
+    setMacroText((current) => ({ ...current, [key]: text }));
     setDraft((current) => ({
       ...current,
       macros: { ...current.macros, [key]: parseDecimal(text) ?? 0 },
@@ -399,7 +440,7 @@ export function FoodEditorScreen({
               <MacroFieldRow
                 key={field.key}
                 field={field}
-                value={show(draft.macros[field.key])}
+                value={macroText[field.key]}
                 onChange={setMacro}
               />
             ))}

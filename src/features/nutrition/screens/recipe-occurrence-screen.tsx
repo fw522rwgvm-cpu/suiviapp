@@ -5,6 +5,7 @@ import { Text } from '@/core/ui/text';
 import { formatKcal, formatMacro, parseDecimal } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import type { RecipeId } from '@/core/db/schema';
+import { DecimalInput } from '@/core/ui/decimal-input';
 import { FormInput, FormNavigation, FormRow, FormSection } from '@/core/ui/form-section';
 import { LoadingDots } from '@/core/ui/loading-dots';
 import { useRecipeOccurrencePrefill } from '../data/recipe-queries';
@@ -204,13 +205,19 @@ function OccurrenceBody({
             // taken a moment ago, and they have no identifiers because nothing
             // may start referencing them.
             <FormRow key={index} label={line.name}>
-              <FormInput
-                value={line.quantity === 0 ? '' : show(roundForEditing(line.quantity))}
-                onChangeText={(text) =>
-                  setLines((current) => adjustLine(current, index, parseDecimal(text) ?? 0))
+              {/*
+                A DecimalInput: bound to a number through show() this field ate
+                the separator, so "1,2" became 12 (core/ui/decimal-input). It
+                still resyncs when the quantity above rescales every line —
+                that is a change from OUTSIDE, which is exactly what the
+                component's parse comparison is there to recognise.
+              */}
+              <DecimalInput
+                value={line.quantity === 0 ? null : roundForEditing(line.quantity)}
+                onChangeValue={(value) =>
+                  setLines((current) => adjustLine(current, index, value ?? 0))
                 }
                 placeholder="0"
-                keyboardType="decimal-pad"
                 selectTextOnFocus
                 accessibilityLabel={`Quantité de ${line.name} pour cette fois`}
               />

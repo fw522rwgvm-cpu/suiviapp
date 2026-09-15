@@ -19,8 +19,19 @@ import type { Grain } from '@/core/db/date-bucket';
  * settled in SQL rather than in the rendering library.
  */
 
-/** Specs 9.2: "sur 30 jours / 90 jours / 1 an / tout". */
-export const WEIGHT_RANGE_KEYS = ['30', '90', '365', 'all'] as const;
+/**
+ * The ranges the weight panel offers.
+ *
+ * SPECS 9.2 SAID "30 jours / 90 jours / 1 an / tout"; this is seven days,
+ * thirty, ninety and a year. Requested, and amended rather than diverged from
+ * (specs 14.17): "tout" is gone and a week takes its place.
+ *
+ * Seven days only became defensible with the smoothing lead below. Without it,
+ * six of a week's seven smoothed points would be computed from short windows —
+ * not merely soft, but pulled towards the start of the range, which is the same
+ * bias that made a fourteen-day regression read 22 % slow.
+ */
+export const WEIGHT_RANGE_KEYS = ['7', '30', '90', '365'] as const;
 
 /**
  * Derived from the array rather than written beside it, the shape PORTION_NAMES
@@ -30,19 +41,19 @@ export const WEIGHT_RANGE_KEYS = ['30', '90', '365', 'all'] as const;
  */
 export type WeightRangeKey = (typeof WEIGHT_RANGE_KEYS)[number];
 
-export const DEFAULT_WEIGHT_RANGE: WeightRangeKey = '90';
+export const DEFAULT_WEIGHT_RANGE: WeightRangeKey = '30';
 
 /** "90 jours", for the range control. */
 export function weightRangeLabel(key: WeightRangeKey): string {
   switch (key) {
+    case '7':
+      return '7 jours';
     case '30':
       return '30 jours';
     case '90':
       return '90 jours';
     case '365':
       return '1 an';
-    case 'all':
-      return 'Tout';
   }
 }
 
@@ -96,39 +107,61 @@ export function grainFor(days: number): Grain {
 }
 
 /**
- * The range a key means, given today and where the history starts.
+ * Days of measurement to read BEFORE the range, so its earliest points are
+ * smoothed against a full window.
  *
- * ## "TOUT" HAS NO FIXED GRAIN, AND THAT IS D9 RATHER THAN A SHORTCUT
+ * ## THE SAME SIX DAYS THE REGRESSION NEEDS, AND FOR THE SAME REASON
  *
- * On an installation three months old, "tout" is daily; after four years it is
- * monthly. The grain follows the span, not the label — which also means "tout"
- * and "90 jours" look alike on a young history, and that is honest: they ARE
- * alike, there being nothing older to show.
+ * A smoothed point is a seven-day trailing mean, so the first point of any
+ * range needs the six days before it to exist. Reading only the range does not
+ * fail — it computes those points from SHORT windows, which on a falling series
+ * leaves them too low, and the curve then starts with a hook that nobody
+ * weighed. Measured elsewhere in this slice at 22 % on a fourteen-day slope.
  *
- * `firstMeasured` is null when nothing has ever been weighed. The range then
- * collapses to today, which draws an empty chart rather than reaching back to
- * an arbitrary date and drawing a long flat nothing.
+ * On a ninety-day range that spoils the first six points out of ninety and is
+ * easy to miss. On a SEVEN-day range it would spoil six out of seven — which is
+ * why the week could not have been offered without this.
+ *
+ * Zero above the daily grain: a weekly bucket is already a mean of its days, so
+ * there is no trailing window to fill (specs 9.2 precision 3).
  */
-export function weightRangeFor(
-  key: WeightRangeKey,
-  today: LocalDate,
-  firstMeasured: LocalDate | null,
-): WeightRange {
-  const from =
-    key === 'all'
-      ? // Never earlier than the first measurement, and never later than today:
-        // a stray future measurement must not drag the start of the range
-        // forward past the days that precede it.
-        firstMeasured === null || compareLocalDate(firstMeasured, today) > 0
-        ? today
-        : firstMeasured
-      : addDays(today, -(Number(key) - 1));
+export function smoothingLead(grain: Grain): number {
+  return grain === 'day' ? SMOOTHING_LEAD_DAYS : 0;
+}
+
+/** Seven-day window, so six days of run-up. */
+const SMOOTHING_LEAD_DAYS = 6;
+
+/**
+ * The range a key means, given today.
+ *
+ * No longer takes the first measurement ever: it was there for "tout", which
+ * specs 14.17 removed. Every range now counts back a fixed number of days from
+ * today, exactly as the nutrition panel's does.
+ */
+export function weightRangeFor(key: WeightRangeKey, today: LocalDate): WeightRange {
+  const from = addDays(today, -(Number(key) - 1));
 
   // Both ends included, which is how rangeEndingOn counts in the stats panel.
   // diffDays is day-number arithmetic, so this crosses a daylight saving night
-  // without noticing one (D3) and costs the same on four years as on four days.
+  // without noticing one (D3).
   const days = Math.max(1, diffDays(from, today) + 1);
 
   const grain = grainFor(days);
   return { from, to: today, days, grain, showRaw: grain === 'day' };
+}
+
+/**
+ * The same range, widened backwards by whatever the smoothing needs.
+ *
+ * What the READ asks for; `weightRangeFor` stays what is DRAWN. Keeping them
+ * apart is what stops the extra days leaking onto the axis — the panel smooths
+ * over this one and then keeps only the points inside the displayed range.
+ */
+export function readRangeFor(range: WeightRange): WeightRange {
+  const lead = smoothingLead(range.grain);
+  if (lead === 0) return range;
+
+  const from = addDays(range.from, -lead);
+  return { ...range, from, days: range.days + lead };
 }

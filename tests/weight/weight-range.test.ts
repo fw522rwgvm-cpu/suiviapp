@@ -4,53 +4,62 @@ import {
   DEFAULT_WEIGHT_RANGE,
   grainFor,
   MONTHLY_BEYOND_DAYS,
+  readRangeFor,
+  smoothingLead,
   WEEKLY_BEYOND_DAYS,
   WEIGHT_RANGE_KEYS,
   weightRangeFor,
   weightRangeLabel,
 } from '../../src/features/weight/domain/weight-range';
+import { SMOOTHING_WINDOW_DAYS } from '../../src/features/weight/domain/smoothing';
 
 /**
- * The ranges of specs 9.2 and the aggregation rule of D9.
+ * The ranges of the weight panel and the aggregation rule of D9.
  *
- * > Graphique d'évolution ... sur 30 jours / 90 jours / 1 an / tout.
- * > Regroupement par semaine au-delà de 90 jours, par mois au-delà d'un an.
- *
- * This is the first slice where the second sentence has a customer: slice 7's
- * longest range was exactly 90, and "beyond 90" does not include 90.
+ * Specs 9.2 offered "30 jours / 90 jours / 1 an / tout"; this offers a week,
+ * thirty, ninety and a year. Requested, and amended rather than diverged from
+ * (specs 14.17).
  */
 
 const TODAY = toLocalDate('2026-03-01');
 
-describe('the four ranges specs 9.2 offers', () => {
-  it('offers exactly those four, and no others', () => {
-    expect(WEIGHT_RANGE_KEYS).toEqual(['30', '90', '365', 'all']);
+describe('the four ranges the panel offers', () => {
+  it('offers exactly those four, shortest first', () => {
+    expect(WEIGHT_RANGE_KEYS).toEqual(['7', '30', '90', '365']);
     expect(WEIGHT_RANGE_KEYS.map(weightRangeLabel)).toEqual([
+      '7 jours',
       '30 jours',
       '90 jours',
       '1 an',
-      'Tout',
     ]);
   });
 
+  it('no longer offers "tout"', () => {
+    // Pinned rather than left to the absence of a case: "tout" was the only
+    // range whose start depended on the history, and the only caller of
+    // readFirstWeightDate. Its removal is a decision, not an oversight.
+    expect(WEIGHT_RANGE_KEYS).not.toContain('all');
+  });
+
   it('defaults to a range that shows the raw curve', () => {
-    const range = weightRangeFor(DEFAULT_WEIGHT_RANGE, TODAY, toLocalDate('2020-01-01'));
-    expect(range.showRaw).toBe(true);
+    expect(weightRangeFor(DEFAULT_WEIGHT_RANGE, TODAY).showRaw).toBe(true);
   });
 
   it('counts both ends, the way the nutrition panel does', () => {
-    const range = weightRangeFor('30', TODAY, null);
-
-    expect(range.days).toBe(30);
-    expect(range.to).toBe(TODAY);
-    expect(range.from).toBe(addDays(TODAY, -29));
+    expect(weightRangeFor('7', TODAY)).toMatchObject({
+      from: addDays(TODAY, -6),
+      to: TODAY,
+      days: 7,
+    });
+    expect(weightRangeFor('30', TODAY).days).toBe(30);
+    expect(weightRangeFor('365', TODAY).days).toBe(365);
   });
 });
 
 describe('the grain D9 prescribes', () => {
   it('reads "beyond" strictly at BOTH boundaries', () => {
     /**
-     * Ninety and 365 are both ranges specs 9.2 offers BY NAME, and each sits
+     * Ninety and 365 are both ranges the panel offers BY NAME, and each sits
      * exactly on a boundary. Reading either as inclusive would move a range the
      * user picked from the list onto the wrong grain.
      */
@@ -60,68 +69,84 @@ describe('the grain D9 prescribes', () => {
     expect(grainFor(MONTHLY_BEYOND_DAYS + 1)).toBe('month');
   });
 
-  it('keeps 30 and 90 daily, and puts a year on weeks', () => {
-    const history = toLocalDate('2015-01-01');
+  it('keeps 7, 30 and 90 daily, and puts a year on weeks', () => {
+    expect(weightRangeFor('7', TODAY).grain).toBe('day');
+    expect(weightRangeFor('30', TODAY).grain).toBe('day');
+    expect(weightRangeFor('90', TODAY).grain).toBe('day');
+    expect(weightRangeFor('365', TODAY).grain).toBe('week');
+  });
 
-    expect(weightRangeFor('30', TODAY, history).grain).toBe('day');
-    expect(weightRangeFor('90', TODAY, history).grain).toBe('day');
-    expect(weightRangeFor('365', TODAY, history).grain).toBe('week');
+  it('leaves the monthly grain with no range that reaches it', () => {
+    /**
+     * A FACT ABOUT THE CURRENT SET, WRITTEN DOWN RATHER THAN DISCOVERED.
+     *
+     * "Tout" was the only range that could exceed a year, so nothing the panel
+     * offers now groups by month. grainFor keeps the branch because D9 is
+     * normative — "par mois au-delà d'un an" — and because the day a longer
+     * range returns it must already be right. But no screen reaches it today,
+     * and a reader should not have to work that out.
+     */
+    const longest = Math.max(...WEIGHT_RANGE_KEYS.map((key) => Number(key)));
+
+    expect(grainFor(longest)).not.toBe('month');
+    expect(grainFor(MONTHLY_BEYOND_DAYS + 1)).toBe('month');
   });
 
   it('drops the raw curve exactly when it starts aggregating', () => {
     /**
      * Specs 9.2 precision 3 and D9 share ONE threshold, and that is what makes
      * the sentence true: "agrégées par semaine ou par mois, série brute et
-     * série lissée se confondent visuellement". Once a point is a weekly mean,
-     * the two series ARE the same line drawn twice.
+     * série lissée se confondent visuellement".
      */
-    const history = toLocalDate('2015-01-01');
-
     for (const key of WEIGHT_RANGE_KEYS) {
-      const range = weightRangeFor(key, TODAY, history);
+      const range = weightRangeFor(key, TODAY);
       expect(range.showRaw, `${key}: raw must follow the grain`).toBe(range.grain === 'day');
     }
   });
 });
 
-describe('"tout" has no fixed grain', () => {
-  it('is daily on a young history and monthly on an old one', () => {
-    // The grain follows the span, not the label. Which also means "tout" and
-    // "90 jours" look alike on a three-month history — and that is honest, there
-    // being nothing older to show.
-    expect(weightRangeFor('all', TODAY, addDays(TODAY, -60)).grain).toBe('day');
-    expect(weightRangeFor('all', TODAY, addDays(TODAY, -200)).grain).toBe('week');
-    expect(weightRangeFor('all', TODAY, addDays(TODAY, -1000)).grain).toBe('month');
+describe('the smoothing run-up', () => {
+  it('is six days, one short of the window', () => {
+    // A smoothed point is a seven-day trailing mean, so the first point of a
+    // range needs the six days before it to have a full window.
+    expect(smoothingLead('day')).toBe(SMOOTHING_WINDOW_DAYS - 1);
   });
 
-  it('starts at the first measurement', () => {
-    const first = toLocalDate('2024-06-15');
-    const range = weightRangeFor('all', TODAY, first);
-
-    expect(range.from).toBe(first);
-    expect(range.to).toBe(TODAY);
+  it('is nothing above the daily grain', () => {
+    // A weekly bucket is already a mean of its days; there is no trailing
+    // window to fill (specs 9.2 precision 3).
+    expect(smoothingLead('week')).toBe(0);
+    expect(smoothingLead('month')).toBe(0);
   });
 
-  it('collapses to today when nothing was ever weighed', () => {
-    // Rather than reaching back to an arbitrary date and drawing a long flat
-    // nothing.
-    const range = weightRangeFor('all', TODAY, null);
+  it('widens the READ range backwards and leaves the displayed one alone', () => {
+    const shown = weightRangeFor('7', TODAY);
+    const read = readRangeFor(shown);
 
-    expect(range.from).toBe(TODAY);
-    expect(range.days).toBe(1);
-    expect(range.grain).toBe('day');
+    expect(read.from).toBe(addDays(shown.from, -6));
+    expect(read.to).toBe(shown.to);
+    expect(read.days).toBe(shown.days + 6);
+    // The displayed range is untouched — the extra days must never reach an axis.
+    expect(shown.from).toBe(addDays(TODAY, -6));
+    expect(shown.days).toBe(7);
   });
 
-  it('is not dragged forward by a measurement dated in the future', () => {
+  it('matters MOST on the shortest range, which is why the week needed it', () => {
     /**
-     * Specs 9.1 allows weighing on any date, "passée comme future, sans
-     * limite". So the earliest measurement can legitimately be AFTER today —
-     * on a database where the only entry is a future one — and taking it as the
-     * start would produce a backwards range that hides every day before it.
+     * On ninety days the run-up rescues six points out of ninety and is easy to
+     * miss. On seven it rescues six out of SEVEN — so without it, six sevenths
+     * of the week's curve would be computed from short windows and pulled
+     * towards the start of the range.
      */
-    const range = weightRangeFor('all', TODAY, addDays(TODAY, 30));
+    const week = weightRangeFor('7', TODAY);
+    const quarter = weightRangeFor('90', TODAY);
 
-    expect(range.from).toBe(TODAY);
-    expect(range.days).toBe(1);
+    expect(smoothingLead(week.grain) / week.days).toBeCloseTo(6 / 7, 6);
+    expect(smoothingLead(quarter.grain) / quarter.days).toBeCloseTo(6 / 90, 6);
+  });
+
+  it('leaves a weekly range unwidened', () => {
+    const year = weightRangeFor('365', TODAY);
+    expect(readRangeFor(year)).toEqual(year);
   });
 });

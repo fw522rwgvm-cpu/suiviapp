@@ -5,7 +5,10 @@ import { setWeight } from '../../src/features/weight/data/weight-writes';
 import { weightPanel } from '../../src/features/weight/domain/panel';
 import { RATE_LOAD_DAYS } from '../../src/features/weight/domain/rate';
 import type { WeightGoal } from '../../src/features/weight/domain/weight-goal';
-import { weightRangeFor } from '../../src/features/weight/domain/weight-range';
+import {
+  readRangeFor,
+  weightRangeFor,
+} from '../../src/features/weight/domain/weight-range';
 import { openTestDatabase, type TestDatabase } from '../helpers/database';
 
 /**
@@ -33,13 +36,15 @@ function seedSteadyLoss(days: number, kgPerDay = 0.1, from = 90): void {
   }
 }
 
-function panelFor(key: '30' | '90' | '365' | 'all', goal: WeightGoal | null = null) {
-  const first = toLocalDate('2024-01-01');
-  const range = weightRangeFor(key, TODAY, first);
+function panelFor(key: '7' | '30' | '90' | '365', goal: WeightGoal | null = null) {
+  const range = weightRangeFor(key, TODAY);
 
   return weightPanel(
     range,
-    readWeightSeries(database.db, range),
+    // Read over the widened range, exactly as the screen does: the run-up is
+    // what keeps the first drawn point from being smoothed against a short
+    // window.
+    readWeightSeries(database.db, readRangeFor(range)),
     readRateWindow(database.db, TODAY, RATE_LOAD_DAYS),
     goal,
     TODAY,
@@ -70,7 +75,7 @@ describe('the panel', () => {
      */
     seedSteadyLoss(400);
 
-    const rates = (['30', '90', '365', 'all'] as const).map((key) => {
+    const rates = (['7', '30', '90', '365'] as const).map((key) => {
       const rate = panelFor(key).rate;
       return rate.ok ? rate.kgPerWeek : null;
     });
@@ -87,7 +92,7 @@ describe('the panel', () => {
      */
     seedSteadyLoss(400);
 
-    const current = (['30', '90', '365', 'all'] as const).map((key) => panelFor(key).currentKg);
+    const current = (['7', '30', '90', '365'] as const).map((key) => panelFor(key).currentKg);
 
     for (const value of current) expect(value).toBeCloseTo(current[0] ?? 0, 10);
   });
@@ -110,10 +115,10 @@ describe('the panel', () => {
   it('draws the raw series only while the grain is daily', () => {
     seedSteadyLoss(400);
 
+    expect(panelFor('7').showRaw).toBe(true);
     expect(panelFor('30').showRaw).toBe(true);
     expect(panelFor('90').showRaw).toBe(true);
     expect(panelFor('365').showRaw).toBe(false);
-    expect(panelFor('all').showRaw).toBe(false);
   });
 
   it('holes the smoothed curve on days nobody weighed', () => {

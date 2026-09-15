@@ -165,22 +165,6 @@ export function readWeightPrefill(db: AppDatabase, date: LocalDate): WeightPrefi
   return weightPrefill(measured, previous);
 }
 
-/**
- * The earliest date ever weighed, for the "tout" range.
- *
- * Null on a database where nothing has been weighed, which the range treats as
- * "collapse to today" rather than reaching back to an arbitrary date.
- */
-export function readFirstWeightDate(db: AppDatabase): LocalDate | null {
-  const row = db
-    .select({ date: sql<string | null>`min(${weightMeasure.date})` })
-    .from(weightMeasure)
-    .get();
-
-  const date = row?.date ?? null;
-  return date === null ? null : toLocalDate(date);
-}
-
 export interface WeightHistoryRow {
   date: LocalDate;
   valueKg: number;

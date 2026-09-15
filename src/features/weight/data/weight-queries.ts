@@ -9,7 +9,6 @@ import type { WeightPrefill } from '../domain/weight-prefill';
 import type { WeightRange } from '../domain/weight-range';
 import {
   readActiveGoal,
-  readFirstWeightDate,
   readGoals,
   readRateWindow,
   readWeight,
@@ -45,7 +44,6 @@ export const weightKeys = {
     ['weight', 'series', from, to, grain] as const,
   rateWindow: (today: LocalDate) => ['weight', 'rate-window', today] as const,
   history: () => ['weight', 'history'] as const,
-  firstDate: () => ['weight', 'first-date'] as const,
   activeGoal: () => ['weight', 'goal', 'active'] as const,
   goals: () => ['weight', 'goal', 'all'] as const,
 };
@@ -113,15 +111,6 @@ export function useWeightHistory(limit?: number) {
   return useQuery<WeightHistoryRow[]>({
     queryKey: [...weightKeys.history(), limit ?? null],
     queryFn: () => readWeightHistory(getAppDatabase(), limit),
-    meta: readsFrom(weightMeasure),
-  });
-}
-
-/** The earliest date ever weighed, for the "tout" range. */
-export function useFirstWeightDate() {
-  return useQuery<LocalDate | null>({
-    queryKey: weightKeys.firstDate(),
-    queryFn: () => readFirstWeightDate(getAppDatabase()),
     meta: readsFrom(weightMeasure),
   });
 }

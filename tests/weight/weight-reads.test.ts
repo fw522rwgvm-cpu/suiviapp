@@ -4,7 +4,6 @@ import { bucketOf } from '../../src/core/db/date-bucket';
 import {
   bucketsOf,
   readActiveGoal,
-  readFirstWeightDate,
   readWeight,
   readWeightHistory,
   readWeights,
@@ -142,7 +141,7 @@ describe('the SQL bucket and the TypeScript bucket agree', () => {
 describe('reading a series at each grain', () => {
   it('returns one row per day, sparse, at the daily grain', () => {
     seedRun(addDays(TODAY, -6), [80, null, 79.8, null, null, 79.4, 79.2]);
-    const range = weightRangeFor('30', TODAY, addDays(TODAY, -6));
+    const range = weightRangeFor('30', TODAY);
 
     const rows = readWeights(database.db, range);
 
@@ -165,7 +164,7 @@ describe('reading a series at each grain', () => {
     setWeight(database.db, addDays(monday, 7), 70);
 
     const later = addDays(monday, 200);
-    const range = weightRangeFor('365', later, monday);
+    const range = weightRangeFor('365', later);
     const rows = readWeights(database.db, range);
 
     expect(range.grain).toBe('week');
@@ -179,10 +178,21 @@ describe('reading a series at each grain', () => {
     setWeight(database.db, toLocalDate('2024-01-25'), 80);
     setWeight(database.db, toLocalDate('2024-02-10'), 78);
 
-    const range = weightRangeFor('all', toLocalDate('2026-03-01'), toLocalDate('2024-01-05'));
+    /**
+     * No range the panel offers reaches the monthly grain any more — "tout" was
+     * the only one, and specs 14.17 removed it. The READ still has to be right
+     * at that grain, because D9 is normative and a longer range would return
+     * it, so the range is built by hand here rather than asked for by key.
+     */
+    const range = {
+      from: toLocalDate('2024-01-01'),
+      to: toLocalDate('2024-03-01'),
+      days: 61,
+      grain: 'month' as const,
+      showRaw: false,
+    };
     const rows = readWeights(database.db, range);
 
-    expect(range.grain).toBe('month');
     expect(rows).toEqual([
       { date: toLocalDate('2024-01-01'), valueKg: 81 },
       { date: toLocalDate('2024-02-01'), valueKg: 78 },
@@ -210,8 +220,8 @@ describe('reading a series at each grain', () => {
       for (const row of rows) insert.run(row.date, row.value);
     })();
 
-    for (const key of ['30', '90', '365', 'all'] as const) {
-      const range = weightRangeFor(key, TODAY, start);
+    for (const key of ['7', '30', '90', '365'] as const) {
+      const range = weightRangeFor(key, TODAY);
       expect(
         readWeights(database.db, range).length,
         `${key}: too many points for D13`,
@@ -229,7 +239,7 @@ describe('the dense axis', () => {
      * of the range would silently vanish.
      */
     const from = toLocalDate('2026-03-05'); // a Thursday
-    const range = { ...weightRangeFor('365', addDays(from, 200), from), from, grain: 'week' as const };
+    const range = { ...weightRangeFor('365', addDays(from, 200)), from, grain: 'week' as const };
 
     const buckets = bucketsOf(range);
 
@@ -265,28 +275,14 @@ describe('the dense axis', () => {
       setWeight(database.db, addDays(start, offset), 80 - offset * 0.002);
     }
 
-    for (const key of ['30', '90', '365', 'all'] as const) {
-      const range = weightRangeFor(key, TODAY, start);
+    for (const key of ['7', '30', '90', '365'] as const) {
+      const range = weightRangeFor(key, TODAY);
       const axis = new Set(bucketsOf(range));
 
       for (const row of readWeights(database.db, range)) {
         expect(axis.has(row.date), `${key}: ${row.date} is not on the axis`).toBe(true);
       }
     }
-  });
-});
-
-describe('the first measurement ever', () => {
-  it('is null on an empty database', () => {
-    expect(readFirstWeightDate(database.db)).toBeNull();
-  });
-
-  it('is the earliest date, not the earliest written', () => {
-    setWeight(database.db, TODAY, 80);
-    setWeight(database.db, addDays(TODAY, -100), 82);
-    setWeight(database.db, addDays(TODAY, -50), 81);
-
-    expect(readFirstWeightDate(database.db)).toBe(addDays(TODAY, -100));
   });
 });
 

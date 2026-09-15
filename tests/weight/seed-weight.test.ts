@@ -11,7 +11,10 @@ import {
 import { setWeight } from '../../src/features/weight/data/weight-writes';
 import { weightPanel } from '../../src/features/weight/domain/panel';
 import { RATE_LOAD_DAYS } from '../../src/features/weight/domain/rate';
-import { weightRangeFor } from '../../src/features/weight/domain/weight-range';
+import {
+  readRangeFor,
+  weightRangeFor,
+} from '../../src/features/weight/domain/weight-range';
 import { openTestDatabase, type TestDatabase } from '../helpers/database';
 
 /**
@@ -49,7 +52,7 @@ describe('the generated weight history', () => {
     // smoothed point exists only for a date actually weighed.
     seedJournal(database.db, { endDate: TODAY, days: 120, seed: 7 });
 
-    const range = weightRangeFor('90', TODAY, addDays(TODAY, -119));
+    const range = weightRangeFor('90', TODAY);
     const series = readWeightSeries(database.db, range);
 
     expect(series.some((row) => row.raw === null)).toBe(true);
@@ -67,10 +70,10 @@ describe('the generated weight history', () => {
      */
     seedJournal(database.db, { endDate: TODAY, days: 120, seed: 7 });
 
-    const range = weightRangeFor('90', TODAY, addDays(TODAY, -119));
+    const range = weightRangeFor('90', TODAY);
     const panel = weightPanel(
       range,
-      readWeightSeries(database.db, range),
+      readWeightSeries(database.db, readRangeFor(range)),
       readRateWindow(database.db, TODAY, RATE_LOAD_DAYS),
       readActiveGoal(database.db),
       TODAY,
@@ -91,10 +94,10 @@ describe('the generated weight history', () => {
      */
     seedJournal(database.db, { endDate: TODAY, days: 120, seed: 7 });
 
-    const range = weightRangeFor('90', TODAY, addDays(TODAY, -119));
+    const range = weightRangeFor('90', TODAY);
     const panel = weightPanel(
       range,
-      readWeightSeries(database.db, range),
+      readWeightSeries(database.db, readRangeFor(range)),
       readRateWindow(database.db, TODAY, RATE_LOAD_DAYS),
       readActiveGoal(database.db),
       TODAY,

@@ -11,12 +11,12 @@ import { rollingMean, WEEKLY_WINDOW_DAYS } from '../domain/series';
 import { useKcalBuckets } from '../data/stats-queries';
 import {
   useActiveGoal,
-  useFirstWeightDate,
   useRateWindow,
   useWeightSeries,
 } from '@/features/weight/data/weight-queries';
 import { weightPanel } from '@/features/weight/domain/panel';
 import {
+  readRangeFor,
   weightRangeFor,
   weightRangeLabel,
   WEIGHT_RANGE_KEYS,
@@ -70,21 +70,20 @@ export function WeightPanelSection({
   const theme = useTheme();
   const router = useRouter();
 
-  const firstDate = useFirstWeightDate();
   const goal = useActiveGoal();
 
+  /** What is DRAWN. */
+  const dateRange = useMemo(() => weightRangeFor(range, today), [range, today]);
   /**
-   * The range depends on the first measurement, which is a query — so until it
-   * answers, "tout" has no start. useMemo rather than an effect: a range
-   * computed in an effect would arrive after the render that needed it, which
-   * is the defect the quantity wheels of slice 4 paid for.
+   * What is READ — the same range widened backwards by the smoothing's run-up.
+   *
+   * Kept apart from the one above so the extra days cannot leak onto the axis:
+   * the panel smooths over this and then keeps only the points inside
+   * `dateRange`.
    */
-  const dateRange = useMemo(
-    () => weightRangeFor(range, today, firstDate.data ?? null),
-    [range, today, firstDate.data],
-  );
+  const readRange = useMemo(() => readRangeFor(dateRange), [dateRange]);
 
-  const series = useWeightSeries(dateRange);
+  const series = useWeightSeries(readRange);
   const rateWindow = useRateWindow(today);
   const kcal = useKcalBuckets(dateRange.from, dateRange.to, dateRange.grain);
 

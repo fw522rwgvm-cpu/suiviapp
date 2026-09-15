@@ -1,4 +1,4 @@
-import type { LocalDate } from '@/core/date';
+import { compareLocalDate, type LocalDate } from '@/core/date';
 import {
   latestSmoothed,
   realRate,
@@ -68,9 +68,16 @@ export interface GoalPanel {
 /**
  * The whole panel.
  *
- * `rateRows` is the DAILY series over RATE_LOAD_DAYS — longer than the
- * regression window on purpose, so every smoothed point in the window has a
- * full seven days behind it (see RATE_LOAD_DAYS for the 22 % this is worth).
+ * ## BOTH SERIES ARRIVE LONGER THAN WHAT THEY PRODUCE
+ *
+ * `rows` reaches back `smoothingLead` days before the displayed range and
+ * `rateRows` covers RATE_LOAD_DAYS rather than the fourteen it fits. Same
+ * reason for both: a smoothed point is a seven-day trailing mean, so the first
+ * point of any window needs the six days before it or it is computed from a
+ * short window and sits too low — measured at 22 % on a fourteen-day slope.
+ *
+ * Both are trimmed HERE, after smoothing, so the extra days do the work they
+ * were read for and never reach an axis.
  */
 export function weightPanel(
   range: WeightRange,
@@ -79,9 +86,14 @@ export function weightPanel(
   goal: WeightGoal | null,
   today: LocalDate,
 ): WeightPanel {
-  const points = smoothSeries(
+  const smoothed = smoothSeries(
     rows.map((row) => row.date),
     rows.map((row) => row.raw),
+  );
+  // The run-up is dropped now that it has done its work: it exists to give the
+  // first drawn point a full window, never to be drawn itself.
+  const points = smoothed.filter(
+    (point) => compareLocalDate(point.date, range.from) >= 0,
   );
 
   const rateSeries = smoothSeries(

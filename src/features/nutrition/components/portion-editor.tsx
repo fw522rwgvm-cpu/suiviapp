@@ -3,6 +3,7 @@ import { Alert, Pressable, StyleSheet } from 'react-native';
 import { Text } from '@/core/ui/text';
 import { formatQuantity, parseDecimal } from '@/core/format';
 import { useTheme } from '@/core/theme';
+import { DecimalInput } from '@/core/ui/decimal-input';
 import { FormInput, FormRow, FormSection } from '@/core/ui/form-section';
 import type { PortionDraft } from '../domain/food-draft';
 import { availableNames } from '../domain/portions';
@@ -48,11 +49,10 @@ export function PortionEditor({
     ]);
   }
 
-  function setQuantity(index: number, text: string): void {
-    const parsed = parseDecimal(text);
+  function setQuantity(index: number, value: number | null): void {
     onChange(
       portions.map((portion, at) =>
-        at === index ? { ...portion, quantity: parsed ?? 0 } : portion,
+        at === index ? { ...portion, quantity: value ?? 0 } : portion,
       ),
     );
   }
@@ -77,11 +77,15 @@ export function PortionEditor({
         // weighs on the right as the answer — the shape of every other row in
         // the application's forms.
         <FormRow key={`${portion.name}-${index}`} label={portion.name}>
-          <FormInput
-            value={portion.quantity === 0 ? '' : String(portion.quantity).replace('.', ',')}
-            onChangeText={(text) => setQuantity(index, text)}
+          {/*
+            A DecimalInput, not a FormInput bound to a number. Rendering
+            String(quantity) and parsing every keystroke ate the separator and
+            moved the digits — "1,2" became 12. See core/ui/decimal-input.
+          */}
+          <DecimalInput
+            value={portion.quantity === 0 ? null : portion.quantity}
+            onChangeValue={(value) => setQuantity(index, value)}
             placeholder="0"
-            keyboardType="decimal-pad"
             selectTextOnFocus
             accessibilityLabel={`Quantité pour une ${portion.name}`}
           />

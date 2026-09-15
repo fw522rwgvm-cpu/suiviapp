@@ -6,6 +6,7 @@ import { Text } from '@/core/ui/text';
 import { formatKcal, formatMacro, parseDecimal } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import type { FoodId, RecipeId } from '@/core/db/schema';
+import { DecimalInput } from '@/core/ui/decimal-input';
 import { FormInput, FormNavigation, FormRow, FormSection } from '@/core/ui/form-section';
 import { ListSeparator } from '@/core/ui/list-separator';
 import { SwipeBack } from '@/core/ui/swipe-back';
@@ -276,13 +277,16 @@ export function RecipeEditorScreen({ recipeId }: { recipeId: RecipeId | null }) 
           </FormRow>
 
           <FormRow label={draft.yieldType === 'portions' ? 'Portions' : 'Poids fini'}>
-            <FormInput
-              value={draft.yieldValue === 0 ? '' : String(draft.yieldValue).replace('.', ',')}
-              onChangeText={(text) =>
-                setDraft((current) => ({ ...current, yieldValue: parseDecimal(text) ?? 0 }))
+            {/*
+              A DecimalInput: bound to a number through String() this field ate
+              the separator, so a yield of 1,5 kg became 15 (core/ui/decimal-input).
+            */}
+            <DecimalInput
+              value={draft.yieldValue === 0 ? null : draft.yieldValue}
+              onChangeValue={(value) =>
+                setDraft((current) => ({ ...current, yieldValue: value ?? 0 }))
               }
               placeholder="4"
-              keyboardType="decimal-pad"
               selectTextOnFocus
               accessibilityLabel={
                 draft.yieldType === 'portions' ? 'Nombre de portions' : 'Poids fini en grammes'

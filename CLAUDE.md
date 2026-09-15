@@ -61,7 +61,7 @@ L'application doit tolérer un arrêt forcé à tout moment sans perte.
 ---
 
 ## État du projet
-Tranches 0 à 8 livrées. La tranche 8 (poids) ouvre la V2. **1165 tests verts**
+Tranches 0 à 8 livrées. La tranche 8 (poids) ouvre la V2. **1174 tests verts**
 sous les trois fuseaux, `tsc` vert, bundle produit.
 
 **La tranche 8 ne demande AUCUN cycle CI.** Aucune dépendance n'entre :
@@ -3417,6 +3417,83 @@ stepper tant que la requête n'a pas répondu, sinon elle grandirait sous les
 repas au moment où elle répond — le tassement que le carrousel a passé la
 tranche 3 à supprimer, en plus petit.
 
+## Les plages du poids, et un défaut livré qui déplaçait les chiffres (15/09/2026)
+
+**« Tout » disparaît, une semaine prend sa place** : 7 / 30 / 90 jours / 1 an.
+Divergence avec le §9.2, demandée et amendée (`specs §14.17`).
+
+**Et la semaine n'était défendable qu'avec la rampe de lissage.** Un point lissé
+est une moyenne glissante sur sept jours, donc le premier point d'une plage a
+besoin des **six jours qui la précèdent** pour avoir une fenêtre pleine. Sans
+eux il est calculé contre une fenêtre courte et tombe trop bas — exactement le
+biais mesuré à 22 % sur le rythme.
+
+Sur 90 jours ça abîmait six points sur quatre-vingt-dix et passait inaperçu ;
+**sur 7 jours ce serait six sur sept**. D'où `readRangeFor` : ce qui est **lu**
+et ce qui est **dessiné** sont deux valeurs distinctes, pas un drapeau, pour que
+les jours de rampe ne puissent pas atteindre un axe. Le panneau lisse sur la
+première puis coupe à la seconde.
+
+La rampe vaut **zéro au-dessus du grain jour** : un seau hebdomadaire est déjà
+une moyenne de ses jours, il n'y a aucune fenêtre glissante à remplir.
+
+**`readFirstWeightDate` et son hook sont supprimés** — « tout » était leur unique
+appelant. Supprimés plutôt que gardés : du code sans appelant est un piège pour
+qui le rebranchera en le croyant utilisé, et le jour où une plage « tout »
+revient, c'est six lignes.
+
+**Le grain `month` n'a plus aucun appelant, et la branche reste.** D9 est
+normative — « par mois au-delà d'un an » — et le calcul doit déjà être juste le
+jour où une plage plus longue revient. Mais aucune plage offerte ne dépasse 365.
+**Un test le dit explicitement**, pour qu'un lecteur ne le déduise pas lui-même
+et qu'une suppression « de code mort » soit un acte délibéré.
+
+### Un champ décimal lié à un nombre déplace les chiffres
+
+**Défaut livré depuis la tranche 3, reproduit puis corrigé en cinq endroits.**
+
+Lier un champ à un nombre — `String(valeur)` à l'affichage, `parseDecimal` à la
+frappe — ne perd pas seulement le séparateur. Il **déplace les chiffres** :
+
+```
+tapé "1"    -> stocké 1  -> le champ montre "1"
+tapé "1,"   -> stocké 1  -> le champ montre "1"     la virgule a disparu
+tapé "1,2"  -> le champ contient "12"
+stocké: 12
+```
+
+Douze grammes là où un virgule deux était voulu. Plausible, faux, invisible —
+le seul genre de faux qui compte. Atteignable sur **les quatre macros d'un
+aliment, la quantité d'une portion, celle d'un ingrédient, le rendement d'une
+recette et une ligne ajustée**.
+
+**`core/ui/decimal-input.tsx`** le règle : l'état **est le texte tapé**, et le
+nombre est rapporté vers le haut. « 1, » est un état légal de la frappe de
+« 1,2 » et doit survivre à l'écran ; il se lit simplement 1 pour qui demande.
+
+**Et il se resynchronise quand la valeur change de l'extérieur** — un aliment
+qui se charge, des lignes qui se ré-échelonnent — en comparant la valeur
+entrante à ce que son propre texte **parse**. Après « 1, » les deux valent 1,
+donc rien n'est touché ; au chargement, elles diffèrent et le champ se remplit.
+
+**La correction se fait PENDANT le rendu, jamais dans un effet.** C'est la
+réponse de React à une valeur que l'état doit suivre, et la règle que ce projet
+a apprise deux fois : un effet tourne après que son rendu a été peint, donc le
+champ montrerait le texte périmé une image puis vacillerait.
+
+**`MacroFieldRow` n'a pas bougé ; c'est son appelant qui était fautif.** Le
+fichier le nommait déjà : « the editor as numbers on a draft, free entry as the
+strings that were typed — **and the string is the one that can be shared** ». La
+saisie libre tenait du texte et était juste ; l'éditeur d'aliment tenait des
+nombres. Il tient désormais quatre chaînes à côté du brouillon, écrites ensemble
+dans `setMacro` pour qu'elles ne puissent pas dériver. Zéro changement sur une
+rangée partagée et vérifiée sur l'appareil.
+
+**Audit consigné** : tout champ décimal restant tient déjà du texte — saisie
+libre, quantité, objectifs de repas et de modèle, poids, objectif de poids.
+`recipe.prepMinutes` reste lié à un nombre et n'est pas concerné, son clavier
+`number-pad` ne portant aucun séparateur.
+
 ## Points ouverts après la tranche 8
 
 - **Vérification iPhone en attente, et elle s'empile sur deux dettes.** La
@@ -3479,6 +3556,12 @@ tranche 3 à supprimer, en plus petit.
   tranche 8 en ajoute : le chiffre de tête des trois cartes de poids, la colonne
   de l'historique, les valeurs des infobulles. Si Nunito ne porte pas `tnum`, la
   colonne de l'historique est l'endroit où ça se verra le plus.
+- **Aucun champ décimal ne se rend depuis Node**, donc `DecimalInput` lui-même
+  n'est pas testé : ce qui est fixé est l'arithmétique du round-trip qu'il
+  supprime, des deux côtés — la liaison par nombre qui transforme « 1,2 » en 12,
+  et celle par texte qui ne le fait pas. La resynchronisation depuis l'extérieur
+  (un aliment qui se charge, des lignes qui se ré-échelonnent) reste ce que
+  l'appareil seul peut confirmer.
 - **Le battement possible des boutons ± n'a pas été observé.** Un appui écrit,
   le bus invalide, la requête se relit — en local et synchrone, donc en
   dizaines de millisecondes, mais rien ne le garantit sur un appui en rafale.
