@@ -61,8 +61,18 @@ L'application doit tolérer un arrêt forcé à tout moment sans perte.
 ---
 
 ## État du projet
-Tranches 0 à 9 livrées. La tranche 9 (notifications) **clôt la V2**.
-**1260 tests verts** sous les trois fuseaux, `tsc` vert, bundle produit.
+Tranches 0 à 10 livrées. La tranche 9 (notifications) **clôt la V2** ; la
+tranche 10 (exercices et routines) **ouvre la V3**.
+**1418 tests verts** sous les trois fuseaux, `tsc` vert, bundle produit.
+
+**La tranche 10 n'a rien exercé sur l'appareil, et elle n'a pas besoin d'un
+cycle CI pour l'être** : aucune dépendance n'a été ajoutée. `react-native-svg`
+porte la carte corporelle depuis la tranche 7, `gesture-handler` le balayage
+depuis la tranche 3. Metro suffit.
+
+Ce qui reste à voir est ce qu'aucun test ne couvre : **que la carte corporelle
+ressemble à un corps et s'allume aux bons endroits.** Un test dit que `chest`
+possède un tracé ; il ne dit pas que ce tracé traverse les pectoraux.
 
 **Une notification locale a été reçue sur l'appareil (15/09/2026).** C'est le
 premier constat de la tranche 9, et il en emporte trois autres par déduction —
@@ -3988,6 +3998,212 @@ vérification qu'il y a, et l'écran reçoit une valeur déjà rétrécie. Une s
 inconnue revient en arrière au lieu de rendre une page vide avec un titre et
 rien dedans.
 
+## Ce que la tranche 10 a établi
+
+**Le vocabulaire des muscles et du matériel n'existait nulle part, et il est
+inventé ici.** « Muscle » apparaît cinq fois dans les specs et jamais comme une
+liste ; le §2.6 stocke `primary_muscle` en TEXT nu. Pourtant le §10.1 fait du
+filtrage par muscle et matériel une fonctionnalité. Quinze groupes et huit
+matériels sont donc **choisis**, à la granularité où l'on étiquette un exercice —
+pas celle du dessin, qui découpe bien plus fin.
+
+C'est exactement pour ça qu'aucune `CHECK` ne les tient. **Le critère reste celui
+de la tranche 3 — ce qu'un élargissement casserait — et il donne ici la réponse
+inverse de l'intuition** : une liste inventée ce matin, qui n'a jamais rencontré
+un exercice réel, est le candidat le plus probable au changement de tout le
+schéma. La tranche 3 avait refusé une CHECK sur `food_portion.name` pour huit
+mots que les specs **donnaient**.
+
+**`set_type` non plus, et c'est le §10.1 qui décide.** « Volume = charge ×
+répétitions, sur les séries de travail validées uniquement » est une clause
+**positive** — `WHERE set_type = 'work'`. Comparer avec `journal_entry.kind`,
+dont le `SUM` n'a aucune clause et n'est juste que parce que l'ensemble est
+fermé : élargir celui-là produit un total faux, élargir celui-ci exclut
+simplement un type d'un total dont la définition l'exclut. Rien ne devient
+plausible et faux.
+
+**Différer `session_*` ne coûte rien, et le test est la direction des clés
+étrangères.** `session_set.exercise_id` est déclarée dans `session_set`, que
+`0009` créera entière contre un `exercise` déjà là. Le seul cas qui aurait coûté
+est l'inverse — une table de `0008` référençant `session` — et il n'existe pas.
+Mot pour mot l'argument de `notification_setting` différée de `0006` à `0007`.
+
+**`exercise_note` est spécifiée**, contrairement à ce qu'on croit en lisant le
+seul §10 : le §6.3 la définit et le §10.3 la place dans la séance en direct. Sa
+colonne `consumed_at` le confirme. C'est une table de la tranche 11, pas un trou.
+
+**`routine_line.exercise_id` est en `NO ACTION`, et c'est le §5.3 qui l'a décidé
+— par sa seconde phrase, pas par la première.** La première dit qu'aucune
+suppression n'est bloquée, ce qui écarte le défaut SQLite. La seconde demande
+« un avertissement nommant explicitement ce qui sera perdu » — et **pour nommer,
+il faut compter d'abord**. Un CASCADE ferait le même travail en silence et
+l'avertissement devrait deviner. Précédent : `deleteFood`, qui fige puis
+supprime. La clé étrangère est le filet ; la transaction est la politique.
+
+Conséquence nettoyée dans la même transaction : **retirer la dernière ligne d'un
+bloc laisse un bloc vide**, que la page afficherait comme une rangée que
+personne ne peut expliquer. `removeLine` fait la même chose côté brouillon — les
+deux chemins s'accordent au lieu que l'un laisse du travail à l'autre.
+
+**Un superset, c'est deux exercices distincts dans un bloc — jamais deux
+séries.** C'est la distinction qui décide quel temps de repos s'applique, donc
+tout le reste. Compter les *lignes* aurait fait de tout bloc à plusieurs séries
+un superset et déplacé son repos en silence : plausible, et faux pour chaque
+exercice ordinaire de la routine. `restForLine` est le **seul** endroit où ce
+choix se prend, pour que l'écran, l'écriture et la séance de la tranche 11 n'en
+aient pas trois versions. Et ce qui est écrit suit : un superset pose son repos
+sur le bloc et `NULL` sur ses lignes, un bloc simple l'inverse — stocker les deux
+laisserait deux nombres sans règle disant lequel gagne.
+
+Corollaire d'interface : **le champ de repos du bloc n'apparaît que sur un
+superset.** L'offrir ailleurs inviterait à saisir une valeur que rien ne lit.
+
+**`set_index` et `position` sont dérivés de l'ordre du tableau, jamais portés par
+le brouillon.** Un tableau porte déjà un ordre, et deux sources pour un ordre est
+la façon dont une liste finit par se contredire (D9). Dans un superset A/B à
+trois séries, les lignes sont groupées par exercice et les index valent
+1,2,3,1,2,3 : **la routine est une liste à LIRE**, c'est la séance qui décidera
+de l'ordre d'exécution.
+
+**La recherche partage le pliage et rien d'autre.** `foldForSearch` monte dans
+`core/search/` — un exercice se cherche par son nom comme un aliment, et Hermes
+n'est pas plus susceptible de porter les tables Unicode pour l'un que pour
+l'autre. Ce qui ne monte **pas** est le barème : « danone » cherche une marque,
+« poulie » un matériel, et ce ne sont pas les mêmes rangs. Partager le pliage
+partage un vrai problème commun ; partager le barème aurait partagé une
+coïncidence.
+
+Deux choix de filtrage qui ne se devinent pas : **un muscle filtre les
+secondaires aussi**, sans quoi filtrer sur Triceps cacherait le développé couché
+— ce que cherche exactement qui bâtit une séance de poussée ; et **un matériel
+non renseigné ne répond à AUCUN filtre**, parce que prétendre qu'il correspond
+serait affirmer ce que personne n'a dit.
+
+**Les exercices se cherchent sur leurs libellés FRANÇAIS.** Personne ne tape
+`lower_back` ; on tape « lombaires ». La valeur est stockée en anglais pour que
+la colonne et l'export restent d'une seule langue, et la recherche est le seul
+endroit où les deux se rencontrent.
+
+**Le réglage d'incrément est une valeur d'INITIALISATION, et l'écran le dit.**
+Le §6.3 et le §10.4 le répètent : « propre à l'exercice, initialisé depuis la
+valeur globale ». Lue une fois, recopiée. La phrase est **sur la page** parce que
+l'hypothèse inverse est la naturelle — un réglage global qui ne change rien de
+l'existant est surprenant tant qu'il ne le dit pas, et la première correction
+faite là n'aurait silencieusement rien fait de ce qu'on attendait. C'est aussi
+pourquoi `exercise.increment_kg` n'a **pas** de DEFAULT SQL : ce serait une
+seconde source du même nombre, libre de diverger en silence.
+
+### La carte corporelle, et les deux défauts que seul le regard a trouvés
+
+**Sourcée, pas dessinée** : `melihcolpan/MuscleMap`, licence **MIT** —
+permissive, attribution seule, aucun copyleft. On prend les **données**, pas la
+bibliothèque : c'est un SDK SwiftUI dont le `BodyView` dessine dans un
+`CGContext`, inatteignable depuis React Native. Aucune dépendance, donc **aucun
+cycle CI** : `react-native-svg` est dans le binaire depuis la tranche 7 et D13
+nommait déjà cet usage précis.
+
+Vingt-cinq régions dessinées, quinze muscles stockés, une table entre les deux.
+**Huit régions ne s'allument jamais et DESSINENT LE CORPS** — c'est ce qui donne
+une silhouette à une routine qui ne travaille qu'un muscle, au lieu d'un membre
+flottant sur du blanc. La huitième, `tibialis`, est une décision : c'est
+l'antagoniste du mollet, l'allumer avec `calves` serait joli et faux.
+
+**L'erreur contre laquelle cette carte est conçue est le FAUX NÉGATIF.** Un
+muscle travaillé mais laissé gris se lit « je ne travaille jamais ça » — une
+croyance fausse sur laquelle on agit pendant des semaines. Une région un peu trop
+allumée coûte quelques points de largeur. Là où les deux vocabulaires ne
+coïncident pas exactement, la table penche donc vers l'allumage.
+
+**Premier défaut : arrondir les coordonnées cassait le dessin.** SVG colle les
+nombres sans séparateur, donc `0.999.5` vaut 0,999 puis 0,5 ; arrondir le premier
+à `1` donne `1.5`, soit **un seul** nombre. Le résultat sortait avec des bras
+vraisemblables et faux. Les paths sont donc copiés **verbatim** — et ça vaut pour
+toute retouche future de données SVG.
+
+**Second défaut : le viewBox ne peut pas se calculer à l'exécution.** Une région
+porte `a2.05 2.05 0 1.92-2.71` : un arc réclame sept nombres, celui-là en offre
+cinq, et ses deux drapeaux d'un chiffre sont collés à ce qui suit de façon
+**indécidable**. Les deux lectures placent le bord droit de la figure de face à
+150 unités d'écart, et la plus large chevauche la figure de dos. Les paths étant
+générés et immuables, **la boîte est une constante**, mesurée une fois par
+`scripts/extract-body-map.mjs`.
+
+Piège voisin, à connaître avant de parser du SVG ici : **les drapeaux d'un arc
+sont des chiffres uniques**, et le SVG compressé écrit `01-.19` pour (0, 1,
+−0,19). Un tokeniseur qui lit `01` comme un nombre décale tout ce qui suit. Et
+**après un `m`, les paires suivantes sont des `l`**, pas d'autres `m` : les
+traiter comme des déplacements accumule les décalages et fait dériver tout path
+relatif.
+
+**Ce qu'aucun test ne peut dire, et les tests le disent** : qu'une région allumée
+soit anatomiquement au bon endroit. Un test vérifie que `chest` possède un path,
+jamais que ce path traverse les pectoraux. Ça se règle en regardant.
+
+### Trois choses apprises en exécutant
+
+**`COLLATE NOCASE` ne trie QUE l'ASCII.** « Épaulé » se classe après « Zercher »
+parce que U+00C9 est un code point plus grand que 'Z'. Ce n'est pas un défaut à
+corriger dans le SQL : l'ordre affiché vient de `searchExercises`, qui compare
+sur le nom **plié** — seul endroit où les accents peuvent l'être, `lower()` de
+SQLite étant ASCII aussi et une colonne repliée étant de la donnée dérivée (D9).
+L'`ORDER BY` donne un point de départ stable, pas un ordre final. `ix_food_name`
+porte le même défaut depuis la tranche 3 sans que ça ait jamais été écrit.
+
+**`tsc` a attrapé trois fois ce que `vitest` laissait passer** : des assertions
+`as ExerciseId`, un helper de test typant ses muscles en `string`, des types non
+importés dans le seed. Les trois fois, la suite était **verte**. Vitest ne
+vérifie pas les types. C'est tout l'intérêt d'enchaîner par `&&` et non par `;`.
+
+**Un test qui nomme une table FUTURE comme contre-exemple se périme en silence.**
+`refuses a table it has never heard of` utilisait `'exercise'` depuis la
+tranche 2. `0008` l'a rendue vraie, donc le test passait au vert **en n'assertant
+plus rien** — le jour où il servait le plus. Il nomme désormais
+`not_a_table_0000`, qu'aucune migration ne peut créer.
+
+## Points ouverts après la tranche 10
+
+- **Rien de la tranche 10 n'a tourné sur l'appareil.** Aucune dépendance n'a été
+  ajoutée, donc **aucun cycle CI n'est nécessaire** : Metro suffit, le binaire de
+  développement porte déjà `react-native-svg`, `gesture-handler` et le picker.
+  À vérifier dans cet ordre : que la carte corporelle **ressemble à un corps** et
+  s'allume aux bons endroits (c'est le seul point qu'aucun test ne couvre) ; que
+  le balayage d'une série réponde dans une liste imbriquée — deux niveaux de
+  rangées balayables n'ont jamais été exercés ici ; et que l'étape de choix
+  d'exercice revienne sans que la couche arrière apparaisse, le piège du `key`
+  de `SwipeBack` étant exactement celui-là.
+- **La vignette du §10.1 n'est pas affichée et `media_uri` n'est écrite par
+  rien.** Choisir un média demande `expo-image-picker`, hors du §5 : c'est une
+  demande de dépendance native à valider, et elle coûterait un cycle CI. La
+  colonne existe parce qu'elle est nullable — donc gratuite — et que l'oublier
+  aurait coûté une migration.
+- **Le bouton de démarrage d'une routine n'existe pas**, ni les graphiques, les
+  records et l'historique de la page d'un exercice. Les quatre demandent
+  `session_set`, table de la tranche 11.
+- **Hypothèse signalée : l'incrément par défaut vaut 2,5 kg.** Le plus petit pas
+  qu'une barre encaisse vraiment, un disque de 1,25 kg de chaque côté. Choisi, pas
+  mesuré — d'où un réglage, pour que ça se corrige sans migration.
+- **Le vocabulaire est une hypothèse entière.** Quinze muscles et huit matériels
+  inventés en tranche 10, jamais confrontés à un exercice réel. C'est précisément
+  pourquoi aucune CHECK ne les tient : la correction est une ligne de TypeScript.
+  La façon de savoir qu'ils sont faux est de créer vingt exercices.
+- **`serratus` et `hip-flexors` sont rattachés par contiguïté**, pas par
+  anatomie — au pectoral et au quadriceps. Sur ce dessin l'enjeu est faible, les
+  deux étant minuscules. Les éteindre est une ligne dans `body-map.ts`.
+- **`lats` est posé sur `upper-back`**, qui couvre aussi les rhomboïdes et le
+  trapèze moyen. Le mot est celui qu'on emploie en salle ; le dessin est un peu
+  plus large que le mot.
+- **L'aller-retour export / import n'a toujours pas été refait sur l'appareil
+  depuis `0005`.** `0008` porte le total à **treize tables non vérifiées** dans
+  l'unique filet, contre sept avant. C'est la dette la plus vieille et la plus
+  chère de la liste, et elle vient de doubler.
+- **`sweepCache` n'a toujours pas de site d'appel** (hérité de la tranche 4).
+- **L'instrumentation des quatre transitions de D16 n'existe toujours pas.**
+- **Les tranches 6 et 8 n'ont toujours pas tourné sur l'appareil**, et le critère
+  de sortie de la tranche 9 — les conditions des notifications — n'est toujours
+  pas atteint.
+- **`fontVariant: ['tabular-nums']` n'est toujours pas vérifié sur Nunito**, et
+  `SetRow` s'en sert pour aligner les numéros de série.
+
 ## Points ouverts après la tranche 9
 
 - ~~**Rien de la tranche 9 n'a tourné sur l'appareil.**~~ **Une notification a
@@ -4489,9 +4705,19 @@ rien dedans.
   ses entrées reste matérialisée, l'utilisateur ayant bien agi dessus.
 
 ## Points hérités de la tranche 0, toujours ouverts
-- Où vit le sélecteur segmenté de l'onglet Entraînement, une fois qu'il
-  composera Musculation et Activités (tranche 10). L'écran est provisoirement
-  dans `features/strength`.
+- ~~Où vit le sélecteur segmenté de l'onglet Entraînement, une fois qu'il
+  composera Musculation et Activités (tranche 10).~~ **Résolu, et tranché
+  autrement que le §7 ne le dessinait.** Il vit dans
+  `features/strength/screens/training-screen.tsx`, et il n'y en a qu'UN :
+  Musculation / Activités. Le §7 décrit Musculation comme portant « Routines ·
+  Exercices · Historique », ce qui lu à la lettre donne un segmenté dans un
+  segmenté — forme que cette application n'emploie nulle part et qui coûte un
+  instant à chaque fois pour savoir quel niveau a bougé. Routines et Exercices
+  sont donc deux **sections d'une même page** : une routine se bâtit avec des
+  exercices, et les voir ensemble est la façon dont on remarque qu'il en manque
+  un. Specs amendées (`specs §14.20` n° 2). L'onglet gagne au passage son propre
+  `Stack` — quatrième application du motif de `(journal)`, `settings/` et
+  `stats/`.
 - ~~Les en-têtes natifs.~~ **Résolu.** Un groupe `app/(tabs)/(journal)/`
   n'ajoute aucun segment de chemin : l'écran reste la route index du groupe
   d'onglets et gagne un `Stack` natif. ~~L'icône de bibliothèque du §7 s'y
