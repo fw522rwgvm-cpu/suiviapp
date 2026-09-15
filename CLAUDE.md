@@ -3356,6 +3356,67 @@ la même valeur, exactement ce que la règle de la fonction unique existe pour
 éviter. Si ça bat à l'usage, la réponse sera un regroupement, jamais un second
 chiffre.
 
+## L'écran Stats prend deux onglets, et le bloc poids se dépouille (15/09/2026)
+
+**Les deux volets étaient empilés, et ça mettait deux contrôles de plage à un
+défilement l'un de l'autre** — le second arrivant sans prévenir au milieu de la
+page. Un sélecteur segmenté les sépare : Nutrition, Poids.
+
+Ce n'est pas une invention : **le §7 pose déjà ce principe pour l'onglet
+Entraînement** — « sélecteur segmenté au sein d'un écran unique, et non
+navigation imbriquée ». Stats le suit, et le §7 est amendé pour le dire
+(`specs §14.16`). Le « tableau de bord unique » du §7 tient : c'est un écran,
+pas deux.
+
+**Conséquence non demandée et retenue : seul le volet choisi est monté**, donc
+les lectures de l'autre ne tournent pas. Empilé, le volet poids interrogeait la
+base à chaque visite de l'onglet, que quelqu'un descende jusqu'à lui ou non.
+React Query garde ce qu'il a lu, donc revenir est le cache et non SQLite.
+
+**Les plages sont tenues par l'écran, au-dessus des deux volets.** Un état posé
+dans un composant démonté disparaît avec lui : la plage choisie sur un onglet
+doit survivre à une visite sur l'autre, ce que n'importe qui attend d'un
+contrôle réglé exprès.
+
+**Le retour en haut se fait DANS LE HANDLER, pas dans un effet.** Les deux
+volets n'ont pas la même longueur, donc arriver à un décalage que le nouveau ne
+peut pas remplir le laisse borné à un endroit arbitraire — la page s'ouvrirait
+à mi-hauteur d'un volet que personne n'a fait défiler. Un effet le ferait
+**après** que le nouveau contenu a été peint, ce qui est le vacillement que la
+tranche 3 a retiré du carrousel ; là il tourne sur un toucher, avant le
+re-rendu, sur du contenu qui va être remplacé.
+
+**`NutritionPanelSection` sort de l'écran, tel quel.** Avec un volet poids à
+côté, un écran qui tenait en ligne les requêtes d'un volet, son état de plage et
+sa branche vide aurait dû tenir les deux. L'écran est du câblage à nouveau.
+
+### Le bloc poids ne garde que ce qu'un chiffre ne dit pas
+
+**Le titre « Poids » de la carte part** : le titre de section au-dessus le dit
+déjà, et le même mot deux fois en dix-huit points de hauteur est le mot qui ne
+dit rien la seconde fois. Même raisonnement que les titres retirés des listes de
+recettes et de repas récents une fois que le filtre les nommait.
+
+**« Enregistré pour cette date » part aussi**, parce qu'il ne répétait que ce
+qu'un chiffre en noir plein signifie déjà. Ce qui reste est le chiffre — 30
+points, en gras — entre deux boutons de 44, qui est le minimum tactile d'Apple
+et non un nombre qui avait l'air juste. La carte n'a plus rien d'autre à loger.
+
+**Mais « Repris du 14 sept. » SURVIT, et c'est le point.** Cette ligne n'est pas
+du même ordre que celle qu'on retire : c'est la seule chose qu'un chiffre ne
+peut pas dire — que personne ne s'est tenu sur une balance pour lui, et de quel
+jour il vient. La supprimer laisserait la distinction reposer sur une nuance de
+gris, et **un nombre gris ne s'explique pas tout seul**. La couleur atténuée et
+la ligne sont un signal en deux moitiés, pas deux signaux.
+
+Un poids repris affiché comme un poids mesuré est exactement le chiffre faux et
+plausible que le §14.15 n° 2 existe pour empêcher.
+
+**Une hauteur retenue pendant l'attente.** La carte réserve la hauteur du
+stepper tant que la requête n'a pas répondu, sinon elle grandirait sous les
+repas au moment où elle répond — le tassement que le carrousel a passé la
+tranche 3 à supprimer, en plus petit.
+
 ## Points ouverts après la tranche 8
 
 - **Vérification iPhone en attente, et elle s'empile sur deux dettes.** La

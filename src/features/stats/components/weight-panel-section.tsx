@@ -44,9 +44,12 @@ import { WeightCrossChart } from './weight-cross-chart';
  * smoothed over seven days has one usable point, and "tout" is a range specs
  * 8.7 never asks of the calories.
  *
- * The nutrition control stays exactly where it was, at the top of the screen,
- * governing the panel it has always governed. This one sits inside its own
- * section, above the cards it changes.
+ * ## AND NO HEADING OF ITS OWN, SINCE THE TAB IS THE HEADING
+ *
+ * The section was titled "Poids" while the two panels were stacked and needed
+ * telling apart. The tab says it now, directly above, so the title would be the
+ * same word twice — which is what took the headings off the recipe and
+ * recent-meal lists once the filter named them.
  *
  * ## THE GRAIN CHANGES WITH THE RANGE, AND THE SCREEN NEVER KNOWS
  *
@@ -108,8 +111,6 @@ export function WeightPanelSection({
 
   return (
     <>
-      <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Poids</Text>
-
       <Segmented
         options={WEIGHT_RANGE_KEYS.map((key) => ({
           value: key,
@@ -233,7 +234,6 @@ function GoalRow({ label, strong }: { label: string; strong?: boolean }) {
 }
 
 const styles = StyleSheet.create({
-  sectionTitle: { fontSize: 20, fontWeight: '700', marginTop: 24, marginBottom: 4 },
   waiting: { paddingVertical: 32, alignItems: 'center', gap: 8 },
   emptyTitle: { fontSize: 17, fontWeight: '600' },
   emptyText: { fontSize: 14, lineHeight: 20, textAlign: 'center', paddingHorizontal: 24 },
