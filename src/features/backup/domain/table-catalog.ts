@@ -31,6 +31,8 @@ import {
   dayMeal,
   dayTemplate,
   dayTemplateMeal,
+  exercise,
+  exerciseSecondaryMuscle,
   food,
   foodPortion,
   journalEntry,
@@ -40,12 +42,19 @@ import {
   recipeIngredient,
   recipeStep,
   recipeTag,
+  routine,
+  routineBlock,
+  routineLine,
+  routineWarmupStep,
   notificationSetting,
   setting,
   weightGoal,
   weightMeasure,
+  EQUIPMENT,
+  MUSCLES,
   NOTIFICATION_KINDS,
   PORTION_NAMES,
+  SET_TYPES,
   WEIGHT_GOAL_MODES,
   YIELD_TYPES,
 } from '@/core/db/schema';
@@ -219,6 +228,39 @@ const EXPORT_ORDER: readonly { table: SQLiteTable; introducedIn: string }[] = [
    */
   { table: weightGoal, introducedIn: '0006_weight' },
   { table: weightMeasure, introducedIn: '0006_weight' },
+  /**
+   * The strength block closes the file, and its internal order is forced from
+   * end to end — the first block in this export where that is true.
+   *
+   * `exercise` leads, because exercise_secondary_muscle AND routine_line both
+   * reference it. `routine` follows, because its three children reference it.
+   * routine_block precedes routine_line, which references the block it sits in.
+   * So this is not the readable ordering the planning and recipe blocks chose
+   * for a reader repairing the file by hand — here the dependencies chose it,
+   * and any other order would need foreign keys off to load. They are off
+   * during the fill anyway, journal_entry referencing itself; this matters at
+   * barrier 3, where foreign_key_check runs with them back on.
+   *
+   * Placed AFTER the weight block rather than anywhere else because V3 joins
+   * nothing above it: no table here references nutrition, planning, recipes or
+   * weight, and none of those references these. The file therefore reads as
+   * configuration, then nutrition, then journal, then weight, then strength —
+   * each domain whole, in the order the versions arrived.
+   *
+   * ## WHAT IS NOT HERE YET, AND WILL BE IN SLICE 11
+   *
+   * session, session_segment, session_block, session_set and exercise_note.
+   * They are not exclusions and must not become entries here before they exist:
+   * the coverage test classifies what the SCHEMA declares, so the day 0009
+   * lands, that test goes red and somebody decides — which is the mechanism
+   * working, exactly as it did when 0002 brought `food`.
+   */
+  { table: exercise, introducedIn: '0008_strength' },
+  { table: exerciseSecondaryMuscle, introducedIn: '0008_strength' },
+  { table: routine, introducedIn: '0008_strength' },
+  { table: routineWarmupStep, introducedIn: '0008_strength' },
+  { table: routineBlock, introducedIn: '0008_strength' },
+  { table: routineLine, introducedIn: '0008_strength' },
 ];
 
 /**
@@ -437,6 +479,99 @@ const VALUE_RULES: Record<string, Record<string, ValueRule>> = {
      * out, exactly as normalizeCutoffHour does. An hour of 25 in a
      * hand-repaired archive imports, reads back as 23, and breaks nothing — a
      * settings row is never a reason to refuse to work.
+     */
+  },
+  /**
+   * THE STRENGTH TABLES PUT MORE WEIGHT ON THESE RULES THAN ANY BLOCK BEFORE.
+   *
+   * Three closed vocabularies land in 0008 and NONE of them carries a CHECK —
+   * muscles, equipment and set types. So for all three this rule is not one
+   * barrier of two, it is the only one, which is the food_portion.name position
+   * and the STRONGER form by that argument: it runs before the first insert and
+   * names the table, the row index and the column, where a CHECK would cite a
+   * constraint name. D7 wants a file repairable by hand.
+   *
+   * Two of the three are worse than food_portion.name ever was, and that is
+   * exactly why they are held here rather than in SQL: neither document gives
+   * these lists. They are chosen in schema/strength.ts, have never met a real
+   * exercise, and are the likeliest thing in this schema to move. A CHECK would
+   * make widening them a table rebuild.
+   *
+   * All three named from the schema rather than respelled, the shape
+   * PORTION_NAMES set in slice 3.
+   */
+  exercise: {
+    id: { rule: 'entity_id' },
+    primary_muscle: { rule: 'one_of', allowed: MUSCLES },
+    equipment: { rule: 'one_of', allowed: EQUIPMENT },
+    /**
+     * media_uri carries NO rule, and there is none to give it.
+     *
+     * It holds a file NAME relative to the application's media folder, never an
+     * absolute URI — an iOS container is named by a UUID that changes on
+     * reinstall, so an absolute path dies on its own. No rule here is a shape
+     * (civil_date, entity_id, epoch_ms) or a closed set, and "some file name"
+     * is neither. Same deferral already taken for food.barcode's non_empty: the
+     * catalogue assumes its rules may be incomplete, which only ever makes
+     * validation weaker, never wrong.
+     *
+     * What matters is stated where it can be enforced — specs 5.4 no 3 requires
+     * a missing medium to show a substitute and never crash, so a dead name
+     * imports and displays a placeholder, which is the specified behaviour
+     * rather than a failure to validate.
+     *
+     * increment_kg carries none either: ck_exercise_increment holds it above
+     * zero in SQL, and there is no numeric rule in this catalogue at all.
+     * is_favorite likewise — the one_of rule takes strings, and
+     * ck_exercise_favorite constrains it, which it can afford because a boolean
+     * will never widen.
+     */
+    created_at: { rule: 'epoch_ms' },
+    updated_at: { rule: 'epoch_ms' },
+  },
+  exercise_secondary_muscle: {
+    exercise_id: { rule: 'entity_id' },
+    muscle: { rule: 'one_of', allowed: MUSCLES },
+  },
+  routine: {
+    id: { rule: 'entity_id' },
+    created_at: { rule: 'epoch_ms' },
+    updated_at: { rule: 'epoch_ms' },
+  },
+  routine_warmup_step: {
+    id: { rule: 'entity_id' },
+    routine_id: { rule: 'entity_id' },
+    /**
+     * `text` carries no rule, and there is none to give: specs 10.2 says "une
+     * étape par ligne saisie", so the whole point is that the user writes it.
+     * recipe_step.text and recipe_tag.tag are in the same position.
+     */
+  },
+  routine_block: {
+    id: { rule: 'entity_id' },
+    routine_id: { rule: 'entity_id' },
+    /**
+     * rest_seconds and position are integers, which the one_of rule cannot
+     * take — planning_weekday.weekday's position. ck_block_rest holds the rest
+     * above zero in SQL.
+     */
+  },
+  routine_line: {
+    id: { rule: 'entity_id' },
+    block_id: { rule: 'entity_id' },
+    /**
+     * A real foreign key backs this one, unlike journal_entry.source_food_id —
+     * a routine is a living object, not history, so the link is live. The rule
+     * is still worth declaring: barrier 3 runs foreign_key_check and would
+     * report a violation citing a constraint, where this names the row.
+     */
+    exercise_id: { rule: 'entity_id' },
+    set_type: { rule: 'one_of', allowed: SET_TYPES },
+    /**
+     * What NO rule here can express, stated so the gap is deliberate rather
+     * than forgotten: that reps_min must not exceed reps_max. Rules are
+     * per-column and that one spans two, so ck_line_reps carries it in SQL —
+     * the same position as ck_ingredient_link and ck_weight_goal_terms.
      */
   },
   weight_goal: {

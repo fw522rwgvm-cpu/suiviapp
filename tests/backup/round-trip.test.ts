@@ -8,11 +8,16 @@ import {
   type DayMealId,
   type DayTemplateId,
   type DayTemplateMealId,
+  type ExerciseId,
   type FoodId,
   type JournalEntryId,
   type RecipeId,
   type RecipeIngredientId,
   type RecipeStepId,
+  type RoutineBlockId,
+  type RoutineId,
+  type RoutineLineId,
+  type RoutineWarmupStepId,
   type WeightGoalId,
 } from '../../src/core/db/schema';
 import { buildDatabase } from '../../src/features/backup/domain/build-database';
@@ -409,6 +414,95 @@ function fillEveryColumn(raw: Database.Database): void {
   );
   insertNotification.run('weigh_in', 1, 7, 35);
   insertNotification.run('export_reminder', 0, null, null);
+
+  /**
+   * The strength block, filled the way every block here is: one row carrying a
+   * real value in EVERY column, and a second leaving the nullable ones empty.
+   *
+   * The second row is not padding. Slice 2 found by mutation that a serialiser
+   * dropping a nullable column is invisible when no fixture ever fills it —
+   * null compares equal to null on both sides and the test passes. So every
+   * note, the media name, the equipment, the target load, the rir, the rest and
+   * the range all hold a value once and are absent once.
+   *
+   * media_uri holds a RELATIVE name rather than a file:// URI, because that is
+   * what the column is specified to hold: an iOS container is named by a UUID
+   * that changes on reinstall, so an absolute path would be dead data even
+   * without an export. Nothing in slice 10 writes this column; the round trip
+   * is what proves it still travels.
+   */
+  const exerciseA = newId<ExerciseId>();
+  const exerciseB = newId<ExerciseId>();
+  const insertExercise = raw.prepare(
+    'INSERT INTO exercise (id, name, primary_muscle, equipment, media_uri, note_execution, ' +
+      'note_setup, note_breathing, note_mistakes, increment_kg, is_favorite, created_at, ' +
+      'updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  );
+  insertExercise.run(
+    exerciseA,
+    'Développé couché',
+    'chest',
+    'barbell',
+    'developpe-couche.jpg',
+    'Omoplates serrées, pieds au sol.',
+    'Banc à plat, barre à hauteur des yeux.',
+    'Inspirer à la descente, souffler à la poussée.',
+    'Rebond sur la poitrine.',
+    2.5,
+    1,
+    1_789_500_000_000,
+    1_789_500_000_001,
+  );
+  // Every nullable column empty, and an increment that is not the default of
+  // the settings key, so a write path reading the wrong source shows up.
+  insertExercise.run(exerciseB, 'Tractions', 'lats', null, null, null, null, null, null, 1.25, 0, null, null);
+
+  const insertSecondary = raw.prepare(
+    'INSERT INTO exercise_secondary_muscle (exercise_id, muscle) VALUES (?, ?)',
+  );
+  insertSecondary.run(exerciseA, 'triceps');
+  insertSecondary.run(exerciseA, 'shoulders');
+  insertSecondary.run(exerciseB, 'biceps');
+
+  const routineId = newId<RoutineId>();
+  raw
+    .prepare('INSERT INTO routine (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)')
+    .run(routineId, 'Haut du corps A', 1_789_500_000_002, 1_789_500_000_003);
+
+  const insertWarmup = raw.prepare(
+    'INSERT INTO routine_warmup_step (id, routine_id, position, text) VALUES (?, ?, ?, ?)',
+  );
+  insertWarmup.run(newId<RoutineWarmupStepId>(), routineId, 0, '5 min de rameur');
+  insertWarmup.run(newId<RoutineWarmupStepId>(), routineId, 1, 'Rotations d’épaules');
+
+  /**
+   * Two blocks, and they are the two SHAPES specs 10.2 distinguishes: a single
+   * exercise, whose lines carry their own rest and whose block leaves
+   * rest_seconds null; and a superset, where the rest belongs to the block and
+   * the lines leave theirs null. Both columns therefore hold a value in one row
+   * and not in the other, which is the same rule as everywhere else here — and
+   * it happens to be the invariant of the feature too.
+   */
+  const blockSingle = newId<RoutineBlockId>();
+  const blockSuperset = newId<RoutineBlockId>();
+  const insertBlock = raw.prepare(
+    'INSERT INTO routine_block (id, routine_id, position, rest_seconds) VALUES (?, ?, ?, ?)',
+  );
+  insertBlock.run(blockSingle, routineId, 0, null);
+  insertBlock.run(blockSuperset, routineId, 1, 90);
+
+  const insertLine = raw.prepare(
+    'INSERT INTO routine_line (id, block_id, exercise_id, position, set_index, set_type, ' +
+      'reps_min, reps_max, target_load_kg, target_rir, rest_seconds, progression_enabled, note) ' +
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  );
+  // Every column filled: a real range, a load, a half-RIR, its own rest.
+  insertLine.run(newId<RoutineLineId>(), blockSingle, exerciseA, 0, 1, 'work', 6, 8, 72.5, 1.5, 120, 1, 'Pause en bas');
+  // A warm-up set with no range, no load and no note — the nullable columns empty.
+  insertLine.run(newId<RoutineLineId>(), blockSingle, exerciseA, 1, 2, 'warmup', null, null, null, null, null, 0, null);
+  // The superset: two exercises in one block, rest carried by the block.
+  insertLine.run(newId<RoutineLineId>(), blockSuperset, exerciseB, 0, 1, 'dropset', 10, 10, 0, 0, null, 0, null);
+  insertLine.run(newId<RoutineLineId>(), blockSuperset, exerciseA, 1, 1, 'long', 12, 20, 40, 3, null, 1, null);
 }
 
 function roundTrip(): void {

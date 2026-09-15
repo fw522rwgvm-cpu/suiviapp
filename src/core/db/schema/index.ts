@@ -9,3 +9,4 @@ export * from './recipes';
 export * from './off';
 export * from './weight';
 export * from './notifications';
+export * from './strength';
