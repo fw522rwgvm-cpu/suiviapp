@@ -69,4 +69,59 @@ describe('application variants', () => {
     expect(config.ios?.infoPlist?.['UIFileSharingEnabled']).toBe(true);
     expect(config.ios?.infoPlist?.['LSSupportsOpeningDocumentsInPlace']).toBe(true);
   });
+
+  /**
+   * THE expo-notifications PLUGIN MUST NOT BE DECLARED, and this is the one
+   * thing in slice 9 that could break the build chain rather than a feature.
+   *
+   * Read in the package source, not assumed: withNotificationsIOS writes
+   * `aps-environment` into the entitlements as its FIRST action,
+   * unconditionally, with no option to decline. That is the APNs capability — a
+   * free Apple account does not have it, and SideStore strips what it cannot
+   * sign. It is the exact shape of the failure test B had with HealthKit, which
+   * is why D14 refused to bet on anything the signature could shave off.
+   *
+   * A LOCAL notification needs none of it: registerForRemoteNotifications lives
+   * only in PushTokenModule, reached only from getDevicePushTokenAsync, which
+   * nothing in this project calls. The native module autolinks through
+   * expo-module.config.json, the way expo-sharing's does.
+   *
+   * So the plugin is absent for a THIRD reason, distinct from both precedents:
+   * expo-camera is declared because its plugin writes an Info.plist key iOS
+   * kills the app without; expo-sharing is absent because its plugin adds an
+   * extension target that would cost a second identifier; this one is absent
+   * because its plugin writes an entitlement the signing chain cannot honour.
+   *
+   * The tempting wrong move is one line — "the plugin is missing" — and its
+   * consequence would appear a full CI cycle later, as a build or an install
+   * that fails for reasons nothing connects to notifications.
+   */
+  it('strips the APNs entitlement expo-notifications adds on its own', async () => {
+    const config = await loadConfig('production');
+    const names = (config.plugins ?? []).map((plugin) =>
+      Array.isArray(plugin) ? plugin[0] : plugin,
+    );
+
+    // The removal plugin must be present, and LAST — it undoes something that
+    // runs before it. Removing it is a one-line change whose consequence
+    // appears a whole CI cycle later, as an installation iOS refuses for
+    // reasons nothing connects to notifications.
+    expect(names).toContain('./plugins/with-no-aps-environment');
+    expect(names[names.length - 1]).toBe('./plugins/with-no-aps-environment');
+  });
+
+  it('declares no iOS entitlements of its own', async () => {
+    // The broader property, asserted from the other side: this project ships
+    // plain Info.plist keys and nothing that needs a capability. An entitlement
+    // arriving here is a decision to take deliberately, against a signing chain
+    // that has already refused one (test B, HealthKit).
+    //
+    // NOTE what this cannot see: a package's config plugin is auto-applied on
+    // SDK 57, so it can add an entitlement without ever appearing in this
+    // object. That is exactly how aps-environment arrived, and why the only
+    // real check is the preflight — prebuild, then grep the generated
+    // .entitlements. No test in Node can replace it.
+    const config = await loadConfig('production');
+    expect(config.ios?.entitlements).toBeUndefined();
+  });
 });
