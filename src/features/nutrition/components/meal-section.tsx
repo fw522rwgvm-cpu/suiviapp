@@ -12,7 +12,7 @@ import { EntryRow } from './entry-row';
 import { mealColor, mealSymbol } from './meal-symbol';
 import { ProgressRing } from './progress-ring';
 import { RecipeBlockRow } from './recipe-block-row';
-import { SwipeToDeleteRow } from './swipe-to-delete-row';
+import { SwipeToDeleteRow } from '@/core/ui/swipe-to-delete-row';
 import { ListSeparator } from '@/core/ui/list-separator';
 
 /**

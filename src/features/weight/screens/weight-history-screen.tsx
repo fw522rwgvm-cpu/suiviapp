@@ -6,7 +6,7 @@ import { EmptyState } from '@/core/ui/empty-state';
 import { ListSeparator } from '@/core/ui/list-separator';
 import { LoadingDots } from '@/core/ui/loading-dots';
 import { Text } from '@/core/ui/text';
-import { SwipeToDeleteRow } from '@/features/nutrition/components/swipe-to-delete-row';
+import { SwipeToDeleteRow } from '@/core/ui/swipe-to-delete-row';
 import { useDeleteWeight, useWeightHistory } from '../data/weight-queries';
 
 /**

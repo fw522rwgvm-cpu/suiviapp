@@ -51,7 +51,7 @@ import { detourFor, type OffDetour } from '../off/off-detour';
 import { draftFromProduct } from '../off/off-draft';
 import { FoodEditorScreen } from './food-editor-screen';
 import { PendingEntryRow } from '../components/pending-entry-row';
-import { SwipeToDeleteRow } from '../components/swipe-to-delete-row';
+import { SwipeToDeleteRow } from '@/core/ui/swipe-to-delete-row';
 import { SearchField } from '../components/search-field';
 import { formatChoiceWithBase } from '../components/portion-text';
 import { FreeEntryScreen } from './free-entry-screen';

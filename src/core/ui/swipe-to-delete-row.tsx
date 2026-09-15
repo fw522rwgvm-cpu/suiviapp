@@ -16,6 +16,23 @@ import { ACTION_WIDTH, settleSwipe } from './swipe-settle';
 /**
  * Swipe left to delete (specs 8.3), and to take a line out of the basket.
  *
+ * ## WHY THIS LIVES IN core/ui, AND WHY THAT TOOK TWO SLICES TOO LONG
+ *
+ * The project's rule is that a component moves here at its SECOND real user.
+ * This one reached that in slice 8, when weight-history-screen.tsx imported it
+ * from '@/features/nutrition/components/' — a cross-domain import that worked,
+ * shipped, and was written up nowhere. Slice 10 would have been the third
+ * domain reaching across into nutrition for a row that has nothing to do with
+ * food.
+ *
+ * Moved rather than imported a third time, because the alternative is how a
+ * feature folder quietly becomes a shared library: every caller after the first
+ * is evidence the rule already fired, and the only thing a missed promotion
+ * changes is where the next reader thinks the code belongs.
+ *
+ * Nothing about the behaviour changed with the move. swipe-settle.ts came with
+ * it, being the half of the decision that is deliberately not in the gesture.
+ *
  * ## How close this gets to the system, and where it stops
  *
  * The Files app uses UISwipeActionsConfiguration on a UITableView. React
