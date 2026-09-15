@@ -1,0 +1,189 @@
+import type { Equipment, Muscle } from '@/core/db/schema';
+
+/**
+ * The progression increment a new exercise starts from, in kilograms
+ * (specs 6.3, 10.4, 12).
+ *
+ * ASSUMPTION, FLAGGED: no document gives this number. 2.5 kg is the smallest
+ * step a barbell actually takes — a 1.25 kg plate on each side — which makes it
+ * the increment that fits the most exercises without being useless for any. It
+ * is a SETTING precisely so the guess can be corrected without a migration,
+ * the way export_reminder_days was in slice 2.
+ *
+ * Clamped rather than validated on the way in AND on the way out, which is this
+ * project's answer to a bad settings value everywhere: reading protects against
+ * a row this application did not write, writing means the stored value is the
+ * one the user will be shown back. A settings row is never a reason to refuse
+ * to work.
+ *
+ * The bounds are what a plate set can express: a gram is not an increment, and
+ * past 50 kg it is not a progression.
+ */
+export const DEFAULT_PROGRESSION_INCREMENT_KG = 2.5;
+export const MIN_PROGRESSION_INCREMENT_KG = 0.1;
+export const MAX_PROGRESSION_INCREMENT_KG = 50;
+
+export function normalizeProgressionIncrement(value: number | null | undefined): number {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return DEFAULT_PROGRESSION_INCREMENT_KG;
+  }
+  if (value < MIN_PROGRESSION_INCREMENT_KG) return MIN_PROGRESSION_INCREMENT_KG;
+  if (value > MAX_PROGRESSION_INCREMENT_KG) return MAX_PROGRESSION_INCREMENT_KG;
+  // Rounded to the gram: the field accepts what a scale can express, and a
+  // stored 2.4999999999 would read back as a number nobody typed.
+  return Math.round(value * 1000) / 1000;
+}
+
+/**
+ * An exercise being created or edited, and what makes it valid (specs 10.1).
+ *
+ * Pure: it knows neither the database nor React. The editor holds one of these
+ * in state, this module says what is wrong with it, and exercise-writes.ts
+ * turns a valid one into rows. No calculation lives in the component (D9).
+ *
+ * PROBLEMS ARE VALUES, NEVER EXCEPTIONS (conventions section 4), and every
+ * problem is collected rather than stopping at the first — food-draft.ts's
+ * shape, for the reason it gives: fixing a form one error per attempt is a path
+ * you walk once, badly.
+ */
+
+export interface ExerciseDraft {
+  name: string;
+  primaryMuscle: Muscle;
+  /** NULL means "not stated"; the editor always offers a choice. */
+  equipment: Equipment | null;
+  /**
+   * Secondary muscles, without the primary one (specs 6.3).
+   *
+   * A Set rather than an array, because the table's composite primary key says
+   * the same thing: a muscle is either secondary to this exercise or it is not,
+   * and twice is once. The editor toggles, so a Set is also what it holds.
+   */
+  secondaryMuscles: ReadonlySet<Muscle>;
+  noteExecution: string;
+  noteSetup: string;
+  noteBreathing: string;
+  noteMistakes: string;
+  /**
+   * Kilograms, in the step this exercise progresses by (specs 6.3, 10.4).
+   *
+   * A STRING while it is being typed, and that is not laziness. Slice 8 found
+   * that binding a decimal field to a number moves the caret: "2." parses to 2,
+   * re-renders as "2", and the dot the user just typed disappears. The string
+   * is what the field holds; the number is what validation reads.
+   */
+  incrementKg: string;
+  isFavorite: boolean;
+}
+
+export type ExerciseProblem =
+  | { kind: 'name_missing' }
+  | { kind: 'increment_missing' }
+  | { kind: 'increment_not_positive' }
+  | { kind: 'secondary_repeats_primary'; muscle: Muscle };
+
+/**
+ * The increment as a number, or null when the field does not hold one.
+ *
+ * Comma accepted because a French keyboard offers one, and refusing it would
+ * make the field reject what the phone suggests. The project already does this
+ * for every decimal it reads.
+ */
+export function parseIncrement(value: string): number | null {
+  const trimmed = value.trim().replace(',', '.');
+  if (trimmed === '') return null;
+  // Number('') is 0 and Number(' ') is 0: the emptiness is checked first, which
+  // is the rule slice 4 wrote down — absent must never become zero.
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function validateExerciseDraft(draft: ExerciseDraft): ExerciseProblem[] {
+  const problems: ExerciseProblem[] = [];
+
+  if (draft.name.trim() === '') problems.push({ kind: 'name_missing' });
+
+  const increment = parseIncrement(draft.incrementKg);
+  if (increment === null) {
+    problems.push({ kind: 'increment_missing' });
+  } else if (increment <= 0) {
+    // ck_exercise_increment refuses this in SQL too. Caught here first so the
+    // form says which field is wrong, rather than the write failing with a
+    // constraint name — the food_portion.name argument, applied to a form.
+    problems.push({ kind: 'increment_not_positive' });
+  }
+
+  /**
+   * A muscle cannot be both primary and secondary.
+   *
+   * Not a database constraint, and could not be one: the two live in different
+   * tables, so SQL has nowhere to put it. What it would produce is a body map
+   * lit identically by two claims and a search that matches the same exercise
+   * twice for one term — plausible, and wrong in a way nobody would look for.
+   */
+  if (draft.secondaryMuscles.has(draft.primaryMuscle)) {
+    problems.push({ kind: 'secondary_repeats_primary', muscle: draft.primaryMuscle });
+  }
+
+  return problems;
+}
+
+export function isValidExerciseDraft(draft: ExerciseDraft): boolean {
+  return validateExerciseDraft(draft).length === 0;
+}
+
+/**
+ * A blank draft, with the increment already filled from the global setting.
+ *
+ * THE CALLER PASSES THE SETTING, which is the whole point of the signature.
+ * Specs 6.3 and 10.4 say the increment is "propre à l'exercice, initialisé
+ * depuis la valeur globale des Réglages": an INITIAL VALUE read once, copied,
+ * and thereafter the exercise's own. A default read on every access would make
+ * changing the setting rewrite every exercise retroactively, which "propre à
+ * l'exercice" rules out.
+ *
+ * So there is exactly one path from the setting to the column, and it runs
+ * through here. That is also why `exercise.increment_kg` carries no SQL
+ * DEFAULT: a second source for the same initial value would be free to drift
+ * from this one, silently, both numbers being plausible.
+ */
+export function emptyExerciseDraft(defaultIncrementKg: number): ExerciseDraft {
+  return {
+    name: '',
+    primaryMuscle: 'chest',
+    equipment: null,
+    secondaryMuscles: new Set(),
+    noteExecution: '',
+    noteSetup: '',
+    noteBreathing: '',
+    noteMistakes: '',
+    incrementKg: formatIncrement(defaultIncrementKg),
+    isFavorite: false,
+  };
+}
+
+/**
+ * A number in the field's spelling: a comma, and no trailing zeroes.
+ *
+ * 2.5 reads as "2,5" and 2 as "2" rather than "2,0" — the field is a place to
+ * type, not a place to display a formatted figure.
+ */
+export function formatIncrement(value: number): string {
+  return String(value).replace('.', ',');
+}
+
+/** What is stored, once the draft is valid. Null never reaches this. */
+export function incrementOf(draft: ExerciseDraft): number {
+  return parseIncrement(draft.incrementKg) ?? 0;
+}
+
+/** Toggling a secondary muscle, which is what the editor does to the Set. */
+export function toggleSecondary(
+  muscles: ReadonlySet<Muscle>,
+  muscle: Muscle,
+): ReadonlySet<Muscle> {
+  const next = new Set(muscles);
+  if (next.has(muscle)) next.delete(muscle);
+  else next.add(muscle);
+  return next;
+}
