@@ -165,6 +165,33 @@ export function SettingsScreen() {
         </Note>
       </Section>
 
+      {/*
+        NOTIFICATIONS (specs 12, 9.3).
+
+        After POIDS and before DONNÉES, for the reason POIDS sits where it
+        does: the table of specs 12 is an inventory of what the Settings hold
+        rather than a running order, and À PROPOS has closed this screen since
+        slice 7.
+
+        A pushed screen rather than rows here, because four notifications each
+        carrying a switch and an hour is not a card — and because the
+        authorisation prompt belongs to a deliberate visit, not to a screen you
+        scroll past.
+      */}
+      <Section title="NOTIFICATIONS">
+        <Card>
+          <LinkRow
+            label="Rappels et bilan"
+            first
+            onPress={() => router.push('/(tabs)/settings/notifications')}
+          />
+        </Card>
+        <Note>
+          Quatre rappels locaux, chacun à son heure. iOS vous demandera
+          l’autorisation au moment où vous en activerez un, jamais avant.
+        </Note>
+      </Section>
+
       {/* The safety net comes first among the rest: it is the only one there
           is (specs 5.4). */}
       <DataSection />

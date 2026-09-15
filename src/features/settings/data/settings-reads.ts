@@ -139,6 +139,37 @@ export function readLastExportAt(db: AppDatabase): number | null {
   return value !== null && value >= 0 ? value : null;
 }
 
+/**
+ * Bounds, and they exist because slice 9 finally gives this a control.
+ *
+ * One day is the tightest setting that still means something — "remind me if I
+ * did not export yesterday". Thirty is a month, past which the reminder has
+ * stopped being a safety net and become an annual ritual; specs 5.4 makes the
+ * export the only protection there is, and the weight exists nowhere else at
+ * all (specs 9.1).
+ *
+ * Wider than they need to be on purpose, the way the adherence tolerance is:
+ * refusing values in between would be inventing a rule no document asks for.
+ */
+export const MIN_EXPORT_REMINDER_DAYS = 1;
+export const MAX_EXPORT_REMINDER_DAYS = 30;
+
+/**
+ * Clamps the delay, the way normalizeCutoffHour clamps an hour.
+ *
+ * Bounds belong to the rule rather than to the storage, so this sits beside the
+ * default it falls back to and is applied on both sides of the column.
+ */
+export function normalizeExportReminderDays(value: number | null | undefined): number {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return DEFAULT_EXPORT_REMINDER_DAYS;
+  }
+  const whole = Math.trunc(value);
+  if (whole < MIN_EXPORT_REMINDER_DAYS) return MIN_EXPORT_REMINDER_DAYS;
+  if (whole > MAX_EXPORT_REMINDER_DAYS) return MAX_EXPORT_REMINDER_DAYS;
+  return whole;
+}
+
 export function readExportReminderDays(db: AppDatabase): number {
   const value = readIntegerSetting(
     db,

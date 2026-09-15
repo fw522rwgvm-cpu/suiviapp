@@ -4,7 +4,7 @@ import type { AppDatabase } from '@/core/db/database';
 import { setting } from '@/core/db/schema';
 import type { ThemePreference } from '@/core/theme/tokens';
 import { normalizeAdherenceTolerance } from '../domain/preferences';
-import { SETTING_KEYS } from './settings-reads';
+import { normalizeExportReminderDays, SETTING_KEYS } from './settings-reads';
 
 /**
  * Writes to the key/value settings (schema 2.1).
@@ -104,6 +104,31 @@ export function writeThemePreference(db: AppDatabase, preference: ThemePreferenc
  */
 export function writeCutoffHour(db: AppDatabase, hour: number): void {
   writeSetting(db, SETTING_KEYS.dayCutoffHour, String(normalizeCutoffHour(hour)));
+}
+
+/**
+ * How many days before the export counts as stale (specs 5.4, 9.3).
+ *
+ * ## THE SECOND USER THIS KEY WAS WAITING FOR
+ *
+ * The value has been readable since slice 2 and settable from nowhere. Slice 7
+ * recorded why: the indicator on the Settings screen highlights itself past the
+ * delay, and until the export REMINDER existed there was nothing a user could
+ * do with the number that they could not do by looking. Slice 9 is that
+ * reminder, and a delay that decides when a notification fires is a delay worth
+ * choosing.
+ *
+ * The seven it defaults to remains the flagged assumption it always was — specs
+ * 5.4 asks for the age to be highlighted "beyond a delay" and never gives one,
+ * and seven coincides with the SideStore certificate cycle. It is a setting
+ * precisely so the guess can be corrected without a migration, and now it can.
+ */
+export function writeExportReminderDays(db: AppDatabase, days: number): void {
+  writeSetting(
+    db,
+    SETTING_KEYS.exportReminderDays,
+    String(normalizeExportReminderDays(days)),
+  );
 }
 
 /** Slack allowed on each of the four macros, in percent (specs 8.7). */
