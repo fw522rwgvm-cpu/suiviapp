@@ -50,8 +50,15 @@ describe('table catalog', () => {
     // genuinely free: neither table carries a foreign key in either direction.
     // Kept together rather than filed by kind, because weight is a domain of
     // its own with nothing joining it to nutrition.
+    //
+    // notification_setting has the same freedom and takes the opposite choice:
+    // it sits WITH the configuration at the top, beside `setting`, because one
+    // table of four rows holding what the user chose is configuration rather
+    // than a domain. A reader repairing this file by hand (D7) finds the two
+    // settings tables together, before any data.
     expect(exportedTables().map((table) => table.name)).toEqual([
       'setting',
+      'notification_setting',
       'day_template',
       'day_template_meal',
       'planning_weekday',

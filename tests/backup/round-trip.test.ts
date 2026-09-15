@@ -387,6 +387,28 @@ function fillEveryColumn(raw: Database.Database): void {
   insertGoal.run(
     newId<WeightGoalId>(), 80.25, 'target_date', '2026-12-31', null, 1_789_000_000_041, 0,
   );
+
+  /**
+   * TWO NOTIFICATION SETTINGS, FOR THE REASON THE TWO FOODS EXIST.
+   *
+   * hour and minute are NULLABLE — null means "never chosen" and reads as the
+   * kind's default — so one row carrying them and one row leaving them empty is
+   * what makes a dropped column visible. With only the null row, a serialiser
+   * losing `hour` would compare null to null on both sides and pass: that is
+   * the exact hole slice 2 found by mutation, where `brand` was never filled.
+   *
+   * The enabled row is also the one that is enabled, so the flag holds a value
+   * other than its default. A column left at its default is a column a
+   * dropped-column bug survives.
+   *
+   * A minute that is not zero and not a round quarter, because an hour
+   * serialised without its minute would still look plausible at 7:00.
+   */
+  const insertNotification = raw.prepare(
+    'INSERT INTO notification_setting (kind, enabled, hour, minute) VALUES (?, ?, ?, ?)',
+  );
+  insertNotification.run('weigh_in', 1, 7, 35);
+  insertNotification.run('export_reminder', 0, null, null);
 }
 
 function roundTrip(): void {
