@@ -369,7 +369,25 @@ export function FoodEditorScreen({
         both here now.
       */}
       <FormNavigation anchor={form.anchor}>
-      <KeyboardAvoidingView behavior="padding" style={styles.flex}>
+      {/*
+        PAINTED HERE, NOT ON THE SCROLL VIEW — and the keyboard bar is why.
+
+        `behavior="padding"` keeps this view full height and pushes the content
+        up with its own bottom padding, so the scroll view SHRINKS away from the
+        keyboard. Whatever was painting only the scroll view therefore stopped
+        painting the strip the keyboard and its accessory sit over, and what
+        showed through was the window itself — which has no background of its
+        own and is white. Slice 5 found the same white around the calendar
+        window and wrote it down; this is the same one, from underneath.
+
+        Painting the padded view instead puts the page's colour under the whole
+        height, so the glass bar floats over the page rather than over a white
+        band.
+      */}
+      <KeyboardAvoidingView
+        behavior="padding"
+        style={[styles.flex, { backgroundColor: theme.colors.background }]}
+      >
         <ScrollView
           {...form.scrollProps}
           style={{ backgroundColor: theme.colors.background }}

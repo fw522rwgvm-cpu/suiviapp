@@ -157,7 +157,10 @@ export function WeightEntryScreen({ date }: { date: LocalDate }) {
   }
 
   return (
-    <KeyboardAvoidingView behavior="padding" style={styles.flex}>
+    <KeyboardAvoidingView
+        behavior="padding"
+        style={[styles.flex, { backgroundColor: theme.colors.background }]}
+      >
       <ScrollView
         style={{ backgroundColor: theme.colors.background }}
         contentContainerStyle={styles.content}
