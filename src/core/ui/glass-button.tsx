@@ -59,7 +59,6 @@ export function GlassButton({
   onPress,
   accessibilityLabel,
   selected,
-  disabled,
   tintColor,
   fadeKey,
 }: {
@@ -67,15 +66,6 @@ export function GlassButton({
   symbol?: SFSymbol;
   onPress: () => void;
   accessibilityLabel?: string;
-  /**
-   * For a control that exists at both ends of something it walks — the form
-   * chevrons at the first and last field.
-   *
-   * It stays DRAWN rather than disappearing: a bar whose contents come and go
-   * as the focus moves is a bar that jumps, and the shape of the row is what
-   * says where the chevrons are before they are read.
-   */
-  disabled?: boolean;
   /** For a button that carries a state, such as a favourite. */
   selected?: boolean;
   /** Overrides the accent, for a symbol whose colour carries meaning. */
@@ -94,8 +84,7 @@ export function GlassButton({
 }) {
   const theme = useTheme();
   const glass = canUseGlass();
-  const color =
-    disabled === true ? theme.colors.textFaint : (tintColor ?? theme.colors.accent);
+  const color = tintColor ?? theme.colors.accent;
 
   // A symbol on its own gets equal padding, so it comes out round rather than
   // as a short pill.
@@ -129,12 +118,9 @@ export function GlassButton({
   return (
     <Pressable
       onPress={onPress}
-      disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
-      accessibilityState={
-        selected === undefined && disabled === undefined ? undefined : { selected, disabled }
-      }
+      accessibilityState={selected === undefined ? undefined : { selected }}
       hitSlop={8}
     >
       {({ pressed }) =>

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { LocalDate } from '@/core/date';
@@ -64,10 +64,20 @@ export function WeightPanelSection({
   today,
   range,
   onRangeChange,
+  onReady,
 }: {
   today: LocalDate;
   range: WeightRangeKey;
   onRangeChange: (range: WeightRangeKey) => void;
+  /**
+   * Called once this panel is showing real content.
+   *
+   * The screen holds the page's height while a panel reloads, so that a
+   * short loading state cannot make iOS clamp the scroll offset. Only the
+   * panel knows when that is over, and it already does: `waiting` is the
+   * indicator's own floor.
+   */
+  onReady?: () => void;
 }) {
   const theme = useTheme();
   const router = useRouter();
@@ -117,6 +127,10 @@ export function WeightPanelSection({
    * imposes the floor once the waiting has begun. See PANEL_LOADING_MS.
    */
   const waiting = useMinimumVisible(panel === null, PANEL_LOADING_MS);
+
+  useEffect(() => {
+    if (!waiting) onReady?.();
+  }, [waiting, onReady]);
 
   const empty = panel !== null && panel.points.every((point) => point.raw === null);
 

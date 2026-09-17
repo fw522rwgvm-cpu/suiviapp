@@ -1,3 +1,5 @@
+import { GlassView } from 'expo-glass-effect';
+import { SymbolView } from 'expo-symbols';
 import {
   Children,
   createContext,
@@ -26,7 +28,7 @@ import {
 } from 'react-native';
 import { Text } from '@/core/ui/text';
 import { fontFamilyFor, useTheme } from '@/core/theme';
-import { canUseGlass, GlassButton } from './glass-button';
+import { canUseGlass } from './glass-button';
 import { ListSeparator } from './list-separator';
 import { shiftToReveal } from './reveal';
 
@@ -507,64 +509,135 @@ export function FormInput({
       {navigation === null || position < 0 ? null : (
         <InputAccessoryView nativeID={accessoryId}>
           {/*
-            A ROW OF GLASS CONTROLS, NOT A PAINTED STRIP.
+            THE BAR CARRIES THE MATERIAL; WHAT IS ON IT DOES NOT.
 
-            It was a filled surface with a hairline on top, which is the pre-26
-            shape of an accessory and which is what was reported: it does not
-            look like Safari's. On iOS 26 the accessory is not a bar at all —
-            it is controls floating over the page, each its own capsule, with
-            the page showing through between them.
+            It was a painted surface with a hairline, which is the pre-26 shape
+            of an accessory, and then a row of glass capsules floating over the
+            page. Neither looked like the system's, and the second was reported
+            as still wrong.
 
-            NOT the "never glass in a native header" rule pointing the other
-            way: a header already carries UIKit's material behind whatever it is
-            given, and an InputAccessoryView is an empty container we fill.
+            What iOS 26 does to a bar is put its own material BEHIND it and
+            leave the controls on it as plain tinted glyphs and words. So the
+            strip is a GlassView — a real UIVisualEffectView, the same material
+            — and the chevrons and the OK are bare Pressables on top. Capsules
+            inside it would be glass inside glass, which is the mistake the iOS
+            26 direction names for headers.
 
-            Where the material is unavailable the strip paints again exactly as
-            before — GlassButton falls back on its own, and a transparent bar
-            holding painted buttons would be neither one thing nor the other.
+            "Exactly the same" is not reachable and it is worth saying:
+            InputAccessoryView hands over an EMPTY container, and iOS exposes no
+            standard accessory bar to ask for. What can be shared with the
+            system is the material and the proportions; the rest is drawn here.
           */}
-          <View
-            style={[
-              styles.bar,
-              glass
-                ? null
-                : {
-                    backgroundColor: theme.colors.surface,
-                    borderTopColor: theme.colors.border,
-                    borderTopWidth: StyleSheet.hairlineWidth,
-                  },
-            ]}
-          >
-            {/*
-              The chevrons stay DRAWN at the ends of the form rather than
-              disappearing: a bar whose contents come and go as the focus moves
-              is a bar that jumps, and the shape of the row is what says where
-              they are before they are read.
-            */}
-            <GlassButton
-              symbol="chevron.up"
-              accessibilityLabel="Champ précédent"
-              disabled={position === 0}
-              onPress={() => move(-1)}
-            />
-            <GlassButton
-              symbol="chevron.down"
-              accessibilityLabel="Champ suivant"
-              disabled={position === navigation.fields.length - 1}
-              onPress={() => move(1)}
-            />
-
-            <View style={styles.spacer} />
-
-            <GlassButton
-              label="OK"
-              accessibilityLabel="Fermer le clavier"
-              onPress={() => Keyboard.dismiss()}
-            />
-          </View>
+          {glass ? (
+            // No backgroundColor anywhere near it: opacity is exactly what
+            // cancels the effect.
+            <GlassView style={styles.bar} glassEffectStyle="regular">
+              <BarContents
+                position={position}
+                count={navigation.fields.length}
+                onMove={move}
+              />
+            </GlassView>
+          ) : (
+            <View
+              style={[
+                styles.bar,
+                {
+                  backgroundColor: theme.colors.surface,
+                  borderTopColor: theme.colors.border,
+                  borderTopWidth: StyleSheet.hairlineWidth,
+                },
+              ]}
+            >
+              <BarContents
+                position={position}
+                count={navigation.fields.length}
+                onMove={move}
+              />
+            </View>
+          )}
         </InputAccessoryView>
       )}
     </>
+  );
+}
+
+/**
+ * What sits on the bar: the two chevrons, then the way out.
+ *
+ * The chevrons stay DRAWN at the ends of a form rather than disappearing: a bar
+ * whose contents come and go as the focus moves is a bar that jumps, and the
+ * shape of the row is what says where they are before they are read.
+ */
+function BarContents({
+  position,
+  count,
+  onMove,
+}: {
+  position: number;
+  count: number;
+  onMove: (step: number) => void;
+}) {
+  const theme = useTheme();
+
+  return (
+    <>
+      <Arrow
+        symbol="chevron.up"
+        label="Champ précédent"
+        disabled={position === 0}
+        onPress={() => onMove(-1)}
+      />
+      <Arrow
+        symbol="chevron.down"
+        label="Champ suivant"
+        disabled={position === count - 1}
+        onPress={() => onMove(1)}
+      />
+
+      <View style={styles.spacer} />
+
+      <Pressable
+        onPress={() => Keyboard.dismiss()}
+        hitSlop={10}
+        accessibilityRole="button"
+        accessibilityLabel="Fermer le clavier"
+      >
+        <Text style={[styles.done, { color: theme.colors.accent }]}>OK</Text>
+      </Pressable>
+    </>
+  );
+}
+
+function Arrow({
+  symbol,
+  label,
+  disabled,
+  onPress,
+}: {
+  symbol: 'chevron.up' | 'chevron.down';
+  label: string;
+  disabled: boolean;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      hitSlop={10}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled }}
+      style={styles.arrow}
+    >
+      <SymbolView
+        name={symbol}
+        size={18}
+        tintColor={disabled ? theme.colors.textFaint : theme.colors.accent}
+      />
+    </Pressable>
   );
 }
 
@@ -572,16 +645,16 @@ const styles = StyleSheet.create({
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
-    // Capsules sit close to each other and far from the OK: the two chevrons
-    // are one control in two halves, which the spacing has to say.
-    gap: 8,
+    // The two chevrons are one control in two halves, which the spacing says.
+    gap: 18,
     paddingHorizontal: 16,
-    // The accessory is laid out absolutely and takes its size from what is
-    // inside it, so something has to give it a height. The capsules do, plus
-    // enough air that they float rather than sit against the keyboard.
-    paddingVertical: 8,
+    // The system's own accessory height. It is laid out absolutely by iOS and
+    // sized to its content, so something here has to say how tall it is.
+    height: 44,
   },
+  arrow: { paddingVertical: 4 },
   spacer: { flex: 1 },
+  done: { fontSize: 17, fontWeight: '600' },
   group: { gap: 7 },
   // Uppercase and faint, the way a grouped table names its sections. Indented
   // to the card's own text, not to the screen.

@@ -1086,6 +1086,14 @@ est pour le **contenu**, qui ne reçoit aucun matériau gratuitement : l'étoile
 d'une rangée de liste, les actions d'un panneau dessiné à la main. C'est la
 ligne de partage de la direction iOS 26, prise du mauvais côté une fois.
 
+**Et la ligne de partage n'est PAS « natif contre maison » — c'est « cette
+surface porte-t-elle déjà un matériau ».** Précisé le 17/09/2026, parce que
+l'énoncé court se retourne facilement : un `InputAccessoryView` est une vue
+native et un conteneur **vide**, rien ne lui est appliqué, donc `GlassView` y
+est la seule façon d'obtenir le matériau — exactement comme pour une vue
+dessinée en JavaScript. Un en-tête, lui, en porte un. Les deux sont natifs et
+la réponse est opposée.
+
 **Animer la géométrie, mais pas celle d'une vue native.** Piloter les
 propriétés de disposition d'une `GlassView` image par image depuis un worklet
 n'est pas quelque chose qu'elle promet de supporter. La morphose reste donc
@@ -4591,6 +4599,62 @@ seule imbrication sans contrepartie ici, sur un contrôle du chemin critique
 vérifié sur l'appareil. Le même marqueur décide des deux : **une rangée qui donne
 sa largeur donne aussi ses touchers.**
 
+### Tout écran qui remplace son contenu par une requête clignote (17/09/2026)
+
+Deuxième occurrence du défaut que la tranche 3 avait trouvé sur le carrousel, et
+la règle générale se dégage : **une requête qui répond en un temps assez long
+pour se voir et assez court pour que ce qu'on voie soit un éclair fait paraître
+la page défectueuse.** Un éclair se lit comme un défaut, pas comme du travail.
+
+Et **ça ne se voit jamais pendant qu'on développe**, parce qu'à ce moment-là
+tout a déjà été lu une fois : le défaut n'existe qu'à la visite où rien n'est en
+cache, c'est-à-dire la première de l'utilisateur.
+
+`useMinimumVisible` existe pour ça depuis la tranche 3 et n'avait qu'un appelant.
+Ce qui rend son usage gratuit est la propriété écrite dans le hook lui-même : le
+plancher n'est imposé qu'une fois **l'attente commencée**, donc rien n'est jamais
+retardé sur du contenu déjà là.
+
+**Le chiffre dépend du geste, pas de l'écran.** 500 ms quand on bascule après
+avoir touché un contrôle — on attend quelque chose qu'on vient de demander ;
+1 000 ms sur une journée qu'on balaie, qui doit rester continue.
+
+### Quitter et avoir fini sont deux actes, et un seul se garde (17/09/2026)
+
+La fenêtre d'ajout demande confirmation quand le panier n'est pas vide. La
+conception s'est jouée sur une distinction qu'aucune fenêtre n'avait eu besoin
+de faire jusque-là :
+
+- **`useDismiss` est ce qu'un écran appelle quand il a FINI** — une routine
+  créée, une quantité confirmée, un aliment enregistré ;
+- **`useRequestClose` est quitter sans finir.**
+
+Sans garde les deux sont le même, ce qui est pourquoi rien ne les distinguait.
+Avec un garde branché sur les deux, « Confirmer » demanderait s'il faut
+abandonner les lignes qu'il vient d'écrire — le garde qui se déclenche sur le
+seul chemin où il n'y a rien à perdre.
+
+**Les deux sorties sont gardées, le bouton et le glissement.** C'est une seule
+décision — quitter ça — et le geste est celui des deux qui se fait par accident.
+
+**Refuser ne coûte rien, et c'est la forme qui le décide** : gardée, une
+fermeture par glissement **remet d'abord la fenêtre en place** et demande
+ensuite. Pas « fermer puis annuler » — il n'y a rien à annuler une fois la
+fenêtre repliée, et une fenêtre qui part et revient est une plus mauvaise
+réponse qu'une qui n'est jamais partie.
+
+**Le drapeau du garde est une valeur partagée, pas la prop lue dans le
+worklet.** Le geste tourne sur le fil d'interface et ne voit d'une prop que ce
+qui a été capturé à sa construction ; un panier qui se remplit pendant que la
+fenêtre est ouverte doit armer le garde, pas la version qui existait au premier
+rendu.
+
+**Rien n'est demandé sur un panier vide.** Une confirmation sur une fenêtre qui
+ne contient rien est celle qui apprend à passer outre sans lire — et elle userait
+celles qui comptent. Même raison pour la formulation : « pas enregistrées »
+plutôt que « perdues », puisque rien n'a été écrit. **Une confirmation qui
+surestime ce qu'elle évite s'use.**
+
 ## Points ouverts après la tranche 10
 
 - **Rien de la tranche 10 n'a tourné sur l'appareil.** Aucune dépendance n'a été
@@ -4622,6 +4686,12 @@ sa largeur donne aussi ses touchers.**
   imbriquée ; que la molette de quantité tourne exactement comme avant, la
   rangée `flush` étant justement là pour ça ; et que la quantité pré-remplie
   arrive bien sélectionnée.
+  **Et depuis les retours du soir**, trois de plus, dont une qui touche un
+  écran vérifié : que la barre au-dessus du clavier ressemble enfin à celle de
+  Safari — c'est le seul point où le rendu du verre décide, et rien ici ne peut
+  le regarder ; que fermer la fenêtre d'ajout par glissement la **remette** en
+  place avant de demander, et que « Confirmer » ne demande rien ; et que les
+  500 ms de plancher se lisent comme du travail plutôt que comme de la lenteur.
 - **Les seuils de nuance de la carte sont choisis, pas mesurés** : 3, 6 et 10
   séries pondérées. La façon de savoir qu'ils sont faux est de regarder deux
   routines qu'on sait différentes et de voir si la carte les distingue. Une

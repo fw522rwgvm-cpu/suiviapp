@@ -1,7 +1,9 @@
+import { GlassView } from 'expo-glass-effect';
 import { useId } from 'react';
-import { InputAccessoryView, Keyboard, StyleSheet, View } from 'react-native';
+import { InputAccessoryView, Keyboard, Pressable, StyleSheet, View } from 'react-native';
+import { Text } from '@/core/ui/text';
 import { useTheme } from '@/core/theme';
-import { canUseGlass, GlassButton } from './glass-button';
+import { canUseGlass } from './glass-button';
 
 /**
  * The bar above a numeric keypad, carrying one word: OK.
@@ -33,23 +35,30 @@ import { canUseGlass, GlassButton } from './glass-button';
  * The id is punctuation-free because it crosses to a native view as a plain
  * string and useId spells its own with colons.
  *
- * ## THE BAR IS A ROW OF GLASS CONTROLS, NOT A PAINTED STRIP
+ * ## THE BAR CARRIES THE MATERIAL; WHAT IS ON IT DOES NOT
  *
- * It was a filled surface with a hairline on top, which is the pre-26 shape of
- * an accessory and which is what was reported: it does not look like Safari's.
- * On iOS 26 the accessory is not a bar at all — it is controls floating over
- * the page, each one its own capsule of glass, and the page shows through
- * between them.
+ * It was a painted surface with a hairline, which is the pre-26 shape of an
+ * accessory, and then it was a row of glass capsules floating over the page.
+ * Neither looked like the system's, and the second was reported as still wrong.
  *
- * So the strip loses its fill and its rule, and the control becomes a
- * GlassButton, which is the one way a view drawn in JavaScript receives the
- * material (see glass-button.tsx). This is NOT the "never glass in a native
- * header" rule pointing the other way: a header already has UIKit's material
- * behind whatever it is given, and an InputAccessoryView is an empty container
- * we fill ourselves.
+ * What iOS 26 does to a bar is put its own material BEHIND it and leave the
+ * controls on it as plain tinted glyphs and words. So that is what this does:
+ * the strip is a GlassView — a real UIVisualEffectView, the same material, not
+ * an imitation of it — and the chevrons and the OK are bare Pressables on top.
+ * Capsules inside it would be glass inside glass, which is the mistake the iOS
+ * 26 direction names for headers.
  *
- * Where the material is unavailable the strip paints again, exactly as before.
- * A transparent bar with a painted button on it would be neither.
+ * ## AND "EXACTLY THE SAME" IS NOT REACHABLE, WHICH IS WORTH SAYING
+ *
+ * InputAccessoryView hands over an EMPTY container. iOS exposes no standard
+ * accessory bar to ask for — not through React Native, and not through UIKit
+ * either outside a web view, where Safari's comes from. Everything in this bar
+ * is drawn here. What can be shared with the system is the material and the
+ * proportions; the rest is a reconstruction, said plainly rather than implied.
+ *
+ * Where the material is unavailable the strip paints again, exactly as it did
+ * before: a transparent bar over the page would be neither one thing nor the
+ * other.
  *
  * ## IT RENDERS AFTER THE FIELD, AND THAT IS THE CALLER'S JOB
  *
@@ -76,22 +85,45 @@ export function KeypadAccessory({
       {children(accessoryId)}
 
       <InputAccessoryView nativeID={accessoryId}>
-        <View
-          style={[
-            styles.bar,
-            glass
-              ? null
-              : {
-                  backgroundColor: theme.colors.surface,
-                  borderTopColor: theme.colors.border,
-                  borderTopWidth: StyleSheet.hairlineWidth,
-                },
-          ]}
-        >
-          <GlassButton label="OK" accessibilityLabel={label} onPress={() => Keyboard.dismiss()} />
-        </View>
+        {glass ? (
+          // No backgroundColor anywhere near it: opacity is exactly what
+          // cancels the effect, which is the standing rule for every glass
+          // surface in this project.
+          <GlassView style={styles.bar} glassEffectStyle="regular">
+            <Done label={label} />
+          </GlassView>
+        ) : (
+          <View
+            style={[
+              styles.bar,
+              {
+                backgroundColor: theme.colors.surface,
+                borderTopColor: theme.colors.border,
+                borderTopWidth: StyleSheet.hairlineWidth,
+              },
+            ]}
+          >
+            <Done label={label} />
+          </View>
+        )}
       </InputAccessoryView>
     </>
+  );
+}
+
+/** One word, in the accent, the way a bar button reads. */
+function Done({ label }: { label: string }) {
+  const theme = useTheme();
+
+  return (
+    <Pressable
+      onPress={() => Keyboard.dismiss()}
+      hitSlop={10}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <Text style={[styles.done, { color: theme.colors.accent }]}>OK</Text>
+    </Pressable>
   );
 }
 
@@ -100,10 +132,12 @@ const styles = StyleSheet.create({
   // declare a height of its own — here through its padding.
   bar: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'flex-end',
     paddingHorizontal: 16,
-    // Enough that a capsule has air around it rather than sitting against the
-    // keyboard: floating is the whole look, and a tight fit undoes it.
-    paddingVertical: 8,
+    // The system's own accessory height. Laid out absolutely by iOS and sized
+    // to its content, so something here has to say how tall it is.
+    height: 44,
   },
+  done: { fontSize: 17, fontWeight: '600' },
 });

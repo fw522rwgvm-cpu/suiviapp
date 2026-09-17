@@ -1,6 +1,6 @@
 import { SymbolView } from 'expo-symbols';
 import { Stack, useRouter } from 'expo-router';
-import { useEffect, useLayoutEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -112,11 +112,33 @@ export function JournalScreen() {
 
   const drag = useSharedValue(0);
 
-  // Recentres the strip in the same commit that shifts the pages. See the note
-  // above: the two movements cancel, so nothing moves on screen.
-  useLayoutEffect(() => {
+  /**
+   * Recentres the strip DURING the render that shifts the pages.
+   *
+   * ## WHY THE LAYOUT EFFECT THAT USED TO DO THIS FLICKERED
+   *
+   * Reported as a wrong day appearing for an instant after a swipe, and it was
+   * exactly that. The step happens in two places at once: React commits three
+   * new pages, and the strip has to come back from ±width to 0 so the two
+   * movements cancel. A layout effect runs after its render has been PAINTED,
+   * and a shared value written from JavaScript is applied on the interface
+   * thread on its own schedule — so for a frame the new pages sat at the old
+   * offset, which shows the page next to the one that was wanted.
+   *
+   * Adjusting during the render is React's own answer to a value the render
+   * depends on, and this project has paid for it twice already: the carousel's
+   * own key in slice 3, and the quantity wheels in slice 4. The write is queued
+   * BEFORE the host children are committed rather than after they are painted,
+   * which is the whole difference.
+   *
+   * Writing zero twice is harmless, which is what makes it safe to do in a
+   * render React may discard.
+   */
+  const [centred, setCentred] = useState<LocalDate>(date);
+  if (centred !== date) {
+    setCentred(date);
     drag.value = 0;
-  }, [date, drag]);
+  }
 
   function step(delta: number): void {
     setDate((current) => addDays(current, delta));
