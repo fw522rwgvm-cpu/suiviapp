@@ -1,7 +1,7 @@
 import { useId } from 'react';
-import { InputAccessoryView, Keyboard, Pressable, StyleSheet, View } from 'react-native';
-import { Text } from '@/core/ui/text';
+import { InputAccessoryView, Keyboard, StyleSheet, View } from 'react-native';
 import { useTheme } from '@/core/theme';
+import { canUseGlass, GlassButton } from './glass-button';
 
 /**
  * The bar above a numeric keypad, carrying one word: OK.
@@ -33,6 +33,24 @@ import { useTheme } from '@/core/theme';
  * The id is punctuation-free because it crosses to a native view as a plain
  * string and useId spells its own with colons.
  *
+ * ## THE BAR IS A ROW OF GLASS CONTROLS, NOT A PAINTED STRIP
+ *
+ * It was a filled surface with a hairline on top, which is the pre-26 shape of
+ * an accessory and which is what was reported: it does not look like Safari's.
+ * On iOS 26 the accessory is not a bar at all — it is controls floating over
+ * the page, each one its own capsule of glass, and the page shows through
+ * between them.
+ *
+ * So the strip loses its fill and its rule, and the control becomes a
+ * GlassButton, which is the one way a view drawn in JavaScript receives the
+ * material (see glass-button.tsx). This is NOT the "never glass in a native
+ * header" rule pointing the other way: a header already has UIKit's material
+ * behind whatever it is given, and an InputAccessoryView is an empty container
+ * we fill ourselves.
+ *
+ * Where the material is unavailable the strip paints again, exactly as before.
+ * A transparent bar with a painted button on it would be neither.
+ *
  * ## IT RENDERS AFTER THE FIELD, AND THAT IS THE CALLER'S JOB
  *
  * The native view binds by looking for an input carrying its id, so the field
@@ -50,6 +68,7 @@ export function KeypadAccessory({
   children: (accessoryId: string) => React.ReactNode;
 }) {
   const theme = useTheme();
+  const glass = canUseGlass();
   const accessoryId = `keypad${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
 
   return (
@@ -60,17 +79,16 @@ export function KeypadAccessory({
         <View
           style={[
             styles.bar,
-            { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border },
+            glass
+              ? null
+              : {
+                  backgroundColor: theme.colors.surface,
+                  borderTopColor: theme.colors.border,
+                  borderTopWidth: StyleSheet.hairlineWidth,
+                },
           ]}
         >
-          <Pressable
-            onPress={() => Keyboard.dismiss()}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel={label}
-          >
-            <Text style={[styles.done, { color: theme.colors.accent }]}>OK</Text>
-          </Pressable>
+          <GlassButton label="OK" accessibilityLabel={label} onPress={() => Keyboard.dismiss()} />
         </View>
       </InputAccessoryView>
     </>
@@ -84,8 +102,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'flex-end',
     paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    // Enough that a capsule has air around it rather than sitting against the
+    // keyboard: floating is the whole look, and a tight fit undoes it.
+    paddingVertical: 8,
   },
-  done: { fontSize: 17, fontWeight: '600' },
 });

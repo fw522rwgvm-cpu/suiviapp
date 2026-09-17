@@ -1,4 +1,3 @@
-import { SymbolView } from 'expo-symbols';
 import {
   Children,
   createContext,
@@ -27,6 +26,7 @@ import {
 } from 'react-native';
 import { Text } from '@/core/ui/text';
 import { fontFamilyFor, useTheme } from '@/core/theme';
+import { canUseGlass, GlassButton } from './glass-button';
 import { ListSeparator } from './list-separator';
 import { shiftToReveal } from './reveal';
 
@@ -406,6 +406,7 @@ export function FormInput({
   ...props
 }: TextInputProps & { ref?: Ref<TextInput> }) {
   const theme = useTheme();
+  const glass = canUseGlass();
   const navigation = useContext(FormNavContext);
   const row = useContext(FormRowContext);
   const own = useRef<TextInput | null>(null);
@@ -505,35 +506,61 @@ export function FormInput({
       */}
       {navigation === null || position < 0 ? null : (
         <InputAccessoryView nativeID={accessoryId}>
+          {/*
+            A ROW OF GLASS CONTROLS, NOT A PAINTED STRIP.
+
+            It was a filled surface with a hairline on top, which is the pre-26
+            shape of an accessory and which is what was reported: it does not
+            look like Safari's. On iOS 26 the accessory is not a bar at all —
+            it is controls floating over the page, each its own capsule, with
+            the page showing through between them.
+
+            NOT the "never glass in a native header" rule pointing the other
+            way: a header already carries UIKit's material behind whatever it is
+            given, and an InputAccessoryView is an empty container we fill.
+
+            Where the material is unavailable the strip paints again exactly as
+            before — GlassButton falls back on its own, and a transparent bar
+            holding painted buttons would be neither one thing nor the other.
+          */}
           <View
             style={[
               styles.bar,
-              { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border },
+              glass
+                ? null
+                : {
+                    backgroundColor: theme.colors.surface,
+                    borderTopColor: theme.colors.border,
+                    borderTopWidth: StyleSheet.hairlineWidth,
+                  },
             ]}
           >
-            <Arrow
+            {/*
+              The chevrons stay DRAWN at the ends of the form rather than
+              disappearing: a bar whose contents come and go as the focus moves
+              is a bar that jumps, and the shape of the row is what says where
+              they are before they are read.
+            */}
+            <GlassButton
               symbol="chevron.up"
-              label="Champ précédent"
+              accessibilityLabel="Champ précédent"
               disabled={position === 0}
               onPress={() => move(-1)}
             />
-            <Arrow
+            <GlassButton
               symbol="chevron.down"
-              label="Champ suivant"
+              accessibilityLabel="Champ suivant"
               disabled={position === navigation.fields.length - 1}
               onPress={() => move(1)}
             />
 
             <View style={styles.spacer} />
 
-            <Pressable
-              onPress={() => Keyboard.dismiss()}
-              hitSlop={10}
-              accessibilityRole="button"
+            <GlassButton
+              label="OK"
               accessibilityLabel="Fermer le clavier"
-            >
-              <Text style={[styles.done, { color: theme.colors.accent }]}>OK</Text>
-            </Pressable>
+              onPress={() => Keyboard.dismiss()}
+            />
           </View>
         </InputAccessoryView>
       )}
@@ -541,52 +568,20 @@ export function FormInput({
   );
 }
 
-function Arrow({
-  symbol,
-  label,
-  disabled,
-  onPress,
-}: {
-  symbol: 'chevron.up' | 'chevron.down';
-  label: string;
-  disabled: boolean;
-  onPress: () => void;
-}) {
-  const theme = useTheme();
-
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      hitSlop={10}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled }}
-      style={styles.arrow}
-    >
-      <SymbolView
-        name={symbol}
-        size={18}
-        tintColor={disabled ? theme.colors.textFaint : theme.colors.accent}
-      />
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 18,
+    // Capsules sit close to each other and far from the OK: the two chevrons
+    // are one control in two halves, which the spacing has to say.
+    gap: 8,
     paddingHorizontal: 16,
-    // An explicit height: the accessory is laid out absolutely and takes its
-    // size from what is inside it, so something has to say how tall it is.
-    height: 44,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    // The accessory is laid out absolutely and takes its size from what is
+    // inside it, so something has to give it a height. The capsules do, plus
+    // enough air that they float rather than sit against the keyboard.
+    paddingVertical: 8,
   },
-  arrow: { paddingVertical: 4 },
   spacer: { flex: 1 },
-  done: { fontSize: 17, fontWeight: '600' },
   group: { gap: 7 },
   // Uppercase and faint, the way a grouped table names its sections. Indented
   // to the card's own text, not to the screen.
