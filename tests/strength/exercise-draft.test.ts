@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MUSCLES, EQUIPMENT, SET_TYPES } from '../../src/core/db/schema';
+import { MUSCLES, EQUIPMENT, SET_TYPES, type Muscle } from '../../src/core/db/schema';
 import {
   DEFAULT_PROGRESSION_INCREMENT_KG,
   MAX_PROGRESSION_INCREMENT_KG,
@@ -14,6 +14,7 @@ import {
   toggleSecondary,
   validateExerciseDraft,
   type ExerciseDraft,
+  sameExerciseDraft,
 } from '../../src/features/strength/domain/exercise-draft';
 import {
   EQUIPMENT_LABELS,
@@ -256,5 +257,74 @@ describe('the part each muscle plays', () => {
 
   it('names the primary alone when nothing else is chosen', () => {
     expect([...muscleRoles('quads', []).entries()]).toEqual([['quads', 'primary']]);
+  });
+});
+
+describe('whether two drafts say the same thing', () => {
+  /** A filled draft, so every field has something to differ on. */
+  function filled(): ExerciseDraft {
+    return {
+      ...emptyExerciseDraft(2.5),
+      name: 'Développé couché',
+      primaryMuscle: 'chest',
+      secondaryMuscles: new Set(['triceps', 'shoulders']),
+      equipment: 'barbell',
+      noteExecution: 'Coudes à 45°',
+      noteSetup: 'Banc plat',
+      noteBreathing: 'Bloquer en bas',
+      noteMistakes: 'Rebond sur la poitrine',
+      isFavorite: true,
+    };
+  }
+
+  it('says yes to a copy', () => {
+    expect(sameExerciseDraft(filled(), filled())).toBe(true);
+  });
+
+  it('notices EVERY field of the draft', () => {
+    /**
+     * Named one by one rather than spot-checked, because the failure this
+     * guards against is a field added to ExerciseDraft and forgotten in the
+     * comparison — which nothing else would catch, and which would make a
+     * confirmation say there is nothing to lose when there is.
+     */
+    const changes: Partial<ExerciseDraft>[] = [
+      { name: 'Développé incliné' },
+      { primaryMuscle: 'shoulders' },
+      { equipment: 'dumbbell' },
+      { equipment: null },
+      { incrementKg: '1,25' },
+      { isFavorite: false },
+      { noteExecution: 'autre' },
+      { noteSetup: 'autre' },
+      { noteBreathing: 'autre' },
+      { noteMistakes: 'autre' },
+      { secondaryMuscles: new Set(['triceps']) },
+      { secondaryMuscles: new Set(['triceps', 'shoulders', 'abs']) },
+      { secondaryMuscles: new Set(['triceps', 'abs']) },
+    ];
+
+    for (const change of changes) {
+      expect(sameExerciseDraft(filled(), { ...filled(), ...change })).toBe(false);
+    }
+  });
+
+  it('compares the secondary muscles as a SET, not as an order', () => {
+    // They are toggled, so the order they arrive in is an accident of tapping.
+    const one = { ...filled(), secondaryMuscles: new Set<Muscle>(['triceps', 'shoulders']) };
+    const other = { ...filled(), secondaryMuscles: new Set<Muscle>(['shoulders', 'triceps']) };
+
+    expect(sameExerciseDraft(one, other)).toBe(true);
+  });
+
+  it('compares the increment as the STRING it is', () => {
+    /**
+     * "2,5" and "2.5" parse to the same number and are not the same thing to
+     * type over. A confirmation is about what would be lost, not about what
+     * would be stored.
+     */
+    expect(
+      sameExerciseDraft({ ...filled(), incrementKg: '2,5' }, { ...filled(), incrementKg: '2.5' }),
+    ).toBe(false);
   });
 });

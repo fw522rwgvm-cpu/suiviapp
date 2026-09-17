@@ -17,6 +17,7 @@ import {
   removeLine,
   restForBlock,
   roundsOf,
+  sameRoutineDraft,
   setBlockProgression,
   setBlockRest,
   setIndexOf,
@@ -467,5 +468,77 @@ describe('a new line', () => {
     expect(line.targetLoadKg).toBeNull();
     expect(line.progressionEnabled).toBe(false);
     expect(line.id).toBeNull();
+  });
+});
+
+describe('whether two routine drafts say the same thing', () => {
+  function superset(): RoutineDraft {
+    let draft = addExerciseToBlock(withBench(), 0, ROW, 'Rowing');
+    draft = addRound(draft, 0);
+    draft = updateLine(draft, 0, 0, { repsMin: 6, repsMax: 8, targetLoadKg: 60, note: 'Pause' });
+    return setBlockRest(draft, 0, 90);
+  }
+
+  it('says yes to a copy', () => {
+    expect(sameRoutineDraft(superset(), superset())).toBe(true);
+  });
+
+  it('notices a changed target, a changed rest and a changed name', () => {
+    const base = superset();
+
+    expect(sameRoutineDraft(base, updateLine(base, 0, 0, { targetLoadKg: 62.5 }))).toBe(false);
+    expect(sameRoutineDraft(base, setBlockRest(base, 0, 120))).toBe(false);
+    expect(sameRoutineDraft(base, { ...base, name: 'Autre' })).toBe(false);
+  });
+
+  it('notices a line added, removed, or moved', () => {
+    const base = superset();
+
+    expect(sameRoutineDraft(base, addRound(base, 0))).toBe(false);
+    expect(sameRoutineDraft(base, removeLine(base, 0, 0))).toBe(false);
+    expect(sameRoutineDraft(base, addExerciseBlock(base, ROW, 'Rowing'))).toBe(false);
+  });
+
+  it('notices a warm-up step', () => {
+    const base = superset();
+
+    expect(sameRoutineDraft(base, { ...base, warmupSteps: ['5 min de rameur'] })).toBe(false);
+  });
+
+  it('ignores the exercise NAME carried for display', () => {
+    /**
+     * It is carried so the editor can show a name without a query per line, and
+     * it comes from the exercise — so renaming an exercise is not an edit of
+     * this routine, and asking whether to discard it would be asking about
+     * something the person never touched.
+     */
+    const base = superset();
+    const renamed = {
+      ...base,
+      blocks: base.blocks.map((block) => ({
+        ...block,
+        lines: block.lines.map((line) => ({ ...line, exerciseName: 'Autre nom' })),
+      })),
+    };
+
+    expect(sameRoutineDraft(base, renamed)).toBe(true);
+  });
+
+  it('notices a stored line replaced by a fresh one with identical targets', () => {
+    /**
+     * Removed and added back: the draft would save the same routine, and it is
+     * no longer the routine that was opened. A confirmation that said nothing
+     * changed would be wrong about the one thing it is for.
+     */
+    const base = superset();
+    const stored = {
+      ...base,
+      blocks: base.blocks.map((block) => ({
+        ...block,
+        lines: block.lines.map((line, index) => ({ ...line, id: `line-${index}` })),
+      })),
+    };
+
+    expect(sameRoutineDraft(stored, base)).toBe(false);
   });
 });

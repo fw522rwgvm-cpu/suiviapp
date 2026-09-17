@@ -214,3 +214,42 @@ export function muscleRoles(
   roles.set(primaryMuscle, 'primary');
   return roles;
 }
+
+/**
+ * Whether two drafts say the same thing (specs 14.27).
+ *
+ * ## WHY THIS IS NOT A DEEP COMPARISON OF ANY KIND
+ *
+ * What is being asked is "is there anything to lose", and that question is
+ * answered field by field or not at all. A generic deep equality would have to
+ * be told about the Set anyway, and would silently start comparing whatever
+ * field is added next — including one nobody meant to guard.
+ *
+ * Written out, adding a field to ExerciseDraft and forgetting it here is caught
+ * by nothing, which is why the test names every field of the draft rather than
+ * checking a couple of them.
+ *
+ * `incrementKg` is compared as the STRING it is: "2,5" and "2.5" parse to the
+ * same number and are not the same thing to type over, and a confirmation is
+ * about what would be lost rather than about what would be stored.
+ */
+export function sameExerciseDraft(a: ExerciseDraft, b: ExerciseDraft): boolean {
+  return (
+    a.name === b.name &&
+    a.primaryMuscle === b.primaryMuscle &&
+    a.equipment === b.equipment &&
+    a.incrementKg === b.incrementKg &&
+    a.isFavorite === b.isFavorite &&
+    a.noteExecution === b.noteExecution &&
+    a.noteSetup === b.noteSetup &&
+    a.noteBreathing === b.noteBreathing &&
+    a.noteMistakes === b.noteMistakes &&
+    sameMuscles(a.secondaryMuscles, b.secondaryMuscles)
+  );
+}
+
+function sameMuscles(a: ReadonlySet<Muscle>, b: ReadonlySet<Muscle>): boolean {
+  if (a.size !== b.size) return false;
+  for (const muscle of a) if (!b.has(muscle)) return false;
+  return true;
+}

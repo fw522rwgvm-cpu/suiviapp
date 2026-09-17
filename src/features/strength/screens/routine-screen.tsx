@@ -26,6 +26,7 @@ import {
   addExerciseBlock,
   addExerciseToBlock,
   musclesOfDraft,
+  sameRoutineDraft,
   validateRoutineDraft,
   type RoutineDraft,
 } from '../domain/routine-draft';
@@ -164,6 +165,32 @@ export function RoutineScreen() {
     update.mutate({ id, draft }, { onSuccess: () => setMode({ kind: 'reading' }) });
   }
 
+  /**
+   * Leaving the edit without saving (specs 14.27).
+   *
+   * Nothing is asked when nothing was touched: a confirmation on a form still
+   * exactly as it was opened is the kind that teaches people to tap through
+   * confirmations without reading them.
+   *
+   * It compares against the STORED draft rather than keeping a "touched" flag,
+   * so typing a character and typing it back asks nothing — which is what the
+   * question actually means.
+   */
+  function cancel(): void {
+    if (draft !== null && stored.data != null && !sameRoutineDraft(draft, stored.data)) {
+      Alert.alert('Abandonner les modifications ?', 'Elles ne seront pas enregistrées.', [
+        { text: 'Continuer', style: 'cancel' },
+        {
+          text: 'Abandonner',
+          style: 'destructive',
+          onPress: () => setMode({ kind: 'reading' }),
+        },
+      ]);
+      return;
+    }
+    setMode({ kind: 'reading' });
+  }
+
   function confirmDelete(): void {
     if (id === null) return;
     /**
@@ -298,11 +325,19 @@ export function RoutineScreen() {
       <Stack.Screen
         options={{
           title: editing ? 'Modifier' : view.name,
+          /*
+            NO WAY BACK WHILE EDITING, and no swipe either. An edit with unsaved
+            changes has exactly two honest endings — saving and discarding — and
+            a gesture that means "go back" cannot be told apart from either. So
+            the way out is named, and it asks before throwing anything away.
+          */
+          headerBackVisible: !editing,
+          gestureEnabled: !editing,
           headerRight: () => (
             // A bare Pressable, never a GlassButton: on iOS 26 the bar already
             // lays its own material behind what it is given.
             <Pressable
-              onPress={editing ? () => setMode({ kind: 'reading' }) : startEditing}
+              onPress={editing ? cancel : startEditing}
               hitSlop={12}
               accessibilityRole="button"
               accessibilityLabel={editing ? 'Annuler' : 'Modifier'}

@@ -1,37 +1,35 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
 import { Text } from '@/core/ui/text';
-import { FormInput, FormRow, FormSection } from '@/core/ui/form-section';
 import { LoadingDots } from '@/core/ui/loading-dots';
 import { useDismiss, usePanelHeading } from '@/core/ui/overlay-panel';
 import { useTheme } from '@/core/theme';
-import { toEntityId } from '@/core/id';
-import { MUSCLES, EQUIPMENT, type ExerciseId, type Muscle } from '@/core/db/schema';
-import {
-  useCreateExercise,
-  useExerciseDraft,
-  useProgressionIncrement,
-  useUpdateExercise,
-} from '../data/exercise-queries';
+import { ExerciseBody } from '../components/exercise-body';
+import { useCreateExercise, useProgressionIncrement } from '../data/exercise-queries';
 import {
   emptyExerciseDraft,
-  muscleRoles,
-  toggleSecondary,
   validateExerciseDraft,
   type ExerciseDraft,
 } from '../domain/exercise-draft';
-import { BodyMapView } from '../components/body-map-view';
-import { EQUIPMENT_LABELS, MUSCLE_LABELS } from '../domain/vocabulary';
 import { problemText } from '../domain/exercise-text';
 
 /**
- * Creating and editing an exercise (specs 10.1, "Bouton de création",
- * "Exercice éditable").
+ * CREATING an exercise (specs 10.1). Editing one happens on its own page.
  *
- * A WINDOW OVER THE LIST, not a pushed screen: slice 3's rule is that
- * consulting is a push and ACTING on something is a window over it. Creating an
- * exercise is acting on the library, so it opens on top of it.
+ * ## WHY CREATION IS STILL A WINDOW AND EDITING IS NOT
+ *
+ * Slice 3's rule is that acting on something opens a window OVER it, so the
+ * thing acted on stays visible. Editing an exercise broke that on its own
+ * terms: the window covered exactly the exercise it was changing, so nothing
+ * stayed visible and a dismissal was spent for nothing. That moved onto the
+ * page (specs 14.27), exactly as the routine editor did in slice 10.
+ *
+ * Creation has no such page — there is nothing to flip into edit mode when
+ * nothing exists yet — so the window is what it has always been, opening over
+ * the list the new exercise will join.
+ *
+ * The body is ExerciseBody, the same component the page renders, so the two
+ * cannot drift about what an exercise looks like.
  *
  * ## THE BODY WAITS FOR ITS VALUE; THE SCROLL VIEW DOES NOT
  *
@@ -44,30 +42,11 @@ import { problemText } from '../domain/exercise-text';
  *
  * So: ONE ScrollView in both states, and only the BODY waits. It gets its
  * initial draft from a pure function at useState time, never from an effect.
- *
- * NULL MEANS "NOT YET", NEVER "NONE" — the trap the same slice named. Creating
- * a new exercise has nothing to wait for once the increment is known, so it
- * states its starting draft rather than waiting forever on a query that will
- * never answer with a row.
  */
 export function ExerciseEditorScreen() {
-  const params = useLocalSearchParams<{ id?: string }>();
-  const id = params.id === undefined ? null : toEntityId<ExerciseId>(params.id);
-
-  const stored = useExerciseDraft(id);
   const increment = useProgressionIncrement();
 
-  usePanelHeading(id === null ? 'Nouvel exercice' : 'Modifier l’exercice', null);
-
-  // What the body needs before it can mount: an existing draft, or the default
-  // increment a new one starts from. Either is a value, and neither is a
-  // default the form would have to move off later.
-  const initial: ExerciseDraft | null =
-    id === null
-      ? increment.data === undefined
-        ? null
-        : emptyExerciseDraft(increment.data)
-      : (stored.data ?? null);
+  usePanelHeading('Nouvel exercice', null);
 
   return (
     <ScrollView
@@ -75,166 +54,36 @@ export function ExerciseEditorScreen() {
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
     >
-      {initial === null ? <Waiting /> : <EditorBody initial={initial} exerciseId={id} />}
+      {increment.data === undefined ? (
+        <View style={styles.waiting}>
+          <LoadingDots />
+        </View>
+      ) : (
+        <EditorBody initial={emptyExerciseDraft(increment.data)} />
+      )}
     </ScrollView>
   );
 }
 
-function Waiting() {
-  return (
-    <View style={styles.waiting}>
-      <LoadingDots />
-    </View>
-  );
-}
-
-function EditorBody({
-  initial,
-  exerciseId,
-}: {
-  initial: ExerciseDraft;
-  exerciseId: ExerciseId | null;
-}) {
+function EditorBody({ initial }: { initial: ExerciseDraft }) {
   const theme = useTheme();
   const dismiss = useDismiss();
   const create = useCreateExercise();
-  const update = useUpdateExercise();
 
   const [draft, setDraft] = useState<ExerciseDraft>(initial);
   const [submitted, setSubmitted] = useState(false);
 
-  // The body is keyed on the draft's identity by its caller, so this only ever
-  // runs when a genuinely different exercise arrives — never to correct a
-  // default, which is the whole point of taking `initial` at useState time.
-  useEffect(() => {
-    setDraft(initial);
-  }, [initial]);
-
   const problems = validateExerciseDraft(draft);
-  const canSave = problems.length === 0;
 
   function save(): void {
     setSubmitted(true);
-    if (!canSave) return;
-
-    if (exerciseId === null) create.mutate(draft, { onSuccess: () => dismiss() });
-    else update.mutate({ id: exerciseId, draft }, { onSuccess: () => dismiss() });
+    if (problems.length > 0) return;
+    create.mutate(draft, { onSuccess: () => dismiss() });
   }
 
   return (
     <>
-      <FormSection caption="IDENTITÉ">
-        <FormRow label="Nom">
-          <FormInput
-            value={draft.name}
-            onChangeText={(name) => setDraft((current) => ({ ...current, name }))}
-            placeholder="Développé couché"
-            autoCapitalize="sentences"
-          />
-        </FormRow>
-        <FormRow label="Incrément (kg)">
-          <FormInput
-            value={draft.incrementKg}
-            onChangeText={(incrementKg) => setDraft((current) => ({ ...current, incrementKg }))}
-            keyboardType="decimal-pad"
-            placeholder="2,5"
-          />
-        </FormRow>
-      </FormSection>
-
-      {/*
-        WHAT THE CHIPS BELOW ARE SAYING, ON A BODY (specs 14.24).
-
-        The vocabulary is invented — fifteen names chosen in slice 10, never
-        confronted with a real exercise — so "lats" or "traps" is a word before
-        it is a place. The figure is what turns the choice back into anatomy,
-        and it is the only thing on this form that can tell you the chip you
-        just tapped is not the muscle you meant.
-
-        Shaded by ROLE rather than by volume: an exercise has no sets to count.
-        The same component the routine page uses, so the two cannot drift about
-        where a muscle is.
-      */}
-      <View
-        style={[
-          styles.map,
-          {
-            backgroundColor: theme.colors.surface,
-            borderColor: theme.colors.border,
-            borderRadius: theme.radius.lg,
-          },
-        ]}
-      >
-        <BodyMapView
-          muscles={[draft.primaryMuscle, ...draft.secondaryMuscles]}
-          roles={muscleRoles(draft.primaryMuscle, draft.secondaryMuscles)}
-          height={200}
-        />
-      </View>
-
-      <ChoiceGroup
-        caption="MUSCLE PRINCIPAL"
-        options={MUSCLES.map((value) => ({ value, label: MUSCLE_LABELS[value] }))}
-        selected={[draft.primaryMuscle]}
-        onPress={(value) => {
-          const muscle = MUSCLES.find((item) => item === value);
-          if (muscle !== undefined) setDraft((c) => ({ ...c, primaryMuscle: muscle }));
-        }}
-      />
-
-      <ChoiceGroup
-        caption="MUSCLES SECONDAIRES"
-        options={MUSCLES.filter((m) => m !== draft.primaryMuscle).map((value) => ({
-          value,
-          label: MUSCLE_LABELS[value],
-        }))}
-        selected={[...draft.secondaryMuscles]}
-        onPress={(value) => {
-          const muscle = MUSCLES.find((item) => item === value);
-          if (muscle === undefined) return;
-          setDraft((c) => ({
-            ...c,
-            secondaryMuscles: toggleSecondary(c.secondaryMuscles, muscle),
-          }));
-        }}
-      />
-
-      <ChoiceGroup
-        caption="MATÉRIEL"
-        options={EQUIPMENT.map((value) => ({ value, label: EQUIPMENT_LABELS[value] }))}
-        selected={draft.equipment === null ? [] : [draft.equipment]}
-        onPress={(value) => {
-          const item = EQUIPMENT.find((option) => option === value);
-          setDraft((c) => ({
-            ...c,
-            // Tapping the selected one clears it, as a filter chip does.
-            equipment: item === undefined || c.equipment === item ? null : item,
-          }));
-        }}
-      />
-
-      <FormSection caption="NOTES">
-        <NoteField
-          label="Exécution"
-          value={draft.noteExecution}
-          onChange={(noteExecution) => setDraft((c) => ({ ...c, noteExecution }))}
-        />
-        <NoteField
-          label="Réglage"
-          value={draft.noteSetup}
-          onChange={(noteSetup) => setDraft((c) => ({ ...c, noteSetup }))}
-        />
-        <NoteField
-          label="Respiration"
-          value={draft.noteBreathing}
-          onChange={(noteBreathing) => setDraft((c) => ({ ...c, noteBreathing }))}
-        />
-        <NoteField
-          label="Erreurs fréquentes"
-          value={draft.noteMistakes}
-          onChange={(noteMistakes) => setDraft((c) => ({ ...c, noteMistakes }))}
-        />
-      </FormSection>
+      <ExerciseBody draft={draft} editable onChange={setDraft} />
 
       {/*
         Problems appear only once a save has been ATTEMPTED. A form that goes
@@ -269,105 +118,9 @@ function EditorBody({
   );
 }
 
-function NoteField({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <FormRow label={label}>
-      <FormInput
-        value={value}
-        onChangeText={onChange}
-        placeholder="Facultatif"
-        multiline
-        autoCapitalize="sentences"
-      />
-    </FormRow>
-  );
-}
-
-/**
- * A group of chips, for a choice with more options than a segmented control
- * can hold.
- *
- * Fifteen muscles do not fit in a segmented control and would not fit in a
- * picker wheel either without hiding fourteen of them behind a scroll. Chips
- * wrap, show every option at once, and are the same control the filter strips
- * use — so choosing a muscle and filtering on one look alike, which they
- * should: they name the same thing.
- */
-function ChoiceGroup({
-  caption,
-  options,
-  selected,
-  onPress,
-}: {
-  caption: string;
-  options: readonly { value: string; label: string }[];
-  selected: readonly string[];
-  onPress: (value: string) => void;
-}) {
-  const theme = useTheme();
-
-  return (
-    <View style={styles.group}>
-      <Text style={[styles.caption, { color: theme.colors.textMuted }]}>{caption}</Text>
-      <View style={styles.chips}>
-        {options.map((option) => {
-          const active = selected.includes(option.value);
-          return (
-            <Pressable
-              key={option.value}
-              onPress={() => onPress(option.value)}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-              style={[
-                styles.chip,
-                {
-                  backgroundColor: active ? theme.colors.accent : theme.colors.surface,
-                  borderColor: active ? theme.colors.accent : theme.colors.border,
-                  borderRadius: theme.radius.sm,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.chipLabel,
-                  { color: active ? theme.colors.onAccent : theme.colors.text },
-                ]}
-              >
-                {option.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
-  );
-}
-
-void (undefined as unknown as Muscle);
-
 const styles = StyleSheet.create({
-  map: {
-    borderWidth: StyleSheet.hairlineWidth,
-    overflow: 'hidden',
-    // The figures are drawn to the top of their viewBox and carry their own
-    // air above; the card owes them the bottom, as the routine page's does.
-    paddingBottom: 12,
-  },
-  content: { padding: 16, gap: 20, paddingBottom: 48 },
+  content: { padding: 16, gap: 18, paddingBottom: 48 },
   waiting: { paddingVertical: 48, alignItems: 'center' },
-  group: { gap: 8 },
-  caption: { fontSize: 12, letterSpacing: 0.6, fontWeight: '600' },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { paddingVertical: 6, paddingHorizontal: 12, borderWidth: StyleSheet.hairlineWidth },
-  chipLabel: { fontSize: 14, fontWeight: '500' },
   problems: { gap: 4 },
   problem: { fontSize: 14 },
   save: { paddingVertical: 14, alignItems: 'center' },

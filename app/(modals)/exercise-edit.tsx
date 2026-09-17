@@ -6,22 +6,13 @@ import { ExerciseEditorScreen } from '@/features/strength/screens/exercise-edito
 /**
  * Route wiring only (D10).
  *
- * AN OVERLAY, like every other window in this application: slice 3's rule is
- * that consulting is a push and ACTING on something is a window over it.
- * Creating an exercise acts on the library, editing one acts on the exercise,
- * and both leave what they act on visible behind.
+ * CREATION ONLY, like its routine sibling. Editing an exercise happens on its
+ * own page, which flips into an editable state rather than being covered by a
+ * window — the window was hiding exactly the exercise it was changing, so slice
+ * 3's rule argued against itself there (specs 14.27).
  *
- * The screen reads its own `id` parameter rather than being handed one, because
- * the two cases differ in more than a value: with an id it loads a draft and
- * waits for it, without one it states a starting draft from the settings. A
- * route that resolved that would be doing the screen's job.
- *
- * ## THE WAY OUT IS DECLARED HERE, AND IT HAS TO BE
- *
- * A window's navigator draws no back button — the trap slice 3 found when free
- * entry had shipped since slice 1 with no way to cancel at all, because "Ajouter"
- * and "Supprimer" both happened to close it. OverlayPanel carries the exit for
- * every window now, and this is where it is named.
+ * Creation has no page to flip, so it keeps the window, opening over the list
+ * the new exercise will join.
  */
 function CancelAction() {
   // Inside the panel, so its dismissal folds the window away first.

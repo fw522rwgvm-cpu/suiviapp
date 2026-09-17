@@ -470,3 +470,63 @@ function mapBlock(
     blocks: draft.blocks.map((block, index) => (index === blockIndex ? change(block) : block)),
   };
 }
+
+/**
+ * Whether two routine drafts say the same thing (specs 14.27).
+ *
+ * Written out rather than compared generically, for the reason
+ * sameExerciseDraft gives: the question is "is there anything to lose", and a
+ * generic comparison would answer it about fields nobody chose to guard.
+ *
+ * `id` IS compared. A line that has been removed and added back is a different
+ * row to write even when every target matches — the draft would save the same
+ * routine, but it is no longer the routine that was opened, and a confirmation
+ * that says nothing changed would be wrong about the one thing it is for.
+ */
+export function sameRoutineDraft(a: RoutineDraft, b: RoutineDraft): boolean {
+  return (
+    a.name === b.name &&
+    sameStrings(a.warmupSteps, b.warmupSteps) &&
+    sameLists(a.blocks, b.blocks, sameBlock)
+  );
+}
+
+function sameBlock(a: BlockDraft, b: BlockDraft): boolean {
+  return (
+    a.id === b.id && a.restSeconds === b.restSeconds && sameLists(a.lines, b.lines, sameLine)
+  );
+}
+
+function sameLine(a: LineDraft, b: LineDraft): boolean {
+  return (
+    a.id === b.id &&
+    a.exerciseId === b.exerciseId &&
+    a.setType === b.setType &&
+    a.repsMin === b.repsMin &&
+    a.repsMax === b.repsMax &&
+    a.targetLoadKg === b.targetLoadKg &&
+    a.targetRir === b.targetRir &&
+    a.durationSeconds === b.durationSeconds &&
+    a.restSeconds === b.restSeconds &&
+    a.progressionEnabled === b.progressionEnabled &&
+    a.note === b.note
+  );
+  // exerciseName is deliberately absent: it is carried for display and comes
+  // from the exercise, so a rename is not an edit of this routine.
+}
+
+function sameStrings(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+function sameLists<T>(
+  a: readonly T[],
+  b: readonly T[],
+  same: (x: T, y: T) => boolean,
+): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((value, index) => {
+    const other = b[index];
+    return other !== undefined && same(value, other);
+  });
+}
