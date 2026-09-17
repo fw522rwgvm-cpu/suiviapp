@@ -64,19 +64,6 @@ export function restText(seconds: number): string {
   return rest === 0 ? `${minutes} min` : `${minutes} min ${rest}`;
 }
 
-/**
- * What a block is called on a routine's page.
- *
- * A superset is NAMED, because it changes how the block is performed and where
- * its rest comes from — and neither is visible from the rows themselves. A
- * single-exercise block needs no label: it is the ordinary case, and labelling
- * it would leave the exceptional one indistinguishable.
- */
-export function blockTitle(exerciseNames: readonly string[]): string | null {
-  const distinct = [...new Set(exerciseNames)];
-  return distinct.length > 1 ? `Superset · ${distinct.join(' + ')}` : null;
-}
-
 /** What a validation problem says to the person looking at the form. */
 export function routineProblemText(problem: RoutineProblem): string {
   switch (problem.kind) {

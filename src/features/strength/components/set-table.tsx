@@ -6,7 +6,7 @@ import { SwipeToDeleteRow } from '@/core/ui/swipe-to-delete-row';
 import { useTheme } from '@/core/theme';
 import { SET_TYPES } from '@/core/db/schema';
 import type { BlockDraft, LineDraft } from '../domain/routine-draft';
-import { setIndexOf } from '../domain/routine-draft';
+import { exercisesOfBlock, roundsOf } from '../domain/routine-draft';
 import { setTypeShort } from '../domain/routine-text';
 
 /**
@@ -25,15 +25,28 @@ import { setTypeShort } from '../domain/routine-text';
  * Série · kg · Reps or Temps · RIR. The rest is NOT among them — it moved to
  * the block, where it belongs in every shape: nobody rests differently between
  * two sets of the same exercise, and giving each row its own rest cost the row
- * the width the targets needed.
+ * the width the targets needed. The progression flag left the same way, for the
+ * same reason and to the same place.
+ *
+ * ## THE ROWS ARE ORDERED BY ROUND, WHICH ONLY SHOWS IN A SUPERSET
+ *
+ * An ordinary block has one exercise, so one set per round, and the table is
+ * what it always was: S1, S2, S3. A superset alternates — A, B, then A, B again
+ * — which is the order it is performed in, so a row has to say WHICH exercise
+ * it is. It says so with a letter, assigned by the order the exercises appear
+ * in the block and spelled out under the block's title.
+ *
+ * A letter rather than the name: a name does not fit beside four numbers, and
+ * truncating it would make two rows of a superset look alike, which is the one
+ * thing this layout must not do.
  *
  * ## THE FIRST COLUMN CARRIES TWO THINGS, AND THAT IS DELIBERATE
  *
- * It shows "S1" for a working set and "Éch", "Drop" or "Long" otherwise —
- * `travail` being the default (specs 6.3), labelling every ordinary row with it
- * would be a column of the same word, and the exceptions, which are the ones
- * worth seeing, would stop standing out. In edit mode touching it cycles the
- * type, so one cell states the type and changes it.
+ * It shows the set number for a working set and "Éch", "Drop" or "Long"
+ * otherwise — `travail` being the default (specs 6.3), labelling every ordinary
+ * row with it would be a column of the same word, and the exceptions, which are
+ * the ones worth seeing, would stop standing out. In edit mode touching it
+ * cycles the type, so one cell states the type and changes it.
  *
  * ## REPS OR TIME, NEVER BOTH
  *
@@ -58,68 +71,110 @@ export function SetTable({
 }) {
   const theme = useTheme();
 
+  const rounds = roundsOf(block);
+  const exercises = exercisesOfBlock(block);
+  const letters = new Map(exercises.map((item, index) => [item.exerciseId, LETTERS[index] ?? '?']));
+  const lettered = exercises.length > 1;
+
+  let separated = false;
+
   return (
     <View>
       <View style={styles.head}>
         <Text style={[styles.headCell, styles.colSet, { color: theme.colors.textMuted }]}>
-          Série
+          {lettered ? 'Tour' : 'Série'}
         </Text>
-        <Text style={[styles.headCell, styles.colValue, { color: theme.colors.textMuted }]}>
-          kg
-        </Text>
+        <Text style={[styles.headCell, styles.colValue, { color: theme.colors.textMuted }]}>kg</Text>
         <Text style={[styles.headCell, styles.colReps, { color: theme.colors.textMuted }]}>
           {tracksDuration ? 'Temps' : 'Reps'}
         </Text>
         <Text style={[styles.headCell, styles.colValue, { color: theme.colors.textMuted }]}>
           RIR
         </Text>
-        <View style={styles.colFlag} />
       </View>
 
-      {block.lines.map((line, lineIndex) => (
-        <View key={line.id ?? `line-${lineIndex}`}>
-          <ListSeparator />
-          <SetRowInner
-            block={block}
-            line={line}
-            lineIndex={lineIndex}
-            tracksDuration={tracksDuration}
-            editable={editable}
-            onChange={(change) => onChangeLine?.(lineIndex, change)}
-            onDelete={() => onDeleteLine?.(lineIndex)}
-          />
-        </View>
-      ))}
+      {rounds.map((round, roundIndex) =>
+        round.map(({ line, lineIndex }) => {
+          const wasSeparated = separated;
+          separated = true;
+          return (
+            <View key={line.id ?? `line-${lineIndex}`}>
+              {wasSeparated ? <ListSeparator /> : null}
+              <SetRowInner
+                line={line}
+                round={roundIndex + 1}
+                letter={lettered ? (letters.get(line.exerciseId) ?? '?') : null}
+                tracksDuration={tracksDuration}
+                editable={editable}
+                onChange={(change) => onChangeLine?.(lineIndex, change)}
+                onDelete={() => onDeleteLine?.(lineIndex)}
+              />
+            </View>
+          );
+        }),
+      )}
     </View>
   );
 }
 
+/** A, B, C… Beyond three exercises a block stops being a superset anyone runs. */
+const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'] as const;
+
 function SetRowInner({
-  block,
   line,
-  lineIndex,
+  round,
+  letter,
   tracksDuration,
   editable,
   onChange,
   onDelete,
 }: {
-  block: BlockDraft;
   line: LineDraft;
-  lineIndex: number;
+  round: number;
+  /** The exercise's letter in a superset; null in an ordinary block. */
+  letter: string | null;
   tracksDuration: boolean;
   editable: boolean;
   onChange: (change: Partial<LineDraft>) => void;
   onDelete: () => void;
 }) {
   const theme = useTheme();
-  const index = setIndexOf(block, lineIndex);
-  const label = line.setType === 'work' ? `S${index}` : setTypeShort(line.setType);
+  const number = line.setType === 'work' ? String(round) : setTypeShort(line.setType);
+  const label = letter === null ? number : `${letter}${number}`;
 
   function cycleType(): void {
     const at = SET_TYPES.indexOf(line.setType);
     const next = SET_TYPES[(at + 1) % SET_TYPES.length];
     if (next !== undefined) onChange({ setType: next });
   }
+
+  /*
+    The number in a chip, which is where the eye goes first down a table of
+    figures: it is the only cell that is not a measurement, so it reads as the
+    row's handle rather than as a fifth number.
+  */
+  const chip = (
+    <View
+      style={[
+        styles.chip,
+        {
+          // The page's own ground, so the chip reads as recessed into the card
+          // rather than as a sixth colour the palette would have to justify.
+          backgroundColor: theme.colors.background,
+          borderRadius: theme.radius.sm,
+        },
+      ]}
+    >
+      <Text
+        style={[
+          styles.setLabel,
+          { color: line.setType === 'work' ? theme.colors.textMuted : theme.colors.accent },
+        ]}
+      >
+        {label}
+      </Text>
+    </View>
+  );
 
   const content = (
     <View style={styles.row}>
@@ -130,12 +185,10 @@ function SetRowInner({
           accessibilityLabel={`Type de série : ${label}`}
           style={styles.colSet}
         >
-          <Text style={[styles.setLabel, { color: theme.colors.accent }]}>{label}</Text>
+          {chip}
         </Pressable>
       ) : (
-        <Text style={[styles.setLabel, styles.colSet, { color: theme.colors.textMuted }]}>
-          {label}
-        </Text>
+        <View style={styles.colSet}>{chip}</View>
       )}
 
       <Cell
@@ -176,37 +229,6 @@ function SetRowInner({
         label="RIR cible"
         onChange={(targetRir) => onChange({ targetRir })}
       />
-
-      {/*
-        The progression flag, as a mark rather than a column: specs 10.4 makes
-        it a per-line switch, but it is off on most sets and a header for it
-        would cost width four numbers need. Touched in edit mode, read-only
-        otherwise.
-      */}
-      {editable ? (
-        <Pressable
-          onPress={() => onChange({ progressionEnabled: !line.progressionEnabled })}
-          accessibilityRole="switch"
-          accessibilityState={{ checked: line.progressionEnabled }}
-          accessibilityLabel="Règle de progression"
-          style={styles.colFlag}
-        >
-          <Text
-            style={[
-              styles.flag,
-              { color: line.progressionEnabled ? theme.colors.accent : theme.colors.border },
-            ]}
-          >
-            ↗
-          </Text>
-        </Pressable>
-      ) : (
-        <View style={styles.colFlag}>
-          {line.progressionEnabled ? (
-            <Text style={[styles.flag, { color: theme.colors.accent }]}>↗</Text>
-          ) : null}
-        </View>
-      )}
     </View>
   );
 
@@ -221,7 +243,7 @@ function SetRowInner({
   return (
     <SwipeToDeleteRow
       onDelete={onDelete}
-      accessibilityLabel={`Série ${index}`}
+      accessibilityLabel={`Série ${label}`}
       actionLabel="Retirer"
     >
       {content}
@@ -285,7 +307,9 @@ function Cell({
     const shown =
       value === null ? null : `${formatCell(value)}${suffix === undefined ? '' : ` ${suffix}`}`;
     return (
-      <Text style={[styles.cell, style, { color: theme.colors.text }]}>
+      <Text
+        style={[styles.cell, style, { color: shown === null ? theme.colors.textFaint : theme.colors.text }]}
+      >
         {shown ?? placeholder}
       </Text>
     );
@@ -301,7 +325,7 @@ function Cell({
       }}
       keyboardType={decimals === true ? 'decimal-pad' : 'number-pad'}
       placeholder={placeholder}
-      placeholderTextColor={theme.colors.textMuted}
+      placeholderTextColor={theme.colors.textFaint}
       accessibilityLabel={label}
       selectTextOnFocus
     />
@@ -332,9 +356,16 @@ function RangeCell({
   const theme = useTheme();
 
   if (!editable) {
+    const shown = rangeText(min, max);
     return (
-      <Text style={[styles.cell, styles.colReps, { color: theme.colors.text }]}>
-        {rangeText(min, max)}
+      <Text
+        style={[
+          styles.cell,
+          styles.colReps,
+          { color: shown === '—' ? theme.colors.textFaint : theme.colors.text },
+        ]}
+      >
+        {shown}
       </Text>
     );
   }
@@ -349,7 +380,7 @@ function RangeCell({
         label="Répétitions minimum"
         onChange={(repsMin) => onChange({ repsMin })}
       />
-      <Text style={{ color: theme.colors.textMuted, fontSize: 13 }}>–</Text>
+      <Text style={{ color: theme.colors.textFaint, fontSize: 13 }}>–</Text>
       <Cell
         style={styles.rangeField}
         editable
@@ -391,24 +422,29 @@ function parseCell(text: string): number | null {
 }
 
 const styles = StyleSheet.create({
-  head: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6 },
-  headCell: { fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 },
+  head: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 4,
+    paddingBottom: 8,
+  },
+  headCell: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.6 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 4,
+    paddingVertical: 6,
     minHeight: 44,
   },
-  colSet: { width: 44 },
+  colSet: { width: 46 },
   colValue: { width: 58, textAlign: 'center' },
   colReps: { flex: 1, minWidth: 74, textAlign: 'center' },
-  colFlag: { width: 22, alignItems: 'center' },
-  setLabel: { fontSize: 13, fontVariant: ['tabular-nums'] },
-  cell: { fontSize: 15, fontVariant: ['tabular-nums'] },
+  chip: { minWidth: 30, paddingHorizontal: 7, paddingVertical: 4, alignItems: 'center' },
+  setLabel: { fontSize: 13, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  cell: { fontSize: 16, fontVariant: ['tabular-nums'] },
   input: { paddingVertical: 4, paddingHorizontal: 2 },
   range: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
   rangeField: { width: 34, textAlign: 'center' },
-  flag: { fontSize: 15 },
 });

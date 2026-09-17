@@ -401,6 +401,43 @@ export function updateLine(
   }));
 }
 
+/**
+ * Whether the block's working sets carry the progression rule (specs 10.4).
+ *
+ * ## THE RULE MOVED TO THE BLOCK, THE COLUMN STAYED ON THE LINE
+ *
+ * It used to be an arrow at the end of a row, per line, as section 10.4
+ * describes the column. Removing that arrow was asked for, and a switch nobody
+ * can reach is worse than an arrow nobody presses — so the control went where
+ * the rest already is. Nobody progresses the second set of an exercise and not
+ * the third, and a block holding one exercise IS that exercise.
+ *
+ * `routine_line.progression_enabled` is untouched: still per line, still what
+ * slice 12 reads. This is a reading of it, not a replacement.
+ *
+ * ON means every WORKING set has it. A warm-up or a drop set is deliberately
+ * excluded — a warm-up that crept up by 2,5 kg a week stopped being one — so a
+ * block whose only sets are warm-ups reads as off, which it is.
+ */
+export function blockProgression(block: BlockDraft): boolean {
+  const work = block.lines.filter((line) => line.setType === 'work');
+  return work.length > 0 && work.every((line) => line.progressionEnabled);
+}
+
+/** Applies the rule to every working set of the block, and to no other. */
+export function setBlockProgression(
+  draft: RoutineDraft,
+  blockIndex: number,
+  enabled: boolean,
+): RoutineDraft {
+  return mapBlock(draft, blockIndex, (block) => ({
+    ...block,
+    lines: block.lines.map((line) =>
+      line.setType === 'work' ? { ...line, progressionEnabled: enabled } : line,
+    ),
+  }));
+}
+
 export function setBlockRest(
   draft: RoutineDraft,
   blockIndex: number,

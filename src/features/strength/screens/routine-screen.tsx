@@ -199,7 +199,7 @@ export function RoutineScreen() {
     >
       <View
         style={[
-          styles.card,
+          styles.map,
           {
             backgroundColor: theme.colors.surface,
             borderColor: theme.colors.border,
@@ -227,11 +227,12 @@ export function RoutineScreen() {
               : { kind: 'picking', draft: current.draft, intoBlock },
           )
         }
-        onOpenExercise={
-          editing
-            ? undefined
-            : (exerciseId) => router.push(`/(tabs)/training/exercise/${exerciseId}`)
-        }
+        /*
+          Live in BOTH modes. Withholding it while editing was meant to protect
+          the draft, and protected nothing: a push leaves this screen mounted
+          underneath, so `mode` is still here when the exercise page is closed.
+        */
+        onOpenExercise={(exerciseId) => router.push(`/(tabs)/training/exercise/${exerciseId}`)}
       />
 
       {/*
@@ -478,6 +479,12 @@ const styles = StyleSheet.create({
   content: { padding: 16, gap: 20, paddingBottom: 56 },
   centre: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   card: { borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
+  /*
+    The breathing room asked for at the foot of the body map belongs to the
+    CARD, not to the drawing: inside the graph it only pushed the figures up
+    off their own caption, which is the opposite of framing them.
+  */
+  map: { borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden', paddingBottom: 14 },
   pickerHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   pickerTitle: { fontSize: 17, fontWeight: '600' },
   problems: { gap: 4 },

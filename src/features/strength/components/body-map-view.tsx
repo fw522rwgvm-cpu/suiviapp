@@ -202,13 +202,14 @@ function Tooltip({
 
 const styles = StyleSheet.create({
   /**
-   * Breathing room above and below the figures.
+   * Breathing room ABOVE the figures only.
    *
-   * They are drawn to the edge of their viewBox — a head touching the top of a
-   * card reads as cropped rather than as framed — and the card they sit in has
-   * none of its own, being a plain surface behind an SVG.
+   * They are drawn to the edge of their viewBox, so a head touching the top of
+   * a card reads as cropped rather than as framed. Below them the space belongs
+   * to the card, not here: padding under the drawing separated the figures from
+   * their own captions instead of the card from what follows it.
    */
-  figures: { flexDirection: 'row', gap: 12, paddingTop: 16, paddingBottom: 8 },
+  figures: { flexDirection: 'row', gap: 12, paddingTop: 16 },
   figure: { flex: 1, minWidth: 0, alignItems: 'center', gap: 6 },
   caption: { fontSize: 12 },
   tooltip: {

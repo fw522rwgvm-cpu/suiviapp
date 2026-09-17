@@ -3,7 +3,6 @@ import { newId } from '../../src/core/id';
 import type { ExerciseId } from '../../src/core/db/schema';
 import { newLine } from '../../src/features/strength/domain/routine-draft';
 import {
-  blockTitle,
   repsText,
   restText,
   routineProblemText,
@@ -82,23 +81,6 @@ describe('a rest', () => {
   it('drops the seconds on a round minute', () => {
     // "2 min", never "2 min 0".
     expect(restText(180)).toBe('3 min');
-  });
-});
-
-describe('what a block is called', () => {
-  it('names a superset and says nothing about an ordinary block', () => {
-    /**
-     * A superset is NAMED because it changes how the block is performed and
-     * where its rest comes from, neither of which is visible from the rows. A
-     * single-exercise block is the ordinary case: labelling it would leave the
-     * exceptional one indistinguishable.
-     */
-    expect(blockTitle(['Développé couché', 'Rowing'])).toBe(
-      'Superset · Développé couché + Rowing',
-    );
-    expect(blockTitle(['Développé couché'])).toBeNull();
-    // Three sets of one exercise is not a superset, however many rows it has.
-    expect(blockTitle(['Squat', 'Squat', 'Squat'])).toBeNull();
   });
 });
 

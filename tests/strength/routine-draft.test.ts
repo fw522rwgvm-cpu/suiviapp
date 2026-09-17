@@ -5,6 +5,7 @@ import {
   addExerciseBlock,
   addExerciseToBlock,
   addRound,
+  blockProgression,
   duplicateLine,
   emptyRoutineDraft,
   isSuperset,
@@ -16,6 +17,7 @@ import {
   removeLine,
   restForBlock,
   roundsOf,
+  setBlockProgression,
   setBlockRest,
   setIndexOf,
   updateLine,
@@ -338,6 +340,54 @@ describe('adding and removing', () => {
 
     expect(removeLine(draft, 9, 0)).toEqual(draft);
     expect(duplicateLine(draft, 0, 9)).toEqual(draft);
+  });
+});
+
+describe('the progression rule, at the level of the block', () => {
+  it('is off on a new exercise, and on once the block says so', () => {
+    /**
+     * It used to be an arrow at the end of a row. Removing that arrow was
+     * asked for, and a switch nobody can reach is worse than an arrow nobody
+     * presses — so the control moved to the block, where the rest already is.
+     * The COLUMN is untouched: still per line, which specs 10.4 requires.
+     */
+    let draft = withBench();
+    draft = addRound(draft, 0);
+    expect(blockProgression(blockAt(draft, 0))).toBe(false);
+
+    draft = setBlockProgression(draft, 0, true);
+    expect(blockProgression(blockAt(draft, 0))).toBe(true);
+    expect(blockAt(draft, 0).lines.every((line) => line.progressionEnabled)).toBe(true);
+  });
+
+  it('leaves a warm-up set out of it', () => {
+    // A warm-up that crept up by 2,5 kg a week stopped being a warm-up.
+    let draft = withBench();
+    draft = addRound(draft, 0);
+    draft = updateLine(draft, 0, 0, { setType: 'warmup' });
+    draft = setBlockProgression(draft, 0, true);
+
+    expect(blockAt(draft, 0).lines[0]?.progressionEnabled).toBe(false);
+    expect(blockAt(draft, 0).lines[1]?.progressionEnabled).toBe(true);
+    // And the block still reads as on: the working sets are what it is about.
+    expect(blockProgression(blockAt(draft, 0))).toBe(true);
+  });
+
+  it('reads as off when one working set of the block is not covered', () => {
+    // Half a rule is not a rule. A block imported or half-edited says so.
+    let draft = withBench();
+    draft = addRound(draft, 0);
+    draft = setBlockProgression(draft, 0, true);
+    draft = updateLine(draft, 0, 1, { progressionEnabled: false });
+
+    expect(blockProgression(blockAt(draft, 0))).toBe(false);
+  });
+
+  it('reads as off on a block with no working set at all', () => {
+    let draft = withBench();
+    draft = updateLine(draft, 0, 0, { setType: 'warmup', progressionEnabled: true });
+
+    expect(blockProgression(blockAt(draft, 0))).toBe(false);
   });
 });
 

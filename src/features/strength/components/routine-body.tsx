@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, Switch, TextInput, View } from 'react-native';
+import { SymbolView } from 'expo-symbols';
 import { Text } from '@/core/ui/text';
 import { FormInput, FormRow, FormSection } from '@/core/ui/form-section';
 import { ListSeparator } from '@/core/ui/list-separator';
@@ -7,14 +8,18 @@ import { SetTable } from './set-table';
 import type { ExerciseListItem } from '../data/exercise-reads';
 import {
   addRound,
+  blockProgression,
+  exercisesOfBlock,
   isSuperset,
   removeLine,
   restForBlock,
+  setBlockProgression,
   setBlockRest,
   updateLine,
+  type BlockDraft,
   type RoutineDraft,
 } from '../domain/routine-draft';
-import { blockTitle, restText } from '../domain/routine-text';
+import { restText } from '../domain/routine-text';
 
 /**
  * A routine's blocks, read or edited, with ONE component for both.
@@ -26,12 +31,27 @@ import { blockTitle, restText } from '../domain/routine-text';
  * drift from the first. It carries the warm-up and the name too, for the same
  * reason — every part of a routine that is shown is shown once.
  *
- * ## THE REST IS STATED AT THE TOP OF ITS BLOCK
+ * ## THE BLOCK IS A CARD THAT OPENS WITH ITS EXERCISES
  *
- * Under the sets it read as a footnote to the last one. At the top it reads as
- * a property of the block, which is what it is since it stopped belonging to
- * the line — and it is what you need BEFORE the sets, not after: how long to
- * wait is the question between them.
+ * Asked for in as many words: closer to Hevy. What that means concretely, and
+ * what was taken rather than copied:
+ *
+ * - The exercise NAME is the heading, in the accent colour, and touching it
+ *   opens the exercise (specs 10.2, "Toucher un exercice ouvre sa page"). In a
+ *   superset each name is its own target, prefixed by the letter its rows
+ *   carry — one heading over two exercises could only ever open one of them.
+ * - The rest sits directly under the names, one muted line with a timer glyph,
+ *   because it is the question you have BETWEEN two sets and it governs all of
+ *   them rather than following the last.
+ * - The table has no inner frame. A grid drawn inside a card is two boxes, and
+ *   the columns line up without one.
+ * - A superset carries an accent rail down its left edge, which is how it is
+ *   recognised before a word is read.
+ *
+ * What was NOT taken, and why: the exercise thumbnail — media is out of this
+ * slice, and a placeholder circle is a promise the application does not keep —
+ * and the "previous" column, which is slice 12's history; an empty column would
+ * say there is nothing rather than that nothing is recorded yet.
  */
 export function RoutineBody({
   draft,
@@ -74,124 +94,68 @@ export function RoutineBody({
       />
 
       {draft.blocks.map((block, blockIndex) => {
-        const title = blockTitle(block.lines.map((line) => line.exerciseName));
         const superset = isSuperset(block);
-        const heading = title ?? block.lines[0]?.exerciseName ?? 'Bloc';
-        const rest = restForBlock(block);
         const first = block.lines[0];
         const timed =
-          first === undefined
-            ? false
-            : catalogue.get(first.exerciseId)?.tracksDuration === 1;
+          first === undefined ? false : catalogue.get(first.exerciseId)?.tracksDuration === 1;
 
         return (
-          <View key={block.id ?? `block-${blockIndex}`} style={styles.section}>
-            {/*
-              Specs 10.2: "Toucher un exercice ouvre sa page". It is the TITLE
-              that carries it, not a row: a cell is a number, and a press
-              spanning four of them would fight the swipe that removes the set.
-            */}
-            {onOpenExercise === undefined || first === undefined ? (
-              <Text style={[styles.heading, { color: superset ? theme.colors.accent : theme.colors.text }]}>
-                {heading}
-              </Text>
-            ) : (
-              <Pressable
-                onPress={() => onOpenExercise(first.exerciseId)}
-                accessibilityRole="button"
-                hitSlop={6}
-              >
-                <Text
-                  style={[
-                    styles.heading,
-                    { color: superset ? theme.colors.accent : theme.colors.text },
-                  ]}
-                >
-                  {heading}
-                </Text>
-              </Pressable>
-            )}
+          <View
+            key={block.id ?? `block-${blockIndex}`}
+            style={[
+              styles.card,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+                borderRadius: theme.radius.lg,
+              },
+              theme.shadow,
+            ]}
+          >
+            {/* The rail, which says "superset" before a single word is read. */}
+            {superset ? (
+              <View style={[styles.rail, { backgroundColor: theme.colors.accent }]} />
+            ) : null}
 
-            {/*
-              THE REST, ABOVE THE SETS. Below them it read as a footnote to the
-              last row; above, it reads as what governs all of them — and it is
-              the question you have between two sets, not after the block.
-            */}
-            {editable ? (
-              <View style={styles.restField}>
-                <Text style={[styles.restLabel, { color: theme.colors.textMuted }]}>
-                  {superset ? 'Repos entre les tours' : 'Repos entre les séries'}
-                </Text>
-                <FormInput
-                  value={block.restSeconds === null ? '' : String(block.restSeconds)}
-                  onChangeText={(value) => {
-                    const seconds = value.trim() === '' ? null : Number(value.replace(',', '.'));
-                    onChange?.(
-                      setBlockRest(
-                        draft,
-                        blockIndex,
-                        seconds === null || !Number.isFinite(seconds)
-                          ? null
-                          : Math.max(0, Math.round(seconds)),
-                      ),
-                    );
-                  }}
-                  keyboardType="number-pad"
-                  placeholder="90 s"
-                />
-              </View>
-            ) : rest === null ? null : (
-              <Text style={[styles.restLine, { color: theme.colors.textMuted }]}>
-                {superset
-                  ? `Repos entre les tours : ${restText(rest)}`
-                  : `Repos entre les séries : ${restText(rest)}`}
-              </Text>
-            )}
+            <View style={styles.body}>
+              <BlockHeading block={block} superset={superset} onOpenExercise={onOpenExercise} />
 
-            <View
-              style={[
-                styles.card,
-                {
-                  backgroundColor: theme.colors.surface,
-                  borderColor: theme.colors.border,
-                  borderRadius: theme.radius.lg,
-                },
-              ]}
-            >
-              <SetTable
+              <BlockRest
                 block={block}
-                tracksDuration={timed}
+                superset={superset}
                 editable={editable}
-                onChangeLine={(lineIndex, change) =>
-                  onChange?.(updateLine(draft, blockIndex, lineIndex, change))
-                }
-                onDeleteLine={(lineIndex) => onChange?.(removeLine(draft, blockIndex, lineIndex))}
+                onChange={(seconds) => onChange?.(setBlockRest(draft, blockIndex, seconds))}
               />
 
-              {editable ? (
-                <>
-                  <ListSeparator />
-                  <Pressable
-                    onPress={() => onChange?.(addRound(draft, blockIndex))}
-                    accessibilityRole="button"
-                    style={styles.blockAction}
-                  >
-                    <Text style={{ color: theme.colors.accent, fontSize: 15 }}>
-                      Ajouter une série
-                    </Text>
-                  </Pressable>
+              <BlockProgression
+                block={block}
+                editable={editable}
+                onChange={(enabled) => onChange?.(setBlockProgression(draft, blockIndex, enabled))}
+              />
 
-                  <ListSeparator />
-                  <Pressable
+              <View style={styles.table}>
+                <SetTable
+                  block={block}
+                  tracksDuration={timed}
+                  editable={editable}
+                  onChangeLine={(lineIndex, change) =>
+                    onChange?.(updateLine(draft, blockIndex, lineIndex, change))
+                  }
+                  onDeleteLine={(lineIndex) => onChange?.(removeLine(draft, blockIndex, lineIndex))}
+                />
+              </View>
+
+              {editable ? (
+                <View style={styles.actions}>
+                  <BlockAction
+                    label={superset ? 'Ajouter un tour' : 'Ajouter une série'}
+                    onPress={() => onChange?.(addRound(draft, blockIndex))}
+                  />
+                  <BlockAction
+                    label={superset ? 'Ajouter au superset' : 'En faire un superset'}
                     onPress={() => onPickInto?.(blockIndex)}
-                    accessibilityRole="button"
-                    style={styles.blockAction}
-                  >
-                    <Text style={{ color: theme.colors.accent, fontSize: 15 }}>
-                      {superset ? 'Ajouter un exercice au superset' : 'En faire un superset'}
-                    </Text>
-                  </Pressable>
-                </>
+                  />
+                </View>
               ) : null}
             </View>
           </View>
@@ -227,6 +191,201 @@ export function RoutineBody({
 }
 
 /**
+ * The exercises a block holds, each one its own way to its own page.
+ *
+ * ## ONE NAME, ONE TARGET — INCLUDING WHILE EDITING
+ *
+ * The first version put a single heading on the block, so a superset offered
+ * one press for two exercises and it opened whichever came first. And it was
+ * withheld entirely while editing, on the theory that navigating away would
+ * lose the draft. It would not: a push leaves this screen MOUNTED underneath,
+ * which is why a navigator has focus events at all — so the state survives the
+ * visit, and the names stay live in both modes.
+ */
+function BlockHeading({
+  block,
+  superset,
+  onOpenExercise,
+}: {
+  block: BlockDraft;
+  superset: boolean;
+  onOpenExercise?: (exerciseId: string) => void;
+}) {
+  const theme = useTheme();
+  const exercises = exercisesOfBlock(block);
+
+  return (
+    <View style={styles.heading}>
+      {superset ? (
+        <Text style={[styles.supersetLabel, { color: theme.colors.accent }]}>SUPERSET</Text>
+      ) : null}
+
+      {exercises.map((item, index) => {
+        const name = (
+          <Text style={[styles.name, { color: theme.colors.accent }]} numberOfLines={2}>
+            {superset ? `${LETTERS[index] ?? '?'}  ${item.exerciseName}` : item.exerciseName}
+          </Text>
+        );
+
+        if (onOpenExercise === undefined) {
+          return (
+            <View key={item.exerciseId} style={styles.nameRow}>
+              {name}
+            </View>
+          );
+        }
+
+        return (
+          <Pressable
+            key={item.exerciseId}
+            onPress={() => onOpenExercise(item.exerciseId)}
+            accessibilityRole="button"
+            accessibilityLabel={`Ouvrir ${item.exerciseName}`}
+            hitSlop={6}
+            style={({ pressed }) => [styles.nameRow, { opacity: pressed ? 0.6 : 1 }]}
+          >
+            {name}
+            <SymbolView name="chevron.right" size={12} tintColor={theme.colors.textFaint} />
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/** The same letters the rows carry, so a name and its sets are one thing. */
+const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'] as const;
+
+/**
+ * The rest, stated at the top of its block.
+ *
+ * Under the sets it read as a footnote to the last one. At the top it reads as
+ * what governs all of them — and it is the question you have BETWEEN two sets,
+ * not after the block.
+ */
+function BlockRest({
+  block,
+  superset,
+  editable,
+  onChange,
+}: {
+  block: BlockDraft;
+  superset: boolean;
+  editable: boolean;
+  onChange: (seconds: number | null) => void;
+}) {
+  const theme = useTheme();
+  const rest = restForBlock(block);
+  const label = superset ? 'Repos entre les tours' : 'Repos entre les séries';
+
+  if (!editable) {
+    if (rest === null) return null;
+    return (
+      <View style={styles.line}>
+        <SymbolView name="timer" size={13} tintColor={theme.colors.textMuted} />
+        <Text style={[styles.lineText, { color: theme.colors.textMuted }]}>
+          {`${label} : ${restText(rest)}`}
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.line}>
+      <SymbolView name="timer" size={13} tintColor={theme.colors.textMuted} />
+      <Text style={[styles.lineText, { color: theme.colors.textMuted }]}>{label}</Text>
+      <TextInput
+        style={[styles.restInput, { color: theme.colors.text }]}
+        value={block.restSeconds === null ? '' : String(block.restSeconds)}
+        onChangeText={(value) => {
+          const seconds = value.trim() === '' ? null : Number(value.replace(',', '.'));
+          onChange(
+            seconds === null || !Number.isFinite(seconds) ? null : Math.max(0, Math.round(seconds)),
+          );
+        }}
+        keyboardType="number-pad"
+        placeholder="90 s"
+        placeholderTextColor={theme.colors.textFaint}
+        accessibilityLabel={label}
+      />
+    </View>
+  );
+}
+
+/**
+ * The progression rule, at the level of the block.
+ *
+ * ## IT WAS AN ARROW ON A ROW, AND THE ARROW HAD TO GO
+ *
+ * Asked for: remove the ↗ sitting at the end of some rows. It carried specs
+ * 10.4's per-line switch, so deleting it alone would have left the rule with no
+ * way in at all — a column in the schema that nothing could ever set.
+ *
+ * The block is where it belongs anyway, for the reason the rest is there:
+ * nobody progresses the second set of an exercise and not the third. The COLUMN
+ * stays per line, which section 10.4 requires and slice 12 will read; this
+ * control writes it across every working set of the block.
+ */
+function BlockProgression({
+  block,
+  editable,
+  onChange,
+}: {
+  block: BlockDraft;
+  editable: boolean;
+  onChange: (enabled: boolean) => void;
+}) {
+  const theme = useTheme();
+  const enabled = blockProgression(block);
+
+  if (!editable) {
+    if (!enabled) return null;
+    return (
+      <View style={styles.line}>
+        <SymbolView name="chart.line.uptrend.xyaxis" size={13} tintColor={theme.colors.textMuted} />
+        <Text style={[styles.lineText, { color: theme.colors.textMuted }]}>
+          Progression automatique
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.line}>
+      <SymbolView name="chart.line.uptrend.xyaxis" size={13} tintColor={theme.colors.textMuted} />
+      <Text style={[styles.lineText, { color: theme.colors.textMuted }]}>
+        Progression automatique
+      </Text>
+      <Switch
+        value={enabled}
+        onValueChange={onChange}
+        accessibilityLabel="Progression automatique"
+      />
+    </View>
+  );
+}
+
+function BlockAction({ label, onPress }: { label: string; onPress: () => void }) {
+  const theme = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      style={({ pressed }) => [
+        styles.action,
+        {
+          backgroundColor: theme.colors.background,
+          borderRadius: theme.radius.sm,
+          opacity: pressed ? 0.6 : 1,
+        },
+      ]}
+    >
+      <Text style={[styles.actionLabel, { color: theme.colors.accent }]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+/**
  * The warm-up, one step per line typed (specs 10.2).
  *
  * A trailing empty field is always present while editing, so adding a step
@@ -248,26 +407,29 @@ function WarmupSection({
   if (!editable) {
     if (steps.length === 0) return null;
     return (
-      <View style={styles.section}>
-        <Text style={[styles.heading, { color: theme.colors.text }]}>Échauffement</Text>
-        <View
-          style={[
-            styles.card,
-            {
-              backgroundColor: theme.colors.surface,
-              borderColor: theme.colors.border,
-              borderRadius: theme.radius.lg,
-            },
-          ]}
-        >
-          {steps.map((step, index) => (
-            <View key={`${index}-${step}`}>
-              {index === 0 ? null : <ListSeparator />}
-              <View style={styles.step}>
-                <Text style={[styles.stepText, { color: theme.colors.text }]}>{step}</Text>
+      <View
+        style={[
+          styles.card,
+          {
+            backgroundColor: theme.colors.surface,
+            borderColor: theme.colors.border,
+            borderRadius: theme.radius.lg,
+          },
+          theme.shadow,
+        ]}
+      >
+        <View style={styles.body}>
+          <Text style={[styles.warmupHeading, { color: theme.colors.text }]}>Échauffement</Text>
+          <View>
+            {steps.map((step, index) => (
+              <View key={`${index}-${step}`}>
+                {index === 0 ? null : <ListSeparator />}
+                <View style={styles.step}>
+                  <Text style={[styles.stepText, { color: theme.colors.text }]}>{step}</Text>
+                </View>
               </View>
-            </View>
-          ))}
+            ))}
+          </View>
         </View>
       </View>
     );
@@ -297,14 +459,22 @@ function WarmupSection({
 }
 
 const styles = StyleSheet.create({
-  section: { gap: 8 },
-  heading: { fontSize: 17, fontWeight: '600' },
   card: { borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
-  blockAction: { paddingVertical: 11, paddingHorizontal: 14 },
-  restLine: { fontSize: 13 },
-  restField: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  restLabel: { fontSize: 13 },
-  step: { paddingVertical: 11, paddingHorizontal: 14 },
+  rail: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 3 },
+  body: { padding: 14, gap: 10 },
+  heading: { gap: 2 },
+  supersetLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 2 },
+  name: { flex: 1, fontSize: 17, fontWeight: '600' },
+  line: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 28 },
+  lineText: { flex: 1, fontSize: 13 },
+  restInput: { fontSize: 15, minWidth: 56, textAlign: 'right', paddingVertical: 4 },
+  table: { paddingTop: 2 },
+  actions: { flexDirection: 'row', gap: 8 },
+  action: { flex: 1, paddingVertical: 10, alignItems: 'center' },
+  actionLabel: { fontSize: 14, fontWeight: '500' },
+  warmupHeading: { fontSize: 17, fontWeight: '600' },
+  step: { paddingVertical: 9 },
   stepText: { fontSize: 15 },
   add: { paddingVertical: 13, alignItems: 'center', borderWidth: 1 },
 });
