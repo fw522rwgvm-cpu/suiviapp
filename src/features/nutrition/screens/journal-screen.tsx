@@ -111,31 +111,40 @@ export function JournalScreen() {
   const deleteEntry = useDeleteEntry();
 
   /**
-   * ## THE STRIP NEVER RECENTRES, AND THAT IS THE WHOLE FIX
+   * ## TWO TRANSFORMS, BECAUSE TWO CHANNELS CANNOT BE ORDERED
    *
-   * Reported twice: after a swipe, the wrong day appeared for an instant, and
-   * the second report named the symptom exactly — two days at once, so the
-   * strip was sitting at an offset that shows the seam.
+   * Reported three times, which is what makes this worth writing out in full.
+   * After a swipe the wrong day appeared for an instant; the second report
+   * named it exactly — two days at once, so the strip sat at an offset showing
+   * the seam; the third said it was still there, and intermittent.
    *
-   * The cause is that a step used to happen in two places that cannot be made
-   * to agree. React commits three new pages; the strip has to come back from
-   * ±width to 0 so the two movements cancel. The pages travel on React's commit
-   * and the offset travels on Reanimated's own channel to the interface thread,
-   * and NOTHING orders those two against each other. Doing the reset in a layout
-   * effect was worse (it runs after the paint) and doing it during the render
-   * was better and still a race — which is what the second report was.
+   * A step moves two things that have to agree: the three pages React renders,
+   * and the offset that decides which of them fills the screen. **The pages
+   * travel on React's commit and an offset given to Reanimated travels on
+   * Reanimated's own channel to the interface thread, and nothing orders those
+   * two against each other.** Every attempt so far tried to make them coincide:
    *
-   * So the reset is gone. `slide` is CUMULATIVE: it never returns to zero, it
-   * grows by a page per step and stays where the animation left it. What
-   * compensates is `shifted`, a count of steps held in REACT STATE — so the
-   * page list and the offset that places it are set in the same `setState` and
-   * travel in the same commit. There is no longer anything for the two threads
-   * to disagree about: at the moment the day changes, the value on the
-   * interface thread does not move at all.
+   *  - resetting in a layout effect — worst, it runs after the paint;
+   *  - resetting during the render — earlier, still a race;
+   *  - making the offset cumulative so nothing is reset, and compensating with
+   *    a count of steps in React state. That one looked airtight and is not:
+   *    `useAnimatedStyle` with a React dependency still delivers its result
+   *    through Reanimated. The state was in the commit; the transform computed
+   *    from it was not. Intermittent, exactly as reported.
    *
-   * The price is that a gesture has to start from wherever the strip already
-   * is, hence `grip`. `event.translationX` counts from the finger going down,
-   * not from the origin.
+   * So the two stop sharing a view. The OUTER view carries a plain React style
+   * — `-width * (1 + shifted)` — which travels in the same commit as the pages,
+   * because it is an ordinary prop. The INNER Animated.View carries `slide` and
+   * nothing else, and `slide` does not change when the day does. Transforms
+   * compose, so the strip lands where it always did.
+   *
+   * At the moment of a step, the interface thread is not asked for anything.
+   * There is nothing left to get wrong.
+   *
+   * `slide` is cumulative — it never returns to zero, it grows by a page per
+   * step and stays where the animation left it — so a gesture starts from
+   * wherever the strip already is, hence `grip`: `event.translationX` counts
+   * from the finger going down, not from the origin.
    */
   const slide = useSharedValue(0);
   const grip = useSharedValue(0);
@@ -185,16 +194,15 @@ export function JournalScreen() {
     });
 
   /**
-   * `shifted` is a dependency, so a step rebuilds this worklet and the new
-   * offset is carried by the same React commit as the new pages.
+   * The gesture's half, and ONLY the gesture's half.
    *
-   * At rest the two terms cancel exactly: `slide` is `shifted` pages, so the
-   * strip shows its middle child, which is `date`.
+   * It closes over nothing but the shared value, so a step never rebuilds it
+   * and never sends anything to the interface thread. That is the property the
+   * whole arrangement rests on.
    */
-  const stripStyle = useAnimatedStyle(
-    () => ({ transform: [{ translateX: -width * (1 + shifted) + slide.value }] }),
-    [width, shifted],
-  );
+  const slideStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: slide.value }],
+  }));
 
   /**
    * The add screen of specs 8.4 — quick access, search, and free entry one tap
@@ -383,16 +391,27 @@ export function JournalScreen() {
       />
 
       <GestureDetector gesture={pan}>
-        <Animated.View style={[styles.strip, { width: width * 3 }, stripStyle]}>
-          {/*
-            Keyed by date, so the three pages are reconciled by identity: on a
-            step, the page that was arriving is reused rather than remounted,
-            and keeps its unfolded meals and its scroll position.
-          */}
-          <DayPage key={previous} date={previous} active={false} {...pageProps} />
-          <DayPage key={date} date={date} active {...pageProps} />
-          <DayPage key={next} date={next} active={false} {...pageProps} />
-        </Animated.View>
+        {/*
+          THE STEP'S HALF, AS AN ORDINARY PROP.
+
+          A plain View with a plain style, so this transform is carried by the
+          same React commit as the three children below it. That is the entire
+          point: at a step, the day and the offset that places it move together
+          or not at all. See the note above for the three attempts that tried to
+          do this on the other side and could not.
+        */}
+        <View style={[styles.page, { transform: [{ translateX: -width * (1 + shifted) }] }]}>
+          <Animated.View style={[styles.strip, { width: width * 3 }, slideStyle]}>
+            {/*
+              Keyed by date, so the three pages are reconciled by identity: on a
+              step, the page that was arriving is reused rather than remounted,
+              and keeps its unfolded meals and its scroll position.
+            */}
+            <DayPage key={previous} date={previous} active={false} {...pageProps} />
+            <DayPage key={date} date={date} active {...pageProps} />
+            <DayPage key={next} date={next} active={false} {...pageProps} />
+          </Animated.View>
+        </View>
       </GestureDetector>
 
     </>
@@ -401,6 +420,9 @@ export function JournalScreen() {
 
 const styles = StyleSheet.create({
   strip: { flex: 1, flexDirection: 'row' },
+  // The outer layer, one screen wide: it only carries the step's transform, so
+  // the strip inside it keeps being three pages across.
+  page: { flex: 1 },
   // Padding rather than margin: it widens the touch target at the same time as
   // it pulls the icons off the edge, where a margin would only move them.
   headerGroup: {
