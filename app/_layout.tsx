@@ -8,6 +8,7 @@ import { ThemeProvider, useTheme } from '@/core/theme';
 import { useNotificationScheduling } from '@/features/notifications/hooks/use-notification-scheduling';
 import { setNotificationHost } from '@/features/notifications/host-registry';
 import { expoNotificationHost } from '@/features/notifications/native/expo-host';
+import { RequestedDateProvider } from '@/features/nutrition/hooks/requested-date';
 import { useSweepOffCacheOnce } from '@/features/nutrition/off/off-queries';
 import { usePreferences } from '@/features/settings/data/settings-queries';
 
@@ -56,7 +57,16 @@ export default function RootLayout() {
       <DatabaseGate>
         <QueryProvider>
           <ThemeFromPreference>
-            <RootStack />
+            {/*
+              ABOVE THE TABS, because two things ask now: the calendar screen,
+              which has asked since slice 3, and the Journal tab trigger, which
+              returns to today when pressed. The trigger is declared in the tabs
+              layout, so the provider cannot live on the Journal's own stack any
+              more. Mounting a provider is wiring, which is all app/ does.
+            */}
+            <RequestedDateProvider>
+              <RootStack />
+            </RequestedDateProvider>
           </ThemeFromPreference>
         </QueryProvider>
       </DatabaseGate>

@@ -1,7 +1,6 @@
 import { Stack } from 'expo-router';
 import { fontFamilyFor, useTheme } from '@/core/theme';
 import { useStackHeaderOptions } from '@/core/ui/stack-header';
-import { RequestedDateProvider } from '@/features/nutrition/hooks/requested-date';
 
 /**
  * A native stack inside the Journal tab, so the screens get a system header.
@@ -52,14 +51,13 @@ export default function JournalLayout() {
   // decision and not a mechanism three stacks have in common.
   const header = useStackHeaderOptions();
 
+  /*
+    The requested-date provider used to be mounted here. It moved to the root
+    layout when the Journal tab trigger started asking for today as well: a
+    trigger is declared in the tabs layout, which is above this stack, and a
+    provider has to be above everyone who reads it.
+  */
   return (
-    /*
-      The provider wraps the stack so the Journal and the calendar screen share
-      it: the calendar asks for a day, the Journal takes it once and clears it.
-      See features/nutrition/hooks/requested-date.tsx for why that is not a
-      route parameter. Mounting a provider is wiring, which is all app/ does.
-    */
-    <RequestedDateProvider>
     <Stack
       screenOptions={{
         ...header,
@@ -116,6 +114,5 @@ export default function JournalLayout() {
         }}
       />
     </Stack>
-    </RequestedDateProvider>
   );
 }
