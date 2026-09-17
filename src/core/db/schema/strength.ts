@@ -240,6 +240,30 @@ export const exercise = sqliteTable(
     noteBreathing: text('note_breathing'),
     noteMistakes: text('note_mistakes'),
     incrementKg: real('increment_kg').notNull(),
+    /**
+     * Whether this exercise is measured in SECONDS rather than repetitions
+     * (slice 10, `0009`).
+     *
+     * A plank has no repetitions; it has a duration. Neither specs 6.3 nor
+     * schema 2.6 foresaw that — both describe a set only as "répétitions, fixes
+     * ou en plage" — so this is a divergence, written up in specs 14.21.
+     *
+     * ## IT BELONGS TO THE EXERCISE, NOT TO THE LINE
+     *
+     * A plank is always timed and a bench press never is: the fact is about the
+     * movement, not about one set of it. Put on the line, it would have to be
+     * restated on every set and could disagree with itself between two sets of
+     * the same exercise — and the screen would have no way to decide which
+     * column to show for the block.
+     *
+     * ADDED IN 0009 RATHER THAN FOLDED INTO 0008, and the asymmetry is what
+     * decides it. `NOT NULL DEFAULT 0` is exactly what ALTER TABLE ADD COLUMN
+     * accepts, so deferring costs one journal entry. Rewriting 0008 would
+     * change its timestamp, and an installation that had already applied it
+     * would see a migration pending, try to recreate six tables and fail at
+     * startup — the trap that kept 0000 frozen.
+     */
+    tracksDuration: integer('tracks_duration').$type<0 | 1>().notNull().default(0),
     /** 0 or 1, never a boolean: every column must map to a JSON scalar. */
     isFavorite: integer('is_favorite').$type<0 | 1>().notNull().default(0),
     createdAt: integer('created_at'),
@@ -441,6 +465,37 @@ export const routineLine = sqliteTable(
     restSeconds: integer('rest_seconds'),
     /** 0 or 1, never a boolean: every column must map to a JSON scalar. */
     progressionEnabled: integer('progression_enabled').$type<0 | 1>().notNull().default(0),
+    /**
+     * The target duration of this set, in seconds (slice 10, `0009`).
+     *
+     * Read INSTEAD of reps_min/reps_max when the exercise tracks duration, not
+     * alongside: a plank set states 45 seconds, not "45 seconds of 8 to 12
+     * repetitions". The two are alternatives, and the exercise says which.
+     *
+     * Nullable, so a timed set with no target yet reads as "à définir" exactly
+     * as a rep-based one does.
+     *
+     * ## NO CHECK, AND SLICE 3's RULE IS WHAT TOOK IT AWAY
+     *
+     * A `duration_seconds > 0` constraint was written, and generating the
+     * migration showed why it could not ship: SQLite cannot add a CHECK, so
+     * drizzle-kit fell back to REBUILDING routine_line — and the rebuild it
+     * produced was broken, its INSERT ... SELECT reading duration_seconds from
+     * the old table that does not have it yet.
+     *
+     * "A migration carries what cannot be added later and defers what can" cuts
+     * both ways: a CHECK is what cannot be added later, so the moment to add
+     * one was 0008, and it has passed. The column ships without it.
+     *
+     * The value is held by validateRoutineDraft instead, which is where
+     * food.barcode's non_empty and weight_measure.value_kg's positivity already
+     * live — the catalogue has no numeric rule at all, and that deferral is on
+     * record.
+     *
+     * No constraint pairs it with tracks_duration either: that spans two
+     * tables, which SQL cannot express here, so the write path carries it.
+     */
+    durationSeconds: integer('duration_seconds'),
     note: text('note'),
   },
   (table) => [
@@ -463,6 +518,7 @@ export const routineLine = sqliteTable(
     check('ck_line_load', sql`${table.targetLoadKg} IS NULL OR ${table.targetLoadKg} >= 0`),
     check('ck_line_rir', sql`${table.targetRir} IS NULL OR ${table.targetRir} >= 0`),
     check('ck_line_rest', sql`${table.restSeconds} IS NULL OR ${table.restSeconds} >= 0`),
+
     /**
      * Answers "which routines use this exercise?", which is the question
      * deleteExercise() asks before it deletes and the warning of specs 5.3

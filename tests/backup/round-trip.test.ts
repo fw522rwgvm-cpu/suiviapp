@@ -435,8 +435,8 @@ function fillEveryColumn(raw: Database.Database): void {
   const exerciseB = newId<ExerciseId>();
   const insertExercise = raw.prepare(
     'INSERT INTO exercise (id, name, primary_muscle, equipment, media_uri, note_execution, ' +
-      'note_setup, note_breathing, note_mistakes, increment_kg, is_favorite, created_at, ' +
-      'updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'note_setup, note_breathing, note_mistakes, increment_kg, tracks_duration, is_favorite, ' +
+      'created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
   );
   insertExercise.run(
     exerciseA,
@@ -449,13 +449,22 @@ function fillEveryColumn(raw: Database.Database): void {
     'Inspirer à la descente, souffler à la poussée.',
     'Rebond sur la poitrine.',
     2.5,
+    0,
     1,
     1_789_500_000_000,
     1_789_500_000_001,
   );
-  // Every nullable column empty, and an increment that is not the default of
-  // the settings key, so a write path reading the wrong source shows up.
-  insertExercise.run(exerciseB, 'Tractions', 'lats', null, null, null, null, null, null, 1.25, 0, null, null);
+  /**
+   * Every nullable column empty, an increment that is not the settings default
+   * so a write path reading the wrong source shows up — and tracks_duration at
+   * 1, which is the half of that column a fixture can lose.
+   *
+   * It is NOT NULL with a default, so "left NULL" never catches it: a
+   * serialiser dropping it would compare 0 to 0 on both sides and pass. One row
+   * has to carry the value that is not the default. Slice 2 found this exact
+   * hole with `brand`.
+   */
+  insertExercise.run(exerciseB, 'Gainage', 'abs', null, null, null, null, null, null, 1.25, 1, 0, null, null);
 
   const insertSecondary = raw.prepare(
     'INSERT INTO exercise_secondary_muscle (exercise_id, muscle) VALUES (?, ?)',
@@ -493,16 +502,20 @@ function fillEveryColumn(raw: Database.Database): void {
 
   const insertLine = raw.prepare(
     'INSERT INTO routine_line (id, block_id, exercise_id, position, set_index, set_type, ' +
-      'reps_min, reps_max, target_load_kg, target_rir, rest_seconds, progression_enabled, note) ' +
-      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'reps_min, reps_max, target_load_kg, target_rir, rest_seconds, progression_enabled, ' +
+      'duration_seconds, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
   );
   // Every column filled: a real range, a load, a half-RIR, its own rest.
-  insertLine.run(newId<RoutineLineId>(), blockSingle, exerciseA, 0, 1, 'work', 6, 8, 72.5, 1.5, 120, 1, 'Pause en bas');
+  insertLine.run(newId<RoutineLineId>(), blockSingle, exerciseA, 0, 1, 'work', 6, 8, 72.5, 1.5, 120, 1, null, 'Pause en bas');
   // A warm-up set with no range, no load and no note — the nullable columns empty.
-  insertLine.run(newId<RoutineLineId>(), blockSingle, exerciseA, 1, 2, 'warmup', null, null, null, null, null, 0, null);
-  // The superset: two exercises in one block, rest carried by the block.
-  insertLine.run(newId<RoutineLineId>(), blockSuperset, exerciseB, 0, 1, 'dropset', 10, 10, 0, 0, null, 0, null);
-  insertLine.run(newId<RoutineLineId>(), blockSuperset, exerciseA, 1, 1, 'long', 12, 20, 40, 3, null, 1, null);
+  insertLine.run(newId<RoutineLineId>(), blockSingle, exerciseA, 1, 2, 'warmup', null, null, null, null, null, 0, null, null);
+  /**
+   * A TIMED set, which is the alternative reps_min/reps_max have since 0009:
+   * a plank states 45 seconds and no repetitions at all. Filled here because a
+   * column no fixture ever fills is a column no test covers.
+   */
+  insertLine.run(newId<RoutineLineId>(), blockSuperset, exerciseB, 0, 1, 'work', null, null, null, 1, null, 0, 45, 'Gainage');
+  insertLine.run(newId<RoutineLineId>(), blockSuperset, exerciseA, 1, 1, 'long', 12, 20, 40, 3, null, 1, null, null);
 }
 
 function roundTrip(): void {

@@ -197,6 +197,10 @@ describe('migration 0008 — what it creates', () => {
       'note_mistakes',
       'note_setup',
       'primary_muscle',
+      // Added by 0009, after the fact — an ALTER TABLE ADD COLUMN with a
+      // default, which is exactly the shape SQLite allows and therefore the
+      // shape slice 3's rule says to defer.
+      'tracks_duration',
       'updated_at',
     ]);
     expect(columnNames(db, 'exercise_secondary_muscle')).toEqual(['exercise_id', 'muscle']);
@@ -215,6 +219,8 @@ describe('migration 0008 — what it creates', () => {
     ]);
     expect(columnNames(db, 'routine_line')).toEqual([
       'block_id',
+      // Added by 0009, nullable — the other shape SQLite accepts.
+      'duration_seconds',
       'exercise_id',
       'id',
       'note',
