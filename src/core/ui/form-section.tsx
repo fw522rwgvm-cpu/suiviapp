@@ -1,4 +1,3 @@
-import { GlassContainer } from 'expo-glass-effect';
 import {
   Children,
   createContext,
@@ -27,7 +26,7 @@ import {
 } from 'react-native';
 import { Text } from '@/core/ui/text';
 import { fontFamilyFor, useTheme } from '@/core/theme';
-import { canUseGlass, GlassButton, MERGE_DISTANCE } from './glass-button';
+import { BarConfirm, BarGlyph, BarSpacer, KeyboardBar } from './keyboard-bar';
 import { ListSeparator } from './list-separator';
 import { shiftToReveal } from './reveal';
 
@@ -407,7 +406,6 @@ export function FormInput({
   ...props
 }: TextInputProps & { ref?: Ref<TextInput> }) {
   const theme = useTheme();
-  const glass = canUseGlass();
   const navigation = useContext(FormNavContext);
   const row = useContext(FormRowContext);
   const own = useRef<TextInput | null>(null);
@@ -508,112 +506,37 @@ export function FormInput({
       {navigation === null || position < 0 ? null : (
         <InputAccessoryView nativeID={accessoryId}>
           {/*
-            BUILT THE WAY iOS 26 BUILDS A BAR: A GLASS CONTAINER OF CONTROLS.
-
-            Three shapes were tried first — a painted surface with a hairline,
-            floating capsules, a full-width slab of glass — and none was it. The
-            missing piece is UIGlassContainerEffect: Apple does not put one
-            material behind a bar, each control carries its own UIGlassEffect
-            and the group sits in a container that lets neighbours AFFECT ONE
-            ANOTHER, merging as they approach. That blending is the signature.
-
-            So the strip is transparent and the controls are the material, which
-            is this project's own rule about never painting behind glass
-            arriving from the other end. The two chevrons sit within the merge
-            distance and read as one control in two halves; the OK is a whole
-            bar away and stays its own.
-
-            Where the material is unavailable the strip paints again exactly as
-            before: a transparent bar holding painted buttons would be neither.
+            ONE CAPSULE, WHICH IS WHAT iOS 26 PUTS THERE — see keyboard-bar.tsx
+            for the four shapes tried before a screenshot settled it. The
+            chevrons walk the form at the leading edge, the tick finishes at the
+            trailing one, and the material is the bar rather than anything drawn
+            on it.
           */}
-          {glass ? (
-            <GlassContainer spacing={MERGE_DISTANCE} style={styles.bar}>
-              <BarContents
-                position={position}
-                count={navigation.fields.length}
-                onMove={move}
-              />
-            </GlassContainer>
-          ) : (
-            <View
-              style={[
-                styles.bar,
-                {
-                  backgroundColor: theme.colors.surface,
-                  borderTopColor: theme.colors.border,
-                  borderTopWidth: StyleSheet.hairlineWidth,
-                },
-              ]}
-            >
-              <BarContents
-                position={position}
-                count={navigation.fields.length}
-                onMove={move}
-              />
-            </View>
-          )}
+          <KeyboardBar>
+            <BarGlyph
+              symbol="chevron.up"
+              label="Champ précédent"
+              disabled={position === 0}
+              onPress={() => move(-1)}
+            />
+            <BarGlyph
+              symbol="chevron.down"
+              label="Champ suivant"
+              disabled={position === navigation.fields.length - 1}
+              onPress={() => move(1)}
+            />
+
+            <BarSpacer />
+
+            <BarConfirm label="Fermer le clavier" onPress={() => Keyboard.dismiss()} />
+          </KeyboardBar>
         </InputAccessoryView>
       )}
     </>
   );
 }
 
-/**
- * What sits on the bar: the two chevrons, then the way out.
- *
- * Each is its own capsule of material, which is what the container blends. The
- * chevrons stay DRAWN at the ends of a form rather than disappearing: a bar
- * whose contents come and go as the focus moves is a bar that jumps, and the
- * shape of the row is what says where they are before they are read.
- */
-function BarContents({
-  position,
-  count,
-  onMove,
-}: {
-  position: number;
-  count: number;
-  onMove: (step: number) => void;
-}) {
-  return (
-    <>
-      <GlassButton
-        symbol="chevron.up"
-        accessibilityLabel="Champ précédent"
-        disabled={position === 0}
-        onPress={() => onMove(-1)}
-      />
-      <GlassButton
-        symbol="chevron.down"
-        accessibilityLabel="Champ suivant"
-        disabled={position === count - 1}
-        onPress={() => onMove(1)}
-      />
-
-      <View style={styles.spacer} />
-
-      <GlassButton
-        label="OK"
-        accessibilityLabel="Fermer le clavier"
-        onPress={() => Keyboard.dismiss()}
-      />
-    </>
-  );
-}
-
 const styles = StyleSheet.create({
-  bar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    // Closer than the merge distance, so the container reads the pair as one
-    // control in two halves — which is what it is.
-    gap: 6,
-    paddingHorizontal: 16,
-    // Room for a capsule and the air around it. Laid out absolutely by iOS and
-    // sized to its content, so something here has to say how tall it is.
-    height: 56,
-  },
-  spacer: { flex: 1 },
   group: { gap: 7 },
   // Uppercase and faint, the way a grouped table names its sections. Indented
   // to the card's own text, not to the screen.
