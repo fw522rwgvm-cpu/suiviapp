@@ -28,6 +28,7 @@ import {
 import {
   addExerciseBlock,
   addExerciseToBlock,
+  addRound,
   duplicateLine,
   emptyRoutineDraft,
   setBlockRest,
@@ -103,7 +104,43 @@ describe('storing a routine', () => {
     expect(view?.warmupSteps).toEqual(['Rameur']);
   });
 
-  it('numbers the sets per exercise, not per block', () => {
+  it('stores a superset in the order it is PERFORMED, and numbers the rounds', () => {
+    /**
+     * A,B,A,B — not A,A,B,B. `position` is what slice 11 will walk to drive a
+     * session, so a stored order differing from the performed one would make
+     * the session re-derive an order this write already knows.
+     *
+     * set_index is then the ROUND: both exercises of round one carry 1.
+     */
+    const bench = anExercise('Développé couché');
+    const row = anExercise('Rowing', 'lats');
+    let draft = addExerciseBlock(named('Haut du corps'), bench, 'Développé couché');
+    draft = addExerciseToBlock(draft, 0, row, 'Rowing');
+    draft = addRound(draft, 0);
+
+    createRoutine(db.db, draft);
+
+    const stored = db.db
+      .select({
+        setIndex: routineLine.setIndex,
+        position: routineLine.position,
+        exerciseId: routineLine.exerciseId,
+      })
+      .from(routineLine)
+      .all()
+      .sort((a, b) => a.position - b.position);
+
+    expect(stored.map((line) => line.position)).toEqual([0, 1, 2, 3]);
+    expect(stored.map((line) => line.exerciseId)).toEqual([bench, row, bench, row]);
+    expect(stored.map((line) => line.setIndex)).toEqual([1, 1, 2, 2]);
+  });
+
+  it('rewrites a routine stored grouped by exercise into performance order', () => {
+    /**
+     * The routines written by the first version of this slice sit A,A,B,B.
+     * Nothing migrates them: reading them gives the right rounds, and saving
+     * them again writes the positions interleaved. This is that second half.
+     */
     const bench = anExercise('Développé couché');
     const row = anExercise('Rowing', 'lats');
     let draft = addExerciseBlock(named('Haut du corps'), bench, 'Développé couché');
@@ -114,12 +151,29 @@ describe('storing a routine', () => {
     createRoutine(db.db, draft);
 
     const stored = db.db
-      .select({ setIndex: routineLine.setIndex, position: routineLine.position })
+      .select({ position: routineLine.position, exerciseId: routineLine.exerciseId })
       .from(routineLine)
       .all()
       .sort((a, b) => a.position - b.position);
 
-    expect(stored.map((line) => line.setIndex)).toEqual([1, 2, 1, 2]);
+    expect(stored.map((line) => line.exerciseId)).toEqual([bench, row, bench, row]);
+  });
+
+  it('stores the seconds of a timed exercise', () => {
+    /**
+     * FOUND BY TOUCHING THIS MAP, not by a failing screen: the column added by
+     * 0009 was read back everywhere and written nowhere, so a plank's 45 s was
+     * accepted by the table, saved, and gone. Nothing else could have caught
+     * it — the read side had a value to show for every line it had itself
+     * stored as null.
+     */
+    const plank = anExercise('Gainage', 'abs');
+    let draft = addExerciseBlock(named('Abdos'), plank, 'Gainage');
+    draft = updateLine(draft, 0, 0, { durationSeconds: 45 });
+
+    const view = readRoutine(db.db, createRoutine(db.db, draft));
+
+    expect(view?.blocks[0]?.lines[0]?.durationSeconds).toBe(45);
   });
 });
 

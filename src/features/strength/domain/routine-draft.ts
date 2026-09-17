@@ -126,10 +126,9 @@ export function restForBlock(block: BlockDraft): number | null {
  * function of the order (D9) — a line moved or removed changes every index
  * after it, and a stored copy would need updating at four call sites.
  *
- * In a superset of A and B at three sets each, the lines sit grouped by
- * exercise: A,A,A,B,B,B at positions 0..5, with set indices 1,2,3,1,2,3. The
- * routine is a list to be READ; the session decides the order they are
- * performed in.
+ * IN A SUPERSET THIS NUMBER IS THE ROUND. A and B at three sets each give
+ * indices 1,2,3 for A and 1,2,3 for B, and A's second set and B's second set
+ * are performed in the same round. That is what roundsOf groups on.
  */
 export function setIndexOf(block: BlockDraft, lineIndex: number): number {
   const line = block.lines[lineIndex];
@@ -139,6 +138,83 @@ export function setIndexOf(block: BlockDraft, lineIndex: number): number {
     if (block.lines[i]?.exerciseId === line.exerciseId) rank += 1;
   }
   return rank;
+}
+
+/** One line, with the index it sits at in `block.lines`. */
+export interface RoundEntry {
+  line: LineDraft;
+  lineIndex: number;
+}
+
+/**
+ * A block, read as ROUNDS rather than as a list of sets.
+ *
+ * ## A SUPERSET IS PERFORMED ALTERNATING, SO THAT IS HOW IT IS SHOWN
+ *
+ * The first version of slice 10 grouped a superset by exercise — A,A,A then
+ * B,B,B — and defended it as "the routine is a list to be READ, the session
+ * decides the order". That was wrong, and the sentence gave it away: a superset
+ * has no other execution order than A,B,A,B,A,B, so a page that shows one and a
+ * session that performs the other are two answers to one question. Now the
+ * order shown IS the order performed, and `routine_line.position` is written in
+ * it (architecture 9.15).
+ *
+ * ## THE ROUNDS ARE DERIVED, NOT A SECOND ORDER
+ *
+ * Nothing is stored to say which round a line is in: a line's round is its rank
+ * for its own exercise, which setIndexOf already computes from the array. The
+ * order WITHIN a round is the order the exercises first appear in the block.
+ * One source, the array, as the module's opening rule requires.
+ *
+ * Free consequence: a routine stored by the first version, grouped by exercise,
+ * reads as correct rounds without a migration — and is rewritten interleaved
+ * the next time it is saved.
+ *
+ * A block whose exercises have unequal set counts gives short rounds at the
+ * end, which is the honest rendering of what was typed rather than a padded
+ * grid.
+ */
+export function roundsOf(block: BlockDraft): RoundEntry[][] {
+  const order = exerciseOrder(block);
+  const rounds: RoundEntry[][] = [];
+
+  block.lines.forEach((line, lineIndex) => {
+    const round = setIndexOf(block, lineIndex) - 1;
+    while (rounds.length <= round) rounds.push([]);
+    rounds[round]?.push({ line, lineIndex });
+  });
+
+  return rounds.map((round) =>
+    [...round].sort(
+      (a, b) => (order.get(a.line.exerciseId) ?? 0) - (order.get(b.line.exerciseId) ?? 0),
+    ),
+  );
+}
+
+/**
+ * The distinct exercises of a block, in the order they first appear.
+ *
+ * What the block heading names, and what gives each one its letter in a
+ * superset — the rows alternate, so a row has to say which exercise it is.
+ */
+export function exercisesOfBlock(
+  block: BlockDraft,
+): { exerciseId: ExerciseId; exerciseName: string }[] {
+  const seen = new Map<string, { exerciseId: ExerciseId; exerciseName: string }>();
+  for (const line of block.lines) {
+    if (!seen.has(line.exerciseId)) {
+      seen.set(line.exerciseId, { exerciseId: line.exerciseId, exerciseName: line.exerciseName });
+    }
+  }
+  return [...seen.values()];
+}
+
+function exerciseOrder(block: BlockDraft): Map<string, number> {
+  const order = new Map<string, number>();
+  for (const line of block.lines) {
+    if (!order.has(line.exerciseId)) order.set(line.exerciseId, order.size);
+  }
+  return order;
 }
 
 export function validateRoutineDraft(draft: RoutineDraft): RoutineProblem[] {
@@ -236,11 +312,15 @@ export function addExerciseToBlock(
 }
 
 /**
- * Duplicating a set, which is how a line gets its second and third.
+ * Duplicating ONE set, which is how a single line gets a twin.
  *
  * The copy keeps every target — the whole point is "the same again" — and drops
- * the stored id, because it is a new row. Inserted directly after its original
- * so the sets of one exercise stay together, which is what setIndexOf reads.
+ * the stored id, because it is a new row. Inserted directly after its original,
+ * which makes it the next set of that exercise and therefore the next round of
+ * it; roundsOf places it.
+ *
+ * The screen's button is addRound, not this: in a superset, one more set of A
+ * alone is an unbalanced block nobody asked for.
  */
 export function duplicateLine(
   draft: RoutineDraft,
@@ -254,6 +334,32 @@ export function duplicateLine(
     const lines = [...block.lines];
     lines.splice(lineIndex + 1, 0, copy);
     return { ...block, lines };
+  });
+}
+
+/**
+ * Adding a ROUND: one more set of every exercise in the block.
+ *
+ * This is what "Ajouter une série" does, and for an ordinary block it is
+ * exactly that — one exercise, one more set. In a superset it is one more set
+ * of each, because a superset is performed in rounds and half a round is not a
+ * thing anyone trains.
+ *
+ * Each copy is taken from that exercise's LAST set, so the targets carried
+ * forward are the ones most recently adjusted rather than the ones typed first.
+ */
+export function addRound(draft: RoutineDraft, blockIndex: number): RoutineDraft {
+  return mapBlock(draft, blockIndex, (block) => {
+    const last = new Map<string, LineDraft>();
+    for (const line of block.lines) last.set(line.exerciseId, line);
+
+    const copies: LineDraft[] = [];
+    for (const { exerciseId } of exercisesOfBlock(block)) {
+      const source = last.get(exerciseId);
+      if (source !== undefined) copies.push({ ...source, id: null });
+    }
+
+    return { ...block, lines: [...block.lines, ...copies] };
   });
 }
 

@@ -14,7 +14,7 @@ import {
 import {
   isValidRoutineDraft,
   restForBlock,
-  setIndexOf,
+  roundsOf,
   validateRoutineDraft,
   type RoutineDraft,
 } from '../domain/routine-draft';
@@ -35,12 +35,21 @@ import {
  * write the draft. Inside one transaction, so a failure leaves the previous
  * routine exactly as it was.
  *
- * ## POSITIONS COME FROM ARRAY ORDER, AND FROM NOWHERE ELSE
+ * ## POSITION IS THE ORDER THE SETS ARE PERFORMED IN
  *
  * The draft carries no position — an array already has one, and two sources for
- * an order is how a list ends up disagreeing with itself. set_index likewise is
- * computed by setIndexOf at write time rather than stored in the draft: it is a
- * function of the order (D9).
+ * an order is how a list ends up disagreeing with itself. What that array order
+ * MEANS is now settled: roundsOf reads it as rounds, and the rows are written
+ * round by round, so position 0..n is the order a person goes through them. In
+ * a superset that interleaves; in an ordinary block it is the array unchanged.
+ *
+ * It matters beyond the page: slice 11 reads these rows to drive a session, and
+ * a routine whose stored order differed from the order it is performed in would
+ * make the session re-derive it — a second answer to a question already
+ * answered here.
+ *
+ * set_index is the ROUND NUMBER, likewise computed at write time rather than
+ * stored in the draft: it is a function of the order (D9).
  */
 
 function requireValid(draft: RoutineDraft): void {
@@ -101,23 +110,31 @@ function writeContents(tx: AppDatabase, routineId: RoutineId, draft: RoutineDraf
       })
       .run();
 
-    const rows = block.lines.map((line, linePosition) => ({
-      id: newId<RoutineLineId>(),
-      blockId,
-      exerciseId: line.exerciseId,
-      position: linePosition,
-      setIndex: setIndexOf(block, linePosition),
-      setType: line.setType,
-      repsMin: line.repsMin,
-      repsMax: line.repsMax,
-      targetLoadKg: line.targetLoadKg,
-      targetRir: line.targetRir,
-      // Always null: the block owns the rest. The column survives for archives
-      // written before it moved, and restForBlock reads those.
-      restSeconds: null,
-      progressionEnabled: line.progressionEnabled ? (1 as const) : (0 as const),
-      note: line.note.trim() === '' ? null : line.note.trim(),
-    }));
+    const rows = roundsOf(block).flatMap((round, roundIndex) =>
+      round.map(({ line }) => ({
+        id: newId<RoutineLineId>(),
+        blockId,
+        exerciseId: line.exerciseId,
+        // Filled in below: position runs across rounds, not within one.
+        position: 0,
+        setIndex: roundIndex + 1,
+        setType: line.setType,
+        repsMin: line.repsMin,
+        repsMax: line.repsMax,
+        targetLoadKg: line.targetLoadKg,
+        targetRir: line.targetRir,
+        durationSeconds: line.durationSeconds,
+        // Always null: the block owns the rest. The column survives for
+        // archives written before it moved, and restForBlock reads those.
+        restSeconds: null,
+        progressionEnabled: line.progressionEnabled ? (1 as const) : (0 as const),
+        note: line.note.trim() === '' ? null : line.note.trim(),
+      })),
+    );
+
+    rows.forEach((row, position) => {
+      row.position = position;
+    });
 
     if (rows.length > 0) tx.insert(routineLine).values(rows).run();
   });

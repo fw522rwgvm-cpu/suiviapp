@@ -4,15 +4,18 @@ import type { ExerciseId } from '../../src/core/db/schema';
 import {
   addExerciseBlock,
   addExerciseToBlock,
+  addRound,
   duplicateLine,
   emptyRoutineDraft,
   isSuperset,
   isValidRoutineDraft,
   musclesOfDraft,
   newLine,
+  exercisesOfBlock,
   removeBlock,
   removeLine,
   restForBlock,
+  roundsOf,
   setBlockRest,
   setIndexOf,
   updateLine,
@@ -134,9 +137,10 @@ describe('which rest is in force', () => {
 describe('the set index of a line', () => {
   it('counts per exercise, not per block', () => {
     /**
-     * A superset of A and B at three sets each: lines grouped by exercise,
-     * positions 0..5, set indices 1,2,3,1,2,3. The routine is a list to be
-     * READ; slice 11's session decides the order they are performed in.
+     * A superset of A and B at three sets each, stored grouped by exercise as
+     * the first version of this slice wrote them: positions 0..5, set indices
+     * 1,2,3,1,2,3. That number IS the round, which is what lets roundsOf read
+     * such a block correctly without a migration.
      */
     let draft = withBench();
     draft = duplicateLine(draft, 0, 0);
@@ -158,6 +162,117 @@ describe('the set index of a line', () => {
 
     const block = blockAt(draft, 0);
     expect(block.lines.map((_, index) => setIndexOf(block, index))).toEqual([1, 2]);
+  });
+});
+
+describe('a block read as rounds', () => {
+  /** A superset of two exercises at three sets each, built the way the screen builds it. */
+  function superset(): RoutineDraft {
+    let draft = addExerciseToBlock(withBench(), 0, ROW, 'Rowing');
+    draft = addRound(draft, 0);
+    draft = addRound(draft, 0);
+    return draft;
+  }
+
+  function names(draft: RoutineDraft): string[][] {
+    return roundsOf(blockAt(draft, 0)).map((round) => round.map((entry) => entry.line.exerciseName));
+  }
+
+  it('alternates the exercises of a superset, one round at a time', () => {
+    /**
+     * THE ORDER SHOWN IS THE ORDER PERFORMED. A superset has no other: you do
+     * A, then B, then rest, then A again. The first version of slice 10 showed
+     * A,A,A then B,B,B and argued the session would decide — which is two
+     * answers to one question.
+     */
+    expect(names(superset())).toEqual([
+      ['Développé couché', 'Rowing'],
+      ['Développé couché', 'Rowing'],
+      ['Développé couché', 'Rowing'],
+    ]);
+  });
+
+  it('reads a block stored grouped by exercise as the same rounds', () => {
+    /**
+     * No migration for the routines written before the order changed. Their
+     * lines sit A,A,A,B,B,B, and a line's round is its rank for its own
+     * exercise — so the rounds come out identical, and the next save rewrites
+     * the positions interleaved.
+     */
+    let draft = withBench();
+    draft = duplicateLine(draft, 0, 0);
+    draft = duplicateLine(draft, 0, 1);
+    draft = addExerciseToBlock(draft, 0, ROW, 'Rowing');
+    draft = duplicateLine(draft, 0, 3);
+    draft = duplicateLine(draft, 0, 4);
+
+    expect(names(draft)).toEqual([
+      ['Développé couché', 'Rowing'],
+      ['Développé couché', 'Rowing'],
+      ['Développé couché', 'Rowing'],
+    ]);
+  });
+
+  it('carries the index each line sits at, so a cell can still be edited', () => {
+    // The rounds are a reading of the array, not a copy of it: every entry says
+    // where to write back.
+    const entries = roundsOf(blockAt(superset(), 0)).flat();
+
+    expect(entries.map((entry) => entry.lineIndex).sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 5]);
+  });
+
+  it('leaves an ordinary block as one set per round', () => {
+    let draft = withBench();
+    draft = addRound(draft, 0);
+
+    expect(names(draft)).toEqual([['Développé couché'], ['Développé couché']]);
+  });
+
+  it('gives a short last round when the exercises have unequal set counts', () => {
+    // Honest rather than padded: a grid with a hole would invent a set.
+    let draft = addExerciseToBlock(withBench(), 0, ROW, 'Rowing');
+    draft = duplicateLine(draft, 0, 0);
+
+    expect(names(draft)).toEqual([['Développé couché', 'Rowing'], ['Développé couché']]);
+  });
+
+  it('names the exercises of a block in the order they first appear', () => {
+    expect(exercisesOfBlock(blockAt(superset(), 0)).map((item) => item.exerciseName)).toEqual([
+      'Développé couché',
+      'Rowing',
+    ]);
+  });
+});
+
+describe('adding a round', () => {
+  it('adds one set of EVERY exercise in a superset', () => {
+    /**
+     * Half a round is not a thing anyone trains. "Ajouter une série" on a
+     * superset therefore adds a full round — and on an ordinary block it is
+     * still one set, because the block has one exercise.
+     */
+    let draft = addExerciseToBlock(withBench(), 0, ROW, 'Rowing');
+    draft = addRound(draft, 0);
+
+    expect(blockAt(draft, 0).lines).toHaveLength(4);
+    expect(roundsOf(blockAt(draft, 0))).toHaveLength(2);
+  });
+
+  it('copies each exercise from its own LAST set', () => {
+    // The targets carried forward are the ones most recently adjusted, not the
+    // ones typed first.
+    let draft = withBench();
+    draft = addRound(draft, 0);
+    draft = updateLine(draft, 0, 1, { targetLoadKg: 80 });
+    draft = addRound(draft, 0);
+
+    expect(blockAt(draft, 0).lines[2]?.targetLoadKg).toBe(80);
+    expect(blockAt(draft, 0).lines[2]?.id).toBeNull();
+  });
+
+  it('ignores a block that does not exist rather than throwing', () => {
+    const draft = withBench();
+    expect(addRound(draft, 9)).toEqual(draft);
   });
 });
 

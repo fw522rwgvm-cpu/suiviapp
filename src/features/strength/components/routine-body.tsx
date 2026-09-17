@@ -6,7 +6,7 @@ import { useTheme } from '@/core/theme';
 import { SetTable } from './set-table';
 import type { ExerciseListItem } from '../data/exercise-reads';
 import {
-  duplicateLine,
+  addRound,
   isSuperset,
   removeLine,
   restForBlock,
@@ -172,9 +172,7 @@ export function RoutineBody({
                 <>
                   <ListSeparator />
                   <Pressable
-                    onPress={() =>
-                      onChange?.(duplicateLine(draft, blockIndex, block.lines.length - 1))
-                    }
+                    onPress={() => onChange?.(addRound(draft, blockIndex))}
                     accessibilityRole="button"
                     style={styles.blockAction}
                   >
