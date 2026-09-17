@@ -6,10 +6,15 @@ import { RoutineEditorScreen } from '@/features/strength/screens/routine-editor-
 /**
  * Route wiring only (D10).
  *
- * A window over the list, like every other editor: consulting is a push and
- * ACTING on something is a window over it (slice 3). Choosing an exercise is a
- * STEP inside this window rather than a second one — see the screen — which is
- * also why no exercise has to travel back through a route parameter.
+ * CREATION ONLY. Editing a routine happens on its own page, which flips into
+ * an editable state rather than being covered by a window — the window was
+ * hiding exactly the routine it was changing, so slice 3's rule argued against
+ * itself there.
+ *
+ * Creation has no page to flip, so it keeps the window, opening over the list
+ * the new routine will join. Choosing an exercise is a STEP inside it rather
+ * than a second window, which is also why no exercise has to travel back
+ * through a route parameter.
  */
 function CancelAction() {
   // Inside the panel, so its dismissal folds the window away first.

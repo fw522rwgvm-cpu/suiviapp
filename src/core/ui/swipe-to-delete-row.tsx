@@ -290,13 +290,34 @@ export function SwipeToDeleteRow({
 
         <GestureDetector gesture={tap}>
           <Animated.View
-            // Open, the layer itself takes the touch: a press meant for the row
-            // would otherwise act on a row the finger cannot fully see.
-            // box-only throughout now: the row's own tap is what handles a
-            // press, so nothing inside needs to receive one — and a Pressable
-            // that slipped back into the content would reintroduce the very
-            // arbitration failure this component was fixed for.
-            pointerEvents="box-only"
+            /**
+             * WHO RECEIVES A TOUCH, and this line has now been wrong once.
+             *
+             * `box-only` means the layer takes the touch and NOTHING INSIDE
+             * EVER DOES. That was right while every caller handed plain text
+             * and let `onPress` carry the press: a Pressable slipping back into
+             * the content would reintroduce the arbitration failure this
+             * component was fixed for — React Native's responder system and
+             * gesture-handler do not arbitrate, so a release after a swipe
+             * reads as a press.
+             *
+             * It became wrong the moment a caller put FIELDS in a row. The set
+             * table's cells are TextInputs, and box-only meant none of them
+             * could ever take focus: the editor looked finished and typed
+             * nothing.
+             *
+             * So the layer swallows touches only when it has something to do
+             * with them — a row that is OPEN, where the tap closes it, or one
+             * that was given an onPress. A row with neither lets its content
+             * through.
+             *
+             * WHAT THIS DOES NOT FIX, stated rather than hidden: a field inside
+             * can still take focus on the release of a swipe, its responder not
+             * being arbitrated against the pan. That is survivable where a
+             * Pressable was not — focusing a field changes nothing, where the
+             * press it replaced deleted a row.
+             */
+            pointerEvents={open || onPress !== undefined ? 'box-only' : 'box-none'}
             accessible={onPress !== undefined}
             accessibilityRole={onPress === undefined ? undefined : 'button'}
             accessibilityLabel={accessibilityLabel}

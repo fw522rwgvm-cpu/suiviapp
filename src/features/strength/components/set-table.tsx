@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Text } from '@/core/ui/text';
 import { ListSeparator } from '@/core/ui/list-separator';
@@ -231,13 +232,18 @@ function SetRowInner({
 /**
  * One numeric cell: text when read, a field when edited.
  *
- * ## THE FIELD HOLDS A STRING AND THE DRAFT HOLDS A NUMBER
+ * ## THE FIELD HOLDS THE TEXT, THE DRAFT HOLDS THE NUMBER
  *
- * Not the other way round, which slice 8 found by shipping it: bound to a
- * number, "2," parses to 2, re-renders as "2", and the separator just typed
- * disappears under the caret. Here the text is local and only a COMPLETE number
- * reaches the draft — an empty field clears the target rather than writing 0,
- * which is slice 4's rule that absent must never become zero.
+ * Not the other way round — and the first version of this file got it wrong
+ * while its own comment described the fix. Bound straight to the draft, "6,"
+ * parses to 6, re-renders as "6", and the separator just typed vanishes under
+ * the caret. That is exactly what slice 8 found by shipping it on the weight
+ * field.
+ *
+ * So the text is local state. It travels OUT on every keystroke, as a number or
+ * as null, and travels IN only when the draft changed for some other reason — a
+ * set duplicated, a routine reloaded. Comparing the incoming number with what
+ * the text parses to is what tells those two apart.
  */
 function Cell({
   style,
@@ -259,9 +265,25 @@ function Cell({
   onChange: (value: number | null) => void;
 }) {
   const theme = useTheme();
-  const shown = value === null ? null : `${formatCell(value)}${suffix === undefined ? '' : ` ${suffix}`}`;
+  const [text, setText] = useState(() => (value === null ? '' : formatCell(value)));
+
+  /**
+   * Adopt an incoming value only when it says something the text does not.
+   *
+   * Adjusted DURING the render rather than in an effect, which is React's own
+   * answer to this: an effect runs after its render has been painted, so the
+   * cell would show the stale text for a frame. Slice 3 paid for that on the
+   * day carousel and slice 4 on the quantity wheels.
+   */
+  const [lastValue, setLastValue] = useState(value);
+  if (value !== lastValue) {
+    setLastValue(value);
+    if (parseCell(text) !== value) setText(value === null ? '' : formatCell(value));
+  }
 
   if (!editable) {
+    const shown =
+      value === null ? null : `${formatCell(value)}${suffix === undefined ? '' : ` ${suffix}`}`;
     return (
       <Text style={[styles.cell, style, { color: theme.colors.text }]}>
         {shown ?? placeholder}
@@ -272,8 +294,11 @@ function Cell({
   return (
     <TextInput
       style={[styles.cell, styles.input, style, { color: theme.colors.text }]}
-      value={value === null ? '' : formatCell(value)}
-      onChangeText={(text) => onChange(parseCell(text))}
+      value={text}
+      onChangeText={(next) => {
+        setText(next);
+        onChange(parseCell(next));
+      }}
       keyboardType={decimals === true ? 'decimal-pad' : 'number-pad'}
       placeholder={placeholder}
       placeholderTextColor={theme.colors.textMuted}
@@ -286,9 +311,12 @@ function Cell({
 /**
  * The rep range, which is two numbers in one column.
  *
- * Read as "6-8", "10", "8+" or "jusqu'à 12"; edited as two small fields with a
- * dash between them. A half-open range is not an error — ck_line_reps allows
- * one bound alone, and both readings are things people write down.
+ * Read as "6-8", "10", "8+" or "≤ 12"; edited as two small fields with a dash
+ * between them. A half-open range is not an error — ck_line_reps allows one
+ * bound alone, and both readings are things people write down.
+ *
+ * Both halves are Cells, so they inherit the local-text rule rather than
+ * repeating it: the fix for a lost separator belongs in one place.
  */
 function RangeCell({
   editable,
@@ -313,26 +341,22 @@ function RangeCell({
 
   return (
     <View style={[styles.colReps, styles.range]}>
-      <TextInput
-        style={[styles.cell, styles.input, styles.rangeField, { color: theme.colors.text }]}
-        value={min === null ? '' : String(min)}
-        onChangeText={(text) => onChange({ repsMin: parseCell(text) })}
-        keyboardType="number-pad"
+      <Cell
+        style={styles.rangeField}
+        editable
+        value={min}
         placeholder="—"
-        placeholderTextColor={theme.colors.textMuted}
-        accessibilityLabel="Répétitions minimum"
-        selectTextOnFocus
+        label="Répétitions minimum"
+        onChange={(repsMin) => onChange({ repsMin })}
       />
       <Text style={{ color: theme.colors.textMuted, fontSize: 13 }}>–</Text>
-      <TextInput
-        style={[styles.cell, styles.input, styles.rangeField, { color: theme.colors.text }]}
-        value={max === null ? '' : String(max)}
-        onChangeText={(text) => onChange({ repsMax: parseCell(text) })}
-        keyboardType="number-pad"
+      <Cell
+        style={styles.rangeField}
+        editable
+        value={max}
         placeholder="—"
-        placeholderTextColor={theme.colors.textMuted}
-        accessibilityLabel="Répétitions maximum"
-        selectTextOnFocus
+        label="Répétitions maximum"
+        onChange={(repsMax) => onChange({ repsMax })}
       />
     </View>
   );

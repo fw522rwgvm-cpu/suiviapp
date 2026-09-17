@@ -201,7 +201,14 @@ function Tooltip({
 }
 
 const styles = StyleSheet.create({
-  figures: { flexDirection: 'row', gap: 12 },
+  /**
+   * Breathing room above and below the figures.
+   *
+   * They are drawn to the edge of their viewBox — a head touching the top of a
+   * card reads as cropped rather than as framed — and the card they sit in has
+   * none of its own, being a plain surface behind an SVG.
+   */
+  figures: { flexDirection: 'row', gap: 12, paddingTop: 16, paddingBottom: 8 },
   figure: { flex: 1, minWidth: 0, alignItems: 'center', gap: 6 },
   caption: { fontSize: 12 },
   tooltip: {
