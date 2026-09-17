@@ -4762,6 +4762,20 @@ retour par glissement : **une reconstruction se dit, elle ne se laisse pas
 croire** — le matériau est celui du système, la forme et les glyphes sont lus sur
 une image et dessinés ici.
 
+**Et un fond uni restait derrière la capsule, qu'aucun style de ce projet ne
+pouvait atteindre.** Il appartient à la vue native : `InputAccessoryView` prend
+une prop `backgroundColor` et la passe telle quelle à
+`RCTInputAccessoryComponentView`, qui en peint sa vue de contenu. Lu dans la
+source de React Native — rien dans la documentation du composant n'annonce qu'une
+barre a un fond par défaut.
+
+**Corollaire général, et c'est le troisième de cette famille dans ce projet** —
+après l'`InputAccessoryView` qui ne se partage pas et le greffon Expo qui
+s'applique tout seul : **un conteneur natif peut peindre sous ce qu'on lui
+confie, donc « aucun fond dans mon style » ne veut pas dire « aucun fond ».**
+Quand une surface a l'air peinte et que rien dans l'arbre ne la peint, la réponse
+est dans la source du composant natif.
+
 **Et la leçon de méthode, qui vaut au-delà de cette barre : sur une question de
 forme, demander l'image plutôt que deviner quatre fois.** Deux tours ont été
 dépensés à reformuler une description ; le troisième a coûté une capture d'écran
