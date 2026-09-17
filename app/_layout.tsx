@@ -126,6 +126,19 @@ function RootStack() {
     >
       <Stack.Screen name="(tabs)" />
       {/*
+        THE LIBRARY, OVER THE TAB BAR (specs 14.24).
+
+        A sibling of (tabs) rather than a screen of the Journal's stack, which
+        is what makes it cover the bar. Requested, and it reverses slice 3 —
+        the whole reasoning is in app/library/_layout.tsx, which also draws the
+        headers, so nothing is shown here.
+
+        An ordinary push: opaque, from the right, with the system's back
+        gesture. Browsing is still a push; only the stack it is pushed onto has
+        changed.
+      */}
+      <Stack.Screen name="library" />
+      {/*
         ALL FOUR ARE OVERLAYS, and siblings rather than a nested stack.
 
         Specs 7 calls the add screen a full-screen modal; it is a window over
@@ -224,6 +237,37 @@ function RootStack() {
       */}
       <Stack.Screen
         name="(modals)/weight"
+        options={{
+          presentation: 'transparentModal',
+          headerShown: false,
+          contentStyle: { backgroundColor: 'transparent' },
+          animation: 'none',
+        }}
+      />
+      {/*
+        THE TWO SLICE 10 ADDED AND NEVER DECLARED, found while moving the
+        library into this file.
+
+        Same trap, third time: an undeclared route under (modals)/ takes the
+        stack's default — an opaque card pushed in from the RIGHT — and the
+        oversight produces neither an error nor a warning. OverlayPanel was
+        raising both of them correctly and nobody could ever see it, because the
+        screen carrying the panel was being pushed sideways.
+
+        Creating an exercise and creating a routine are windows over the list
+        they will join, exactly like their five siblings above.
+      */}
+      <Stack.Screen
+        name="(modals)/exercise-edit"
+        options={{
+          presentation: 'transparentModal',
+          headerShown: false,
+          contentStyle: { backgroundColor: 'transparent' },
+          animation: 'none',
+        }}
+      />
+      <Stack.Screen
+        name="(modals)/routine-edit"
         options={{
           presentation: 'transparentModal',
           headerShown: false,

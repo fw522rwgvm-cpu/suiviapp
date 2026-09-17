@@ -317,8 +317,8 @@ export function FoodEditorScreen({
       {/*
         Configured only in a stack. Inside the add window there is no native
         header to configure: the window carries its own heading, and rendering
-        a Stack.Screen from a step would reach for the Journal's stack, which
-        is behind the window rather than under it.
+        a Stack.Screen from a step would reach for whatever stack is behind
+        the window rather than under it.
       */}
       {presentation === 'stack' ? (
       <Stack.Screen

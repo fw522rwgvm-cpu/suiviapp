@@ -19,10 +19,15 @@ import { useStackHeaderOptions } from '@/core/ui/stack-header';
  *
  * Section 3 of the architecture draws app/exercise/[id].tsx beside app/(tabs)/.
  * Pushed from there they would be SIBLINGS of the tab group and would cover the
- * tab bar, taking the iOS 26 minimisation with them — exactly the mistake slice
- * 3 corrected by moving the library from app/library/ to
- * app/(tabs)/(journal)/library/. Same correction, same reason; section 3 is
- * amended in the same terms.
+ * tab bar, taking the iOS 26 minimisation with them. Section 3 is amended in
+ * those terms.
+ *
+ * The library made the opposite move in the other direction (specs 14.24) and
+ * that is not a contradiction: an exercise is CONSULTED beside the routines
+ * that use it, so the bar has to stay reachable, where the library is where the
+ * records themselves live and every screen in it is a task. The question is
+ * never where section 3 draws a route, it is whether leaving the tab is the
+ * point of going there.
  *
  * Route wiring only (D10).
  */

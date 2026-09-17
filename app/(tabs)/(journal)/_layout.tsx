@@ -7,9 +7,11 @@ import { useStackHeaderOptions } from '@/core/ui/stack-header';
  *
  * NativeTabs supplies no header of its own, and the Journal has things a header
  * is for: the date being looked at, the previous/next navigation of specs 8.3,
- * and the library icon of specs 7. The same stack carries the library and the
- * food editor, pushed on top — which is why the tab bar stays put while you
- * browse (browsing is a push, adding is a modal).
+ * and the library icon of specs 7.
+ *
+ * It used to carry the library and the food editor too. They moved out to
+ * app/library/ (specs 14.24), where they cover the tab bar — so this stack is
+ * back to the two screens the Journal itself needs.
  *
  * The group parentheses matter: (journal) adds no path segment, so the Journal
  * stays the tabs group's index route rather than moving to /journal.

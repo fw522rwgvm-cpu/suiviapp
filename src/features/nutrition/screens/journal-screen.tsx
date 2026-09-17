@@ -328,7 +328,7 @@ export function JournalScreen() {
 
               {/* The library, reached from the Journal header (specs 7). */}
               <Pressable
-                onPress={() => router.push('/(tabs)/(journal)/library')}
+                onPress={() => router.push('/library')}
                 hitSlop={12}
                 accessibilityRole="button"
                 accessibilityLabel="Bibliothèque"

@@ -97,8 +97,8 @@ export function LibraryScreen() {
   function add(): void {
     router.push(
       showingFoods
-        ? '/(tabs)/(journal)/library/food/new'
-        : '/(tabs)/(journal)/library/recipe/new',
+        ? '/library/food/new'
+        : '/library/recipe/new',
     );
   }
 
@@ -179,7 +179,7 @@ export function LibraryScreen() {
                         denominators, each written where it is read.
                       */
                       kcal={`${formatKcal(food.reference.kcal)} kcal`}
-                      onPress={() => router.push(`/(tabs)/(journal)/library/food/${food.id}`)}
+                      onPress={() => router.push(`/library/food/${food.id}`)}
                       onToggleFavorite={() =>
                         setFoodFavorite.mutate({ foodId: food.id, isFavorite: !food.isFavorite })
                       }
@@ -191,7 +191,7 @@ export function LibraryScreen() {
                     {index === 0 ? null : <ListSeparator />}
                     <RecipeRow
                       recipe={recipe}
-                      onPress={() => router.push(`/(tabs)/(journal)/library/recipe/${recipe.id}`)}
+                      onPress={() => router.push(`/library/recipe/${recipe.id}`)}
                       onToggleFavorite={() =>
                         setRecipeFavorite.mutate({
                           recipeId: recipe.id,
