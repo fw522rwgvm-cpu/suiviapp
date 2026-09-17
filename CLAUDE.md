@@ -4730,31 +4730,42 @@ n'expose aucune barre d'accessoire standard à demander — ni par React Native,
 par UIKit hors d'une vue web, d'où vient celle de Safari. Tout ce qui est dedans
 est dessiné ici.
 
-Ce qui **peut** être partagé avec le système est le matériau **et sa
-composition**, et c'est la seconde moitié qui manquait. Trois formes essayées
-avant : la surface peinte d'origine (un accessoire d'avant iOS 26), des capsules
-de verre flottantes, puis une dalle de verre pleine sur toute la largeur.
+**Quatre formes ont été essayées à l'aveugle, et une capture d'écran a réglé la
+question en une image.** Dans l'ordre : la surface peinte d'origine (un
+accessoire d'avant iOS 26), des capsules de verre flottantes, une dalle de verre
+pleine largeur, puis des capsules dans un `GlassContainer` assez proches pour
+fusionner. Chacune était une conjecture défendable sur une question de **forme**,
+et aucune source textuelle ne donne une forme.
 
-**Ce qui manquait est `UIGlassContainerEffect`.** Apple ne pose pas *un* matériau
-derrière une barre : chaque contrôle porte son propre `UIGlassEffect`, et le
-groupe vit dans un conteneur qui laisse les voisins **s'affecter** — ils
-fusionnent en s'approchant et se séparent en s'éloignant. **C'est cette fusion
-qui est la signature d'une barre iOS 26** ; des capsules sans elle ont l'air
-posées dessus, et une dalle a l'air de l'ancienne barre.
+**Ce qu'iOS 26 pose là est UNE SEULE capsule de verre** : en retrait des deux
+bords, dégagée du clavier, la page visible autour d'elle. Les contrôles sont
+dedans — ceux qui parcourent le formulaire au bord avant, celui qui termine au
+bord arrière — et il n'y a rien que du matériau entre les deux.
 
-`expo-glass-effect` expose les deux depuis le début — `GlassView` et
-`GlassContainer` — et ce projet n'avait jamais utilisé le second. Vérifié dans la
-source du paquet plutôt que supposé : `GlassContainer.swift` construit bien un
-`UIGlassContainerEffect`, lui passe son `spacing`, et teste lui-même
-`NSClassFromString` — donc il dégrade sans planter là où la classe n'existe pas.
+**Trois détails qu'aucune description ne contenait**, et qui sont ce que l'image
+a apporté :
 
-La bande est donc **transparente** et les contrôles sont le matériau : c'est la
-règle « jamais de fond peint derrière du verre » prise par l'autre bout.
+- **aucun bouton de verre dedans.** Une capsule dans une capsule est du verre
+  dans du verre — la règle de l'en-tête, un cran plus bas. Les contrôles sont des
+  `Pressable` nus et la barre est le matériau ;
+- **les glyphes sont dans la couleur du texte, pas de l'accent.** Sur la barre du
+  système ils sont de la couleur d'un libellé ; en accent ils se liraient comme
+  des liens sur une surface dont tout le rôle est d'être neutre ;
+- **le contrôle de fin est une coche**, pas le mot « OK ».
+
+`GlassContainer` a donc été essayé puis retiré : le conteneur est la bonne pièce
+pour un **groupe** de contrôles de verre, et une barre d'accessoire n'en est pas
+un.
 
 C'est la troisième réserve de cette forme, après le balayage de suppression et le
 retour par glissement : **une reconstruction se dit, elle ne se laisse pas
-croire** — même bâtie avec les bons composants, la disposition et les libellés
-restent dessinés ici.
+croire** — le matériau est celui du système, la forme et les glyphes sont lus sur
+une image et dessinés ici.
+
+**Et la leçon de méthode, qui vaut au-delà de cette barre : sur une question de
+forme, demander l'image plutôt que deviner quatre fois.** Deux tours ont été
+dépensés à reformuler une description ; le troisième a coûté une capture d'écran
+et n'a laissé aucune ambiguïté.
 
 ## Points ouverts après la tranche 10
 
@@ -4798,12 +4809,9 @@ restent dessinés ici.
   a été rapporté **trois fois**, et la troisième correction est la première qui
   ne repose sur aucun ordre entre deux canaux, elle le supprime ; que le
   défilement de Stats ne bouge **pas du tout** au changement de plage ; et que
-  la barre du clavier, bâtie cette fois avec `GlassContainer`, montre enfin la
-  fusion qui fait une barre iOS 26. **Ce dernier point porte une réserve
-  matérielle** : `GlassContainer` est une vue native d'un paquet déjà dans le
-  binaire, donc aucune reconstruction n'est attendue — mais c'est une déduction
-  du lockfile, pas une observation. Si la barre s'affichait vide, c'est la
-  première chose à suspecter.
+  la barre du clavier ressemble à la capture d'écran de référence : une capsule
+  unique en retrait des bords, chevrons à gauche, coche à droite. **Le carrousel
+  est confirmé réglé** (17/09/2026), donc il sort de cette liste.
 - **Les seuils de nuance de la carte sont choisis, pas mesurés** : 3, 6 et 10
   séries pondérées. La façon de savoir qu'ils sont faux est de regarder deux
   routines qu'on sait différentes et de voir si la carte les distingue. Une
