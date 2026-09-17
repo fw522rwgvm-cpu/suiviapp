@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { ScrollView, StyleSheet } from 'react-native';
+import { useCallback, useRef, useState } from 'react';
+import { ScrollView, StyleSheet, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { Text } from '@/core/ui/text';
 import { useTheme } from '@/core/theme';
 import { Segmented } from '@/core/ui/segmented';
@@ -50,6 +50,23 @@ import {
  * back down after every single comparison, which is the whole activity this
  * screen exists for.
  *
+ * ## AND SURVIVING MEANT PUTTING IT BACK, BECAUSE A LOADING PANEL IS SHORT
+ *
+ * Simply not scrolling was not enough, and the case that shows it is the FIRST
+ * visit to a range: both panels render a loading indicator while their queries
+ * answer, which is a page a few hundred points tall. iOS clamps the offset to
+ * that, correctly and irreversibly — when the real content arrives a moment
+ * later the page is already at the top, and nothing remembers where it was.
+ *
+ * So the offset is remembered when the choice changes and PUT BACK the moment
+ * the content is tall enough to hold it. Not on a timer, not after a guessed
+ * delay: onContentSizeChange is the event that says "the page just became this
+ * tall", which is exactly the question being asked.
+ *
+ * A real drag cancels it. Someone who scrolls while the panel is still loading
+ * has said where they want to be, and being pulled back by an arriving query
+ * would be the page moving under a finger.
+ *
  * ## ONE ScrollView IN EVERY STATE
  *
  * Never a View while loading and a ScrollView once loaded. Swapping one element
@@ -75,10 +92,20 @@ export function StatsScreen() {
   const [range, setRange] = useState<StatRangeDays>(DEFAULT_STAT_RANGE);
   const [weightRange, setWeightRange] = useState<WeightRangeKey>(DEFAULT_WEIGHT_RANGE);
 
+  const keepPlace = useKeptScrollPlace();
+
   return (
     <ScrollView
+      ref={keepPlace.ref}
       style={{ backgroundColor: theme.colors.background }}
       contentContainerStyle={styles.container}
+      onScroll={keepPlace.onScroll}
+      onLayout={keepPlace.onLayout}
+      onContentSizeChange={keepPlace.onContentSizeChange}
+      onScrollBeginDrag={keepPlace.onScrollBeginDrag}
+      // Sixty a second: the offset has to be current at the instant a choice
+      // changes, and a coarser rate would remember a place from a moment ago.
+      scrollEventThrottle={16}
     >
       {/* NativeTabs provides no JS header, so the screen carries its own title. */}
       <Text style={[styles.screenTitle, { color: theme.colors.text }]}>Stats</Text>
@@ -86,9 +113,12 @@ export function StatsScreen() {
       <Segmented
         options={PANEL_OPTIONS}
         value={panel}
-        // Nothing but the switch: the scroll offset is deliberately left
-        // alone, see the note at the top of this file.
-        onChange={setPanel}
+        // The offset is remembered rather than reset, and put back once the
+        // arriving panel is tall enough to hold it. See the note at the top.
+        onChange={(chosen) => {
+          keepPlace.remember();
+          setPanel(chosen);
+        }}
         grow
       />
 
@@ -97,17 +127,75 @@ export function StatsScreen() {
           today={today}
           tolerancePct={adherenceTolerancePct}
           range={range}
-          onRangeChange={setRange}
+          onRangeChange={(chosen) => {
+            keepPlace.remember();
+            setRange(chosen);
+          }}
         />
       ) : (
         <WeightPanelSection
           today={today}
           range={weightRange}
-          onRangeChange={setWeightRange}
+          onRangeChange={(chosen) => {
+            keepPlace.remember();
+            setWeightRange(chosen);
+          }}
         />
       )}
     </ScrollView>
   );
+}
+
+/**
+ * Keeps the reading place across a change that makes the page briefly shorter.
+ *
+ * Everything here is a ref rather than state, and that is the point: none of it
+ * has anything to say about what is rendered. Putting the offset in state would
+ * re-render the whole screen on every frame of a scroll, to change nothing.
+ *
+ * `remember` is called by the control that changes the page, not by an effect
+ * watching the choice: an effect runs after the render that shrank the content,
+ * by which time iOS has already clamped the offset and the number to remember
+ * is gone.
+ */
+function useKeptScrollPlace() {
+  const ref = useRef<ScrollView>(null);
+  const offset = useRef(0);
+  const viewport = useRef(0);
+  const wanted = useRef<number | null>(null);
+
+  const onScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    offset.current = event.nativeEvent.contentOffset.y;
+  }, []);
+
+  const onLayout = useCallback((event: { nativeEvent: { layout: { height: number } } }) => {
+    viewport.current = event.nativeEvent.layout.height;
+  }, []);
+
+  const remember = useCallback(() => {
+    // Zero is not worth restoring, and remembering it would fight a person who
+    // switched panels while already at the top.
+    wanted.current = offset.current > 0 ? offset.current : null;
+  }, []);
+
+  const onContentSizeChange = useCallback((_width: number, height: number) => {
+    const want = wanted.current;
+    if (want === null) return;
+
+    // Only once the page can actually hold that offset. Restoring earlier would
+    // ask for a position iOS would clamp again, and the request would be spent.
+    if (height - viewport.current < want) return;
+
+    wanted.current = null;
+    ref.current?.scrollTo({ y: want, animated: false });
+  }, []);
+
+  /** A finger on the page outranks anything a query is about to say. */
+  const onScrollBeginDrag = useCallback(() => {
+    wanted.current = null;
+  }, []);
+
+  return { ref, onScroll, onLayout, onContentSizeChange, onScrollBeginDrag, remember };
 }
 
 const styles = StyleSheet.create({

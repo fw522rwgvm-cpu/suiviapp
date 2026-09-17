@@ -118,7 +118,9 @@ function RootStack() {
         headerTransparent: true,
         headerShadowVisible: false,
         headerTintColor: theme.colors.accent,
-        headerTitleStyle: { color: theme.colors.text },
+        // Only the library's screens show a header on this stack; the tabs
+        // and the windows show none. Same size as the other three stacks'.
+        headerTitleStyle: { color: theme.colors.text, fontSize: 20 },
         ...(glass
           ? { scrollEdgeEffects: { top: 'soft' as const } }
           : { headerBlurEffect: 'systemChromeMaterial' as const }),
@@ -128,16 +130,48 @@ function RootStack() {
       {/*
         THE LIBRARY, OVER THE TAB BAR (specs 14.24).
 
-        A sibling of (tabs) rather than a screen of the Journal's stack, which
-        is what makes it cover the bar. Requested, and it reverses slice 3 —
-        the whole reasoning is in app/library/_layout.tsx, which also draws the
-        headers, so nothing is shown here.
+        Siblings of (tabs) rather than screens of the Journal's stack, which is
+        what makes them cover the bar. Requested, and it reverses slice 3: the
+        library is not a page of the Journal, it is where the food and recipe
+        records live, and every one of its screens is a task with a way out of
+        its own. What it costs is that the bar is gone while browsing, so
+        leaving for another tab costs a back first.
 
-        An ordinary push: opaque, from the right, with the system's back
-        gesture. Browsing is still a push; only the stack it is pushed onto has
-        changed.
+        "Browsing is a push, adding is a modal" survives intact: these are still
+        pushes, with the system's back gesture. Only the stack changed.
+
+        ## DECLARED HERE RATHER THAN UNDER A STACK OF THEIR OWN
+
+        A nested stack was the first shape, on the precedent of settings/,
+        stats/ and training/, and it took the back button away: the ROOT SCREEN
+        OF A STACK DRAWS NONE — within its own stack there is nothing behind it
+        — and the parent that does have something behind it shows no header at
+        all. The library opened with an empty bar and only the swipe to leave.
+
+        Flat, each screen is pushed on THIS stack, so the first of them has the
+        tab group behind it and the navigator draws its back button. That button
+        is a UIBarButtonItem, which is what gets Liquid Glass from UIKit on iOS
+        26 — a GlassButton in a header would be glass inside glass, the mistake
+        the iOS 26 direction names.
       */}
-      <Stack.Screen name="library" />
+      <Stack.Screen
+        name="library/index"
+        options={{
+          headerShown: true,
+          title: 'Bibliothèque',
+          // What the back button SAYS. Without it the label falls back to the
+          // previous screen's title, and the previous screen is the tab group,
+          // which has none — the navigator would offer "(tabs)".
+          headerBackTitle: 'Journal',
+        }}
+      />
+      {/*
+        The two editors carry their own titles and their own header buttons; all
+        they need from here is a bar to put them on. Their back button is
+        labelled from the screen behind them, which is the library.
+      */}
+      <Stack.Screen name="library/food/[id]" options={{ headerShown: true }} />
+      <Stack.Screen name="library/recipe/[id]" options={{ headerShown: true }} />
       {/*
         ALL FOUR ARE OVERLAYS, and siblings rather than a nested stack.
 
