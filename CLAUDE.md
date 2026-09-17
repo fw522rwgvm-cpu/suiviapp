@@ -4249,6 +4249,41 @@ un `&&` enchaîne sur du rouge invisible. Trois erreurs de types sont restées
 cachées plusieurs commandes de cette façon. **Le typecheck se lit en entier ou
 pas du tout.**
 
+### Deux défauts d'interface trouvés à l'usage (17/09/2026)
+
+**`pointerEvents="box-only"` empêche tout champ d'une rangée balayable de
+prendre le focus.** Rapporté comme « les inputs ne marchent pas », diagnostiqué
+dans le code. `box-only` veut dire : la couche prend le toucher et **rien à
+l'intérieur n'en reçoit jamais**. C'était juste tant que chaque appelant
+confiait du **texte** à `SwipeToDeleteRow` et laissait `onPress` porter la
+pression — un `Pressable` reglissé dans le contenu réintroduirait l'échec
+d'arbitrage pour lequel ce composant a été corrigé. Ça a cessé d'être juste le
+jour où un appelant y a mis des **champs**.
+
+La couche n'avale donc le toucher que lorsqu'elle a de quoi faire : une rangée
+**ouverte**, ou une rangée à qui on a donné un `onPress`. **Réserve inscrite** :
+un champ peut encore prendre le focus au relâchement d'un balayage, son
+responder n'étant pas arbitré contre le pan — supportable là où un `Pressable`
+ne l'était pas, focaliser un champ ne détruisant rien.
+
+**Et un champ numérique lié au brouillon reperd son séparateur décimal.** Même
+cause que le champ de poids en tranche 8 — et cette fois le commentaire du
+fichier décrivait le remède *sans l'appliquer*. « 6, » se parse en 6, se rend
+« 6 », la virgule disparaît sous le curseur. Le texte est un **état local**,
+ajusté **pendant** le rendu quand une valeur entrante dit autre chose que lui,
+jamais dans un effet.
+
+**Modifier une routine reste sur sa page.** La règle « agir sur quelque chose
+ouvre une fenêtre par-dessus » existe pour que la chose sur laquelle on agit
+**reste visible** ; une fenêtre d'édition couvrait exactement la routine
+qu'elle modifiait. Le §10.2 demande « présentation identique à la création » :
+une page en deux états, pas deux pages qui se ressemblent. **La création garde
+sa fenêtre** — il n'y a pas de page à basculer quand rien n'existe encore.
+
+**Le repos s'affiche en haut de son bloc.** Sous les séries il se lisait comme
+une note attachée à la dernière ; au-dessus, comme ce qui gouverne toutes — et
+c'est la question qu'on se pose *entre* deux séries.
+
 ## Points ouverts après la tranche 10
 
 - **Rien de la tranche 10 n'a tourné sur l'appareil.** Aucune dépendance n'a été
