@@ -4284,6 +4284,94 @@ sa fenêtre** — il n'y a pas de page à basculer quand rien n'existe encore.
 une note attachée à la dernière ; au-dessus, comme ce qui gouverne toutes — et
 c'est la question qu'on se pose *entre* deux séries.
 
+### Un superset s'exécute en alternance, et l'ordre stocké est celui-là (17/09/2026)
+
+**La tranche 10 avait groupé un superset par exercice — A,A,A puis B,B,B — et
+l'avait défendu en écrivant « la routine est une liste à LIRE, c'est la séance
+qui décidera de l'ordre d'exécution ». La phrase se réfutait elle-même.** Un
+superset n'a pas d'autre ordre d'exécution que l'alternance : une page qui
+montre l'un et une séance qui exécute l'autre sont deux réponses à une seule
+question, et la tranche 11 aurait dû redériver un ordre que l'écriture
+connaissait déjà. `routine_line.position` est donc l'ordre d'exécution, et
+`set_index` est le numéro de **tour**.
+
+**Les tours sont dérivés, jamais stockés**, ce qui laisse intacte la règle
+d'ouverture du module : le tour d'une ligne est son rang pour son propre
+exercice — ce que `setIndexOf` calculait déjà — et l'ordre à l'intérieur d'un
+tour est l'ordre d'apparition des exercices dans le bloc. Une source, le
+tableau.
+
+**Et c'est cette dérivation qui évite une migration.** Une routine stockée
+groupée par exercice se lit en tours corrects telle quelle, puisque les rangs
+par exercice sont les mêmes ; elle se réécrit entrelacée à la prochaine
+sauvegarde. Rien à migrer, rien à corriger en base, et les deux formes
+coexistent sans que l'écran sache laquelle il lit.
+
+Conséquence de vocabulaire, pas de cosmétique : dans un superset, « Ajouter une
+série » devient **« Ajouter un tour »** et ajoute une série de *chaque*
+exercice. Un demi-tour de superset ne s'entraîne pas.
+
+### Retirer un contrôle demande de dire où la règle passe (17/09/2026)
+
+**La flèche ↗ au bout de certaines lignes portait la règle de progression du
+§10.4.** La retirer seule aurait laissé cette règle sans aucune entrée : une
+colonne dans le schéma que plus rien ne peut jamais écrire, et que la tranche 12
+lirait toujours à zéro. Le réflexe — supprimer ce qui est demandé et passer à la
+suite — aurait produit un défaut invisible pendant deux tranches.
+
+Elle va au **bloc**, pour le motif exact qui y a déjà mis le repos : personne ne
+fait progresser la deuxième série d'un exercice et pas la troisième. **La
+colonne reste par ligne** — le §10.4 la définit ainsi, la tranche 12 la lira
+ainsi, et stocker un second état au bloc serait la valeur dérivée que D9 refuse.
+`blockProgression` est une **lecture** : vrai si toutes les séries de travail du
+bloc la portent. Les échauffements et les drop sets sont exclus de l'écriture ;
+un échauffement qui monterait de 2,5 kg par semaine a cessé d'en être un.
+
+### Une colonne relue partout et écrite nulle part (17/09/2026)
+
+**`routine_line.duration_seconds`, ajoutée par `0009`, ne figurait dans aucun
+`INSERT`.** Les 45 s d'un gainage étaient acceptées par le tableau,
+enregistrées, et perdues. Trouvé en touchant la table de projection de
+`writeContents`, pas par un écran en échec.
+
+**Rien d'autre ne pouvait l'attraper, et c'est le point à retenir** : la lecture
+rendait fidèlement le `null` qu'elle avait elle-même écrit, donc l'aller-retour
+était **cohérent et faux** — exactement la forme de défaut que la tranche 2
+décrit en refusant de comparer un export à un second export. Un aller-retour ne
+prouve rien d'une colonne qu'aucun côté ne remplit. Le test le fixe désormais
+par la **valeur**, pas par la symétrie.
+
+### Naviguer depuis un écran en cours d'édition ne perd rien (17/09/2026)
+
+Le nom d'un exercice était rendu non cliquable pendant l'édition d'une routine,
+pour protéger le brouillon. **Il n'y avait rien à protéger** : un `push` laisse
+l'écran précédent **monté** dessous — c'est la raison d'être des événements de
+focus d'un navigateur — donc l'état React survit à la visite et au retour. La
+prudence coûtait la seule action que le §10.2 demande sur un nom d'exercice.
+
+Au passage, un titre unique sur un bloc ne peut pas servir un superset : il
+n'ouvre que le premier de ses exercices. Le titre est donc une **liste de noms**,
+chacun préfixé de la lettre que ses lignes portent, chacun sa propre
+destination.
+
+### Ce que « ressembler à Hevy » a voulu dire, et ce qu'on n'a pas pris (17/09/2026)
+
+Demande sans critère mesurable, traduite en décisions nommables : nom
+d'exercice en couleur d'accent et cliquable, repos en une ligne sous les noms
+avec son glyphe de minuteur, tableau **sans cadre intérieur** — une grille
+dessinée dans une carte, ce sont deux boîtes — numéro de série en pastille, et
+un rail d'accent sur le bord gauche d'un superset.
+
+**Aucun jeton de couleur ajouté** : la pastille prend le fond de la **page**,
+qui la creuse dans la carte, plutôt qu'une sixième couleur que la palette
+devrait justifier avec ses mesures de contraste.
+
+**Ce qui n'a pas été pris, et pourquoi** — la vignette de l'exercice, parce que
+le média est hors de la tranche 10 et qu'un rond de remplacement est une
+promesse que l'application ne tient pas ; et la colonne « précédent », qui est
+l'historique de la tranche 12 : vide, elle dirait qu'il n'y a rien plutôt que
+que rien n'est encore enregistré.
+
 ## Points ouverts après la tranche 10
 
 - **Rien de la tranche 10 n'a tourné sur l'appareil.** Aucune dépendance n'a été
@@ -4294,7 +4382,11 @@ c'est la question qu'on se pose *entre* deux séries.
   le balayage d'une série réponde dans une liste imbriquée — deux niveaux de
   rangées balayables n'ont jamais été exercés ici ; et que l'étape de choix
   d'exercice revienne sans que la couche arrière apparaisse, le piège du `key`
-  de `SwipeBack` étant exactement celui-là.
+  de `SwipeBack` étant exactement celui-là. **S'y ajoutent depuis le
+  17/09/2026** : qu'un superset se lise bien en tours A,B,A,B ; que toucher un
+  nom d'exercice ouvre sa page depuis les deux états de la page ; et que
+  l'interrupteur de progression du bloc se manœuvre sans que le tableau
+  au-dessous perde le focus d'un champ.
 - **Les seuils de nuance de la carte sont choisis, pas mesurés** : 3, 6 et 10
   séries pondérées. La façon de savoir qu'ils sont faux est de regarder deux
   routines qu'on sait différentes et de voir si la carte les distingue. Une
