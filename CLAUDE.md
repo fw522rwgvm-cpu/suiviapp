@@ -4883,6 +4883,21 @@ forme qu'une note a en lecture. La page ne change donc pas de disposition en
 basculant en édition — c'est la même exigence que « présentation identique à la
 création », appliquée à un champ.
 
+**Et un champ qui grandit doit emmener la page avec lui.** `onContentSizeChange`
+est exactement l'événement « ce champ vient de grandir » : pas de sondage, pas de
+mesure à chaque frappe. Le révélage qu'il demande rend **zéro** quand le champ a
+encore de la place — c'est cette idempotence qui le rend sûr à appeler à chaque
+ligne gagnée, exactement comme elle le rend sûr à appeler au focus *et* à
+l'arrivée du clavier.
+
+**Une bagarre à trancher, qu'on ne voit pas en lisant le code.** Une note plus
+haute que ce que le clavier laisse voir déclenche les DEUX corrections à la
+fois : son bas est sous le clavier et son haut est hors de l'écran. Appliquées
+tour à tour, elles tirent la page d'avant en arrière à chaque ligne. **Le bas
+gagne**, parce que c'est là qu'est le curseur : ce qu'on écrit doit se voir, le
+début d'une note en cours d'écriture non. La correction du haut ne tourne donc
+que pour un champ qui **tient** dans la bande.
+
 ### Une note se lit pendant la séance, pas à un toucher de là (17/09/2026)
 
 Les quatre notes d'un exercice s'affichent désormais sur la page de la séance. Le
