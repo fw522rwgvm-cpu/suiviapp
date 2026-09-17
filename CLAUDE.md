@@ -4801,6 +4801,68 @@ forme, demander l'image plutôt que deviner quatre fois.** Deux tours ont été
 dépensés à reformuler une description ; le troisième a coûté une capture d'écran
 et n'a laissé aucune ambiguïté.
 
+### Une édition a deux fins honnêtes, et « revenir » n'en est pas une (17/09/2026)
+
+Quitter une modification non enregistrée demande désormais confirmation, sur un
+exercice comme sur une routine. Ce qui a décidé la **forme** est une question
+qu'on ne se pose qu'en l'écrivant : que fait le bouton retour ?
+
+Une édition non enregistrée a exactement deux fins honnêtes — **enregistrer** et
+**abandonner** — et un geste qui veut dire « revenir » ne se distingue d'aucune
+des deux. L'intercepter pour le contredire est possible (`beforeRemove`) et
+mauvais : la pile native le fait mal, et ce qu'on obtient est un écran qui part
+et revient — le défaut que le panier a évité en remettant la fenêtre **avant** de
+demander.
+
+**Donc on ne l'offre pas.** Pendant l'édition, le retour et le balayage sont
+coupés ; la seule sortie est nommée, et elle demande. Ne pas offrir une sortie
+est plus simple que de la reprendre.
+
+**Et rien n'est demandé quand rien n'a été touché.** La comparaison porte sur le
+brouillon **stocké**, pas sur un drapeau « touché » : taper un caractère et le
+retaper ne demande rien, ce qui est ce que la question veut dire. Une
+confirmation sur un formulaire encore exactement tel qu'il a été ouvert est celle
+qui apprend à passer outre sans lire — même raison que sur le panier vide.
+
+**Les égalités sont écrites champ par champ, jamais génériquement.** La question
+est « y a-t-il quelque chose à perdre », et une comparaison profonde y répondrait
+sur des champs que personne n'a choisi de garder — y compris celui qu'on ajoutera
+ensuite. Le test nomme donc **chaque** champ du brouillon, parce que le défaut
+qu'il garde est un champ ajouté et oublié dans la comparaison, que rien d'autre
+n'attraperait et qui ferait dire à une confirmation qu'il n'y a rien à perdre.
+
+Deux détails qui ne se devinent pas : `incrementKg` se compare comme la **chaîne**
+qu'elle est — « 2,5 » et « 2.5 » se parsent pareil et ne sont pas la même chose à
+retaper, et une confirmation parle de ce qui serait perdu, pas de ce qui serait
+stocké ; et `exerciseName` est délibérément absent d'une ligne de routine, étant
+porté pour l'affichage et venant de l'exercice, donc un renommage n'est pas une
+modification de cette routine.
+
+### La même correction, la deuxième fois, sur l'autre page (17/09/2026)
+
+Modifier un exercice se fait sur sa page. C'est mot pour mot ce que la routine a
+fait en tranche 10, et le fait que les deux pages aient eu besoin de la même
+correction dit quelque chose sur la règle plutôt que sur les pages :
+
+**« agir ouvre une fenêtre par-dessus » se lit trop littéralement dès que la
+chose sur laquelle on agit occupe déjà tout l'écran.** La règle existe pour que
+cette chose **reste visible** ; une fenêtre qui la couvre exactement ne gagne
+rien et dépense un congédiement. La création, elle, garde sa fenêtre dans les
+deux cas — il n'y a pas de page à basculer quand rien n'existe encore.
+
+Corollaire de structure, deux fois identique : une page en deux états demande
+**un** composant partagé (`RoutineBody`, puis `ExerciseBody`), sinon les deux
+états dérivent.
+
+### Une carte qui ne se voit qu'en éditant ne sert qu'à celui qui édite (17/09/2026)
+
+Le schéma corporel est désormais sur la page d'un exercice en permanence, pas
+seulement sur son formulaire. Ce qui le justifie n'est pas la symétrie : les
+quinze noms de muscles sont **inventés en tranche 10** et n'ont jamais rencontré
+un exercice réel, donc « lats » est un mot avant d'être un endroit — et la page
+d'un exercice est exactement là où « c'est où ? » se pose, par quelqu'un qui ne
+modifie rien.
+
 ## Points ouverts après la tranche 10
 
 - **Rien de la tranche 10 n'a tourné sur l'appareil.** Aucune dépendance n'a été
