@@ -334,16 +334,46 @@ export function FormRow({
   const theme = useTheme();
   const field = useRef<TextInput | null>(null);
 
-  /*
-    ALWAYS A PRESSABLE, never one only when a field signed in. A field signs in
-    from an effect, so the element type would change after the first render, and
-    React would unmount the subtree and mount it again -- taking the field's own
-    text with it. The cost of pressing a row that has no field is nothing
-    happening, which is what pressing it did before.
+  const inside = (
+    <>
+      {label === undefined ? null : (
+        <Text style={[styles.label, { color: theme.colors.text }]} numberOfLines={1}>
+          {label}
+        </Text>
+      )}
+      <View style={label === undefined ? styles.wide : styles.value}>{children}</View>
+    </>
+  );
 
-    No role and no highlight: a row is not a button, and the deeper view wins
-    the touch anyway, so a wheel, a switch or a segmented control inside one
-    still answers for itself.
+  /*
+    A FLUSH ROW KEEPS ITS TOUCHES, as well as its width.
+
+    `flush` already means "a control needs every point of this row" -- and the
+    one that asks for it is the quantity wheel, a UIPickerView with gesture
+    recognisers of its own. A JavaScript Pressable wrapped around a native
+    control that scrolls is the one nesting this project has no reason to risk,
+    on a control that is on the critical path and verified on the device. So the
+    same marker decides both: a row that hands over its width hands over its
+    touches.
+  */
+  if (flush === true) {
+    return (
+      <FormRowContext.Provider value={field}>
+        <View style={[styles.row, styles.flush]}>{inside}</View>
+      </FormRowContext.Provider>
+    );
+  }
+
+  /*
+    ALWAYS A PRESSABLE OTHERWISE, never one only when a field signed in. A field
+    signs in from an effect, so the element type would change after the first
+    render, and React would unmount the subtree and mount it again -- taking the
+    field's own text with it. The cost of pressing a row that has no field is
+    nothing happening, which is what pressing it did before.
+
+    No role and no highlight: a row is not a button. A Pressable written inside
+    one -- the "Ajouter" of the portion and ingredient editors -- still answers
+    for itself, the deepest view being offered the touch first.
   */
   return (
     <FormRowContext.Provider value={field}>
@@ -352,14 +382,9 @@ export function FormRow({
           if (onPress !== undefined) onPress();
           else field.current?.focus();
         }}
-        style={[styles.row, flush === true ? styles.flush : null]}
+        style={styles.row}
       >
-        {label === undefined ? null : (
-          <Text style={[styles.label, { color: theme.colors.text }]} numberOfLines={1}>
-            {label}
-          </Text>
-        )}
-        <View style={label === undefined ? styles.wide : styles.value}>{children}</View>
+        {inside}
       </Pressable>
     </FormRowContext.Provider>
   );
