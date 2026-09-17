@@ -5,6 +5,7 @@ import type { LocalDate } from '@/core/date';
 import { formatWeight } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import { LoadingDots } from '@/core/ui/loading-dots';
+import { useMinimumVisible } from '@/core/ui/use-minimum-visible';
 import { Segmented } from '@/core/ui/segmented';
 import { Text } from '@/core/ui/text';
 import { rollingMean, WEEKLY_WINDOW_DAYS } from '../domain/series';
@@ -32,6 +33,7 @@ import {
 import { StatCard } from './stat-card';
 import { WeightChart } from './weight-chart';
 import { WeightCrossChart } from './weight-cross-chart';
+import { PANEL_LOADING_MS } from '../domain/panel-loading';
 
 /**
  * The weight panel of the dashboard (specs 9.2, 9.4).
@@ -106,6 +108,16 @@ export function WeightPanelSection({
     return dateRange.grain === 'day' ? rollingMean(perBucket, WEEKLY_WINDOW_DAYS) : perBucket;
   }, [panel, kcal.data, dateRange.grain]);
 
+  /**
+   * The indicator, held to a floor once it has appeared at all.
+   *
+   * Not `panel === null` directly: a first visit answers fast enough to be seen
+   * and not fast enough to be missed, which is a flash, and a flash reads as a
+   * defect. Nothing is delayed on a range already read — useMinimumVisible only
+   * imposes the floor once the waiting has begun. See PANEL_LOADING_MS.
+   */
+  const waiting = useMinimumVisible(panel === null, PANEL_LOADING_MS);
+
   const empty = panel !== null && panel.points.every((point) => point.raw === null);
 
   return (
@@ -120,7 +132,7 @@ export function WeightPanelSection({
         grow
       />
 
-      {panel === null ? (
+      {waiting || panel === null ? (
         <View style={styles.waiting}>
           <LoadingDots />
         </View>
