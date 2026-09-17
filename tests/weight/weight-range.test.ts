@@ -45,6 +45,23 @@ describe('the four ranges the panel offers', () => {
     expect(weightRangeFor(DEFAULT_WEIGHT_RANGE, TODAY).showRaw).toBe(true);
   });
 
+  it('opens on a week, which only the smoothing lead makes honest', () => {
+    /**
+     * Requested (specs 14.24). The value is pinned here rather than left to the
+     * screen because of what it depends on: a seven-day range READ as seven
+     * days computes six of its seven smoothed points from short windows, which
+     * is the 22 % bias measured elsewhere in slice 8. What makes this default
+     * safe is that the read is wider than the drawing.
+     */
+    expect(DEFAULT_WEIGHT_RANGE).toBe('7');
+
+    const drawn = weightRangeFor(DEFAULT_WEIGHT_RANGE, TODAY);
+    const read = readRangeFor(drawn);
+
+    expect(read.days).toBeGreaterThan(drawn.days);
+    expect(read.days - drawn.days).toBe(SMOOTHING_WINDOW_DAYS - 1);
+  });
+
   it('counts both ends, the way the nutrition panel does', () => {
     expect(weightRangeFor('7', TODAY)).toMatchObject({
       from: addDays(TODAY, -6),

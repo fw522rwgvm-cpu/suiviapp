@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { ScrollView, StyleSheet } from 'react-native';
 import { Text } from '@/core/ui/text';
 import { useTheme } from '@/core/theme';
@@ -39,6 +39,17 @@ import {
  * the other — which is what anyone would expect of a control they set on
  * purpose.
  *
+ * ## THE SCROLL OFFSET SURVIVES A CHANGE OF TAB, AND OF RANGE
+ *
+ * The first version jumped back to the top on every tab change, to avoid
+ * landing at an offset the arriving panel might be too short to fill. Requested
+ * otherwise (specs 14.24), and the objection was smaller than it looked: iOS
+ * clamps such an offset to the new content's own bottom, which is a page that
+ * is merely scrolled rather than a page that is wrong. What the jump cost was
+ * real — comparing the two panels, or two ranges of one panel, meant scrolling
+ * back down after every single comparison, which is the whole activity this
+ * screen exists for.
+ *
  * ## ONE ScrollView IN EVERY STATE
  *
  * Never a View while loading and a ScrollView once loaded. Swapping one element
@@ -60,14 +71,12 @@ export function StatsScreen() {
   const today = useToday();
   const { adherenceTolerancePct } = usePreferences();
 
-  const scroll = useRef<ScrollView>(null);
   const [panel, setPanel] = useState<Panel>('nutrition');
   const [range, setRange] = useState<StatRangeDays>(DEFAULT_STAT_RANGE);
   const [weightRange, setWeightRange] = useState<WeightRangeKey>(DEFAULT_WEIGHT_RANGE);
 
   return (
     <ScrollView
-      ref={scroll}
       style={{ backgroundColor: theme.colors.background }}
       contentContainerStyle={styles.container}
     >
@@ -77,21 +86,9 @@ export function StatsScreen() {
       <Segmented
         options={PANEL_OPTIONS}
         value={panel}
-        onChange={(chosen) => {
-          setPanel(chosen);
-          /**
-           * Back to the top, IN THE HANDLER rather than in an effect.
-           *
-           * The two panels are different lengths, so arriving at a scroll
-           * offset the new one cannot fill leaves it clamped somewhere
-           * arbitrary — the page would open half way down a panel nobody had
-           * scrolled. An effect would do this AFTER the new content had been
-           * painted, which is the flicker slice 3 removed from the carousel;
-           * here it runs on a tap, before the re-render, on content that is
-           * about to be replaced.
-           */
-          scroll.current?.scrollTo({ y: 0, animated: false });
-        }}
+        // Nothing but the switch: the scroll offset is deliberately left
+        // alone, see the note at the top of this file.
+        onChange={setPanel}
         grow
       />
 

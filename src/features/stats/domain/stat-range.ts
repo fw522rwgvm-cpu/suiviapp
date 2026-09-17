@@ -20,7 +20,16 @@ export const STAT_RANGE_DAYS = [7, 30, 90] as const;
  */
 export type StatRangeDays = (typeof STAT_RANGE_DAYS)[number];
 
-export const DEFAULT_STAT_RANGE: StatRangeDays = 30;
+/**
+ * The range the panel opens on.
+ *
+ * SEVEN DAYS, requested (specs 14.24). Thirty was the first version's choice,
+ * on the reasoning that a month is where a trend becomes visible. What it cost
+ * is the question actually asked on opening the screen — "how is this week
+ * going" — and a week is one tap away from the month while the month was one
+ * tap away from the week either way.
+ */
+export const DEFAULT_STAT_RANGE: StatRangeDays = 7;
 
 export interface DateRange {
   from: LocalDate;

@@ -8,6 +8,7 @@ import {
 } from '../../src/features/stats/domain/series';
 import {
   datesOf,
+  DEFAULT_STAT_RANGE,
   rangeEndingOn,
   STAT_RANGE_DAYS,
 } from '../../src/features/stats/domain/stat-range';
@@ -98,6 +99,14 @@ describe('macroSplits', () => {
 describe('stat ranges', () => {
   it('offers exactly the three specs 8.7 names', () => {
     expect([...STAT_RANGE_DAYS]).toEqual([7, 30, 90]);
+  });
+
+  it('opens on the week, the same span the weight panel opens on', () => {
+    // Requested (specs 14.24). Thirty was the first choice; the question asked
+    // on opening this screen is how the current week is going, and the month
+    // stays one tap away either way.
+    expect(DEFAULT_STAT_RANGE).toBe(7);
+    expect([...STAT_RANGE_DAYS]).toContain(DEFAULT_STAT_RANGE);
   });
 
   it('ends on today and includes it', () => {
