@@ -63,7 +63,7 @@ L'application doit tolérer un arrêt forcé à tout moment sans perte.
 ## État du projet
 Tranches 0 à 10 livrées. La tranche 9 (notifications) **clôt la V2** ; la
 tranche 10 (exercices et routines) **ouvre la V3**.
-**1418 tests verts** sous les trois fuseaux, `tsc` vert, bundle produit.
+**1439 tests verts** sous les trois fuseaux, `tsc` vert, bundle produit.
 
 **La tranche 10 n'a rien exercé sur l'appareil, et elle n'a pas besoin d'un
 cycle CI pour l'être** : aucune dépendance n'a été ajoutée. `react-native-svg`
@@ -4160,6 +4160,95 @@ tranche 2. `0008` l'a rendue vraie, donc le test passait au vert **en n'assertan
 plus rien** — le jour où il servait le plus. Il nomme désormais
 `not_a_table_0000`, qu'aucune migration ne peut créer.
 
+## Ce que les retours sur les routines ont établi (17/09/2026)
+
+**Un exercice peut se mesurer en durée**, et ni le §6.3 ni le §2.6 ne le
+prévoyaient — les deux ne décrivent une série que par ses « répétitions, fixes
+ou en plage ». `exercise.tracks_duration` porte le fait, `routine_line.duration_seconds`
+la cible. Le drapeau est sur l'**exercice** : un gainage est toujours
+chronométré, un développé couché jamais, donc le fait appartient au mouvement.
+Posé sur la ligne, il faudrait le répéter à chaque série et il pourrait se
+contredire à l'intérieur d'un bloc, qui n'a qu'une colonne.
+
+**Et la règle de la tranche 3 coupe dans les DEUX sens.** Une CHECK
+`duration_seconds > 0` avait été écrite ; la génération a montré pourquoi elle
+ne peut pas partir. SQLite ne sait pas ajouter une CHECK, donc drizzle-kit est
+retombé sur une **reconstruction de `routine_line`** — et la reconstruction
+produite était **cassée**, son `INSERT ... SELECT` lisant `duration_seconds`
+depuis l'ancienne table qui ne l'a pas encore.
+
+« Une migration porte ce qui ne peut pas s'ajouter plus tard » veut donc dire
+aussi : **le moment de poser une CHECK était `0008`, et il est passé.** La
+valeur est tenue par `validateRoutineDraft`, là où vivent déjà le `non_empty`
+de `food.barcode` et la positivité de `weight_measure.value_kg`.
+
+**Le repos appartient au bloc dans toutes les formes.** Le §10.2 ne l'énonce
+que du superset, et la première version en avait déduit « la ligne le porte
+sinon ». Faux à l'usage — personne ne se repose différemment entre deux séries
+du même exercice — et ça coûtait à la rangée la largeur dont les quatre
+colonnes ont besoin. Un bloc à un exercice **est** cet exercice.
+`routine_line.rest_seconds` reste en base et `restForBlock` la lit en repli :
+les lignes que cette application n'a pas écrites sont affichées, jamais
+corrigées.
+
+**Les séries sont un tableau, et un seul composant sert la lecture et la
+saisie** — le §10.2 pris à la lettre (« présentation identique à la création »).
+Deux composants dessinant une rangée finissent par diverger, et la première
+chose à dériver serait la colonne où vivent les répétitions. La saisie comblait
+au passage un **manque réel** : la première version n'offrait aucun moyen
+d'entrer une charge, une plage ou un RIR.
+
+Corollaire : **le press de rangée disparaît.** Les cellules sont des champs, et
+un press couvrant quatre nombres se battrait avec le balayage qui supprime.
+Dupliquer devient un bouton nommé ; toucher un exercice passe au **titre** du
+bloc.
+
+### La carte nuance, et la pondération est un arbitrage
+
+**Une série pour un muscle secondaire compte une demie.** La règle évidente —
+1 pour chaque muscle nommé — fait mentir la carte : sur une séance de poussée
+les triceps atteignent 8 séries contre 3 aux pectoraux, et le dessin annonce
+une séance de triceps. Ne compter que les primaires échoue dans l'autre sens :
+les avant-bras ne sont presque jamais le primaire de personne et resteraient
+gris pour toujours — le **faux négatif** contre lequel toute cette carte est
+conçue.
+
+**Les demies n'atteignent jamais l'écran.** « 4,5 séries » n'est pas une chose
+que quelqu'un a faite. Le total pondéré décide la **couleur** ; l'infobulle
+énonce des entiers — « 5 séries dont 2 directes ».
+
+**Quatre paliers, pas un dégradé continu** : l'œil ne classe pas deux verts à
+quelques pour cent d'écart, donc une échelle lisse se lit comme du bruit et
+revendique une précision que rien ici n'a. Les seuils — 3, 6, 10 séries
+pondérées — se lisent contre **une routine**, jamais contre une semaine : les
+10-20 séries hebdomadaires habituelles mettraient chaque routine au palier le
+plus bas et la carte ne changerait jamais de couleur. **Choisis, pas mesurés.**
+
+**Les teintes sont l'accent désaturé vers la surface**, pas trois couleurs sans
+rapport : la carte nuance **une** quantité, donc ses paliers doivent se lire
+comme une échelle. En sombre elles vont vers la surface et non vers le blanc —
+sinon le muscle le moins travaillé serait le plus lumineux de la figure et
+l'échelle tournerait à l'envers.
+
+**L'infobulle applique le §10.6**, qui tranche déjà l'interaction de tous les
+graphiques : « toucher un point affiche sa valeur et sa date », aucun zoom,
+aucun déplacement. Une seule différence — une région **non** travaillée ne
+répond pas, parce qu'une infobulle disant « Tête » serait un contrôle qui a
+l'air cassé.
+
+**Un piège de jointure, attrapé par un test de base** : une ligne de muscle
+secondaire existe une fois par **exercice**, donc une requête qui joint
+`exercise_secondary_muscle` sans passer par `routine_line` compte trois
+développés couchés comme une seule série indirecte de triceps.
+
+### Une leçon d'outillage qui a failli coûter cher
+
+**`npm run typecheck 2>&1 | grep … | head` masque les erreurs.** `head` ferme
+le tuyau, `tsc` reçoit SIGPIPE, et le statut de sortie vient du `grep` — donc
+un `&&` enchaîne sur du rouge invisible. Trois erreurs de types sont restées
+cachées plusieurs commandes de cette façon. **Le typecheck se lit en entier ou
+pas du tout.**
+
 ## Points ouverts après la tranche 10
 
 - **Rien de la tranche 10 n'a tourné sur l'appareil.** Aucune dépendance n'a été
@@ -4171,6 +4260,13 @@ plus rien** — le jour où il servait le plus. Il nomme désormais
   rangées balayables n'ont jamais été exercés ici ; et que l'étape de choix
   d'exercice revienne sans que la couche arrière apparaisse, le piège du `key`
   de `SwipeBack` étant exactement celui-là.
+- **Les seuils de nuance de la carte sont choisis, pas mesurés** : 3, 6 et 10
+  séries pondérées. La façon de savoir qu'ils sont faux est de regarder deux
+  routines qu'on sait différentes et de voir si la carte les distingue. Une
+  ligne dans `muscle-volume.ts`.
+- **La demi-série d'un secondaire est une convention**, pas une mesure. Si la
+  carte paraît surestimer les triceps et les épaules, c'est ce nombre qu'il faut
+  bouger — et il est à un seul endroit.
 - **La vignette du §10.1 n'est pas affichée et `media_uri` n'est écrite par
   rien.** Choisir un média demande `expo-image-picker`, hors du §5 : c'est une
   demande de dépendance native à valider, et elle coûterait un cycle CI. La
