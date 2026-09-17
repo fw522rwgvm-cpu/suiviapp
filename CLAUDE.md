@@ -1446,10 +1446,15 @@ Trois détails qui ne se devinent pas :
   natifs, ils s'animent, et un pavé numérique n'est pas un endroit d'où
   regarder ça. D'où une barre « OK » au-dessus du clavier : un seul champ, donc
   pas de chevrons, qui seraient deux contrôles morts.
-- **`autoFocus` + `selectTextOnFocus` fonctionnent ici**, là où la tranche 3
-  avait constaté qu'ils ne sélectionnaient rien. La différence est la seule qui
-  compte : la valeur vient de l'état local et existe **avant** le champ, donc
-  on retombe dans le cas où la paire marche — focaliser un champ déjà rempli.
+- ~~**`autoFocus` + `selectTextOnFocus` fonctionnent ici**, là où la tranche 3
+  avait constaté qu'ils ne sélectionnaient rien.~~ **FAUX, rapporté à l'usage le
+  17/09/2026.** Le raisonnement — « la valeur existe avant le champ, donc c'est
+  le cas où la paire marche » — a un trou : iOS applique `selectTextOnFocus` au
+  début de l'édition, et une valeur **contrôlée** est écrite dans le champ
+  après, ce qui pousse le curseur à la fin. Lequel des deux atterrit en dernier
+  ne nous appartient pas. La sélection est désormais **énoncée** à la frame
+  suivante — exactement le remède que la tranche 3 avait trouvé pour ce même
+  champ, et qu'il fallait garder.
 
 Et le champ est un composant à lui, pour que le texte en cours de frappe naisse
 et meure avec lui : gardé sur l'écran, il faudrait le vider à chaque
@@ -4474,6 +4479,118 @@ dessinée. Choisi par arithmétique parce que rien ici ne peut être regardé. E
 **couleur du texte, pas de l'accent** : le remplissage est déjà une nuance
 d'accent, et un contour de la même teinte par-dessus n'est pas un contour.
 
+### Garder sa place demande de la remettre (17/09/2026)
+
+**Retirer le `scrollTo` ne suffisait pas, et le cas manquant est le premier.**
+La première visite d'une plage : le volet rend un indicateur de chargement, la
+page fait quelques centaines de points, **iOS y borne le décalage** — ce qui est
+correct, et irréversible, parce que plus rien ne se souvient d'où la page était
+quand le vrai contenu arrive une seconde plus tard.
+
+Le décalage est donc **retenu au changement** et remis dès que le contenu peut
+le porter. `onContentSizeChange` est l'événement qui dit « la page vient de
+faire cette hauteur », c'est-à-dire exactement la question posée — un délai
+deviné ne l'aurait jamais été.
+
+**Et un vrai glissement l'annule.** Quelqu'un qui fait défiler pendant que le
+volet charge a dit où il voulait être ; être ramené par une requête qui arrive
+serait la page qui bouge sous un doigt.
+
+Règle générale qui en sort : **un état de chargement plus court que son contenu
+est un état qui détruit le défilement**, et personne ne le voit tant que les
+données sont en cache.
+
+### La racine d'une pile ne dessine aucun bouton retour (17/09/2026)
+
+Trouvé en déplaçant la bibliothèque à la racine : elle s'ouvrait sur une barre
+**vide**, avec le seul balayage pour sortir. Dans sa propre pile il n'y a rien
+derrière son écran d'accueil, et le parent qui a le groupe d'onglets derrière
+lui montre `headerShown: false`.
+
+**Une pile imbriquée était le réflexe, sur le précédent de `settings/`, `stats/`
+et `training/` — et ces trois-là sont dans un ONGLET**, où personne n'attend un
+retour depuis leur écran d'accueil. La bibliothèque est poussée par-dessus tout,
+donc elle en veut un. Ses écrans sont déclarés à plat sur la pile racine.
+
+**Le bouton « en verre » demandé est celui du système, et c'est la règle prise
+du bon côté.** Un `GlassButton` dans un en-tête est du verre dans du verre — la
+direction iOS 26 le nomme, et la tranche 3 l'avait pris du mauvais côté une
+fois. Un bouton de barre natif **est** un `UIBarButtonItem`, et c'est à ses
+propres contrôles qu'UIKit applique le matériau : le demander revient à ne rien
+dessiner soi-même. `headerBackTitle` dit ce qu'il écrit, l'écran précédent étant
+un groupe d'onglets qui n'a pas de titre à prêter.
+
+### iOS révèle le champ focalisé UNE fois, et ce n'est pas celle qui manque (17/09/2026)
+
+**Le système révèle le premier répondant quand le clavier ARRIVE.** Ça couvre le
+premier toucher dans un formulaire et rien d'autre. Les chevrons déplacent le
+focus pendant que le clavier est déjà levé : aucune notification, aucun
+changement d'encart, rien à quoi réagir — donc descendre un formulaire met le
+curseur dans un champ **derrière le clavier**, et on tape dans quelque chose
+qu'on ne voit pas.
+
+C'est ce que `useFormScroll` existe pour faire, et l'éditeur d'aliment portait le
+défaut aussi, sans que ça se soit jamais vu : sa `KeyboardAvoidingView` fait la
+place, elle ne déplace pas la page.
+
+**Deux déclencheurs, et l'idempotence est ce qui les rend compatibles** : au
+focus, et à l'arrivée du clavier. Le premier ne connaît pas encore la hauteur du
+clavier au tout premier toucher ; le second la connaît. Un champ déjà dégagé
+rend **zéro**, donc les deux ne se battent jamais.
+
+**Et l'arithmétique est sortie dans `core/ui/reveal.ts`.** Un `.tsx` qui importe
+react-native est hors de portée de la suite Node — l'index du framework est du
+Flow que rolldown refuse — donc un calcul laissé dans un composant est un calcul
+que **rien** ne vérifie, et rien ne dessine un clavier en Node. Le §4 le
+demandait déjà ; ici c'est en plus le seul moyen que ces nombres soient jamais
+contrôlés.
+
+Le haut de la bande visible est **déduit, pas connu** : rien ici ne peut demander
+la hauteur d'un en-tête transparent. Ce qui se voit est que la vue défilante est
+plus courte que la fenêtre, et la différence est ce qui la borde. Prendre le tout
+pour le bord haut se trompe du bon côté — ça ne peut demander que moins de
+mouvement, jamais pousser un champ sous une barre.
+
+### Un chiffre est remplacé, un mot est corrigé (17/09/2026)
+
+**La sélection au focus n'est pas une préférence d'écran, c'est une propriété du
+contenu.** Un nombre : on en énonce un autre, et effacer quatre chiffres coûte
+quatre touchers sur une touche de retour. Un nom : toucher « Développé couché »
+pour corriger son accent ne doit pas armer toute la chaîne pour la suppression.
+
+**Le clavier dit lequel des deux c'est** — `decimal-pad`, `number-pad`,
+`numeric`, `numbers-and-punctuation` — donc c'est posé une fois dans `FormInput`,
+aucune rangée n'a à le déclarer et aucune ne peut l'oublier. Un appelant garde le
+dernier mot.
+
+**Et la sélection est demandée deux fois, ce qui n'est pas une ceinture de
+plus** : iOS applique `selectTextOnFocus` au début de l'édition, puis une valeur
+contrôlée est écrite dans le champ, et écrire du texte pousse le curseur à la
+fin. Lequel des deux atterrit en dernier ne nous appartient pas, donc la
+sélection est aussi **énoncée** à la frame suivante. Sélectionner tout deux fois
+sélectionne tout.
+
+### Toujours la Pressable, jamais une Pressable conditionnelle (17/09/2026)
+
+Presser une rangée de formulaire met le curseur dans son champ — « la rangée est
+le champ » était la règle de ce composant depuis la tranche 3, et le libellé à
+gauche était le seul endroit où elle ne tenait pas.
+
+**La rangée est TOUJOURS une `Pressable`, jamais une seulement quand un champ
+s'est inscrit.** Un champ s'inscrit depuis un effet, donc le type d'élément
+changerait après le premier rendu : React démonterait le sous-arbre et le
+remonterait, **en emportant le texte en cours de frappe**. Le prix de presser
+une rangée sans champ est qu'il ne se passe rien, ce qui est ce que presser une
+rangée faisait avant.
+
+**L'exception `flush` n'est pas un contournement.** Ce marqueur veut déjà dire
+« un contrôle a besoin de toute cette rangée », et celui qui le demande est la
+molette de quantité — un `UIPickerView` avec ses propres reconnaisseurs de
+gestes. Une `Pressable` JavaScript autour d'un contrôle natif qui défile est la
+seule imbrication sans contrepartie ici, sur un contrôle du chemin critique
+vérifié sur l'appareil. Le même marqueur décide des deux : **une rangée qui donne
+sa largeur donne aussi ses touchers.**
+
 ## Points ouverts après la tranche 10
 
 - **Rien de la tranche 10 n'a tourné sur l'appareil.** Aucune dépendance n'a été
@@ -4497,6 +4614,14 @@ d'accent, et un contour de la même teinte par-dessus n'est pas un contour.
   tranche 10 montent enfin du bas au lieu de glisser par la droite ; que le
   contour d'un muscle touché se voie à douze unités de viewBox ; et que le
   schéma du formulaire d'exercice tienne dans une fenêtre déjà longue.
+  **Et depuis les retours clavier du même jour**, quatre de plus : que les
+  chevrons emmènent bien la page avec le focus — la marge de 24 points et la
+  déduction du haut de bande sont de l'arithmétique, pas une observation ; que
+  presser le libellé d'une rangée focalise son champ sans gêner le « Ajouter »
+  des éditeurs de portions et d'ingrédients, qui est une `Pressable` désormais
+  imbriquée ; que la molette de quantité tourne exactement comme avant, la
+  rangée `flush` étant justement là pour ça ; et que la quantité pré-remplie
+  arrive bien sélectionnée.
 - **Les seuils de nuance de la carte sont choisis, pas mesurés** : 3, 6 et 10
   séries pondérées. La façon de savoir qu'ils sont faux est de regarder deux
   routines qu'on sait différentes et de voir si la carte les distingue. Une
