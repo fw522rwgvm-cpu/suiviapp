@@ -4863,6 +4863,46 @@ un exercice réel, donc « lats » est un mot avant d'être un endroit — et la
 d'un exercice est exactement là où « c'est où ? » se pose, par quelqu'un qui ne
 modifie rien.
 
+### Un champ multiligne n'est pas une option, c'est un autre objet (17/09/2026)
+
+`multiline` était déjà passé aux quatre champs de notes, et ils restaient d'une
+ligne. L'idiome du formulaire explique pourquoi : **« la rangée est le champ »
+marche parce qu'une valeur est courte et se lit le long du bord droit.** Une
+note est une phrase ou trois — alignée à droite elle se lit comme de la poésie
+en escalier, et centrée dans une rangée de 44 points elle ne peut pas grandir du
+tout.
+
+Ce qu'il fallait n'était donc pas un réglage mais un autre objet : pleine
+largeur, aligné à gauche, taille de paragraphe, une hauteur minimale de deux
+lignes et **aucune hauteur fixe** — c'est l'absence de hauteur qui laisse un
+champ grandir. Et **jamais `flex`** : dans une colonne il s'étirerait jusqu'au
+parent au lieu de son propre contenu, ce qui est exactement le contraire du but.
+
+Détail qui n'en est pas un : le libellé passe **au-dessus**, ce qui est déjà la
+forme qu'une note a en lecture. La page ne change donc pas de disposition en
+basculant en édition — c'est la même exigence que « présentation identique à la
+création », appliquée à un champ.
+
+### Une note se lit pendant la séance, pas à un toucher de là (17/09/2026)
+
+Les quatre notes d'un exercice s'affichent désormais sur la page de la séance. Le
+§6.3 les appelle « exécution, réglage, respiration, erreurs fréquentes » : elles
+sont écrites précisément pour être lues **pendant** l'entraînement, et la page
+ouverte à ce moment-là est celle de la séance. Une page plus loin, elles étaient
+une référence et pas un rappel.
+
+**En lecture seule, et c'est une règle et non une économie** : une note appartient
+à l'exercice. La modifier depuis une routine la modifierait pour toutes les
+routines qui l'utilisent, depuis un écran qui n'en dit rien. Le chemin vers elles
+existe déjà et il est nommé — toucher le nom de l'exercice ouvre sa page.
+
+**Et c'est gratuit pour une seule raison, qu'il faut redire** : les colonnes
+montent sur l'élément de **liste**, comme `tracks_duration` en tranche 10, parce
+qu'elles viennent de la même ligne et de la même requête. C'est le seul motif qui
+autorise un élément de liste à porter du texte que personne ne liste ; lire un
+exercice par bloc serait le coût par rangée que la tranche 4 a rencontré en
+étendant l'ajout rapide à toute la bibliothèque.
+
 ## Points ouverts après la tranche 10
 
 - **Rien de la tranche 10 n'a tourné sur l'appareil.** Aucune dépendance n'a été
