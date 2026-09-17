@@ -4776,6 +4776,26 @@ confie, donc « aucun fond dans mon style » ne veut pas dire « aucun fond ».*
 Quand une surface a l'air peinte et que rien dans l'arbre ne la peint, la réponse
 est dans la source du composant natif.
 
+**Et rendre l'accessoire transparent a découvert ce qu'il y avait dessous, qui
+n'était pas la page.** Le blanc a été cherché trois fois au mauvais endroit — la
+barre, l'accessoire natif, le conteneur de React Native — et il n'était dans
+aucun des trois.
+
+`behavior="padding"` garde la `KeyboardAvoidingView` à **pleine hauteur** et
+remonte le contenu par sa propre marge basse : la `ScrollView` **rétrécit** donc
+au-dessus du clavier. Ce qui ne peignait qu'elle cessait de peindre la bande où
+le clavier et son accessoire se posent, et ce qui se voyait à travers était la
+**fenêtre**, qui n'a aucun fond à elle.
+
+Ce n'est pas un constat neuf : la tranche 5 avait trouvé le même blanc autour de
+la fenêtre du calendrier, en notant qu'il ne se corrigerait que nativement, au
+prix d'un cycle CI. **Vu par en dessous il se corrige en JavaScript** : on peint
+la vue **rembourrée**, jamais celle qui se rétrécit.
+
+**Règle : dans une pile où une vue se rétrécit pour faire place au clavier, la
+couleur appartient à celle qui garde sa hauteur.** Cinq écrans portaient la même
+construction et la même erreur.
+
 **Et la leçon de méthode, qui vaut au-delà de cette barre : sur une question de
 forme, demander l'image plutôt que deviner quatre fois.** Deux tours ont été
 dépensés à reformuler une description ; le troisième a coûté une capture d'écran
