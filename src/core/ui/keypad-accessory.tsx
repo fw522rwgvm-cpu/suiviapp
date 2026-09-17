@@ -1,9 +1,8 @@
-import { GlassView } from 'expo-glass-effect';
+import { GlassContainer } from 'expo-glass-effect';
 import { useId } from 'react';
-import { InputAccessoryView, Keyboard, Pressable, StyleSheet, View } from 'react-native';
-import { Text } from '@/core/ui/text';
+import { InputAccessoryView, Keyboard, StyleSheet, View } from 'react-native';
 import { useTheme } from '@/core/theme';
-import { canUseGlass } from './glass-button';
+import { canUseGlass, GlassButton, MERGE_DISTANCE } from './glass-button';
 
 /**
  * The bar above a numeric keypad, carrying one word: OK.
@@ -35,30 +34,32 @@ import { canUseGlass } from './glass-button';
  * The id is punctuation-free because it crosses to a native view as a plain
  * string and useId spells its own with colons.
  *
- * ## THE BAR CARRIES THE MATERIAL; WHAT IS ON IT DOES NOT
+ * ## BUILT THE WAY iOS 26 BUILDS A BAR: A GLASS CONTAINER OF GLASS CONTROLS
  *
- * It was a painted surface with a hairline, which is the pre-26 shape of an
- * accessory, and then it was a row of glass capsules floating over the page.
- * Neither looked like the system's, and the second was reported as still wrong.
+ * Three shapes were tried before this one — a painted surface with a hairline
+ * (the pre-26 accessory), floating capsules, a full-width slab of glass — and
+ * none of them was it. What was missing is the piece that makes an iOS 26 bar
+ * look like one: `UIGlassContainerEffect`.
  *
- * What iOS 26 does to a bar is put its own material BEHIND it and leave the
- * controls on it as plain tinted glyphs and words. So that is what this does:
- * the strip is a GlassView — a real UIVisualEffectView, the same material, not
- * an imitation of it — and the chevrons and the OK are bare Pressables on top.
- * Capsules inside it would be glass inside glass, which is the mistake the iOS
- * 26 direction names for headers.
+ * Apple does not put one material behind a bar. Each control carries its own
+ * `UIGlassEffect`, and the group sits inside a `UIGlassContainerEffect`, which
+ * is what lets neighbouring controls AFFECT ONE ANOTHER — they merge as they
+ * approach and part as they separate. That blending is the signature; capsules
+ * without it look stuck on, and a single slab looks like the old bar.
  *
- * ## AND "EXACTLY THE SAME" IS NOT REACHABLE, WHICH IS WORTH SAYING
+ * expo-glass-effect exposes both, and the container is the one this project had
+ * never used: `GlassContainer` is that view, `spacing` is the distance at which
+ * its children begin to merge. So the strip itself is TRANSPARENT and the
+ * controls are the material — which is also the rule this project already has
+ * about never painting behind glass, arriving from the other end.
  *
- * InputAccessoryView hands over an EMPTY container. iOS exposes no standard
- * accessory bar to ask for — not through React Native, and not through UIKit
- * either outside a web view, where Safari's comes from. Everything in this bar
- * is drawn here. What can be shared with the system is the material and the
- * proportions; the rest is a reconstruction, said plainly rather than implied.
+ * Where the material is unavailable the strip paints again, exactly as it did:
+ * a transparent bar holding painted buttons would be neither.
  *
- * Where the material is unavailable the strip paints again, exactly as it did
- * before: a transparent bar over the page would be neither one thing nor the
- * other.
+ * RESERVE, AND IT IS THE USUAL ONE: `GlassContainer` is a native view. It comes
+ * from a package that is already in the binary, so no rebuild is expected — but
+ * that is a deduction from the lockfile, not an observation. If the bar renders
+ * empty on the device, this is the first thing to suspect.
  *
  * ## IT RENDERS AFTER THE FIELD, AND THAT IS THE CALLER'S JOB
  *
@@ -78,6 +79,7 @@ export function KeypadAccessory({
 }) {
   const theme = useTheme();
   const glass = canUseGlass();
+  const dismiss = () => Keyboard.dismiss();
   const accessoryId = `keypad${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
 
   return (
@@ -86,12 +88,11 @@ export function KeypadAccessory({
 
       <InputAccessoryView nativeID={accessoryId}>
         {glass ? (
-          // No backgroundColor anywhere near it: opacity is exactly what
-          // cancels the effect, which is the standing rule for every glass
-          // surface in this project.
-          <GlassView style={styles.bar} glassEffectStyle="regular">
-            <Done label={label} />
-          </GlassView>
+          // No background anywhere near it: the controls are the material, and
+          // opacity behind them is exactly what cancels the effect.
+          <GlassContainer spacing={MERGE_DISTANCE} style={styles.bar}>
+            <GlassButton label="OK" accessibilityLabel={label} onPress={dismiss} />
+          </GlassContainer>
         ) : (
           <View
             style={[
@@ -103,27 +104,11 @@ export function KeypadAccessory({
               },
             ]}
           >
-            <Done label={label} />
+            <GlassButton label="OK" accessibilityLabel={label} onPress={dismiss} />
           </View>
         )}
       </InputAccessoryView>
     </>
-  );
-}
-
-/** One word, in the accent, the way a bar button reads. */
-function Done({ label }: { label: string }) {
-  const theme = useTheme();
-
-  return (
-    <Pressable
-      onPress={() => Keyboard.dismiss()}
-      hitSlop={10}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-    >
-      <Text style={[styles.done, { color: theme.colors.accent }]}>OK</Text>
-    </Pressable>
   );
 }
 
@@ -135,9 +120,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-end',
     paddingHorizontal: 16,
-    // The system's own accessory height. Laid out absolutely by iOS and sized
-    // to its content, so something here has to say how tall it is.
-    height: 44,
+    // Room for a capsule and the air around it. Laid out absolutely by iOS and
+    // sized to its content, so something here has to say how tall it is.
+    height: 56,
   },
-  done: { fontSize: 17, fontWeight: '600' },
 });

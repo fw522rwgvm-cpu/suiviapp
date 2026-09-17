@@ -1,5 +1,4 @@
-import { GlassView } from 'expo-glass-effect';
-import { SymbolView } from 'expo-symbols';
+import { GlassContainer } from 'expo-glass-effect';
 import {
   Children,
   createContext,
@@ -28,7 +27,7 @@ import {
 } from 'react-native';
 import { Text } from '@/core/ui/text';
 import { fontFamilyFor, useTheme } from '@/core/theme';
-import { canUseGlass } from './glass-button';
+import { canUseGlass, GlassButton, MERGE_DISTANCE } from './glass-button';
 import { ListSeparator } from './list-separator';
 import { shiftToReveal } from './reveal';
 
@@ -509,35 +508,32 @@ export function FormInput({
       {navigation === null || position < 0 ? null : (
         <InputAccessoryView nativeID={accessoryId}>
           {/*
-            THE BAR CARRIES THE MATERIAL; WHAT IS ON IT DOES NOT.
+            BUILT THE WAY iOS 26 BUILDS A BAR: A GLASS CONTAINER OF CONTROLS.
 
-            It was a painted surface with a hairline, which is the pre-26 shape
-            of an accessory, and then a row of glass capsules floating over the
-            page. Neither looked like the system's, and the second was reported
-            as still wrong.
+            Three shapes were tried first — a painted surface with a hairline,
+            floating capsules, a full-width slab of glass — and none was it. The
+            missing piece is UIGlassContainerEffect: Apple does not put one
+            material behind a bar, each control carries its own UIGlassEffect
+            and the group sits in a container that lets neighbours AFFECT ONE
+            ANOTHER, merging as they approach. That blending is the signature.
 
-            What iOS 26 does to a bar is put its own material BEHIND it and
-            leave the controls on it as plain tinted glyphs and words. So the
-            strip is a GlassView — a real UIVisualEffectView, the same material
-            — and the chevrons and the OK are bare Pressables on top. Capsules
-            inside it would be glass inside glass, which is the mistake the iOS
-            26 direction names for headers.
+            So the strip is transparent and the controls are the material, which
+            is this project's own rule about never painting behind glass
+            arriving from the other end. The two chevrons sit within the merge
+            distance and read as one control in two halves; the OK is a whole
+            bar away and stays its own.
 
-            "Exactly the same" is not reachable and it is worth saying:
-            InputAccessoryView hands over an EMPTY container, and iOS exposes no
-            standard accessory bar to ask for. What can be shared with the
-            system is the material and the proportions; the rest is drawn here.
+            Where the material is unavailable the strip paints again exactly as
+            before: a transparent bar holding painted buttons would be neither.
           */}
           {glass ? (
-            // No backgroundColor anywhere near it: opacity is exactly what
-            // cancels the effect.
-            <GlassView style={styles.bar} glassEffectStyle="regular">
+            <GlassContainer spacing={MERGE_DISTANCE} style={styles.bar}>
               <BarContents
                 position={position}
                 count={navigation.fields.length}
                 onMove={move}
               />
-            </GlassView>
+            </GlassContainer>
           ) : (
             <View
               style={[
@@ -565,7 +561,8 @@ export function FormInput({
 /**
  * What sits on the bar: the two chevrons, then the way out.
  *
- * The chevrons stay DRAWN at the ends of a form rather than disappearing: a bar
+ * Each is its own capsule of material, which is what the container blends. The
+ * chevrons stay DRAWN at the ends of a form rather than disappearing: a bar
  * whose contents come and go as the focus moves is a bar that jumps, and the
  * shape of the row is what says where they are before they are read.
  */
@@ -578,66 +575,29 @@ function BarContents({
   count: number;
   onMove: (step: number) => void;
 }) {
-  const theme = useTheme();
-
   return (
     <>
-      <Arrow
+      <GlassButton
         symbol="chevron.up"
-        label="Champ précédent"
+        accessibilityLabel="Champ précédent"
         disabled={position === 0}
         onPress={() => onMove(-1)}
       />
-      <Arrow
+      <GlassButton
         symbol="chevron.down"
-        label="Champ suivant"
+        accessibilityLabel="Champ suivant"
         disabled={position === count - 1}
         onPress={() => onMove(1)}
       />
 
       <View style={styles.spacer} />
 
-      <Pressable
-        onPress={() => Keyboard.dismiss()}
-        hitSlop={10}
-        accessibilityRole="button"
+      <GlassButton
+        label="OK"
         accessibilityLabel="Fermer le clavier"
-      >
-        <Text style={[styles.done, { color: theme.colors.accent }]}>OK</Text>
-      </Pressable>
-    </>
-  );
-}
-
-function Arrow({
-  symbol,
-  label,
-  disabled,
-  onPress,
-}: {
-  symbol: 'chevron.up' | 'chevron.down';
-  label: string;
-  disabled: boolean;
-  onPress: () => void;
-}) {
-  const theme = useTheme();
-
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      hitSlop={10}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled }}
-      style={styles.arrow}
-    >
-      <SymbolView
-        name={symbol}
-        size={18}
-        tintColor={disabled ? theme.colors.textFaint : theme.colors.accent}
+        onPress={() => Keyboard.dismiss()}
       />
-    </Pressable>
+    </>
   );
 }
 
@@ -645,16 +605,15 @@ const styles = StyleSheet.create({
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
-    // The two chevrons are one control in two halves, which the spacing says.
-    gap: 18,
+    // Closer than the merge distance, so the container reads the pair as one
+    // control in two halves — which is what it is.
+    gap: 6,
     paddingHorizontal: 16,
-    // The system's own accessory height. It is laid out absolutely by iOS and
+    // Room for a capsule and the air around it. Laid out absolutely by iOS and
     // sized to its content, so something here has to say how tall it is.
-    height: 44,
+    height: 56,
   },
-  arrow: { paddingVertical: 4 },
   spacer: { flex: 1 },
-  done: { fontSize: 17, fontWeight: '600' },
   group: { gap: 7 },
   // Uppercase and faint, the way a grouped table names its sections. Indented
   // to the card's own text, not to the screen.

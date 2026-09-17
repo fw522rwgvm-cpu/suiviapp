@@ -49,6 +49,24 @@ import { CrossFade } from './cross-fade';
  * calendar window itself.
  */
 
+/**
+ * How close two glass controls have to be before a GlassContainer blends them.
+ *
+ * iOS 26 composes a bar as a `UIGlassContainerEffect` holding one
+ * `UIGlassEffect` per control, and what the container adds is that neighbours
+ * AFFECT ONE ANOTHER — they merge as they approach and part as they separate.
+ * That blending is the signature of an iOS 26 bar; capsules without it look
+ * stuck on.
+ *
+ * Wide enough that a pair sitting side by side reads as one control in two
+ * halves, narrow enough that a control at the other end of the bar stays its
+ * own thing. Chosen, not measured — nothing here can be looked at.
+ *
+ * Here rather than in one of the two bars that use it: it is a property of the
+ * material, and both accessory bars have to agree on it.
+ */
+export const MERGE_DISTANCE = 20;
+
 /** True when the material can actually be used on this device, right now. */
 export function canUseGlass(): boolean {
   return isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
@@ -59,6 +77,7 @@ export function GlassButton({
   onPress,
   accessibilityLabel,
   selected,
+  disabled,
   tintColor,
   fadeKey,
 }: {
@@ -68,6 +87,15 @@ export function GlassButton({
   accessibilityLabel?: string;
   /** For a button that carries a state, such as a favourite. */
   selected?: boolean;
+  /**
+   * For a control that exists at both ends of what it walks — the keyboard
+   * chevrons at the first and last field of a form.
+   *
+   * It stays DRAWN rather than disappearing: a bar whose contents come and go
+   * as the focus moves is a bar that jumps, and the shape of the row is what
+   * says where the chevrons are before they are read.
+   */
+  disabled?: boolean;
   /** Overrides the accent, for a symbol whose colour carries meaning. */
   tintColor?: string;
   /**
@@ -84,7 +112,8 @@ export function GlassButton({
 }) {
   const theme = useTheme();
   const glass = canUseGlass();
-  const color = tintColor ?? theme.colors.accent;
+  const color =
+    disabled === true ? theme.colors.textFaint : (tintColor ?? theme.colors.accent);
 
   // A symbol on its own gets equal padding, so it comes out round rather than
   // as a short pill.
@@ -118,9 +147,12 @@ export function GlassButton({
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
-      accessibilityState={selected === undefined ? undefined : { selected }}
+      accessibilityState={
+        selected === undefined && disabled === undefined ? undefined : { selected, disabled }
+      }
       hitSlop={8}
     >
       {({ pressed }) =>
