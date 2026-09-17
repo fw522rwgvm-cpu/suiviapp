@@ -10,6 +10,7 @@ import {
   isValidExerciseDraft,
   normalizeProgressionIncrement,
   parseIncrement,
+  muscleRoles,
   toggleSecondary,
   validateExerciseDraft,
   type ExerciseDraft,
@@ -225,5 +226,35 @@ describe('the displayed vocabulary', () => {
     expect(muscleLabel('lower_back')).toBe('Lombaires');
     expect(equipmentLabel('cable')).toBe('Poulie');
     expect(setTypeLabel('work')).toBe('Travail');
+  });
+});
+
+describe('the part each muscle plays', () => {
+  it('names the primary and every secondary', () => {
+    // What the body map on the editor shades by: an exercise has no sets, so
+    // "principal" and "secondaire" are the only two steps it can offer.
+    const roles = muscleRoles('chest', ['triceps', 'shoulders']);
+
+    expect(roles.get('chest')).toBe('primary');
+    expect(roles.get('triceps')).toBe('secondary');
+    expect(roles.get('shoulders')).toBe('secondary');
+    expect(roles.size).toBe(3);
+  });
+
+  it('lets the primary win a muscle listed on both sides', () => {
+    /**
+     * validateExerciseDraft refuses that draft, and this still has to answer:
+     * it runs on every keystroke of a draft being built, including the instant
+     * between choosing a new primary and the old one being cleared. A muscle
+     * that is both is principally the one it is principally.
+     */
+    const roles = muscleRoles('chest', ['chest', 'triceps']);
+
+    expect(roles.get('chest')).toBe('primary');
+    expect(roles.size).toBe(2);
+  });
+
+  it('names the primary alone when nothing else is chosen', () => {
+    expect([...muscleRoles('quads', []).entries()]).toEqual([['quads', 'primary']]);
   });
 });

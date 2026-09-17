@@ -16,10 +16,12 @@ import {
 } from '../data/exercise-queries';
 import {
   emptyExerciseDraft,
+  muscleRoles,
   toggleSecondary,
   validateExerciseDraft,
   type ExerciseDraft,
 } from '../domain/exercise-draft';
+import { BodyMapView } from '../components/body-map-view';
 import { EQUIPMENT_LABELS, MUSCLE_LABELS } from '../domain/vocabulary';
 import { problemText } from '../domain/exercise-text';
 
@@ -139,6 +141,36 @@ function EditorBody({
           />
         </FormRow>
       </FormSection>
+
+      {/*
+        WHAT THE CHIPS BELOW ARE SAYING, ON A BODY (specs 14.24).
+
+        The vocabulary is invented — fifteen names chosen in slice 10, never
+        confronted with a real exercise — so "lats" or "traps" is a word before
+        it is a place. The figure is what turns the choice back into anatomy,
+        and it is the only thing on this form that can tell you the chip you
+        just tapped is not the muscle you meant.
+
+        Shaded by ROLE rather than by volume: an exercise has no sets to count.
+        The same component the routine page uses, so the two cannot drift about
+        where a muscle is.
+      */}
+      <View
+        style={[
+          styles.map,
+          {
+            backgroundColor: theme.colors.surface,
+            borderColor: theme.colors.border,
+            borderRadius: theme.radius.lg,
+          },
+        ]}
+      >
+        <BodyMapView
+          muscles={[draft.primaryMuscle, ...draft.secondaryMuscles]}
+          roles={muscleRoles(draft.primaryMuscle, draft.secondaryMuscles)}
+          height={200}
+        />
+      </View>
 
       <ChoiceGroup
         caption="MUSCLE PRINCIPAL"
@@ -322,6 +354,13 @@ function ChoiceGroup({
 void (undefined as unknown as Muscle);
 
 const styles = StyleSheet.create({
+  map: {
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+    // The figures are drawn to the top of their viewBox and carry their own
+    // air above; the card owes them the bottom, as the routine page's does.
+    paddingBottom: 12,
+  },
   content: { padding: 16, gap: 20, paddingBottom: 48 },
   waiting: { paddingVertical: 48, alignItems: 'center' },
   group: { gap: 8 },

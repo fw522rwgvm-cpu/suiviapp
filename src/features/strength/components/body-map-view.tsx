@@ -6,6 +6,7 @@ import { useTheme } from '@/core/theme';
 import { regionsOfView, regionsForMuscle, viewBoxOf } from '../body-map/body-map';
 import { levelOf, volumeText, type MuscleVolume, type VolumeLevel } from '../domain/muscle-volume';
 import { muscleLabel } from '../domain/vocabulary';
+import type { MuscleRole } from '../domain/exercise-draft';
 
 /**
  * The body map of a routine (specs 10.2, 10.6).
@@ -39,16 +40,34 @@ import { muscleLabel } from '../domain/vocabulary';
  *
  * An UNMAPPED region answers too, saying it is part of the silhouette. Silence
  * would be indistinguishable from a touch that missed.
+ *
+ * ## AND THE REGION ITSELF SAYS SO
+ *
+ * The first version answered in words under the figures and left the drawing
+ * untouched, so the one thing it could not tell you was WHERE the muscle you
+ * just touched is — on a map, of all things. The touched muscle is outlined,
+ * every region of it at once, so the name below and the shape above are the
+ * same answer.
+ *
+ * ## TWO WAYS TO SHADE, AND THEY ANSWER TWO QUESTIONS
+ *
+ * `volume` is a routine's: how much work each muscle gets, in four steps. `roles`
+ * is one exercise's: principal or secondary, which has no quantity at all. A
+ * caller gives one or the other, never both — an exercise has no sets to count
+ * and a routine has no single primary.
  */
 export function BodyMapView({
   muscles,
   volume,
+  roles,
   height = 260,
 }: {
   /** The muscles worked. Strings, off columns that carry no CHECK. */
   muscles: readonly string[];
   /** How many sets each carries. Absent on a screen that only knows "worked". */
   volume?: ReadonlyMap<string, MuscleVolume>;
+  /** Principal or secondary, for one exercise. Never given beside `volume`. */
+  roles?: ReadonlyMap<string, MuscleRole>;
   height?: number;
 }) {
   const theme = useTheme();
@@ -63,14 +82,11 @@ export function BodyMapView({
   const levelBySlug = useMemo(() => {
     const levels = new Map<string, VolumeLevel>();
     for (const muscle of muscles) {
-      const tally = volume?.get(muscle);
-      // Without a tally the map still works, at its lightest step: a screen
-      // that only knows "worked" gets lit regions rather than none.
-      const level = tally === undefined ? 1 : levelOf(tally.weighted);
+      const level = levelFor(muscle, volume, roles);
       for (const slug of regionsForMuscle(muscle)) levels.set(slug, level);
     }
     return levels;
-  }, [muscles, volume]);
+  }, [muscles, volume, roles]);
 
   /** Slug -> the muscle that owns it, for the tooltip. */
   const muscleBySlug = useMemo(() => {
@@ -80,6 +96,14 @@ export function BodyMapView({
     }
     return owner;
   }, [muscles]);
+
+  const touchedMuscle = touched === null ? null : (muscleBySlug.get(touched) ?? null);
+
+  /** Every region of the touched muscle, so the outline follows the muscle. */
+  const outlined = useMemo(() => {
+    if (touchedMuscle === null) return new Set<string>();
+    return new Set(regionsForMuscle(touchedMuscle));
+  }, [touchedMuscle]);
 
   const shades: Record<VolumeLevel, string> = {
     0: theme.colors.border,
@@ -97,6 +121,7 @@ export function BodyMapView({
             view={view}
             levelBySlug={levelBySlug}
             shades={shades}
+            outlined={outlined}
             height={height}
             label={view === 'front' ? 'Face' : 'Dos'}
             onTouch={setTouched}
@@ -104,11 +129,7 @@ export function BodyMapView({
         ))}
       </View>
 
-      <Tooltip
-        slug={touched}
-        muscle={touched === null ? null : (muscleBySlug.get(touched) ?? null)}
-        volume={volume}
-      />
+      <Tooltip slug={touched} muscle={touchedMuscle} volume={volume} roles={roles} />
     </Pressable>
   );
 }
@@ -117,6 +138,7 @@ function Figure({
   view,
   levelBySlug,
   shades,
+  outlined,
   height,
   label,
   onTouch,
@@ -124,6 +146,8 @@ function Figure({
   view: 'front' | 'back';
   levelBySlug: ReadonlyMap<string, VolumeLevel>;
   shades: Record<VolumeLevel, string>;
+  /** Slugs of the touched muscle, drawn with an outline. */
+  outlined: ReadonlySet<string>;
   height: number;
   label: string;
   onTouch: (slug: string) => void;
@@ -148,6 +172,20 @@ function Figure({
             key={`${region.slug}-${region.side}-${index}`}
             d={region.d}
             fill={shades[levelBySlug.get(region.slug) ?? 0]}
+            /*
+              THE OUTLINE IS IN viewBox UNITS, NOT POINTS, and that is the whole
+              reason this number looks large. The figures are about 1 270 units
+              tall and the height in points is what binds, so a unit is worth
+              height/1270 of a point — twelve of them are close to two points at
+              every size this is drawn at. Arithmetic rather than taste: nothing
+              here can be looked at from this machine.
+
+              In the text colour rather than the accent: the fill is already a
+              shade of the accent, and an outline of the same hue on top of it
+              is not an outline.
+            */
+            stroke={outlined.has(region.slug) ? theme.colors.text : undefined}
+            strokeWidth={outlined.has(region.slug) ? OUTLINE_UNITS : 0}
             // Only a worked region answers: the silhouette is scenery, and a
             // tooltip saying "Tête" would be a control that looks broken.
             onPress={levelBySlug.has(region.slug) ? () => onTouch(region.slug) : undefined}
@@ -171,10 +209,12 @@ function Tooltip({
   slug,
   muscle,
   volume,
+  roles,
 }: {
   slug: string | null;
   muscle: string | null;
   volume?: ReadonlyMap<string, MuscleVolume>;
+  roles?: ReadonlyMap<string, MuscleRole>;
 }) {
   const theme = useTheme();
 
@@ -188,16 +228,51 @@ function Tooltip({
     );
   }
 
-  const tally = volume?.get(muscle);
-
   return (
     <View style={styles.tooltip}>
       <Text style={[styles.name, { color: theme.colors.text }]}>{muscleLabel(muscle)}</Text>
       <Text style={[styles.count, { color: theme.colors.textMuted }]}>
-        {tally === undefined ? 'Travaillé' : volumeText(tally)}
+        {detailOf(muscle, volume, roles)}
       </Text>
     </View>
   );
+}
+
+/** Roughly two points, at every height this map is drawn at. See its use. */
+const OUTLINE_UNITS = 12;
+
+/**
+ * The step a muscle is shaded at.
+ *
+ * Roles first: an exercise names one principal muscle and some helpers, which
+ * is not a quantity — so it takes the top step and the bottom of the lit three,
+ * far enough apart to be told apart at a glance. Without either a tally or a
+ * role the map still works, at its lightest step: a screen that only knows
+ * "worked" gets lit regions rather than none.
+ */
+function levelFor(
+  muscle: string,
+  volume: ReadonlyMap<string, MuscleVolume> | undefined,
+  roles: ReadonlyMap<string, MuscleRole> | undefined,
+): VolumeLevel {
+  const role = roles?.get(muscle);
+  if (role !== undefined) return role === 'primary' ? 3 : 2;
+
+  const tally = volume?.get(muscle);
+  return tally === undefined ? 1 : levelOf(tally.weighted);
+}
+
+/** What the line under the figures says about the touched muscle. */
+function detailOf(
+  muscle: string,
+  volume: ReadonlyMap<string, MuscleVolume> | undefined,
+  roles: ReadonlyMap<string, MuscleRole> | undefined,
+): string {
+  const role = roles?.get(muscle);
+  if (role !== undefined) return role === 'primary' ? 'Muscle principal' : 'Muscle secondaire';
+
+  const tally = volume?.get(muscle);
+  return tally === undefined ? 'Travaillé' : volumeText(tally);
 }
 
 const styles = StyleSheet.create({

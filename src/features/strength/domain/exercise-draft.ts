@@ -187,3 +187,30 @@ export function toggleSecondary(
   else next.add(muscle);
   return next;
 }
+
+/** What an exercise asks of a muscle (specs 6.3). */
+export type MuscleRole = 'primary' | 'secondary';
+
+/**
+ * The muscles an exercise works, each with the part it plays.
+ *
+ * For the body map on the editor: the drawing shades by ROLE there, not by
+ * volume, because an exercise has no sets. Pure, and here rather than in the
+ * screen, because it is a reading of a draft and section 4 keeps calculation
+ * out of components.
+ *
+ * The primary wins a tie. A draft that lists its primary among its secondaries
+ * is refused by validateExerciseDraft, but this runs on every keystroke of a
+ * draft being built — including the moment between choosing a new primary and
+ * the old one being cleared — and a muscle that is both is principally the one
+ * it is principally.
+ */
+export function muscleRoles(
+  primaryMuscle: string,
+  secondaryMuscles: Iterable<string>,
+): Map<string, MuscleRole> {
+  const roles = new Map<string, MuscleRole>();
+  for (const muscle of secondaryMuscles) roles.set(muscle, 'secondary');
+  roles.set(primaryMuscle, 'primary');
+  return roles;
+}
