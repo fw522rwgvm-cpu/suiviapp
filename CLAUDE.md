@@ -887,6 +887,13 @@ iOS 26 — alors que le §7 la décrit comme un endroit où le Journal mène. Un
 règle en sort, valable pour toute la suite : **consulter est un empilement,
 ajouter est une modale.**
 
+> **⚠️ RENVERSÉ LE 17/09/2026, sur demande.** Elle est revenue à `app/library/`,
+> là où le §3 la dessinait, et **recouvre la barre** — le coût décrit ci-dessus
+> est devenu l'intention. Voir « La bibliothèque n'est pas une page du Journal »
+> plus bas. **La règle qui en était sortie, elle, tient sans changement** : c'est
+> toujours un empilement, avec le geste de retour du système ; seule la pile sur
+> laquelle il se fait a changé.
+
 **L'étape de quantité est un état de la modale d'ajout, pas une seconde
 modale.** D16 budgète 0,2 s entre le choix d'un aliment et l'écran de quantité,
 et le critère de sortie est deux touchers : échanger le contenu d'une modale
@@ -3436,6 +3443,14 @@ peut pas remplir le laisse borné à un endroit arbitraire — la page s'ouvrira
 tranche 3 a retiré du carrousel ; là il tourne sur un toucher, avant le
 re-rendu, sur du contenu qui va être remplacé.
 
+> **⚠️ RENVERSÉ LE 17/09/2026, sur demande : il n'y a plus de retour en haut du
+> tout.** Le risque décrit était réel et plus petit que son prix — iOS borne un
+> tel décalage au bas du nouveau contenu, donc la page est *défilée*, pas
+> fausse, alors que le saut obligeait à redescendre après chaque comparaison
+> entre deux volets ou deux plages. **La partie qui reste vraie** est le
+> raisonnement sur l'effet : si un retour en haut devait revenir un jour, il
+> serait dans le handler.
+
 **`NutritionPanelSection` sort de l'écran, tel quel.** Avec un volet poids à
 côté, un écran qui tenait en ligne les requêtes d'un volet, son état de plage et
 sa branche vide aurait dû tenir les deux. L'écran est du câblage à nouveau.
@@ -4372,6 +4387,93 @@ promesse que l'application ne tient pas ; et la colonne « précédent », qui e
 l'historique de la tranche 12 : vide, elle dirait qu'il n'y a rien plutôt que
 que rien n'est encore enregistré.
 
+### La bibliothèque n'est pas une page du Journal (17/09/2026)
+
+**Renversement demandé, et le §3 de l'architecture avait raison depuis le
+début.** La tranche 3 avait descendu la bibliothèque dans la pile du Journal en
+écrivant exactement ce qui se passerait sinon : sœur de `(tabs)`, elle recouvre
+la barre d'onglets et emporte la minimisation iOS 26.
+
+**Ce qui change est le SIGNE de cette conséquence.** La bibliothèque est là où
+vivent les fiches d'aliments et de recettes, et chacun de ses écrans est une
+tâche avec sa propre sortie. Couvrir la barre est ce qui le dit. Le §7 la décrit
+comme un endroit où le Journal mène, ce qui reste vrai et ne dit rien de ce
+qu'elle doit recouvrir une fois qu'on y est.
+
+**La règle de la tranche 3 tient sans retouche** : consulter est un empilement,
+agir est une fenêtre. C'est toujours un empilement, avec le geste de retour du
+système. Seule la pile sur laquelle il se fait a changé.
+
+Prix nommé plutôt que découvert : la barre est absente pendant qu'on parcourt,
+donc partir vers un autre onglet coûte un retour d'abord.
+
+**Et le piège de la tranche 5 a mordu une troisième fois, trouvé en ouvrant la
+pile racine pour y déclarer la bibliothèque** : `(modals)/exercise-edit` et
+`(modals)/routine-edit`, ajoutées en tranche 10, n'y étaient pas déclarées. Une
+route non déclarée sous `(modals)/` prend le défaut de la pile — une carte
+opaque poussée par la **droite** — sans erreur ni avertissement, pendant
+qu'`OverlayPanel` la lève correctement sans que personne puisse le voir. **La
+règle se répète parce qu'elle ne se voit pas : toute route ajoutée sous
+`(modals)/` doit être déclarée, et l'oubli est silencieux.**
+
+### Un acte vise le jour qu'il est ; un libellé garde le jour qu'il avait (17/09/2026)
+
+Appuyer sur l'onglet Journal ramène à aujourd'hui. **Par la demande qui existait
+déjà** — celle que le calendrier utilise depuis la tranche 3 — et non par une
+seconde façon de dire au Journal quel jour montrer : le carrousel garde la date,
+la demande est consommée une fois, rien ne persiste.
+
+**Et l'horloge est lue AU MOMENT DE L'APPUI, pas par `useToday`.** C'est
+l'arbitrage que le planificateur de notifications avait déjà pris en tranche 9,
+et il se généralise : `useToday` est **gelé contre l'horloge** à dessein, pour
+qu'un libellé ne bouge pas sous une liste parce que minuit est passé ; un
+**acte** veut l'inverse, et une application laissée ouverte toute la nuit
+enverrait sinon sur hier en l'appelant aujourd'hui.
+
+**Réserve inscrite, et elle porte sur le choix d'implémentation, pas sur le
+comportement.** L'écoute est posée sur *chaque* appui de l'onglet et non
+seulement quand il est déjà actif. La forme restreinte est l'idiome iOS et
+collerait à la demande au mot près ; elle repose sur `navigation.isFocused()`
+dans `unstable-native-tabs`, qu'aucun test en Node ne peut exercer et qu'aucun
+appareil n'est là pour essayer — et **son mode de panne est le silence**, une
+fonctionnalité qui n'arrive simplement jamais. Conséquence assumée : revenir
+depuis un autre onglet atterrit aussi sur aujourd'hui.
+
+Conséquence de structure : `RequestedDateProvider` monte au-dessus des onglets,
+un déclencheur d'onglet étant déclaré dans la disposition des onglets.
+
+### Une carte doit dire OÙ, sinon elle n'est pas une carte (17/09/2026)
+
+Deux demandes en une phrase — « le muscle sélectionné doit se voir dans le
+schéma corporel » — et les deux lectures étaient vraies au même endroit.
+
+**Là où l'on *sélectionne* un muscle, c'est le formulaire d'exercice.** Le
+vocabulaire des quinze muscles est inventé en tranche 10 et n'a jamais rencontré
+un exercice réel : « lats » ou « traps » est un mot avant d'être un endroit. La
+figure est ce qui retraduit le choix en anatomie, et **la seule chose de ce
+formulaire capable de dire que la puce qu'on vient de toucher n'est pas le
+muscle qu'on visait.**
+
+**Et la carte elle-même ne disait pas où.** L'infobulle de la tranche 10
+répondait en mots sous les figures en laissant le dessin intact, donc la seule
+chose qu'elle ne pouvait pas dire était *où se trouve le muscle touché*. Le
+muscle est désormais cerné, toutes ses régions à la fois, pour que le nom en
+dessous et la forme au-dessus soient une seule réponse.
+
+**Deux modes de nuance, jamais un détournement du volume.** `volume` répond
+« combien de travail », `roles` répond « quelle part » — et un exercice n'a
+aucune série à compter. Faire passer un muscle principal pour dix séries
+pondérées aurait nuancé correctement **et** fait dire « 10 séries » à
+l'infobulle.
+
+**Un trait de contour se mesure en unités de viewBox, pas en points.** Les
+figures font environ 1 270 unités de haut et c'est la hauteur en points qui
+contraint l'échelle, donc une unité vaut `height / 1270` de point : douze
+unités valent près de deux points à toutes les tailles où cette carte est
+dessinée. Choisi par arithmétique parce que rien ici ne peut être regardé. Et
+**couleur du texte, pas de l'accent** : le remplissage est déjà une nuance
+d'accent, et un contour de la même teinte par-dessus n'est pas un contour.
+
 ## Points ouverts après la tranche 10
 
 - **Rien de la tranche 10 n'a tourné sur l'appareil.** Aucune dépendance n'a été
@@ -4386,7 +4488,15 @@ que rien n'est encore enregistré.
   17/09/2026** : qu'un superset se lise bien en tours A,B,A,B ; que toucher un
   nom d'exercice ouvre sa page depuis les deux états de la page ; et que
   l'interrupteur de progression du bloc se manœuvre sans que le tableau
-  au-dessous perde le focus d'un champ.
+  au-dessous perde le focus d'un champ. **Et depuis les retours de navigation
+  du 17/09/2026**, cinq choses qu'aucun test ne peut dire : que l'appui sur
+  l'onglet Journal ramène bien à aujourd'hui — l'écoute `tabPress` d'une API
+  marquée *unstable* est le point le plus incertain de tout ce lot, et son mode
+  de panne est le silence ; que la bibliothèque recouvre effectivement la barre
+  et que son bouton retour n'affiche qu'un chevron ; que les deux fenêtres de la
+  tranche 10 montent enfin du bas au lieu de glisser par la droite ; que le
+  contour d'un muscle touché se voie à douze unités de viewBox ; et que le
+  schéma du formulaire d'exercice tienne dans une fenêtre déjà longue.
 - **Les seuils de nuance de la carte sont choisis, pas mesurés** : 3, 6 et 10
   séries pondérées. La façon de savoir qu'ils sont faux est de regarder deux
   routines qu'on sait différentes et de voir si la carte les distingue. Une
