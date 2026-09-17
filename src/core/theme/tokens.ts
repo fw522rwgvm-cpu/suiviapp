@@ -81,6 +81,22 @@ export interface ColorTokens {
    * a setting that does not change it.
    */
   accent: string;
+  /**
+   * The two steps between "untouched" and the accent, for the body map's
+   * shading (specs 10.2).
+   *
+   * They are the ACCENT DESATURATED TOWARDS THE SURFACE, not three unrelated
+   * colours: the map shades one quantity, so its steps have to read as one
+   * scale. A hue change would say the muscles differ in kind rather than in
+   * amount.
+   *
+   * Only three lit steps, and the lightest is deliberately well clear of
+   * `border`, which is what an unworked region uses: the distinction that must
+   * never be missed is worked-at-all against not-worked, and it is the one a
+   * gradient blurs.
+   */
+  muscleLight: string;
+  muscleMid: string;
   /** Text drawn on top of accent. */
   onAccent: string;
   /**
@@ -161,6 +177,9 @@ const light: ColorTokens = {
   textMuted: '#65656d',
   textFaint: '#9a9aa3',
   accent: '#08c99c',
+  /** The accent at roughly a third and two thirds, on the light ground. */
+  muscleLight: '#a8ecdc',
+  muscleMid: '#4fd9ba',
   onAccent: '#ffffff',
   onDanger: '#ffffff',
   warning: '#8a5a00',
@@ -201,6 +220,13 @@ const dark: ColorTokens = {
   textMuted: '#a0a0a9',
   textFaint: '#6b6b74',
   accent: '#08c99c',
+  /**
+   * Towards the dark surface rather than towards white: on #1a1a1d a pale mint
+   * would be the BRIGHTEST thing on the figure, so the scale would run
+   * backwards — the least worked muscle shouting loudest.
+   */
+  muscleLight: '#1d5a4c',
+  muscleMid: '#0a9a78',
   onAccent: '#ffffff',
   onDanger: '#0f0f11',
   warning: '#e0a942',

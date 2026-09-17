@@ -14,6 +14,7 @@ import {
   readRoutine,
   readRoutineDraft,
   readRoutineMuscles,
+  readRoutineVolume,
 } from '../../src/features/strength/data/routine-reads';
 import {
   createRoutine,
@@ -322,5 +323,67 @@ describe('the routine list', () => {
     expect(db.db.select().from(routineLine).all()).toEqual([]);
     // The exercise is referenced, not owned.
     expect(readRoutine(db.db, id)).toBeNull();
+  });
+});
+
+describe('how many sets each muscle carries', () => {
+  it('counts a repeated exercise once PER SET, secondaries included', () => {
+    /**
+     * THE JOIN THIS TEST EXISTS FOR. A secondary muscle row exists once per
+     * EXERCISE, so a query joining exercise_secondary_muscle without going
+     * through routine_line counts three bench presses as one indirect triceps
+     * set. Three sets of the bench press really are three indirect triceps
+     * sets, and that is what the map has to show.
+     */
+    const bench = anExercise('Développé couché', 'chest', ['triceps', 'shoulders']);
+    let draft = addExerciseBlock(named('Poussée'), bench, 'Développé couché');
+    draft = duplicateLine(draft, 0, 0);
+    draft = duplicateLine(draft, 0, 0);
+
+    const volume = readRoutineVolume(db.db, createRoutine(db.db, draft));
+
+    expect(volume.get('chest')).toEqual({ direct: 3, indirect: 0, weighted: 3 });
+    expect(volume.get('triceps')).toEqual({ direct: 0, indirect: 3, weighted: 1.5 });
+    expect(volume.get('shoulders')?.indirect).toBe(3);
+  });
+
+  it('adds a muscle across blocks rather than reporting it twice', () => {
+    const bench = anExercise('Développé couché', 'chest', ['triceps']);
+    const dips = anExercise('Dips', 'chest', ['triceps']);
+    let draft = addExerciseBlock(named('Poussée'), bench, 'Développé couché');
+    draft = addExerciseBlock(draft, dips, 'Dips');
+    draft = duplicateLine(draft, 1, 0);
+
+    const volume = readRoutineVolume(db.db, createRoutine(db.db, draft));
+
+    // One bench set plus two dip sets.
+    expect(volume.get('chest')?.direct).toBe(3);
+    expect(volume.get('triceps')?.indirect).toBe(3);
+  });
+
+  it('reports nothing for a routine that does not exist', () => {
+    expect(readRoutineVolume(db.db, newId<RoutineId>()).size).toBe(0);
+  });
+
+  it('agrees with the muscles the map lights', () => {
+    /**
+     * Two functions answer two questions — "does it light" and "how much" — and
+     * they must not disagree about the first. A muscle with volume that the map
+     * does not light would be a tooltip on a grey region.
+     */
+    const bench = anExercise('Développé couché', 'chest', ['triceps', 'shoulders']);
+    const squat = anExercise('Squat', 'quads', ['glutes']);
+    let draft = addExerciseBlock(named('Full body'), bench, 'Développé couché');
+    draft = addExerciseBlock(draft, squat, 'Squat');
+    const id = createRoutine(db.db, draft);
+
+    // Widened to strings on purpose: the volume map is keyed by what the
+    // COLUMN holds, which carries no CHECK, while readRoutineMuscles returns
+    // the narrowed type. Comparing them is exactly the point of the test.
+    const lit = new Set<string>(readRoutineMuscles(db.db, id));
+    for (const muscle of readRoutineVolume(db.db, id).keys()) {
+      expect(lit.has(muscle), `${muscle} has volume but is not lit`).toBe(true);
+    }
+    expect(lit.size).toBe(readRoutineVolume(db.db, id).size);
   });
 });

@@ -119,7 +119,7 @@ export function RoutineScreen() {
             theme.shadow,
           ]}
         >
-          <BodyMapView muscles={view.muscles} />
+          <BodyMapView muscles={view.muscles} volume={view.volume} />
         </View>
 
         {view.warmupSteps.length === 0 ? null : (

@@ -15,6 +15,7 @@ import {
 } from '@/core/db/schema';
 import type { BlockDraft, LineDraft, RoutineDraft } from '../domain/routine-draft';
 import { isSetType } from '../domain/vocabulary';
+import { tallyMuscles, type MuscleVolume } from '../domain/muscle-volume';
 
 /**
  * Reads on the routines (specs 10.2).
@@ -86,6 +87,8 @@ export interface RoutineView {
   blocks: RoutineBlockView[];
   /** Every muscle worked, primary and secondary, for the body map. */
   muscles: Muscle[];
+  /** How many sets each carries, for the map's shading and its tooltip. */
+  volume: Map<string, MuscleVolume>;
 }
 
 /**
@@ -212,20 +215,71 @@ export function readRoutine(db: AppDatabase, routineId: RoutineId): RoutineView 
       lines: byBlock.get(block.id) ?? [],
     })),
     muscles: readRoutineMuscles(db, routineId),
+    volume: readRoutineVolume(db, routineId),
   };
 }
 
 /**
- * Every muscle a routine works, primary and secondary (specs 10.2, the body
- * map).
+ * How many sets each muscle carries in a routine (specs 10.2, the body map).
  *
- * TWO QUERIES AND A UNION, not a walk over the blocks. The map does not care
- * which block a muscle came from or how many times — it lights or it does not —
- * so the shape of the routine is irrelevant here and reading it would be work
- * thrown away.
+ * ## ONE ROW PER SET PER MUSCLE, COUNTED IN MEMORY
  *
- * Secondary muscles count. A bench press works the triceps, and a body map that
- * showed only primaries would tell someone their push routine misses them.
+ * Two queries — every set with its exercise's primary muscle, then every
+ * secondary muscle of those exercises — and the tally is a pure function over
+ * them (domain/muscle-volume.ts). Counting in SQL would mean a GROUP BY that
+ * weights primaries and secondaries differently, which is a rule about training
+ * rather than about storage: it belongs where it can be tested without a
+ * database.
+ *
+ * THE SECOND QUERY MUST NOT JOIN THROUGH routine_line ALONE. A secondary muscle
+ * row exists once per exercise, so joining it to the lines multiplies correctly
+ * — three sets of the bench press really are three indirect triceps sets — but
+ * the join has to go line → exercise → secondary, never exercise → secondary in
+ * isolation, or an exercise used twice in a routine counts its secondaries once.
+ */
+export function readRoutineVolume(
+  db: AppDatabase,
+  routineId: RoutineId,
+): Map<string, MuscleVolume> {
+  const sets = db
+    .select({
+      lineId: routineLine.id,
+      primaryMuscle: exercise.primaryMuscle,
+      exerciseId: routineLine.exerciseId,
+    })
+    .from(routineLine)
+    .innerJoin(routineBlock, eq(routineLine.blockId, routineBlock.id))
+    .innerJoin(exercise, eq(routineLine.exerciseId, exercise.id))
+    .where(eq(routineBlock.routineId, routineId))
+    .all();
+
+  const secondaryByExercise = new Map<string, string[]>();
+  for (const row of db
+    .select({
+      exerciseId: exerciseSecondaryMuscle.exerciseId,
+      muscle: exerciseSecondaryMuscle.muscle,
+    })
+    .from(exerciseSecondaryMuscle)
+    .all()) {
+    const current = secondaryByExercise.get(row.exerciseId);
+    if (current === undefined) secondaryByExercise.set(row.exerciseId, [row.muscle]);
+    else current.push(row.muscle);
+  }
+
+  return tallyMuscles(
+    sets.map((set) => ({
+      primaryMuscle: set.primaryMuscle,
+      secondaryMuscles: secondaryByExercise.get(set.exerciseId) ?? [],
+    })),
+  );
+}
+
+/**
+ * Every muscle a routine works, primary and secondary.
+ *
+ * Kept beside the tally because the two answer different questions: this one is
+ * "does it light", the tally is "how much". A screen that only needs the first
+ * should not pay for the second.
  */
 export function readRoutineMuscles(db: AppDatabase, routineId: RoutineId): Muscle[] {
   const worked = new Set<Muscle>();
