@@ -53,14 +53,22 @@ export interface ExerciseListItem extends SearchableExercise {
    * cached.
    */
   tracksDuration: 0 | 1;
-}
-
-export interface ExerciseView extends ExerciseListItem {
-  mediaUri: string | null;
+  /**
+   * The four notes of specs 6.3, on the LIST item for the same reason as
+   * tracksDuration: the routine page shows them for every block it draws
+   * (specs 14.28), and it already holds the catalogue.
+   *
+   * They come from the same row and the same query, so carrying them costs
+   * nothing — which is the only reason a list item may hold text nobody lists.
+   */
   noteExecution: string | null;
   noteSetup: string | null;
   noteBreathing: string | null;
   noteMistakes: string | null;
+}
+
+export interface ExerciseView extends ExerciseListItem {
+  mediaUri: string | null;
   incrementKg: number;
 }
 
@@ -99,6 +107,10 @@ export function listExercises(db: AppDatabase): ExerciseListItem[] {
       equipment: exercise.equipment,
       isFavorite: exercise.isFavorite,
       tracksDuration: exercise.tracksDuration,
+      noteExecution: exercise.noteExecution,
+      noteSetup: exercise.noteSetup,
+      noteBreathing: exercise.noteBreathing,
+      noteMistakes: exercise.noteMistakes,
     })
     .from(exercise)
     .orderBy(asc(sql`${exercise.name} COLLATE NOCASE`))

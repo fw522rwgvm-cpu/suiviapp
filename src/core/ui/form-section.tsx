@@ -496,6 +496,9 @@ export function FormInput({
         {...props}
         style={[
           styles.input,
+          // A field that wraps stops being a value on a row and becomes text on
+          // a page. See the note on styles.multiline.
+          props.multiline === true ? styles.multiline : null,
           // A TextInput is not a Text, so core/ui/text does not reach it: a
           // field left in the system face beside a label in Nunito is the one
           // place the swap would be visible as a mistake.
@@ -573,4 +576,25 @@ const styles = StyleSheet.create({
   // No padding of its own: the row already places it, and a field that adds
   // its own leaves the column of values ragged.
   input: { flex: 1, fontSize: 17, textAlign: 'right', padding: 0 },
+  /**
+   * A MULTILINE FIELD BREAKS THE RIGHT-ALIGNED IDIOM, and has to.
+   *
+   * "The row is the field" works because a value is short and reads down the
+   * right-hand edge. A note is a sentence or three: right-aligned it reads as
+   * ragged poetry, and centred vertically in a 44-point row it cannot grow at
+   * all. So it takes the whole width, starts at the left like the text it is,
+   * and has no height of its own — which is what lets it grow line by line.
+   */
+  multiline: {
+    textAlign: 'left',
+    fontSize: 15,
+    lineHeight: 21,
+    // Two lines' worth, so an empty note looks like somewhere to write rather
+    // than like a value that happens to be missing.
+    minHeight: 42,
+    alignSelf: 'stretch',
+    // Never flex: inside a column it would stretch to the parent instead of to
+    // its own content, and the growth is the whole point.
+    flex: 0,
+  },
 });

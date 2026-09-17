@@ -220,6 +220,17 @@ function Note({ label, text, first }: { label: string; text: string; first?: boo
   );
 }
 
+/**
+ * A note: its name above, the field below, across the whole row.
+ *
+ * NOT the labelled row the rest of the form uses, and the reason is the shape
+ * of the answer. A muscle or an increment is a value and reads down the right
+ * edge; a note is a sentence or three, and a paragraph pushed into the right
+ * half of a row is ragged and cannot grow.
+ *
+ * It is also the shape the note has when it is READ, a few lines below — so the
+ * page does not change layout when it flips into editing.
+ */
 function NoteField({
   label,
   value,
@@ -229,15 +240,20 @@ function NoteField({
   value: string;
   onChange: (value: string) => void;
 }) {
+  const theme = useTheme();
+
   return (
-    <FormRow label={label}>
-      <FormInput
-        value={value}
-        onChangeText={onChange}
-        placeholder="Facultatif"
-        multiline
-        autoCapitalize="sentences"
-      />
+    <FormRow>
+      <View style={styles.noteField}>
+        <Text style={[styles.noteLabel, { color: theme.colors.textMuted }]}>{label}</Text>
+        <FormInput
+          value={value}
+          onChangeText={onChange}
+          placeholder="Facultatif"
+          multiline
+          autoCapitalize="sentences"
+        />
+      </View>
     </FormRow>
   );
 }
@@ -312,6 +328,7 @@ const styles = StyleSheet.create({
   },
   value: { fontSize: 16, textAlign: 'right' },
   note: { paddingVertical: 11, paddingHorizontal: 14, gap: 3 },
+  noteField: { flex: 1, gap: 3, paddingVertical: 4 },
   noteLabel: { fontSize: 13 },
   noteText: { fontSize: 15, lineHeight: 21 },
   group: { gap: 7 },

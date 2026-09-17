@@ -145,6 +145,10 @@ export function RoutineBody({
                 />
               </View>
 
+              {editable ? null : (
+                <BlockNotes block={block} catalogue={catalogue} named={superset} />
+              )}
+
               {editable ? (
                 <View style={styles.actions}>
                   <BlockAction
@@ -188,6 +192,84 @@ export function RoutineBody({
       ) : null}
     </>
   );
+}
+
+/**
+ * The notes of a block's exercises, on the routine's page (specs 14.28).
+ *
+ * ## WHY THEY BELONG HERE AND NOT ONLY ON THE EXERCISE
+ *
+ * They are what specs 6.3 calls "exécution, réglage, respiration, erreurs
+ * fréquentes" — four things written down precisely so they can be read WHILE
+ * training, and the routine's page is the one open at that moment. Leaving them
+ * one tap away on the exercise's page made them a reference rather than a
+ * reminder.
+ *
+ * ## READ-ONLY, AND THE ROUTINE NEVER EDITS THEM
+ *
+ * A note belongs to the exercise, not to this routine: changing one here would
+ * change it for every routine that uses it, from a screen that says nothing of
+ * the sort. Touching the exercise's name — a row above — is the way to them.
+ *
+ * Nothing is drawn when there are none. An empty "NOTES" heading under every
+ * block would be four words of furniture on the busiest page of the tab.
+ *
+ * The text comes from the catalogue the page already holds, so this costs no
+ * query at all — which is the whole reason the notes ride on the list item.
+ */
+function BlockNotes({
+  block,
+  catalogue,
+  named,
+}: {
+  block: BlockDraft;
+  catalogue: ReadonlyMap<string, ExerciseListItem>;
+  /** In a superset, say whose note this is; alone, the block already said. */
+  named: boolean;
+}) {
+  const theme = useTheme();
+
+  const written = exercisesOfBlock(block)
+    .map((item) => ({ item, notes: notesOf(catalogue.get(item.exerciseId)) }))
+    .filter((entry) => entry.notes.length > 0);
+
+  if (written.length === 0) return null;
+
+  return (
+    <View style={styles.notes}>
+      {written.map(({ item, notes }) => (
+        <View key={item.exerciseId} style={styles.noteGroup}>
+          {named ? (
+            <Text style={[styles.noteOwner, { color: theme.colors.textMuted }]}>
+              {item.exerciseName}
+            </Text>
+          ) : null}
+          {notes.map((note) => (
+            <View key={note.label} style={styles.note}>
+              <Text style={[styles.noteLabel, { color: theme.colors.textMuted }]}>
+                {note.label}
+              </Text>
+              <Text style={[styles.noteText, { color: theme.colors.text }]}>{note.text}</Text>
+            </View>
+          ))}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/** The four of specs 6.3, in the order they are written, minus the empty ones. */
+function notesOf(
+  exercise: ExerciseListItem | undefined,
+): { label: string; text: string }[] {
+  if (exercise === undefined) return [];
+
+  return [
+    { label: 'Exécution', text: exercise.noteExecution },
+    { label: 'Réglage', text: exercise.noteSetup },
+    { label: 'Respiration', text: exercise.noteBreathing },
+    { label: 'Erreurs fréquentes', text: exercise.noteMistakes },
+  ].flatMap((note) => (note.text === null || note.text === '' ? [] : [{ label: note.label, text: note.text }]));
 }
 
 /**
@@ -473,6 +555,12 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', gap: 8 },
   action: { flex: 1, paddingVertical: 10, alignItems: 'center' },
   actionLabel: { fontSize: 14, fontWeight: '500' },
+  notes: { gap: 10, paddingTop: 2 },
+  noteGroup: { gap: 6 },
+  noteOwner: { fontSize: 12, fontWeight: '600', letterSpacing: 0.4 },
+  note: { gap: 2 },
+  noteLabel: { fontSize: 12 },
+  noteText: { fontSize: 14, lineHeight: 20 },
   warmupHeading: { fontSize: 17, fontWeight: '600' },
   step: { paddingVertical: 9 },
   stepText: { fontSize: 15 },

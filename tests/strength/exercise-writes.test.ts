@@ -394,6 +394,34 @@ describe('listing the library', () => {
     expect(list.map((e) => e.secondaryMuscles.length)).toEqual([1, 0, 2]);
   });
 
+  it('carries the four notes, so a routine page needs no query per block', () => {
+    /**
+     * They come from the same row and the same query as everything else here,
+     * so carrying them costs nothing — which is the only reason a LIST item may
+     * hold text nobody lists. The routine page draws them under every block
+     * (specs 14.28), and reading one exercise per block would be the per-row
+     * cost slice 4 met when quick-add moved to the whole library.
+     *
+     * Absence stays NULL all the way here: the empty string is the terminal
+     * exception, made by the editor where a field is about to be typed over.
+     */
+    createExercise(
+      db.db,
+      draft({
+        name: 'Développé couché',
+        noteExecution: 'Coudes à 45°',
+        noteMistakes: 'Rebond sur la poitrine',
+      }),
+    );
+
+    const item = listExercises(db.db)[0];
+
+    expect(item?.noteExecution).toBe('Coudes à 45°');
+    expect(item?.noteMistakes).toBe('Rebond sur la poitrine');
+    expect(item?.noteSetup).toBeNull();
+    expect(item?.noteBreathing).toBeNull();
+  });
+
   it('is empty on a fresh database', () => {
     expect(listExercises(db.db)).toEqual([]);
     expect(countExercises(db.db)).toBe(0);
