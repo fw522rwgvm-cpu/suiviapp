@@ -4655,6 +4655,74 @@ celles qui comptent. Même raison pour la formulation : « pas enregistrées »
 plutôt que « perdues », puisque rien n'a été écrit. **Une confirmation qui
 surestime ce qu'elle évite s'use.**
 
+### Deux canaux qui n'ont aucun ordre entre eux (17/09/2026)
+
+**Le carrousel a été rapporté deux fois, et c'est la deuxième fois qui donne la
+leçon.** Un jour voisin apparaissait après un balayage ; corrigé une première
+fois, il est revenu — cette fois comme *deux journées à la fois*, donc la bande
+à un décalage qui montre la couture.
+
+La cause n'est pas un mauvais endroit où écrire, c'est qu'un pas se jouait dans
+**deux canaux différents** : les trois pages voyagent sur le commit de React, le
+décalage de la bande voyage sur le canal de Reanimated vers le fil d'interface.
+**Rien n'ordonne les deux l'un par rapport à l'autre.** Le faire dans un effet de
+disposition était faux (il tourne après la peinture), le faire pendant le rendu
+était moins faux, et aucun des deux n'était juste — une course réduite reste une
+course.
+
+**La sortie est de retirer le mouvement d'un des deux canaux, pas de les
+synchroniser.** Le décalage est désormais **cumulatif** : il ne revient jamais à
+zéro, il grandit d'une page par pas et reste où l'animation l'a laissé. Ce qui le
+compense est un **compte de pas en état React**, donc la liste des pages et le
+décalage qui la place sont posés par le même `setState`. Au moment où la journée
+change, la valeur partagée ne bouge pas du tout.
+
+Prix : un geste doit partir de là où la bande se trouve déjà, `translationX`
+comptant depuis le doigt et non depuis l'origine. Gratuit : sauter à une date par
+le calendrier ou l'onglet ne touche ni l'un ni l'autre, donc ce chemin-là ne peut
+plus clignoter non plus.
+
+**Règle générale, valable pour toute animation qui accompagne un changement de
+contenu : si les deux ne peuvent pas être posés par le même commit, faire en
+sorte que l'un des deux ne bouge pas.**
+
+### Un remède qui se voit n'est pas un remède (17/09/2026)
+
+Stats gardait sa place en **retenant le décalage puis en le remettant**. Ça
+marchait, et ça se voyait : la page montait en haut et redescendait — deux
+mouvements là où le bon nombre est zéro, et c'est ainsi que ça a été rapporté.
+
+**La bonne forme est d'empêcher la cause.** Pendant qu'un volet recharge, le
+conteneur garde une hauteur minimale égale à celle qu'il avait, donc le contenu
+ne rétrécit jamais, donc iOS n'a rien à borner et personne ne touche au
+décalage. Rien n'est restauré parce que rien n'est perdu.
+
+**Le volet dit quand relâcher**, par `onReady`, appelé à la fin du plancher de
+son propre indicateur : il est le seul à savoir s'il attend, et un délai deviné
+serait un troisième nombre à tenir. Et la hauteur n'est mesurée que **hors**
+plancher — mesurée sous lui, elle enregistrerait le plancher et le tiendrait
+pour toujours.
+
+### Ce qu'on ne peut pas emprunter au système, et qu'il faut dire (17/09/2026)
+
+La barre au-dessus du clavier a été demandée « exactement comme celle d'iOS 26 ».
+Elle ne peut pas l'être : **`InputAccessoryView` rend un conteneur vide**, et iOS
+n'expose aucune barre d'accessoire standard à demander — ni par React Native, ni
+par UIKit hors d'une vue web, d'où vient celle de Safari. Tout ce qui est dedans
+est dessiné ici.
+
+Ce qui **peut** être partagé avec le système est le matériau et les proportions.
+Deux essais avant de le comprendre : la surface peinte d'origine (la forme d'un
+accessoire d'avant iOS 26), puis des capsules de verre flottantes. Ce qu'iOS 26
+fait à une barre est de poser **son** matériau derrière et de laisser les
+contrôles dessus en glyphes et en mots — donc la bande est une `GlassView` et les
+chevrons sont des `Pressable` nus. Des capsules dedans seraient du verre dans du
+verre, la même règle un cran plus bas.
+
+C'est la troisième réserve de cette forme, après le balayage de suppression et le
+retour par glissement : **une reconstruction se dit, elle ne se laisse pas
+croire.**
+
 ## Points ouverts après la tranche 10
 
 - **Rien de la tranche 10 n'a tourné sur l'appareil.** Aucune dépendance n'a été
@@ -4692,6 +4760,12 @@ surestime ce qu'elle évite s'use.**
   le regarder ; que fermer la fenêtre d'ajout par glissement la **remette** en
   place avant de demander, et que « Confirmer » ne demande rien ; et que les
   500 ms de plancher se lisent comme du travail plutôt que comme de la lenteur.
+  **Et depuis la reprise de ces trois points** : que la bande du Journal ne
+  montre plus jamais que la bonne journée — c'est le seul de tous ces points qui
+  a été rapporté deux fois, donc le seul dont une troisième lecture serait
+  coûteuse ; que le défilement de Stats ne bouge **pas du tout** au changement
+  de plage ; et que la barre du clavier, qui ne pourra jamais être celle du
+  système, en ait au moins le matériau.
 - **Les seuils de nuance de la carte sont choisis, pas mesurés** : 3, 6 et 10
   séries pondérées. La façon de savoir qu'ils sont faux est de regarder deux
   routines qu'on sait différentes et de voir si la carte les distingue. Une
