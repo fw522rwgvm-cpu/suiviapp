@@ -26,7 +26,13 @@ import {
 } from 'react-native';
 import { Text } from '@/core/ui/text';
 import { fontFamilyFor, useTheme } from '@/core/theme';
-import { BarConfirm, BarGlyph, BarSpacer, KeyboardBar } from './keyboard-bar';
+import {
+  BarConfirm,
+  BarGlyph,
+  BarSpacer,
+  KEYBOARD_BAR_BACKDROP,
+  KeyboardBar,
+} from './keyboard-bar';
 import { ListSeparator } from './list-separator';
 import { shiftToReveal } from './reveal';
 
@@ -504,7 +510,7 @@ export function FormInput({
         has to be in the window already -- which means mounted first.
       */}
       {navigation === null || position < 0 ? null : (
-        <InputAccessoryView nativeID={accessoryId}>
+        <InputAccessoryView nativeID={accessoryId} backgroundColor={KEYBOARD_BAR_BACKDROP}>
           {/*
             ONE CAPSULE, WHICH IS WHAT iOS 26 PUTS THERE — see keyboard-bar.tsx
             for the four shapes tried before a screenshot settled it. The

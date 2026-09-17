@@ -6,6 +6,16 @@ import { useTheme } from '@/core/theme';
 import { canUseGlass } from './glass-button';
 
 /**
+ * What the native accessory view must be told to paint: nothing.
+ *
+ * Transparent in BOTH cases, glass or not. With the material, the page has to
+ * show around the capsule or it is not floating. Without it, the fallback
+ * strip paints its own surface and the rest is keyboard — there is nothing
+ * behind the bar to cover.
+ */
+export const KEYBOARD_BAR_BACKDROP = 'transparent';
+
+/**
  * The bar above the keyboard, as iOS 26 draws one.
  *
  * ## IT IS ONE CAPSULE, NOT A BAR
@@ -28,12 +38,23 @@ import { canUseGlass } from './glass-button';
  * glass inside glass — the mistake the iOS 26 direction names for headers, one
  * level down — so the controls are bare Pressables and the bar is the material.
  *
- * ## NO PAINTED BACKGROUND, EVER
+ * ## NO PAINTED BACKGROUND, EVER — AND ONE OF THEM IS NOT OURS
  *
  * The standing rule for every glass surface in this project: opacity is exactly
  * what cancels the effect. Where the material is unavailable the bar paints a
  * surface and a rule instead, which is honest — it is not glass, and it should
  * not pretend to be.
+ *
+ * But nothing here could reach the fill that was actually showing behind the
+ * capsule. It belongs to the NATIVE accessory view: `InputAccessoryView` takes
+ * a `backgroundColor` prop and hands it straight to
+ * `RCTInputAccessoryComponentView`, which paints its content view with it.
+ * Read in React Native's own source rather than guessed — nothing in the
+ * component's documentation says a bar has a fill by default.
+ *
+ * So every caller passes `KEYBOARD_BAR_BACKDROP`. It is exported from here, and
+ * not left to each accessory to remember, because it is part of what this bar
+ * looks like: a capsule floating over the page, with the page behind it.
  *
  * ## WHAT IS STILL A RECONSTRUCTION
  *

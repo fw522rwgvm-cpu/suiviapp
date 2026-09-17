@@ -1,6 +1,6 @@
 import { useId } from 'react';
 import { InputAccessoryView, Keyboard } from 'react-native';
-import { BarConfirm, BarSpacer, KeyboardBar } from './keyboard-bar';
+import { BarConfirm, BarSpacer, KEYBOARD_BAR_BACKDROP, KeyboardBar } from './keyboard-bar';
 
 /**
  * The bar above a numeric keypad, carrying one control: the tick that finishes.
@@ -57,7 +57,7 @@ export function KeypadAccessory({
     <>
       {children(accessoryId)}
 
-      <InputAccessoryView nativeID={accessoryId}>
+      <InputAccessoryView nativeID={accessoryId} backgroundColor={KEYBOARD_BAR_BACKDROP}>
         <KeyboardBar>
           <BarSpacer />
           <BarConfirm label={label} onPress={() => Keyboard.dismiss()} />
