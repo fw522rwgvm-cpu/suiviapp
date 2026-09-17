@@ -1,13 +1,26 @@
 import { SymbolView } from 'expo-symbols';
 import { Stack, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActionSheetIOS, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  ActionSheetIOS,
+  KeyboardAvoidingView,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { Text } from '@/core/ui/text';
 import { formatKcal, formatMacroWhole } from '@/core/format';
 import type { DayTemplateId } from '@/core/db/schema';
 import { useSettled } from '@/core/query/use-settled';
 import { useTheme } from '@/core/theme';
-import { FormInput, FormNavigation, FormRow, FormSection } from '@/core/ui/form-section';
+import {
+  FormInput,
+  FormNavigation,
+  FormRow,
+  FormSection,
+  useFormScroll,
+} from '@/core/ui/form-section';
 import { ListSeparator } from '@/core/ui/list-separator';
 import { useCreateTemplate, useTemplate, useUpdateTemplate } from '../data/planning-queries';
 import { DEFAULT_MEAL_NAMES } from '../domain/day-plan';
@@ -47,6 +60,9 @@ import {
 export function TemplateEditorScreen({ templateId }: { templateId: DayTemplateId | null }) {
   const theme = useTheme();
   const router = useRouter();
+  // The scroll view's half of the form: keeps the field being typed into out
+  // from behind the keyboard. See useFormScroll.
+  const form = useFormScroll();
 
   const existing = useTemplate(templateId);
   const create = useCreateTemplate();
@@ -139,8 +155,23 @@ export function TemplateEditorScreen({ templateId }: { templateId: DayTemplateId
         }}
       />
 
-      <FormNavigation>
+      {/*
+        THE SAME SHAPE AS THE FOOD EDITOR, which is what was asked for by name
+        (specs 14.25). Three things were missing and they are one problem:
+
+        - no KeyboardAvoidingView, so the keyboard covered the foot of the form
+          and the last rows could not be scrolled into view at all;
+        - nothing moved the page when the chevrons moved the focus, so walking
+          down the form typed into fields that were behind the keyboard;
+        - a figure had to be cleared before it could be replaced.
+
+        The first is this wrapper, the other two come from useFormScroll and
+        from FormInput selecting a numeric field on focus.
+      */}
+      <FormNavigation anchor={form.anchor}>
+      <KeyboardAvoidingView behavior="padding" style={styles.flex}>
         <ScrollView
+          {...form.scrollProps}
           style={{ backgroundColor: theme.colors.background }}
           contentContainerStyle={styles.container}
           contentInsetAdjustmentBehavior="automatic"
@@ -235,6 +266,7 @@ export function TemplateEditorScreen({ templateId }: { templateId: DayTemplateId
             journées déjà enregistrées ne sont pas affectées par une modification.
           </Text>
         </ScrollView>
+      </KeyboardAvoidingView>
       </FormNavigation>
     </>
   );
@@ -365,6 +397,7 @@ function MealCard({
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
   container: { padding: 16, paddingBottom: 64, gap: 18 },
   save: { fontSize: 17, fontWeight: '600' },
   total: {

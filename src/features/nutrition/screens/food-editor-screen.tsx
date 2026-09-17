@@ -32,7 +32,13 @@ import { hasKcalWarning, theoreticalKcal } from '../domain/macros';
 import { IMPOSSIBLE_KCAL_PER_100, isImpossibleEnergy } from '../off/off-product';
 import { toCanonical } from '../domain/food-macros';
 import { useSettled } from '@/core/query/use-settled';
-import { FormInput, FormNavigation, FormRow, FormSection } from '@/core/ui/form-section';
+import {
+  FormInput,
+  FormNavigation,
+  FormRow,
+  FormSection,
+  useFormScroll,
+} from '@/core/ui/form-section';
 import { MACRO_FIELDS, MacroFieldRow, type MacroKey } from '../components/macro-fields';
 import { UnitToggle } from '../components/unit-toggle';
 import { PortionEditor } from '../components/portion-editor';
@@ -116,6 +122,9 @@ export function FoodEditorScreen({
 }) {
   const theme = useTheme();
   const router = useRouter();
+  // Keeps the field being typed into out from behind the keyboard, which the
+  // KeyboardAvoidingView alone never did once the chevrons moved the focus.
+  const form = useFormScroll();
 
   const [draft, setDraft] = useState<FoodDraft>(() => initial ?? emptyFoodDraft());
   /**
@@ -352,9 +361,17 @@ export function FoodEditorScreen({
       />
       ) : null}
 
-      <FormNavigation>
+      {/*
+        The KeyboardAvoidingView has been here since slice 3 and is why this
+        form was named as the one to copy. What it never had is the reveal: the
+        keyboard makes room, and moving between fields with the chevrons still
+        left the focused one behind it. Both halves are needed, and they are
+        both here now.
+      */}
+      <FormNavigation anchor={form.anchor}>
       <KeyboardAvoidingView behavior="padding" style={styles.flex}>
         <ScrollView
+          {...form.scrollProps}
           style={{ backgroundColor: theme.colors.background }}
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
