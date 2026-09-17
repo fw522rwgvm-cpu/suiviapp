@@ -85,6 +85,14 @@ export interface FormScrollAnchor {
   /** Called when a field takes focus, and again when the keyboard arrives. */
   onFieldFocus(field: TextInput | null): void;
   onFieldBlur(field: TextInput | null): void;
+  /**
+   * Called when a field GROWS — a note gaining a line (specs 14.29).
+   *
+   * Separate from focus because it says something different: the field has not
+   * moved, the caret has. Revealing it again is idempotent, so a field with
+   * room to spare costs nothing.
+   */
+  onFieldGrow(field: TextInput | null): void;
 }
 
 /** Absent outside a FormNavigation, where fields simply get no accessory. */
@@ -183,6 +191,11 @@ export function useFormScroll(): {
     },
     onFieldBlur: (field) => {
       if (focused.current === field) focused.current = null;
+    },
+    onFieldGrow: (field) => {
+      // Only the field being typed into. A note further down the form growing
+      // because its value arrived is not a reason to move the page.
+      if (focused.current === field) reveal(field);
     },
   });
 
@@ -408,6 +421,7 @@ export function FormInput({
   ref,
   onFocus,
   onBlur,
+  onContentSizeChange,
   selectTextOnFocus,
   ...props
 }: TextInputProps & { ref?: Ref<TextInput> }) {
@@ -492,6 +506,19 @@ export function FormInput({
         onBlur={(event) => {
           navigation?.anchor?.onFieldBlur(own.current);
           onBlur?.(event);
+        }}
+        /*
+          THE EVENT THAT SAYS "THIS FIELD JUST GOT TALLER".
+
+          A note gains a line and the caret moves down with it, which on the
+          last rows of a form puts what is being written behind the keyboard.
+          onContentSizeChange is exactly that moment — no polling, no measuring
+          on every keystroke — and the reveal it asks for does nothing when the
+          field still has room.
+        */
+        onContentSizeChange={(event) => {
+          navigation?.anchor?.onFieldGrow(own.current);
+          onContentSizeChange?.(event);
         }}
         {...props}
         style={[

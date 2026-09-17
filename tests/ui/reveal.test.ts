@@ -94,3 +94,52 @@ describe('the band, when nothing is known about it', () => {
     expect(shiftToReveal(400, ROW, none)).toBe(0);
   });
 });
+
+describe('a note that grows past what the keyboard leaves visible', () => {
+  /** The band here is 508 − 100 = 408 points tall. */
+  const BAND_HEIGHT = BAND.keyboardTop - (BAND.windowHeight - BAND.viewportHeight);
+
+  it('keeps its BOTTOM in view, because that is where the caret is', () => {
+    /**
+     * A note taller than the band has both corrections applying at once: its
+     * bottom is under the keyboard AND its top is off the screen. Applied in
+     * turn they would pull the page back and forth on every new line typed.
+     */
+    const tall = BAND_HEIGHT + 200;
+    const top = 40; // already off the top of the band
+    const shift = shiftToReveal(top, tall, BAND);
+
+    expect(shift).toBeGreaterThan(0);
+    expect(shift).toBe(top + tall + REVEAL_MARGIN - BAND.keyboardTop);
+  });
+
+  it('does not pull a too-tall field back down once its bottom is in place', () => {
+    /**
+     * The state the previous test lands in: bottom settled just above the
+     * keyboard, top far off the screen. Without the fits guard this returns a
+     * negative shift, and the two answers alternate for ever.
+     */
+    const tall = BAND_HEIGHT + 200;
+    const top = BAND.keyboardTop - REVEAL_MARGIN - tall;
+
+    expect(shiftToReveal(top, tall, BAND)).toBe(0);
+  });
+
+  it('still rescues a field that fits and has walked off the top', () => {
+    // The guard must not cost the ordinary case its correction.
+    const shift = shiftToReveal(40, ROW, BAND);
+
+    expect(shift).toBeLessThan(0);
+  });
+
+  it('treats a field exactly the height of the band as too tall', () => {
+    /**
+     * Exactly as tall means there is no room for a margin at both ends, so
+     * there is nothing to choose between the two corrections and the bottom
+     * wins by the same reasoning.
+     */
+    const top = BAND.keyboardTop - REVEAL_MARGIN - BAND_HEIGHT;
+
+    expect(shiftToReveal(top, BAND_HEIGHT, BAND)).toBe(0);
+  });
+});

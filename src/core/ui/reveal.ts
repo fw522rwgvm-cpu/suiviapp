@@ -40,6 +40,17 @@ export const REVEAL_MARGIN = 24;
  * Taking all of it as the top edge errs on the safe side: it can only ask for
  * less movement than the page could give, never for a field to be pushed under
  * a bar.
+ *
+ * ## A FIELD TALLER THAN THE BAND KEEPS ITS BOTTOM, AND THAT DECIDES A FIGHT
+ *
+ * A note grows as it is typed (specs 14.29), and past a few lines it is taller
+ * than what the keyboard leaves visible. Both corrections then apply at once —
+ * its bottom is under the keyboard AND its top is off the screen — and applied
+ * in turn they would pull the page back and forth on every new line.
+ *
+ * The bottom wins, because that is where the caret is: what is being written
+ * has to be visible, and the beginning of a note being written is not. So the
+ * second correction only runs for a field that FITS.
  */
 export function shiftToReveal(
   fieldTop: number,
@@ -55,7 +66,8 @@ export function shiftToReveal(
   }
 
   const top = Math.max(0, band.windowHeight - band.viewportHeight);
-  if (fieldTop - REVEAL_MARGIN < top) return fieldTop - REVEAL_MARGIN - top;
+  const fits = fieldHeight + 2 * REVEAL_MARGIN <= band.keyboardTop - top;
+  if (fits && fieldTop - REVEAL_MARGIN < top) return fieldTop - REVEAL_MARGIN - top;
 
   return 0;
 }
