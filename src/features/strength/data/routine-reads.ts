@@ -58,9 +58,19 @@ export interface RoutineLineView {
   repsMax: number | null;
   targetLoadKg: number | null;
   targetRir: number | null;
+  durationSeconds: number | null;
   restSeconds: number | null;
   progressionEnabled: 0 | 1;
   note: string | null;
+  /**
+   * Whether the EXERCISE is measured in seconds, carried on the line.
+   *
+   * Read from `exercise` in the same join that fetches the name, so a block
+   * knows which column to show without a second query — and so the flag cannot
+   * disagree with itself inside one block, which is why it lives on the
+   * exercise rather than on the line.
+   */
+  tracksDuration: 0 | 1;
 }
 
 export interface RoutineBlockView {
@@ -156,9 +166,11 @@ export function readRoutine(db: AppDatabase, routineId: RoutineId): RoutineView 
       repsMax: routineLine.repsMax,
       targetLoadKg: routineLine.targetLoadKg,
       targetRir: routineLine.targetRir,
+      durationSeconds: routineLine.durationSeconds,
       restSeconds: routineLine.restSeconds,
       progressionEnabled: routineLine.progressionEnabled,
       note: routineLine.note,
+      tracksDuration: exercise.tracksDuration,
       position: routineLine.position,
     })
     .from(routineLine)
@@ -180,9 +192,11 @@ export function readRoutine(db: AppDatabase, routineId: RoutineId): RoutineView 
       repsMax: line.repsMax,
       targetLoadKg: line.targetLoadKg,
       targetRir: line.targetRir,
+      durationSeconds: line.durationSeconds,
       restSeconds: line.restSeconds,
       progressionEnabled: line.progressionEnabled,
       note: line.note,
+      tracksDuration: line.tracksDuration,
     };
     if (current === undefined) byBlock.set(line.blockId, [view]);
     else current.push(view);
@@ -264,6 +278,7 @@ export function readRoutineDraft(db: AppDatabase, routineId: RoutineId): Routine
             repsMax: line.repsMax,
             targetLoadKg: line.targetLoadKg,
             targetRir: line.targetRir,
+            durationSeconds: line.durationSeconds,
             restSeconds: line.restSeconds,
             progressionEnabled: line.progressionEnabled === 1,
             // A text field cannot hold absence: NULL becomes '' here and

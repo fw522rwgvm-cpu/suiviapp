@@ -95,3 +95,24 @@ export function routineProblemText(problem: RoutineProblem): string {
 function formatNumber(value: number): string {
   return String(value).replace('.', ',');
 }
+
+/**
+ * The set type in the width of a table cell.
+ *
+ * "Série longue / échec" does not fit beside four numbers, and the full wording
+ * is on the specification rather than on a row. `travail` has no short form on
+ * purpose: it is the default, so the cell shows the set NUMBER instead, and the
+ * exceptions are what stand out.
+ */
+export function setTypeShort(type: string): string {
+  switch (type) {
+    case 'warmup':
+      return 'Éch';
+    case 'dropset':
+      return 'Drop';
+    case 'long':
+      return 'Long';
+    default:
+      return 'S';
+  }
+}

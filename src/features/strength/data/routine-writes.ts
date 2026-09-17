@@ -13,7 +13,7 @@ import {
 } from '@/core/db/schema';
 import {
   isValidRoutineDraft,
-  restForLine,
+  restForBlock,
   setIndexOf,
   validateRoutineDraft,
   type RoutineDraft,
@@ -58,10 +58,14 @@ function requireValid(draft: RoutineDraft): void {
 /**
  * Writes the draft's contents under a routine that already exists.
  *
- * THE REST IS RESOLVED HERE THROUGH restForLine, so what is stored is what the
- * screen showed. A superset writes its rest on the block and NULL on its lines;
- * a single-exercise block writes NULL on the block and the rest on each line.
- * Storing both would leave two numbers and no rule saying which won — the exact
+ * THE REST IS WRITTEN ON THE BLOCK AND NOWHERE ELSE, in every shape. A block
+ * holding one exercise IS that exercise, so "rest per block" and "rest per
+ * exercise" are the same sentence. restForBlock resolves it, including the
+ * fallback for an archive written before the rest moved, so what is stored is
+ * what the screen showed.
+ *
+ * routine_line.rest_seconds is therefore written NULL always. Storing a value
+ * in both would leave two numbers and no rule saying which won — the exact
  * shape this project refuses everywhere else.
  */
 function writeContents(tx: AppDatabase, routineId: RoutineId, draft: RoutineDraft): void {
@@ -85,17 +89,15 @@ function writeContents(tx: AppDatabase, routineId: RoutineId, draft: RoutineDraf
 
   draft.blocks.forEach((block, blockPosition) => {
     const blockId = newId<RoutineBlockId>();
-    const superset = new Set(block.lines.map((line) => line.exerciseId)).size > 1;
+
 
     tx.insert(routineBlock)
       .values({
         id: blockId,
         routineId,
         position: blockPosition,
-        // Only a superset carries one. A single-exercise block storing a rest
-        // it does not use would be a value nothing reads and a reader would
-        // have to work out why.
-        restSeconds: superset ? block.restSeconds : null,
+        // Every block carries its own, superset or not.
+        restSeconds: restForBlock(block),
       })
       .run();
 
@@ -110,9 +112,9 @@ function writeContents(tx: AppDatabase, routineId: RoutineId, draft: RoutineDraf
       repsMax: line.repsMax,
       targetLoadKg: line.targetLoadKg,
       targetRir: line.targetRir,
-      // The block's rest wins on a superset, so the line stores none; otherwise
-      // the line keeps its own. restForLine is the one place that decides.
-      restSeconds: superset ? null : restForLine(block, line),
+      // Always null: the block owns the rest. The column survives for archives
+      // written before it moved, and restForBlock reads those.
+      restSeconds: null,
       progressionEnabled: line.progressionEnabled ? (1 as const) : (0 as const),
       note: line.note.trim() === '' ? null : line.note.trim(),
     }));

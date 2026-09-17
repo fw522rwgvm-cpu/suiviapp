@@ -8,6 +8,7 @@ import {
   restText,
   routineProblemText,
   setSummary,
+  setTypeShort,
 } from '../../src/features/strength/domain/routine-text';
 
 /**
@@ -113,5 +114,32 @@ describe('what a routine problem says', () => {
 
   it('numbers from one, because the reader counts from one', () => {
     expect(routineProblemText({ kind: 'empty_block', blockIndex: 2 })).toContain('bloc 3');
+  });
+});
+
+describe('the short set-type label', () => {
+  it('names only what is not a working set', () => {
+    /**
+     * `travail` is the default (specs 6.3), so the table shows the set NUMBER
+     * for it — "S1", "S2". Labelling every ordinary row "Travail" would be a
+     * column of the same word, and the exceptions, which are the ones worth
+     * seeing, would stop standing out.
+     */
+    expect(setTypeShort('warmup')).toBe('Éch');
+    expect(setTypeShort('dropset')).toBe('Drop');
+    expect(setTypeShort('long')).toBe('Long');
+  });
+
+  it('fits a table cell, where the specification wording does not', () => {
+    // "Série longue / échec" beside four numbers on a 390-point screen is not a
+    // column, it is a paragraph. The full wording stays in the specs.
+    for (const type of ['warmup', 'dropset', 'long']) {
+      expect(setTypeShort(type).length).toBeLessThanOrEqual(4);
+    }
+  });
+
+  it('carries an unknown value to its default rather than throwing', () => {
+    // set_type has no CHECK, so a hand-repaired archive can hold anything.
+    expect(setTypeShort('amrap')).toBe('S');
   });
 });

@@ -9,11 +9,12 @@ import { useTheme } from '@/core/theme';
 import { toEntityId } from '@/core/id';
 import type { RoutineId } from '@/core/db/schema';
 import { BodyMapView } from '../components/body-map-view';
-import { SetRow } from '../components/set-row';
+import { SetTable } from '../components/set-table';
 import { useDeleteRoutine, useRoutine } from '../data/routine-queries';
 import type { RoutineBlockView } from '../data/routine-reads';
 import type { BlockDraft, LineDraft } from '../domain/routine-draft';
 import { blockTitle, restText } from '../domain/routine-text';
+import { restForBlock } from '../domain/routine-draft';
 
 /**
  * The page of one routine (specs 10.2).
@@ -143,39 +144,29 @@ export function RoutineScreen() {
               key={block.id}
               title={title ?? exerciseNameOf(block)}
               subdued={title === null}
+              onPressTitle={() => {
+                const first = block.lines[0];
+                if (first !== undefined) {
+                  router.push(`/(tabs)/training/exercise/${first.exerciseId}`);
+                }
+              }}
             >
-              {draft.lines.map((line, lineIndex) => (
-                <View key={block.lines[lineIndex]?.id ?? lineIndex}>
-                  {lineIndex === 0 ? null : <ListSeparator />}
-                  <Pressable
-                    onPress={() =>
-                      router.push(`/(tabs)/training/exercise/${line.exerciseId}`)
-                    }
-                    accessibilityRole="button"
-                  >
-                    {/*
-                      Not editable here, so the row renders without the swipe —
-                      the same component, with the gesture left off. Touching an
-                      exercise opens its page, which specs 10.2 asks for.
-                    */}
-                    <SetRow
-                      block={draft}
-                      line={line}
-                      lineIndex={lineIndex}
-                      editable={false}
-                    />
-                  </Pressable>
-                </View>
-              ))}
+              <SetTable
+                block={draft}
+                tracksDuration={block.lines[0]?.tracksDuration === 1}
+                editable={false}
+              />
+
               {/*
-                A superset states its rest once, under its sets, because that is
-                where it belongs: between rounds, not between the sets of one
-                exercise. On an ordinary block each row carries its own.
+                The rest sits UNDER the sets, once, because it belongs to the
+                block in every shape — between rounds of a superset, between
+                sets of a single exercise. It left the row when the four target
+                columns needed the width.
               */}
-              {draft.restSeconds === null ? null : (
+              {restForBlock(draft) === null ? null : (
                 <View style={styles.blockRest}>
                   <Text style={{ color: theme.colors.textMuted, fontSize: 13 }}>
-                    {`Repos entre les tours : ${restText(draft.restSeconds)}`}
+                    {`Repos : ${restText(restForBlock(draft) ?? 0)}`}
                   </Text>
                 </View>
               )}
@@ -228,6 +219,7 @@ function toBlockDraft(block: RoutineBlockView): BlockDraft {
         repsMax: line.repsMax,
         targetLoadKg: line.targetLoadKg,
         targetRir: line.targetRir,
+        durationSeconds: line.durationSeconds,
         restSeconds: line.restSeconds,
         progressionEnabled: line.progressionEnabled === 1,
         // A text field cannot hold absence; the row renders nothing for ''.
@@ -244,23 +236,43 @@ function exerciseNameOf(block: { lines: { exerciseName: string }[] }): string {
 function Section({
   title,
   subdued,
+  onPressTitle,
   children,
 }: {
   title: string;
   subdued?: boolean;
+  /**
+   * Specs 10.2: "Toucher un exercice ouvre sa page".
+   *
+   * It moved from the row to the TITLE when the rows became a table: a cell is
+   * a number, and a press spanning four of them would fight the swipe that
+   * removes the set. The title names the exercise, so it is what a reader would
+   * touch to mean "that exercise".
+   */
+  onPressTitle?: () => void;
   children: React.ReactNode;
 }) {
   const theme = useTheme();
+  const heading = (
+    <Text
+      style={[
+        styles.sectionTitle,
+        { color: subdued === true ? theme.colors.text : theme.colors.accent },
+      ]}
+    >
+      {title}
+    </Text>
+  );
+
   return (
     <View style={styles.section}>
-      <Text
-        style={[
-          styles.sectionTitle,
-          { color: subdued === true ? theme.colors.text : theme.colors.accent },
-        ]}
-      >
-        {title}
-      </Text>
+      {onPressTitle === undefined ? (
+        heading
+      ) : (
+        <Pressable onPress={onPressTitle} accessibilityRole="button" hitSlop={6}>
+          {heading}
+        </Pressable>
+      )}
       <View
         style={[
           styles.card,

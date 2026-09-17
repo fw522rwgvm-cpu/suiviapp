@@ -32,7 +32,19 @@ export interface LineDraft {
   repsMax: number | null;
   targetLoadKg: number | null;
   targetRir: number | null;
-  /** Ignored when the block carries one: see restForLine. */
+  /**
+   * Seconds, for an exercise measured in duration (0009).
+   *
+   * Read INSTEAD of repsMin/repsMax, never alongside: which one applies is
+   * decided by the EXERCISE's tracksDuration, so a block shows one column or
+   * the other and never both.
+   */
+  durationSeconds: number | null;
+  /**
+   * NOTHING WRITES THIS ANY MORE. The block owns the rest in every shape; this
+   * survives for archives written by the first version of slice 10, and
+   * restForBlock reads it as a fallback.
+   */
   restSeconds: number | null;
   progressionEnabled: boolean;
   note: string;
@@ -41,14 +53,12 @@ export interface LineDraft {
 export interface BlockDraft {
   id: string | null;
   /**
-   * The rest between rounds of a superset (specs 10.2).
+   * The rest this block prescribes (specs 10.2), in every shape.
    *
    * > le temps de repos étant défini au niveau du superset
    *
-   * Null on a single-exercise block, where each line carries its own. Set on a
-   * superset, where the lines' own values stop applying. Which of the two is
-   * read is decided by the block's SHAPE, never by comparing their values —
-   * see restForLine, which is the only place that decision is taken.
+   * The specification states it of a superset; it holds for a single-exercise
+   * block too, because such a block IS its exercise. See restForBlock.
    */
   restSeconds: number | null;
   lines: LineDraft[];
@@ -72,28 +82,41 @@ export type RoutineProblem =
  * on.
  *
  * TWO DISTINCT EXERCISES, not two lines. A block holding three sets of one
- * exercise is not a superset; it is one exercise done three times, and its rest
- * belongs to its lines. Counting LINES instead would have made every
- * multi-set block a superset and silently moved its rest.
+ * exercise is not a superset; it is one exercise done three times. Counting LINES
+ * instead would have made every multi-set block a superset, which still
+ * decides what the screen CALLS a block even now that the rest is always the
+ * block's.
  */
 export function isSuperset(block: BlockDraft): boolean {
   return new Set(block.lines.map((line) => line.exerciseId)).size > 1;
 }
 
 /**
- * The rest that actually applies to a line.
+ * The rest that applies to a block.
  *
- * THE ONE PLACE THIS DECISION IS TAKEN, so the screen, the writer and the
- * session (slice 11) cannot disagree about it. Two columns hold a rest and only
- * one of them is in force; which one is decided by the block's shape.
+ * ## THE REST BELONGS TO THE BLOCK, IN EVERY SHAPE
  *
- * A superset whose block states no rest falls back to the line's, rather than
- * to nothing: the user has built a superset without saying how long to rest,
- * and the line's own value is the only number anybody entered.
+ * Specs 10.2 only says it explicitly of a superset — "le temps de repos étant
+ * défini au niveau du superset" — and slice 10 first read that as "the line
+ * owns it otherwise". That was wrong in practice: nobody rests differently
+ * between two sets of the same exercise, and giving each row its own rest cost
+ * the row a column it needed for the load, the reps and the RIR.
+ *
+ * So the block owns it always. A block holding one exercise IS that exercise,
+ * so "rest per block" and "rest per exercise" are the same sentence.
+ *
+ * `routine_line.rest_seconds` STAYS IN THE SCHEMA and is still read here as a
+ * fallback. It is in section 2.6, it is frozen since 0008, and an archive
+ * written by the first version of this slice can hold one. Nothing writes it
+ * any more; a row that carries one is still shown rather than ignored — the
+ * rule since meal-kinds.ts, that rows this application did not write are
+ * displayed, never corrected.
  */
-export function restForLine(block: BlockDraft, line: LineDraft): number | null {
-  if (isSuperset(block) && block.restSeconds !== null) return block.restSeconds;
-  return line.restSeconds;
+export function restForBlock(block: BlockDraft): number | null {
+  if (block.restSeconds !== null) return block.restSeconds;
+  // An archive from before the rest moved. First line that states one wins:
+  // they were only ever written identically.
+  return block.lines.find((line) => line.restSeconds !== null)?.restSeconds ?? null;
 }
 
 /**
@@ -166,6 +189,7 @@ export function newLine(exerciseId: ExerciseId, exerciseName: string): LineDraft
     repsMax: null,
     targetLoadKg: null,
     targetRir: null,
+    durationSeconds: null,
     restSeconds: null,
     progressionEnabled: false,
     note: '',

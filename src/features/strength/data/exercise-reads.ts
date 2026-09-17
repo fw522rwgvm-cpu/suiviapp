@@ -44,6 +44,15 @@ export interface ExerciseListItem extends SearchableExercise {
   equipment: Equipment | null;
   secondaryMuscles: Muscle[];
   isFavorite: 0 | 1;
+  /**
+   * Whether this exercise is measured in seconds (0009).
+   *
+   * On the LIST item rather than only on the full view, because the routine
+   * editor needs it for every block at once — reading one exercise per block
+   * would be a query per block on a screen that already has the catalogue
+   * cached.
+   */
+  tracksDuration: 0 | 1;
 }
 
 export interface ExerciseView extends ExerciseListItem {
@@ -89,6 +98,7 @@ export function listExercises(db: AppDatabase): ExerciseListItem[] {
       primaryMuscle: exercise.primaryMuscle,
       equipment: exercise.equipment,
       isFavorite: exercise.isFavorite,
+      tracksDuration: exercise.tracksDuration,
     })
     .from(exercise)
     .orderBy(asc(sql`${exercise.name} COLLATE NOCASE`))
@@ -115,6 +125,7 @@ export function readExercise(db: AppDatabase, exerciseId: ExerciseId): ExerciseV
     equipment: row.equipment,
     secondaryMuscles: secondary,
     isFavorite: row.isFavorite,
+    tracksDuration: row.tracksDuration,
     mediaUri: row.mediaUri,
     noteExecution: row.noteExecution,
     noteSetup: row.noteSetup,

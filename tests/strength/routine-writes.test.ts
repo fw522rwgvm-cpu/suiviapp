@@ -122,41 +122,51 @@ describe('storing a routine', () => {
   });
 });
 
-describe('the superset rule, through storage', () => {
-  it('puts the rest on the BLOCK and null on the lines', () => {
+describe('the rest, through storage', () => {
+  it('is written on the BLOCK and null on every line, superset or not', () => {
     /**
      * > le temps de repos étant défini au niveau du superset
      *
-     * Storing both would leave two numbers and no rule saying which won. The
-     * decision is taken once, by restForLine, and this is what it looks like
-     * once it has reached SQL.
+     * The specification states it of a superset; it holds for a single-exercise
+     * block too, because such a block IS its exercise. Storing a value in both
+     * would leave two numbers and no rule saying which won — the shape this
+     * project refuses everywhere else.
      */
     const bench = anExercise('Développé couché');
     const row = anExercise('Rowing', 'lats');
-    let draft = addExerciseBlock(named('Superset'), bench, 'Développé couché');
-    draft = updateLine(draft, 0, 0, { restSeconds: 120 });
-    draft = addExerciseToBlock(draft, 0, row, 'Rowing');
-    draft = setBlockRest(draft, 0, 90);
 
-    const view = readRoutine(db.db, createRoutine(db.db, draft));
+    for (const [name, build] of [
+      ['Simple', (d: RoutineDraft) => d],
+      ['Superset', (d: RoutineDraft) => addExerciseToBlock(d, 0, row, 'Rowing')],
+    ] as const) {
+      let draft = addExerciseBlock(named(name), bench, 'Développé couché');
+      draft = build(draft);
+      draft = setBlockRest(draft, 0, 90);
 
-    expect(view?.blocks[0]?.restSeconds).toBe(90);
-    for (const line of view?.blocks[0]?.lines ?? []) {
-      expect(line.restSeconds).toBeNull();
+      const view = readRoutine(db.db, createRoutine(db.db, draft));
+
+      expect(view?.blocks[0]?.restSeconds, name).toBe(90);
+      for (const line of view?.blocks[0]?.lines ?? []) {
+        expect(line.restSeconds, `${name}: line`).toBeNull();
+      }
     }
   });
 
-  it('puts the rest on the LINES and null on the block, for one exercise', () => {
+  it('keeps a line rest already stored by the first version of the slice', () => {
+    /**
+     * routine_line.rest_seconds is frozen in 0008 and nothing writes it now.
+     * A routine saved before the rest moved carries one, and restForBlock reads
+     * it back — rows this application did not write are displayed, never
+     * corrected.
+     */
     const bench = anExercise('Développé couché');
-    let draft = addExerciseBlock(named('Simple'), bench, 'Développé couché');
+    let draft = addExerciseBlock(named('Ancienne'), bench, 'Développé couché');
     draft = updateLine(draft, 0, 0, { restSeconds: 120 });
-    // A block rest set on a non-superset must not be stored: nothing reads it.
-    draft = setBlockRest(draft, 0, 90);
 
     const view = readRoutine(db.db, createRoutine(db.db, draft));
 
-    expect(view?.blocks[0]?.restSeconds).toBeNull();
-    expect(view?.blocks[0]?.lines[0]?.restSeconds).toBe(120);
+    // Resolved onto the block on the way in, which is where it now belongs.
+    expect(view?.blocks[0]?.restSeconds).toBe(120);
   });
 });
 

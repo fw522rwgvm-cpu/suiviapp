@@ -13,8 +13,9 @@ import type { ExerciseId, RoutineId } from '@/core/db/schema';
 import { SearchField } from '@/features/nutrition/components/search-field';
 import { ExerciseFilterStrips } from '../components/exercise-filter';
 import { ExerciseRow } from '../components/exercise-row';
-import { SetRow } from '../components/set-row';
+import { SetTable } from '../components/set-table';
 import { useExercises } from '../data/exercise-queries';
+import type { ExerciseListItem } from '../data/exercise-reads';
 import { useCreateRoutine, useRoutineDraft, useUpdateRoutine } from '../data/routine-queries';
 import {
   addExerciseBlock,
@@ -23,6 +24,8 @@ import {
   emptyRoutineDraft,
   isSuperset,
   removeLine,
+  restForBlock,
+  updateLine,
   setBlockRest,
   validateRoutineDraft,
   type RoutineDraft,
@@ -103,6 +106,17 @@ function EditorBody({
     setDraft(initial);
   }, [initial]);
 
+  /**
+   * Which exercises are timed, read once from the catalogue the picker already
+   * loads. A block shows the Temps column instead of Reps when its exercise
+   * says so — and the flag is on the EXERCISE, so a block cannot disagree with
+   * itself about which column it has.
+   */
+  const catalogue = useExercises();
+  const byId = new Map<string, ExerciseListItem>(
+    (catalogue.data ?? []).map((item) => [item.id, item]),
+  );
+
   const problems = validateRoutineDraft(draft);
 
   function save(): void {
@@ -145,6 +159,7 @@ function EditorBody({
       />
 
       {draft.blocks.map((block, blockIndex) => {
+
         const title = blockTitle(block.lines.map((line) => line.exerciseName));
         const superset = isSuperset(block);
 
@@ -164,25 +179,41 @@ function EditorBody({
                 },
               ]}
             >
-              {block.lines.map((line, lineIndex) => (
-                <View key={line.id ?? `line-${lineIndex}`}>
-                  {lineIndex === 0 ? null : <ListSeparator />}
-                  {/*
-                    The swipe lives in the row and the press is handed over, not
-                    wrapped: React Native's responder system and gesture-handler
-                    do not arbitrate, so a Pressable under an active pan fires on
-                    release. A Tap and a Pan in one detector race instead.
-                  */}
-                  <SetRow
-                    block={block}
-                    line={line}
-                    lineIndex={lineIndex}
-                    editable
-                    onPress={() => setDraft((c) => duplicateLine(c, blockIndex, lineIndex))}
-                    onDelete={() => setDraft((c) => removeLine(c, blockIndex, lineIndex))}
-                  />
-                </View>
-              ))}
+              {/*
+                THE SAME TABLE THE PAGE RENDERS, with editable turned on — which
+                is specs 10.2 taken literally ("présentation identique à la
+                création"). Two components drawing one row is how a page and a
+                form start disagreeing about what a set says.
+              */}
+              <SetTable
+                block={block}
+                tracksDuration={tracksDuration(block, byId)}
+                editable
+                onChangeLine={(lineIndex, change) =>
+                  setDraft((c) => updateLine(c, blockIndex, lineIndex, change))
+                }
+                onDeleteLine={(lineIndex) =>
+                  setDraft((c) => removeLine(c, blockIndex, lineIndex))
+                }
+              />
+
+              <ListSeparator />
+              {/*
+                Duplicating used to be the row's press. It cannot be any more —
+                the cells are fields now — and a button says what it does where
+                a press on a row of numbers did not.
+              */}
+              <Pressable
+                onPress={() =>
+                  setDraft((c) => duplicateLine(c, blockIndex, block.lines.length - 1))
+                }
+                accessibilityRole="button"
+                style={styles.blockAction}
+              >
+                <Text style={{ color: theme.colors.accent, fontSize: 15 }}>
+                  Ajouter une série
+                </Text>
+              </Pressable>
 
               <ListSeparator />
               <Pressable
@@ -197,38 +228,40 @@ function EditorBody({
             </View>
 
             {/*
-              The block's rest is offered ONLY on a superset, because that is
-              the only shape where it is read. Showing the field on an ordinary
-              block would invite a value nothing uses — two numbers and no rule
-              saying which wins, which is what restForLine exists to prevent.
+              THE REST IS ASKED FOR ON EVERY BLOCK, not only on a superset.
+              A block holding one exercise IS that exercise, so "rest per block"
+              and "rest per exercise" are the same sentence — and nobody rests
+              differently between two sets of the same movement.
             */}
-            {superset ? (
-              <FormSection>
-                <FormRow label="Repos entre les tours">
-                  <FormInput
-                    value={block.restSeconds === null ? '' : String(block.restSeconds)}
-                    onChangeText={(value) => {
-                      const seconds = value.trim() === '' ? null : Number(value.replace(',', '.'));
-                      setDraft((c) =>
-                        setBlockRest(
-                          c,
-                          blockIndex,
-                          seconds === null || !Number.isFinite(seconds) ? null : Math.max(0, seconds),
-                        ),
-                      );
-                    }}
-                    keyboardType="number-pad"
-                    placeholder="90"
-                  />
-                </FormRow>
-              </FormSection>
-            ) : null}
+            <FormSection>
+              <FormRow label={superset ? 'Repos entre les tours' : 'Repos entre les séries'}>
+                <FormInput
+                  value={block.restSeconds === null ? '' : String(block.restSeconds)}
+                  onChangeText={(value) => {
+                    const seconds = value.trim() === '' ? null : Number(value.replace(',', '.'));
+                    setDraft((c) =>
+                      setBlockRest(
+                        c,
+                        blockIndex,
+                        seconds === null || !Number.isFinite(seconds)
+                          ? null
+                          : Math.max(0, Math.round(seconds)),
+                      ),
+                    );
+                  }}
+                  keyboardType="number-pad"
+                  placeholder="90"
+                />
+              </FormRow>
+            </FormSection>
 
-            {superset && block.restSeconds !== null ? (
+            {restForBlock(block) === null ? null : (
               <Text style={[styles.hint, { color: theme.colors.textMuted }]}>
-                {`Chaque tour est suivi de ${restText(block.restSeconds)}.`}
+                {superset
+                  ? `Chaque tour est suivi de ${restText(restForBlock(block) ?? 0)}.`
+                  : `Chaque série est suivie de ${restText(restForBlock(block) ?? 0)}.`}
               </Text>
-            ) : null}
+            )}
           </View>
         );
       })}
@@ -400,6 +433,16 @@ function ExercisePicker({
  * rather than a tap on "add" first. Blank lines are dropped on save, which is
  * what makes that safe: the field that is always there never becomes a step.
  */
+/** Whether a block's exercise is measured in seconds. */
+function tracksDuration(
+  block: { lines: { exerciseId: string }[] },
+  byId: Map<string, ExerciseListItem>,
+): boolean {
+  const first = block.lines[0];
+  if (first === undefined) return false;
+  return byId.get(first.exerciseId)?.tracksDuration === 1;
+}
+
 function WarmupEditor({
   steps,
   onChange,

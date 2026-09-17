@@ -12,13 +12,12 @@ import {
   newLine,
   removeBlock,
   removeLine,
-  restForLine,
+  restForBlock,
   setBlockRest,
   setIndexOf,
   updateLine,
   validateRoutineDraft,
   type BlockDraft,
-  type LineDraft,
   type RoutineDraft,
 } from '../../src/features/strength/domain/routine-draft';
 
@@ -45,12 +44,6 @@ function blockAt(draft: RoutineDraft, index: number): BlockDraft {
   const block = draft.blocks[index];
   if (block === undefined) throw new Error(`no block at ${index}`);
   return block;
-}
-
-function lineAt(block: BlockDraft, index: number): LineDraft {
-  const line = block.lines[index];
-  if (line === undefined) throw new Error(`no line at ${index}`);
-  return line;
 }
 
 function withBench(): RoutineDraft {
@@ -88,43 +81,53 @@ describe('what makes a block a superset', () => {
 });
 
 describe('which rest is in force', () => {
-  it('reads the block on a superset, and the line otherwise', () => {
+  it('is the block\u2019s, in every shape', () => {
     /**
-     * > le temps de repos étant défini au niveau du superset
+     * THE REST BELONGS TO THE BLOCK, superset or not. Slice 10 first read specs
+     * 10.2 as "the superset owns it, the line owns it otherwise" — which was
+     * wrong in practice: nobody rests differently between two sets of the same
+     * exercise, and giving each row its own rest cost the row the width the
+     * load, the reps and the RIR needed.
      *
-     * Two columns hold a rest and only one is in force. Which one is decided by
-     * the block's SHAPE, never by comparing their values — and this is the one
-     * place the decision is taken, so the screen, the writer and slice 11's
-     * session cannot disagree about it.
+     * A block holding one exercise IS that exercise, so "rest per block" and
+     * "rest per exercise" are the same sentence.
      */
     let draft = withBench();
-    draft = updateLine(draft, 0, 0, { restSeconds: 120 });
     draft = setBlockRest(draft, 0, 90);
 
-    const solo = blockAt(draft, 0);
-    // Not a superset: the block's 90 is ignored, the line's 120 applies.
-    expect(restForLine(solo, lineAt(solo, 0))).toBe(120);
+    expect(restForBlock(blockAt(draft, 0))).toBe(90);
 
     draft = addExerciseToBlock(draft, 0, ROW, 'Rowing');
-    const superset = blockAt(draft, 0);
-    expect(restForLine(superset, lineAt(superset, 0))).toBe(90);
+    expect(restForBlock(blockAt(draft, 0))).toBe(90);
   });
 
-  it('falls back to the line when a superset states no rest of its own', () => {
-    // The user built a superset without saying how long to rest; the line's own
-    // value is the only number anybody entered, so it is better than nothing.
+  it('falls back to a line that carries one, for an archive written before it moved', () => {
+    /**
+     * routine_line.rest_seconds is frozen in 0008 and nothing writes it any
+     * more. A routine saved by the first version of this slice holds one, and
+     * the rule since meal-kinds.ts is that rows this application did not write
+     * are DISPLAYED, never corrected.
+     */
     let draft = withBench();
     draft = updateLine(draft, 0, 0, { restSeconds: 60 });
-    draft = addExerciseToBlock(draft, 0, ROW, 'Rowing');
 
     const block = blockAt(draft, 0);
     expect(block.restSeconds).toBeNull();
-    expect(restForLine(block, lineAt(block, 0))).toBe(60);
+    expect(restForBlock(block)).toBe(60);
+  });
+
+  it('prefers the block over a line that still carries one', () => {
+    // Both present is only reachable from an old archive that was then edited.
+    // The block is what the screen showed, so the block wins.
+    let draft = withBench();
+    draft = updateLine(draft, 0, 0, { restSeconds: 60 });
+    draft = setBlockRest(draft, 0, 120);
+
+    expect(restForBlock(blockAt(draft, 0))).toBe(120);
   });
 
   it('is null when neither states one', () => {
-    const block = blockAt(withBench(), 0);
-    expect(restForLine(block, lineAt(block, 0))).toBeNull();
+    expect(restForBlock(blockAt(withBench(), 0))).toBeNull();
   });
 });
 
