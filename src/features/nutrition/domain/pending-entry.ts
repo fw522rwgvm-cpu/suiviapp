@@ -243,3 +243,26 @@ export function wasNameTruncated(shownLine: string, name: string): boolean {
   const full = name.trim();
   return shown.length < full.length && full.startsWith(shown);
 }
+
+/**
+ * What is asked before a basket is thrown away (specs 14.26).
+ *
+ * ## IT COUNTS, BECAUSE THE COUNT IS THE WHOLE ARGUMENT
+ *
+ * "Abandonner ?" asks nothing useful — the answer depends entirely on whether
+ * there is one line in there or nine, and only the person knows which they
+ * meant to leave. Naming the number turns a question into a fact.
+ *
+ * And it says NOT SAVED rather than "lost": nothing has been written, which is
+ * the property the basket exists for, and a confirmation that overstates what
+ * it prevents teaches people to dismiss confirmations.
+ */
+export function discardBasketQuestion(count: number): string {
+  return count === 1 ? 'Abandonner cette ligne ?' : `Abandonner ces ${count} lignes ?`;
+}
+
+export function discardBasketDetail(count: number): string {
+  return count === 1
+    ? 'Elle n’a pas été enregistrée et ne le sera pas.'
+    : 'Elles n’ont pas été enregistrées et ne le seront pas.';
+}

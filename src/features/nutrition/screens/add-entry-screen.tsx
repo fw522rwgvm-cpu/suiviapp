@@ -1,14 +1,19 @@
 import { SymbolView } from 'expo-symbols';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from '@/core/ui/text';
 import type { LocalDate } from '@/core/date';
 import { formatKcal } from '@/core/format';
 import { useTheme } from '@/core/theme';
 import { begin, done, TRANSITIONS } from '@/core/perf/marks';
 import { GlassButton } from '@/core/ui/glass-button';
-import { OverlayPanel, useDismiss, usePanelHeading } from '@/core/ui/overlay-panel';
+import {
+  OverlayPanel,
+  useDismiss,
+  usePanelHeading,
+  useRequestClose,
+} from '@/core/ui/overlay-panel';
 import { SwipeBack } from '@/core/ui/swipe-back';
 import type { FoodId, RecipeId } from '@/core/db/schema';
 import { Segmented } from '@/core/ui/segmented';
@@ -27,6 +32,8 @@ import {
   pendingEntryKcal,
   pendingEntryName,
   type PendingEntry,
+  discardBasketDetail,
+  discardBasketQuestion,
 } from '../domain/pending-entry';
 import { FoodRow } from '../components/food-row';
 import { ScanScreen } from '../off/scan-screen';
@@ -717,6 +724,35 @@ export function AddEntryScreen({
     <OverlayPanel
       onDismiss={() => router.back()}
       /*
+        ASKED ONLY WHEN THERE IS SOMETHING TO LOSE (specs 14.26).
+
+        Undefined on an empty basket, so closing an untouched window costs
+        nothing and the drag keeps its own animation — a confirmation on a
+        window with nothing in it is the kind that teaches people to tap through
+        confirmations without reading them.
+
+        Both ways out come through here, the button and the drag: they are one
+        decision, and the gesture is the easier of the two to do by accident.
+        Refusing puts the window back exactly where it was, with the basket
+        still in it — it never left.
+
+        NOT a destructive warning in the sense of specs 5.3: nothing has been
+        written, and the wording says so rather than overstating what it saves.
+      */
+      onRequestClose={
+        basket.length === 0
+          ? undefined
+          : (close) =>
+              Alert.alert(
+                discardBasketQuestion(basket.length),
+                discardBasketDetail(basket.length),
+                [
+                  { text: 'Continuer', style: 'cancel' },
+                  { text: 'Abandonner', style: 'destructive', onPress: close },
+                ],
+              )
+      }
+      /*
         On the list, the leading action opens the basket and its label is how
         many lines are waiting. Inside a step it becomes the way back — both
         steps are STATE, so the navigator gives them no back button of their
@@ -994,10 +1030,17 @@ export function AddEntryScreen({
   );
 }
 
-/** Inside the panel, so its dismissal folds the window away first. */
+/**
+ * Inside the panel, so its dismissal folds the window away first.
+ *
+ * useRequestClose rather than useDismiss: this is leaving WITHOUT finishing,
+ * which is the act the basket guard exists for. Finishing — Confirm, below —
+ * keeps useDismiss, or saving would be asked whether it meant to discard the
+ * very lines it has just written.
+ */
 function CancelAction() {
-  const dismiss = useDismiss();
-  return <GlassButton label="Annuler" onPress={dismiss} />;
+  const requestClose = useRequestClose();
+  return <GlassButton label="Annuler" onPress={requestClose} />;
 }
 
 /**

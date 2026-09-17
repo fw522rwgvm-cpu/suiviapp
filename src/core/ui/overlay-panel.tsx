@@ -90,6 +90,9 @@ const DISMISS_VELOCITY = 700;
 
 const DismissContext = createContext<(() => void) | null>(null);
 
+/** The guarded way out. Falls back to the plain dismissal when unguarded. */
+const RequestCloseContext = createContext<(() => void) | null>(null);
+
 /**
  * How to leave, whatever you are inside.
  *
@@ -97,6 +100,27 @@ const DismissContext = createContext<(() => void) | null>(null);
  * Screens call this rather than the router, so that one screen can be both a
  * step in a modal and an overlay route without knowing which it is.
  */
+/**
+ * Leaving without finishing, which is not the same act as finishing.
+ *
+ * ## WHY THIS IS NOT useDismiss
+ *
+ * useDismiss is what a screen calls when it is DONE — a routine created, a
+ * quantity confirmed, a food saved. Routing those through the guard would ask
+ * "are you sure you want to discard?" immediately after a successful save,
+ * which is the guard firing on the one path where there is nothing to lose.
+ *
+ * So the guard covers the two ways OUT and neither way FINISHED: the trailing
+ * action, and the drag. A panel with no guard makes the two identical, which is
+ * why nothing had to tell them apart until now.
+ */
+export function useRequestClose(): () => void {
+  const asked = useContext(RequestCloseContext);
+  const dismiss = useDismiss();
+
+  return asked ?? dismiss;
+}
+
 export function useDismiss(): () => void {
   const inPanel = useContext(DismissContext);
   const router = useRouter();
@@ -135,12 +159,27 @@ export function usePanelHeading(title: string | null, subtitle: string | null): 
 
 export function OverlayPanel({
   onDismiss,
+  onRequestClose,
   left,
   right,
   children,
 }: {
   /** Called once the window has finished folding away. */
   onDismiss: () => void;
+  /**
+   * A chance to ask before closing, for a window holding work that would be
+   * lost (specs 14.26). It is handed the function that actually closes, and
+   * calls it or does not.
+   *
+   * ## BOTH WAYS OUT GO THROUGH IT, WHICH IS THE POINT
+   *
+   * The button and the drag are one decision — "leave this" — so guarding only
+   * the button would leave the gesture as a way to lose the same work without
+   * being asked, and the gesture is the easier of the two to do by accident.
+   *
+   * Absent means what it has always meant: closing closes.
+   */
+  onRequestClose?: (close: () => void) => void;
   /** Leading action, if the panel has one. */
   left?: ReactNode;
   /** Trailing action — in practice, the way out. */
@@ -169,6 +208,28 @@ export function OverlayPanel({
     });
   }
 
+  /**
+   * What every way out calls. The guard decides; without one this IS close.
+   */
+  function requestClose(): void {
+    if (onRequestClose === undefined) {
+      close();
+      return;
+    }
+    onRequestClose(close);
+  }
+
+  /*
+    A shared value rather than the prop read inside the worklet: the gesture
+    runs on the interface thread, and what it can see of a prop is whatever was
+    captured when it was built. A basket filling up while the panel is open must
+    arm the guard, not the version of it that existed at the first render.
+  */
+  const guarded = useSharedValue(onRequestClose !== undefined);
+  useEffect(() => {
+    guarded.value = onRequestClose !== undefined;
+  }, [onRequestClose, guarded]);
+
   const pan = Gesture.Pan()
     .activeOffsetY(10)
     // Downward only: dragging up is not a dismissal.
@@ -178,6 +239,21 @@ export function OverlayPanel({
     })
     .onEnd((event) => {
       if (event.translationY > DISMISS_DISTANCE || event.velocityY > DISMISS_VELOCITY) {
+        /*
+          GUARDED, THE WINDOW GOES BACK FIRST AND ASKS AFTER.
+
+          Not "close, then undo if refused": there is nothing to undo once the
+          panel has folded, and a window that leaves and comes back is a worse
+          answer than one that never left. Refusing therefore costs nothing at
+          all — the panel is exactly where the finger found it, with everything
+          still in it, which is what was asked for.
+        */
+        if (guarded.value) {
+          drag.value = withTiming(0, RISE);
+          runOnJS(requestClose)();
+          return;
+        }
+
         // The drag is handed over to the closing animation rather than reset,
         // so the window carries on downward from where the finger left it
         // instead of snapping back up first.
@@ -198,6 +274,7 @@ export function OverlayPanel({
 
   return (
     <DismissContext.Provider value={close}>
+      <RequestCloseContext.Provider value={requestClose}>
       <HeadingContext.Provider value={setHeading}>
       <View style={{ width, height }}>
         {/* Tapping what is still visible closes, as tapping outside should. */}
@@ -265,6 +342,7 @@ export function OverlayPanel({
         </Animated.View>
       </View>
       </HeadingContext.Provider>
+      </RequestCloseContext.Provider>
     </DismissContext.Provider>
   );
 }
