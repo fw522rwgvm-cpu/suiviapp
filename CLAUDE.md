@@ -4671,20 +4671,39 @@ disposition était faux (il tourne après la peinture), le faire pendant le rend
 course.
 
 **La sortie est de retirer le mouvement d'un des deux canaux, pas de les
-synchroniser.** Le décalage est désormais **cumulatif** : il ne revient jamais à
-zéro, il grandit d'une page par pas et reste où l'animation l'a laissé. Ce qui le
-compense est un **compte de pas en état React**, donc la liste des pages et le
-décalage qui la place sont posés par le même `setState`. Au moment où la journée
-change, la valeur partagée ne bouge pas du tout.
+synchroniser** — et il a fallu s'y reprendre à deux fois, ce qui donne la
+deuxième leçon.
+
+*Tentative qui a échoué, et pourquoi elle avait l'air juste* : rendre le décalage
+**cumulatif** pour n'avoir plus rien à réinitialiser, et le compenser par un
+**compte de pas en état React** passé en dépendance de `useAnimatedStyle`.
+L'état voyageait bien dans le commit. **Mais `useAnimatedStyle` livre son
+résultat par le canal de Reanimated même quand sa dépendance vient de React** —
+ce n'est écrit nulle part dans la documentation de la bibliothèque, et c'est la
+seule chose qui comptait ici. Intermittent, exactement comme rapporté.
+
+**La forme qui marche : les deux moitiés ne partagent plus de vue.**
+
+- la vue **extérieure** porte le pas, en style React ordinaire — c'est une prop,
+  elle voyage dans le même commit que les trois pages ;
+- l'`Animated.View` **intérieure** porte le glissement du geste et rien d'autre,
+  et ce glissement ne change pas quand la journée change.
+
+Les transformations se composent, donc la bande atterrit où elle a toujours
+atterri. Au moment du pas, **on ne demande rien au fil d'interface** : il ne
+reste rien qui puisse se désaccorder.
 
 Prix : un geste doit partir de là où la bande se trouve déjà, `translationX`
 comptant depuis le doigt et non depuis l'origine. Gratuit : sauter à une date par
 le calendrier ou l'onglet ne touche ni l'un ni l'autre, donc ce chemin-là ne peut
-plus clignoter non plus.
+pas clignoter non plus.
 
-**Règle générale, valable pour toute animation qui accompagne un changement de
-contenu : si les deux ne peuvent pas être posés par le même commit, faire en
-sorte que l'un des deux ne bouge pas.**
+**Deux règles générales en sortent.** Si deux choses doivent bouger ensemble et
+ne peuvent pas être posées par le même commit, faire en sorte que l'une des deux
+ne bouge pas. Et : **la seule façon de faire voyager une transformation avec les
+enfants qu'elle place est d'en faire une prop de style ordinaire sur une vue
+ordinaire** — un style animé, quelle que soit sa dépendance, prend l'autre
+chemin.
 
 ### Un remède qui se voit n'est pas un remède (17/09/2026)
 
@@ -4711,17 +4730,31 @@ n'expose aucune barre d'accessoire standard à demander — ni par React Native,
 par UIKit hors d'une vue web, d'où vient celle de Safari. Tout ce qui est dedans
 est dessiné ici.
 
-Ce qui **peut** être partagé avec le système est le matériau et les proportions.
-Deux essais avant de le comprendre : la surface peinte d'origine (la forme d'un
-accessoire d'avant iOS 26), puis des capsules de verre flottantes. Ce qu'iOS 26
-fait à une barre est de poser **son** matériau derrière et de laisser les
-contrôles dessus en glyphes et en mots — donc la bande est une `GlassView` et les
-chevrons sont des `Pressable` nus. Des capsules dedans seraient du verre dans du
-verre, la même règle un cran plus bas.
+Ce qui **peut** être partagé avec le système est le matériau **et sa
+composition**, et c'est la seconde moitié qui manquait. Trois formes essayées
+avant : la surface peinte d'origine (un accessoire d'avant iOS 26), des capsules
+de verre flottantes, puis une dalle de verre pleine sur toute la largeur.
+
+**Ce qui manquait est `UIGlassContainerEffect`.** Apple ne pose pas *un* matériau
+derrière une barre : chaque contrôle porte son propre `UIGlassEffect`, et le
+groupe vit dans un conteneur qui laisse les voisins **s'affecter** — ils
+fusionnent en s'approchant et se séparent en s'éloignant. **C'est cette fusion
+qui est la signature d'une barre iOS 26** ; des capsules sans elle ont l'air
+posées dessus, et une dalle a l'air de l'ancienne barre.
+
+`expo-glass-effect` expose les deux depuis le début — `GlassView` et
+`GlassContainer` — et ce projet n'avait jamais utilisé le second. Vérifié dans la
+source du paquet plutôt que supposé : `GlassContainer.swift` construit bien un
+`UIGlassContainerEffect`, lui passe son `spacing`, et teste lui-même
+`NSClassFromString` — donc il dégrade sans planter là où la classe n'existe pas.
+
+La bande est donc **transparente** et les contrôles sont le matériau : c'est la
+règle « jamais de fond peint derrière du verre » prise par l'autre bout.
 
 C'est la troisième réserve de cette forme, après le balayage de suppression et le
 retour par glissement : **une reconstruction se dit, elle ne se laisse pas
-croire.**
+croire** — même bâtie avec les bons composants, la disposition et les libellés
+restent dessinés ici.
 
 ## Points ouverts après la tranche 10
 
@@ -4762,10 +4795,15 @@ croire.**
   500 ms de plancher se lisent comme du travail plutôt que comme de la lenteur.
   **Et depuis la reprise de ces trois points** : que la bande du Journal ne
   montre plus jamais que la bonne journée — c'est le seul de tous ces points qui
-  a été rapporté deux fois, donc le seul dont une troisième lecture serait
-  coûteuse ; que le défilement de Stats ne bouge **pas du tout** au changement
-  de plage ; et que la barre du clavier, qui ne pourra jamais être celle du
-  système, en ait au moins le matériau.
+  a été rapporté **trois fois**, et la troisième correction est la première qui
+  ne repose sur aucun ordre entre deux canaux, elle le supprime ; que le
+  défilement de Stats ne bouge **pas du tout** au changement de plage ; et que
+  la barre du clavier, bâtie cette fois avec `GlassContainer`, montre enfin la
+  fusion qui fait une barre iOS 26. **Ce dernier point porte une réserve
+  matérielle** : `GlassContainer` est une vue native d'un paquet déjà dans le
+  binaire, donc aucune reconstruction n'est attendue — mais c'est une déduction
+  du lockfile, pas une observation. Si la barre s'affichait vide, c'est la
+  première chose à suspecter.
 - **Les seuils de nuance de la carte sont choisis, pas mesurés** : 3, 6 et 10
   séries pondérées. La façon de savoir qu'ils sont faux est de regarder deux
   routines qu'on sait différentes et de voir si la carte les distingue. Une
