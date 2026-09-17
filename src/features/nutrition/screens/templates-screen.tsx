@@ -9,7 +9,7 @@ import { getAppDatabase } from '@/core/db/app-database';
 import type { DayTemplateId } from '@/core/db/schema';
 import { readTemplateUsage } from '../data/planning-reads';
 import { useDeleteTemplate, useTemplates } from '../data/planning-queries';
-import { SwipeToDeleteRow } from '../components/swipe-to-delete-row';
+import { SwipeToDeleteRow } from '@/core/ui/swipe-to-delete-row';
 
 /**
  * The list of day templates (specs 8.1, 8.8, 12).

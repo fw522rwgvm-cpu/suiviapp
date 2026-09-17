@@ -32,7 +32,13 @@ import { hasKcalWarning, theoreticalKcal } from '../domain/macros';
 import { IMPOSSIBLE_KCAL_PER_100, isImpossibleEnergy } from '../off/off-product';
 import { toCanonical } from '../domain/food-macros';
 import { useSettled } from '@/core/query/use-settled';
-import { FormInput, FormNavigation, FormRow, FormSection } from '@/core/ui/form-section';
+import {
+  FormInput,
+  FormNavigation,
+  FormRow,
+  FormSection,
+  useFormScroll,
+} from '@/core/ui/form-section';
 import { MACRO_FIELDS, MacroFieldRow, type MacroKey } from '../components/macro-fields';
 import { UnitToggle } from '../components/unit-toggle';
 import { PortionEditor } from '../components/portion-editor';
@@ -116,6 +122,9 @@ export function FoodEditorScreen({
 }) {
   const theme = useTheme();
   const router = useRouter();
+  // Keeps the field being typed into out from behind the keyboard, which the
+  // KeyboardAvoidingView alone never did once the chevrons moved the focus.
+  const form = useFormScroll();
 
   const [draft, setDraft] = useState<FoodDraft>(() => initial ?? emptyFoodDraft());
   /**
@@ -317,8 +326,8 @@ export function FoodEditorScreen({
       {/*
         Configured only in a stack. Inside the add window there is no native
         header to configure: the window carries its own heading, and rendering
-        a Stack.Screen from a step would reach for the Journal's stack, which
-        is behind the window rather than under it.
+        a Stack.Screen from a step would reach for whatever stack is behind
+        the window rather than under it.
       */}
       {presentation === 'stack' ? (
       <Stack.Screen
@@ -352,9 +361,35 @@ export function FoodEditorScreen({
       />
       ) : null}
 
-      <FormNavigation>
-      <KeyboardAvoidingView behavior="padding" style={styles.flex}>
+      {/*
+        The KeyboardAvoidingView has been here since slice 3 and is why this
+        form was named as the one to copy. What it never had is the reveal: the
+        keyboard makes room, and moving between fields with the chevrons still
+        left the focused one behind it. Both halves are needed, and they are
+        both here now.
+      */}
+      <FormNavigation anchor={form.anchor}>
+      {/*
+        PAINTED HERE, NOT ON THE SCROLL VIEW — and the keyboard bar is why.
+
+        `behavior="padding"` keeps this view full height and pushes the content
+        up with its own bottom padding, so the scroll view SHRINKS away from the
+        keyboard. Whatever was painting only the scroll view therefore stopped
+        painting the strip the keyboard and its accessory sit over, and what
+        showed through was the window itself — which has no background of its
+        own and is white. Slice 5 found the same white around the calendar
+        window and wrote it down; this is the same one, from underneath.
+
+        Painting the padded view instead puts the page's colour under the whole
+        height, so the glass bar floats over the page rather than over a white
+        band.
+      */}
+      <KeyboardAvoidingView
+        behavior="padding"
+        style={[styles.flex, { backgroundColor: theme.colors.background }]}
+      >
         <ScrollView
+          {...form.scrollProps}
           style={{ backgroundColor: theme.colors.background }}
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"

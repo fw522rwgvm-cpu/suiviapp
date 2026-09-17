@@ -8,6 +8,7 @@ import { ThemeProvider, useTheme } from '@/core/theme';
 import { useNotificationScheduling } from '@/features/notifications/hooks/use-notification-scheduling';
 import { setNotificationHost } from '@/features/notifications/host-registry';
 import { expoNotificationHost } from '@/features/notifications/native/expo-host';
+import { RequestedDateProvider } from '@/features/nutrition/hooks/requested-date';
 import { useSweepOffCacheOnce } from '@/features/nutrition/off/off-queries';
 import { usePreferences } from '@/features/settings/data/settings-queries';
 
@@ -56,7 +57,16 @@ export default function RootLayout() {
       <DatabaseGate>
         <QueryProvider>
           <ThemeFromPreference>
-            <RootStack />
+            {/*
+              ABOVE THE TABS, because two things ask now: the calendar screen,
+              which has asked since slice 3, and the Journal tab trigger, which
+              returns to today when pressed. The trigger is declared in the tabs
+              layout, so the provider cannot live on the Journal's own stack any
+              more. Mounting a provider is wiring, which is all app/ does.
+            */}
+            <RequestedDateProvider>
+              <RootStack />
+            </RequestedDateProvider>
           </ThemeFromPreference>
         </QueryProvider>
       </DatabaseGate>
@@ -108,13 +118,60 @@ function RootStack() {
         headerTransparent: true,
         headerShadowVisible: false,
         headerTintColor: theme.colors.accent,
-        headerTitleStyle: { color: theme.colors.text },
+        // Only the library's screens show a header on this stack; the tabs
+        // and the windows show none. Same size as the other three stacks'.
+        headerTitleStyle: { color: theme.colors.text, fontSize: 20 },
         ...(glass
           ? { scrollEdgeEffects: { top: 'soft' as const } }
           : { headerBlurEffect: 'systemChromeMaterial' as const }),
       }}
     >
       <Stack.Screen name="(tabs)" />
+      {/*
+        THE LIBRARY, OVER THE TAB BAR (specs 14.24).
+
+        Siblings of (tabs) rather than screens of the Journal's stack, which is
+        what makes them cover the bar. Requested, and it reverses slice 3: the
+        library is not a page of the Journal, it is where the food and recipe
+        records live, and every one of its screens is a task with a way out of
+        its own. What it costs is that the bar is gone while browsing, so
+        leaving for another tab costs a back first.
+
+        "Browsing is a push, adding is a modal" survives intact: these are still
+        pushes, with the system's back gesture. Only the stack changed.
+
+        ## DECLARED HERE RATHER THAN UNDER A STACK OF THEIR OWN
+
+        A nested stack was the first shape, on the precedent of settings/,
+        stats/ and training/, and it took the back button away: the ROOT SCREEN
+        OF A STACK DRAWS NONE — within its own stack there is nothing behind it
+        — and the parent that does have something behind it shows no header at
+        all. The library opened with an empty bar and only the swipe to leave.
+
+        Flat, each screen is pushed on THIS stack, so the first of them has the
+        tab group behind it and the navigator draws its back button. That button
+        is a UIBarButtonItem, which is what gets Liquid Glass from UIKit on iOS
+        26 — a GlassButton in a header would be glass inside glass, the mistake
+        the iOS 26 direction names.
+      */}
+      <Stack.Screen
+        name="library/index"
+        options={{
+          headerShown: true,
+          title: 'Bibliothèque',
+          // What the back button SAYS. Without it the label falls back to the
+          // previous screen's title, and the previous screen is the tab group,
+          // which has none — the navigator would offer "(tabs)".
+          headerBackTitle: 'Journal',
+        }}
+      />
+      {/*
+        The two editors carry their own titles and their own header buttons; all
+        they need from here is a bar to put them on. Their back button is
+        labelled from the screen behind them, which is the library.
+      */}
+      <Stack.Screen name="library/food/[id]" options={{ headerShown: true }} />
+      <Stack.Screen name="library/recipe/[id]" options={{ headerShown: true }} />
       {/*
         ALL FOUR ARE OVERLAYS, and siblings rather than a nested stack.
 
@@ -214,6 +271,37 @@ function RootStack() {
       */}
       <Stack.Screen
         name="(modals)/weight"
+        options={{
+          presentation: 'transparentModal',
+          headerShown: false,
+          contentStyle: { backgroundColor: 'transparent' },
+          animation: 'none',
+        }}
+      />
+      {/*
+        THE TWO SLICE 10 ADDED AND NEVER DECLARED, found while moving the
+        library into this file.
+
+        Same trap, third time: an undeclared route under (modals)/ takes the
+        stack's default — an opaque card pushed in from the RIGHT — and the
+        oversight produces neither an error nor a warning. OverlayPanel was
+        raising both of them correctly and nobody could ever see it, because the
+        screen carrying the panel was being pushed sideways.
+
+        Creating an exercise and creating a routine are windows over the list
+        they will join, exactly like their five siblings above.
+      */}
+      <Stack.Screen
+        name="(modals)/exercise-edit"
+        options={{
+          presentation: 'transparentModal',
+          headerShown: false,
+          contentStyle: { backgroundColor: 'transparent' },
+          animation: 'none',
+        }}
+      />
+      <Stack.Screen
+        name="(modals)/routine-edit"
         options={{
           presentation: 'transparentModal',
           headerShown: false,

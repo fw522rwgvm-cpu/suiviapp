@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { Text } from '@/core/ui/text';
 import { useTheme } from '@/core/theme';
 import { ListSeparator } from '@/core/ui/list-separator';
-import { describeFoldSupport } from '@/features/nutrition/domain/food-search';
+import { describeFoldSupport } from '@/core/search/fold';
 
 /**
  * Which accent-folding branch actually runs on this engine (dev variant only).

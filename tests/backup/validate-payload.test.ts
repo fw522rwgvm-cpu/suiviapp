@@ -133,7 +133,13 @@ describe('import validation — what it refuses', () => {
 
   it('refuses a table it has never heard of', () => {
     const file = archive();
-    tablesOf(file)['exercise'] = [];
+    // A NAME NO MIGRATION CAN EVER MINT, and that is the whole point of the
+    // spelling. This stood as 'exercise' from slice 2 until 0008 created the
+    // table — at which point the test went green while asserting nothing at
+    // all, because the unknown table had quietly become a known one. A test
+    // that names a FUTURE table as its counter-example expires silently on the
+    // day that table lands, which is the day it was most worth having.
+    tablesOf(file)['not_a_table_0000'] = [];
 
     expect(codes(file)).toContain('table_unknown');
   });

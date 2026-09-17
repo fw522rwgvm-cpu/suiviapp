@@ -1,0 +1,190 @@
+import { eq } from 'drizzle-orm';
+import type { AppDatabase } from '@/core/db/database';
+import { newId } from '@/core/id';
+import {
+  routine,
+  routineBlock,
+  routineLine,
+  routineWarmupStep,
+  type RoutineBlockId,
+  type RoutineId,
+  type RoutineLineId,
+  type RoutineWarmupStepId,
+} from '@/core/db/schema';
+import {
+  isValidRoutineDraft,
+  restForBlock,
+  roundsOf,
+  validateRoutineDraft,
+  type RoutineDraft,
+} from '../domain/routine-draft';
+
+/**
+ * Writes on the routines (specs 10.2), transactional by rule.
+ *
+ * ## THE CONTENTS ARE REPLACED WHOLESALE, NEVER RECONCILED
+ *
+ * food_portion's rule, and the one that decided it transfers with more force
+ * here. Reconciling would mean matching stored blocks and lines against the
+ * draft's, moving positions, and doing it in an order no collision survives —
+ * machinery in service of identifiers NOTHING references. A routine line is
+ * pointed at by nobody: slice 11's session_set copies its targets rather than
+ * linking to it, precisely because a session is history and a routine is not.
+ *
+ * So: delete the blocks (their lines cascade), delete the warm-up steps, and
+ * write the draft. Inside one transaction, so a failure leaves the previous
+ * routine exactly as it was.
+ *
+ * ## POSITION IS THE ORDER THE SETS ARE PERFORMED IN
+ *
+ * The draft carries no position — an array already has one, and two sources for
+ * an order is how a list ends up disagreeing with itself. What that array order
+ * MEANS is now settled: roundsOf reads it as rounds, and the rows are written
+ * round by round, so position 0..n is the order a person goes through them. In
+ * a superset that interleaves; in an ordinary block it is the array unchanged.
+ *
+ * It matters beyond the page: slice 11 reads these rows to drive a session, and
+ * a routine whose stored order differed from the order it is performed in would
+ * make the session re-derive it — a second answer to a question already
+ * answered here.
+ *
+ * set_index is the ROUND NUMBER, likewise computed at write time rather than
+ * stored in the draft: it is a function of the order (D9).
+ */
+
+function requireValid(draft: RoutineDraft): void {
+  if (!isValidRoutineDraft(draft)) {
+    // A programming error rather than an expected state: the editor refuses to
+    // submit an invalid draft. Expected problems are VALUES.
+    throw new Error(
+      `invalid routine draft: ${validateRoutineDraft(draft)
+        .map((p) => p.kind)
+        .join(', ')}`,
+    );
+  }
+}
+
+/**
+ * Writes the draft's contents under a routine that already exists.
+ *
+ * THE REST IS WRITTEN ON THE BLOCK AND NOWHERE ELSE, in every shape. A block
+ * holding one exercise IS that exercise, so "rest per block" and "rest per
+ * exercise" are the same sentence. restForBlock resolves it, including the
+ * fallback for an archive written before the rest moved, so what is stored is
+ * what the screen showed.
+ *
+ * routine_line.rest_seconds is therefore written NULL always. Storing a value
+ * in both would leave two numbers and no rule saying which won — the exact
+ * shape this project refuses everywhere else.
+ */
+function writeContents(tx: AppDatabase, routineId: RoutineId, draft: RoutineDraft): void {
+  const steps = draft.warmupSteps
+    .map((text) => text.trim())
+    // A blank line is a line somebody started and abandoned, not a step.
+    .filter((text) => text !== '');
+
+  if (steps.length > 0) {
+    tx.insert(routineWarmupStep)
+      .values(
+        steps.map((text, position) => ({
+          id: newId<RoutineWarmupStepId>(),
+          routineId,
+          position,
+          text,
+        })),
+      )
+      .run();
+  }
+
+  draft.blocks.forEach((block, blockPosition) => {
+    const blockId = newId<RoutineBlockId>();
+
+
+    tx.insert(routineBlock)
+      .values({
+        id: blockId,
+        routineId,
+        position: blockPosition,
+        // Every block carries its own, superset or not.
+        restSeconds: restForBlock(block),
+      })
+      .run();
+
+    const rows = roundsOf(block).flatMap((round, roundIndex) =>
+      round.map(({ line }) => ({
+        id: newId<RoutineLineId>(),
+        blockId,
+        exerciseId: line.exerciseId,
+        // Filled in below: position runs across rounds, not within one.
+        position: 0,
+        setIndex: roundIndex + 1,
+        setType: line.setType,
+        repsMin: line.repsMin,
+        repsMax: line.repsMax,
+        targetLoadKg: line.targetLoadKg,
+        targetRir: line.targetRir,
+        durationSeconds: line.durationSeconds,
+        // Always null: the block owns the rest. The column survives for
+        // archives written before it moved, and restForBlock reads those.
+        restSeconds: null,
+        progressionEnabled: line.progressionEnabled ? (1 as const) : (0 as const),
+        note: line.note.trim() === '' ? null : line.note.trim(),
+      })),
+    );
+
+    rows.forEach((row, position) => {
+      row.position = position;
+    });
+
+    if (rows.length > 0) tx.insert(routineLine).values(rows).run();
+  });
+}
+
+export function createRoutine(db: AppDatabase, draft: RoutineDraft): RoutineId {
+  requireValid(draft);
+
+  return db.transaction((tx) => {
+    const id = newId<RoutineId>();
+    const now = Date.now();
+
+    tx.insert(routine).values({ id, name: draft.name.trim(), createdAt: now, updatedAt: now }).run();
+    writeContents(tx, id, draft);
+
+    return id;
+  });
+}
+
+export function updateRoutine(
+  db: AppDatabase,
+  routineId: RoutineId,
+  draft: RoutineDraft,
+): void {
+  requireValid(draft);
+
+  db.transaction((tx) => {
+    tx.update(routine)
+      .set({ name: draft.name.trim(), updatedAt: Date.now() })
+      .where(eq(routine.id, routineId))
+      .run();
+
+    // The lines go with their blocks, by cascade. Two deletes, not three.
+    tx.delete(routineBlock).where(eq(routineBlock.routineId, routineId)).run();
+    tx.delete(routineWarmupStep).where(eq(routineWarmupStep.routineId, routineId)).run();
+
+    writeContents(tx, routineId, draft);
+  });
+}
+
+/**
+ * Deletes a routine (specs 10.2, "Boutons de démarrage, d'édition, de
+ * suppression").
+ *
+ * NOTHING HAS TO BE CLEANED UP HERE, unlike deleteExercise. Every child of a
+ * routine cascades — steps, blocks, and the lines under the blocks — because
+ * each is owned by it and has no meaning apart from it. The exercises the lines
+ * pointed at are untouched, which is the whole reason that link is a reference
+ * rather than ownership.
+ */
+export function deleteRoutine(db: AppDatabase, routineId: RoutineId): void {
+  db.delete(routine).where(eq(routine.id, routineId)).run();
+}

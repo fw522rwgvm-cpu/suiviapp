@@ -61,8 +61,18 @@ L'application doit tolérer un arrêt forcé à tout moment sans perte.
 ---
 
 ## État du projet
-Tranches 0 à 9 livrées. La tranche 9 (notifications) **clôt la V2**.
-**1260 tests verts** sous les trois fuseaux, `tsc` vert, bundle produit.
+Tranches 0 à 10 livrées. La tranche 9 (notifications) **clôt la V2** ; la
+tranche 10 (exercices et routines) **ouvre la V3**.
+**1439 tests verts** sous les trois fuseaux, `tsc` vert, bundle produit.
+
+**La tranche 10 n'a rien exercé sur l'appareil, et elle n'a pas besoin d'un
+cycle CI pour l'être** : aucune dépendance n'a été ajoutée. `react-native-svg`
+porte la carte corporelle depuis la tranche 7, `gesture-handler` le balayage
+depuis la tranche 3. Metro suffit.
+
+Ce qui reste à voir est ce qu'aucun test ne couvre : **que la carte corporelle
+ressemble à un corps et s'allume aux bons endroits.** Un test dit que `chest`
+possède un tracé ; il ne dit pas que ce tracé traverse les pectoraux.
 
 **Une notification locale a été reçue sur l'appareil (15/09/2026).** C'est le
 premier constat de la tranche 9, et il en emporte trois autres par déduction —
@@ -877,6 +887,13 @@ iOS 26 — alors que le §7 la décrit comme un endroit où le Journal mène. Un
 règle en sort, valable pour toute la suite : **consulter est un empilement,
 ajouter est une modale.**
 
+> **⚠️ RENVERSÉ LE 17/09/2026, sur demande.** Elle est revenue à `app/library/`,
+> là où le §3 la dessinait, et **recouvre la barre** — le coût décrit ci-dessus
+> est devenu l'intention. Voir « La bibliothèque n'est pas une page du Journal »
+> plus bas. **La règle qui en était sortie, elle, tient sans changement** : c'est
+> toujours un empilement, avec le geste de retour du système ; seule la pile sur
+> laquelle il se fait a changé.
+
 **L'étape de quantité est un état de la modale d'ajout, pas une seconde
 modale.** D16 budgète 0,2 s entre le choix d'un aliment et l'écran de quantité,
 et le critère de sortie est deux touchers : échanger le contenu d'une modale
@@ -1068,6 +1085,14 @@ Dans un en-tête, un `Pressable` nu avec son seul `SymbolView`. `GlassButton`
 est pour le **contenu**, qui ne reçoit aucun matériau gratuitement : l'étoile
 d'une rangée de liste, les actions d'un panneau dessiné à la main. C'est la
 ligne de partage de la direction iOS 26, prise du mauvais côté une fois.
+
+**Et la ligne de partage n'est PAS « natif contre maison » — c'est « cette
+surface porte-t-elle déjà un matériau ».** Précisé le 17/09/2026, parce que
+l'énoncé court se retourne facilement : un `InputAccessoryView` est une vue
+native et un conteneur **vide**, rien ne lui est appliqué, donc `GlassView` y
+est la seule façon d'obtenir le matériau — exactement comme pour une vue
+dessinée en JavaScript. Un en-tête, lui, en porte un. Les deux sont natifs et
+la réponse est opposée.
 
 **Animer la géométrie, mais pas celle d'une vue native.** Piloter les
 propriétés de disposition d'une `GlassView` image par image depuis un worklet
@@ -1429,10 +1454,15 @@ Trois détails qui ne se devinent pas :
   natifs, ils s'animent, et un pavé numérique n'est pas un endroit d'où
   regarder ça. D'où une barre « OK » au-dessus du clavier : un seul champ, donc
   pas de chevrons, qui seraient deux contrôles morts.
-- **`autoFocus` + `selectTextOnFocus` fonctionnent ici**, là où la tranche 3
-  avait constaté qu'ils ne sélectionnaient rien. La différence est la seule qui
-  compte : la valeur vient de l'état local et existe **avant** le champ, donc
-  on retombe dans le cas où la paire marche — focaliser un champ déjà rempli.
+- ~~**`autoFocus` + `selectTextOnFocus` fonctionnent ici**, là où la tranche 3
+  avait constaté qu'ils ne sélectionnaient rien.~~ **FAUX, rapporté à l'usage le
+  17/09/2026.** Le raisonnement — « la valeur existe avant le champ, donc c'est
+  le cas où la paire marche » — a un trou : iOS applique `selectTextOnFocus` au
+  début de l'édition, et une valeur **contrôlée** est écrite dans le champ
+  après, ce qui pousse le curseur à la fin. Lequel des deux atterrit en dernier
+  ne nous appartient pas. La sélection est désormais **énoncée** à la frame
+  suivante — exactement le remède que la tranche 3 avait trouvé pour ce même
+  champ, et qu'il fallait garder.
 
 Et le champ est un composant à lui, pour que le texte en cours de frappe naisse
 et meure avec lui : gardé sur l'écran, il faudrait le vider à chaque
@@ -3426,6 +3456,14 @@ peut pas remplir le laisse borné à un endroit arbitraire — la page s'ouvrira
 tranche 3 a retiré du carrousel ; là il tourne sur un toucher, avant le
 re-rendu, sur du contenu qui va être remplacé.
 
+> **⚠️ RENVERSÉ LE 17/09/2026, sur demande : il n'y a plus de retour en haut du
+> tout.** Le risque décrit était réel et plus petit que son prix — iOS borne un
+> tel décalage au bas du nouveau contenu, donc la page est *défilée*, pas
+> fausse, alors que le saut obligeait à redescendre après chaque comparaison
+> entre deux volets ou deux plages. **La partie qui reste vraie** est le
+> raisonnement sur l'effet : si un retour en haut devait revenir un jour, il
+> serait dans le handler.
+
 **`NutritionPanelSection` sort de l'écran, tel quel.** Avec un volet poids à
 côté, un écran qui tenait en ligne les requêtes d'un volet, son état de plage et
 sa branche vide aurait dû tenir les deux. L'écran est du câblage à nouveau.
@@ -3988,6 +4026,983 @@ vérification qu'il y a, et l'écran reçoit une valeur déjà rétrécie. Une s
 inconnue revient en arrière au lieu de rendre une page vide avec un titre et
 rien dedans.
 
+## Ce que la tranche 10 a établi
+
+**Le vocabulaire des muscles et du matériel n'existait nulle part, et il est
+inventé ici.** « Muscle » apparaît cinq fois dans les specs et jamais comme une
+liste ; le §2.6 stocke `primary_muscle` en TEXT nu. Pourtant le §10.1 fait du
+filtrage par muscle et matériel une fonctionnalité. Quinze groupes et huit
+matériels sont donc **choisis**, à la granularité où l'on étiquette un exercice —
+pas celle du dessin, qui découpe bien plus fin.
+
+C'est exactement pour ça qu'aucune `CHECK` ne les tient. **Le critère reste celui
+de la tranche 3 — ce qu'un élargissement casserait — et il donne ici la réponse
+inverse de l'intuition** : une liste inventée ce matin, qui n'a jamais rencontré
+un exercice réel, est le candidat le plus probable au changement de tout le
+schéma. La tranche 3 avait refusé une CHECK sur `food_portion.name` pour huit
+mots que les specs **donnaient**.
+
+**`set_type` non plus, et c'est le §10.1 qui décide.** « Volume = charge ×
+répétitions, sur les séries de travail validées uniquement » est une clause
+**positive** — `WHERE set_type = 'work'`. Comparer avec `journal_entry.kind`,
+dont le `SUM` n'a aucune clause et n'est juste que parce que l'ensemble est
+fermé : élargir celui-là produit un total faux, élargir celui-ci exclut
+simplement un type d'un total dont la définition l'exclut. Rien ne devient
+plausible et faux.
+
+**Différer `session_*` ne coûte rien, et le test est la direction des clés
+étrangères.** `session_set.exercise_id` est déclarée dans `session_set`, que
+`0009` créera entière contre un `exercise` déjà là. Le seul cas qui aurait coûté
+est l'inverse — une table de `0008` référençant `session` — et il n'existe pas.
+Mot pour mot l'argument de `notification_setting` différée de `0006` à `0007`.
+
+**`exercise_note` est spécifiée**, contrairement à ce qu'on croit en lisant le
+seul §10 : le §6.3 la définit et le §10.3 la place dans la séance en direct. Sa
+colonne `consumed_at` le confirme. C'est une table de la tranche 11, pas un trou.
+
+**`routine_line.exercise_id` est en `NO ACTION`, et c'est le §5.3 qui l'a décidé
+— par sa seconde phrase, pas par la première.** La première dit qu'aucune
+suppression n'est bloquée, ce qui écarte le défaut SQLite. La seconde demande
+« un avertissement nommant explicitement ce qui sera perdu » — et **pour nommer,
+il faut compter d'abord**. Un CASCADE ferait le même travail en silence et
+l'avertissement devrait deviner. Précédent : `deleteFood`, qui fige puis
+supprime. La clé étrangère est le filet ; la transaction est la politique.
+
+Conséquence nettoyée dans la même transaction : **retirer la dernière ligne d'un
+bloc laisse un bloc vide**, que la page afficherait comme une rangée que
+personne ne peut expliquer. `removeLine` fait la même chose côté brouillon — les
+deux chemins s'accordent au lieu que l'un laisse du travail à l'autre.
+
+**Un superset, c'est deux exercices distincts dans un bloc — jamais deux
+séries.** C'est la distinction qui décide quel temps de repos s'applique, donc
+tout le reste. Compter les *lignes* aurait fait de tout bloc à plusieurs séries
+un superset et déplacé son repos en silence : plausible, et faux pour chaque
+exercice ordinaire de la routine. `restForLine` est le **seul** endroit où ce
+choix se prend, pour que l'écran, l'écriture et la séance de la tranche 11 n'en
+aient pas trois versions. Et ce qui est écrit suit : un superset pose son repos
+sur le bloc et `NULL` sur ses lignes, un bloc simple l'inverse — stocker les deux
+laisserait deux nombres sans règle disant lequel gagne.
+
+Corollaire d'interface : **le champ de repos du bloc n'apparaît que sur un
+superset.** L'offrir ailleurs inviterait à saisir une valeur que rien ne lit.
+
+**`set_index` et `position` sont dérivés de l'ordre du tableau, jamais portés par
+le brouillon.** Un tableau porte déjà un ordre, et deux sources pour un ordre est
+la façon dont une liste finit par se contredire (D9). Dans un superset A/B à
+trois séries, les lignes sont groupées par exercice et les index valent
+1,2,3,1,2,3 : **la routine est une liste à LIRE**, c'est la séance qui décidera
+de l'ordre d'exécution.
+
+**La recherche partage le pliage et rien d'autre.** `foldForSearch` monte dans
+`core/search/` — un exercice se cherche par son nom comme un aliment, et Hermes
+n'est pas plus susceptible de porter les tables Unicode pour l'un que pour
+l'autre. Ce qui ne monte **pas** est le barème : « danone » cherche une marque,
+« poulie » un matériel, et ce ne sont pas les mêmes rangs. Partager le pliage
+partage un vrai problème commun ; partager le barème aurait partagé une
+coïncidence.
+
+Deux choix de filtrage qui ne se devinent pas : **un muscle filtre les
+secondaires aussi**, sans quoi filtrer sur Triceps cacherait le développé couché
+— ce que cherche exactement qui bâtit une séance de poussée ; et **un matériel
+non renseigné ne répond à AUCUN filtre**, parce que prétendre qu'il correspond
+serait affirmer ce que personne n'a dit.
+
+**Les exercices se cherchent sur leurs libellés FRANÇAIS.** Personne ne tape
+`lower_back` ; on tape « lombaires ». La valeur est stockée en anglais pour que
+la colonne et l'export restent d'une seule langue, et la recherche est le seul
+endroit où les deux se rencontrent.
+
+**Le réglage d'incrément est une valeur d'INITIALISATION, et l'écran le dit.**
+Le §6.3 et le §10.4 le répètent : « propre à l'exercice, initialisé depuis la
+valeur globale ». Lue une fois, recopiée. La phrase est **sur la page** parce que
+l'hypothèse inverse est la naturelle — un réglage global qui ne change rien de
+l'existant est surprenant tant qu'il ne le dit pas, et la première correction
+faite là n'aurait silencieusement rien fait de ce qu'on attendait. C'est aussi
+pourquoi `exercise.increment_kg` n'a **pas** de DEFAULT SQL : ce serait une
+seconde source du même nombre, libre de diverger en silence.
+
+### La carte corporelle, et les deux défauts que seul le regard a trouvés
+
+**Sourcée, pas dessinée** : `melihcolpan/MuscleMap`, licence **MIT** —
+permissive, attribution seule, aucun copyleft. On prend les **données**, pas la
+bibliothèque : c'est un SDK SwiftUI dont le `BodyView` dessine dans un
+`CGContext`, inatteignable depuis React Native. Aucune dépendance, donc **aucun
+cycle CI** : `react-native-svg` est dans le binaire depuis la tranche 7 et D13
+nommait déjà cet usage précis.
+
+Vingt-cinq régions dessinées, quinze muscles stockés, une table entre les deux.
+**Huit régions ne s'allument jamais et DESSINENT LE CORPS** — c'est ce qui donne
+une silhouette à une routine qui ne travaille qu'un muscle, au lieu d'un membre
+flottant sur du blanc. La huitième, `tibialis`, est une décision : c'est
+l'antagoniste du mollet, l'allumer avec `calves` serait joli et faux.
+
+**L'erreur contre laquelle cette carte est conçue est le FAUX NÉGATIF.** Un
+muscle travaillé mais laissé gris se lit « je ne travaille jamais ça » — une
+croyance fausse sur laquelle on agit pendant des semaines. Une région un peu trop
+allumée coûte quelques points de largeur. Là où les deux vocabulaires ne
+coïncident pas exactement, la table penche donc vers l'allumage.
+
+**Premier défaut : arrondir les coordonnées cassait le dessin.** SVG colle les
+nombres sans séparateur, donc `0.999.5` vaut 0,999 puis 0,5 ; arrondir le premier
+à `1` donne `1.5`, soit **un seul** nombre. Le résultat sortait avec des bras
+vraisemblables et faux. Les paths sont donc copiés **verbatim** — et ça vaut pour
+toute retouche future de données SVG.
+
+**Second défaut : le viewBox ne peut pas se calculer à l'exécution.** Une région
+porte `a2.05 2.05 0 1.92-2.71` : un arc réclame sept nombres, celui-là en offre
+cinq, et ses deux drapeaux d'un chiffre sont collés à ce qui suit de façon
+**indécidable**. Les deux lectures placent le bord droit de la figure de face à
+150 unités d'écart, et la plus large chevauche la figure de dos. Les paths étant
+générés et immuables, **la boîte est une constante**, mesurée une fois par
+`scripts/extract-body-map.mjs`.
+
+Piège voisin, à connaître avant de parser du SVG ici : **les drapeaux d'un arc
+sont des chiffres uniques**, et le SVG compressé écrit `01-.19` pour (0, 1,
+−0,19). Un tokeniseur qui lit `01` comme un nombre décale tout ce qui suit. Et
+**après un `m`, les paires suivantes sont des `l`**, pas d'autres `m` : les
+traiter comme des déplacements accumule les décalages et fait dériver tout path
+relatif.
+
+**Ce qu'aucun test ne peut dire, et les tests le disent** : qu'une région allumée
+soit anatomiquement au bon endroit. Un test vérifie que `chest` possède un path,
+jamais que ce path traverse les pectoraux. Ça se règle en regardant.
+
+### Trois choses apprises en exécutant
+
+**`COLLATE NOCASE` ne trie QUE l'ASCII.** « Épaulé » se classe après « Zercher »
+parce que U+00C9 est un code point plus grand que 'Z'. Ce n'est pas un défaut à
+corriger dans le SQL : l'ordre affiché vient de `searchExercises`, qui compare
+sur le nom **plié** — seul endroit où les accents peuvent l'être, `lower()` de
+SQLite étant ASCII aussi et une colonne repliée étant de la donnée dérivée (D9).
+L'`ORDER BY` donne un point de départ stable, pas un ordre final. `ix_food_name`
+porte le même défaut depuis la tranche 3 sans que ça ait jamais été écrit.
+
+**`tsc` a attrapé trois fois ce que `vitest` laissait passer** : des assertions
+`as ExerciseId`, un helper de test typant ses muscles en `string`, des types non
+importés dans le seed. Les trois fois, la suite était **verte**. Vitest ne
+vérifie pas les types. C'est tout l'intérêt d'enchaîner par `&&` et non par `;`.
+
+**Un test qui nomme une table FUTURE comme contre-exemple se périme en silence.**
+`refuses a table it has never heard of` utilisait `'exercise'` depuis la
+tranche 2. `0008` l'a rendue vraie, donc le test passait au vert **en n'assertant
+plus rien** — le jour où il servait le plus. Il nomme désormais
+`not_a_table_0000`, qu'aucune migration ne peut créer.
+
+## Ce que les retours sur les routines ont établi (17/09/2026)
+
+**Un exercice peut se mesurer en durée**, et ni le §6.3 ni le §2.6 ne le
+prévoyaient — les deux ne décrivent une série que par ses « répétitions, fixes
+ou en plage ». `exercise.tracks_duration` porte le fait, `routine_line.duration_seconds`
+la cible. Le drapeau est sur l'**exercice** : un gainage est toujours
+chronométré, un développé couché jamais, donc le fait appartient au mouvement.
+Posé sur la ligne, il faudrait le répéter à chaque série et il pourrait se
+contredire à l'intérieur d'un bloc, qui n'a qu'une colonne.
+
+**Et la règle de la tranche 3 coupe dans les DEUX sens.** Une CHECK
+`duration_seconds > 0` avait été écrite ; la génération a montré pourquoi elle
+ne peut pas partir. SQLite ne sait pas ajouter une CHECK, donc drizzle-kit est
+retombé sur une **reconstruction de `routine_line`** — et la reconstruction
+produite était **cassée**, son `INSERT ... SELECT` lisant `duration_seconds`
+depuis l'ancienne table qui ne l'a pas encore.
+
+« Une migration porte ce qui ne peut pas s'ajouter plus tard » veut donc dire
+aussi : **le moment de poser une CHECK était `0008`, et il est passé.** La
+valeur est tenue par `validateRoutineDraft`, là où vivent déjà le `non_empty`
+de `food.barcode` et la positivité de `weight_measure.value_kg`.
+
+**Le repos appartient au bloc dans toutes les formes.** Le §10.2 ne l'énonce
+que du superset, et la première version en avait déduit « la ligne le porte
+sinon ». Faux à l'usage — personne ne se repose différemment entre deux séries
+du même exercice — et ça coûtait à la rangée la largeur dont les quatre
+colonnes ont besoin. Un bloc à un exercice **est** cet exercice.
+`routine_line.rest_seconds` reste en base et `restForBlock` la lit en repli :
+les lignes que cette application n'a pas écrites sont affichées, jamais
+corrigées.
+
+**Les séries sont un tableau, et un seul composant sert la lecture et la
+saisie** — le §10.2 pris à la lettre (« présentation identique à la création »).
+Deux composants dessinant une rangée finissent par diverger, et la première
+chose à dériver serait la colonne où vivent les répétitions. La saisie comblait
+au passage un **manque réel** : la première version n'offrait aucun moyen
+d'entrer une charge, une plage ou un RIR.
+
+Corollaire : **le press de rangée disparaît.** Les cellules sont des champs, et
+un press couvrant quatre nombres se battrait avec le balayage qui supprime.
+Dupliquer devient un bouton nommé ; toucher un exercice passe au **titre** du
+bloc.
+
+### La carte nuance, et la pondération est un arbitrage
+
+**Une série pour un muscle secondaire compte une demie.** La règle évidente —
+1 pour chaque muscle nommé — fait mentir la carte : sur une séance de poussée
+les triceps atteignent 8 séries contre 3 aux pectoraux, et le dessin annonce
+une séance de triceps. Ne compter que les primaires échoue dans l'autre sens :
+les avant-bras ne sont presque jamais le primaire de personne et resteraient
+gris pour toujours — le **faux négatif** contre lequel toute cette carte est
+conçue.
+
+**Les demies n'atteignent jamais l'écran.** « 4,5 séries » n'est pas une chose
+que quelqu'un a faite. Le total pondéré décide la **couleur** ; l'infobulle
+énonce des entiers — « 5 séries dont 2 directes ».
+
+**Quatre paliers, pas un dégradé continu** : l'œil ne classe pas deux verts à
+quelques pour cent d'écart, donc une échelle lisse se lit comme du bruit et
+revendique une précision que rien ici n'a. Les seuils — 3, 6, 10 séries
+pondérées — se lisent contre **une routine**, jamais contre une semaine : les
+10-20 séries hebdomadaires habituelles mettraient chaque routine au palier le
+plus bas et la carte ne changerait jamais de couleur. **Choisis, pas mesurés.**
+
+**Les teintes sont l'accent désaturé vers la surface**, pas trois couleurs sans
+rapport : la carte nuance **une** quantité, donc ses paliers doivent se lire
+comme une échelle. En sombre elles vont vers la surface et non vers le blanc —
+sinon le muscle le moins travaillé serait le plus lumineux de la figure et
+l'échelle tournerait à l'envers.
+
+**L'infobulle applique le §10.6**, qui tranche déjà l'interaction de tous les
+graphiques : « toucher un point affiche sa valeur et sa date », aucun zoom,
+aucun déplacement. Une seule différence — une région **non** travaillée ne
+répond pas, parce qu'une infobulle disant « Tête » serait un contrôle qui a
+l'air cassé.
+
+**Un piège de jointure, attrapé par un test de base** : une ligne de muscle
+secondaire existe une fois par **exercice**, donc une requête qui joint
+`exercise_secondary_muscle` sans passer par `routine_line` compte trois
+développés couchés comme une seule série indirecte de triceps.
+
+### Une leçon d'outillage qui a failli coûter cher
+
+**`npm run typecheck 2>&1 | grep … | head` masque les erreurs.** `head` ferme
+le tuyau, `tsc` reçoit SIGPIPE, et le statut de sortie vient du `grep` — donc
+un `&&` enchaîne sur du rouge invisible. Trois erreurs de types sont restées
+cachées plusieurs commandes de cette façon. **Le typecheck se lit en entier ou
+pas du tout.**
+
+### Deux défauts d'interface trouvés à l'usage (17/09/2026)
+
+**`pointerEvents="box-only"` empêche tout champ d'une rangée balayable de
+prendre le focus.** Rapporté comme « les inputs ne marchent pas », diagnostiqué
+dans le code. `box-only` veut dire : la couche prend le toucher et **rien à
+l'intérieur n'en reçoit jamais**. C'était juste tant que chaque appelant
+confiait du **texte** à `SwipeToDeleteRow` et laissait `onPress` porter la
+pression — un `Pressable` reglissé dans le contenu réintroduirait l'échec
+d'arbitrage pour lequel ce composant a été corrigé. Ça a cessé d'être juste le
+jour où un appelant y a mis des **champs**.
+
+La couche n'avale donc le toucher que lorsqu'elle a de quoi faire : une rangée
+**ouverte**, ou une rangée à qui on a donné un `onPress`. **Réserve inscrite** :
+un champ peut encore prendre le focus au relâchement d'un balayage, son
+responder n'étant pas arbitré contre le pan — supportable là où un `Pressable`
+ne l'était pas, focaliser un champ ne détruisant rien.
+
+**Et un champ numérique lié au brouillon reperd son séparateur décimal.** Même
+cause que le champ de poids en tranche 8 — et cette fois le commentaire du
+fichier décrivait le remède *sans l'appliquer*. « 6, » se parse en 6, se rend
+« 6 », la virgule disparaît sous le curseur. Le texte est un **état local**,
+ajusté **pendant** le rendu quand une valeur entrante dit autre chose que lui,
+jamais dans un effet.
+
+**Modifier une routine reste sur sa page.** La règle « agir sur quelque chose
+ouvre une fenêtre par-dessus » existe pour que la chose sur laquelle on agit
+**reste visible** ; une fenêtre d'édition couvrait exactement la routine
+qu'elle modifiait. Le §10.2 demande « présentation identique à la création » :
+une page en deux états, pas deux pages qui se ressemblent. **La création garde
+sa fenêtre** — il n'y a pas de page à basculer quand rien n'existe encore.
+
+**Le repos s'affiche en haut de son bloc.** Sous les séries il se lisait comme
+une note attachée à la dernière ; au-dessus, comme ce qui gouverne toutes — et
+c'est la question qu'on se pose *entre* deux séries.
+
+### Un superset s'exécute en alternance, et l'ordre stocké est celui-là (17/09/2026)
+
+**La tranche 10 avait groupé un superset par exercice — A,A,A puis B,B,B — et
+l'avait défendu en écrivant « la routine est une liste à LIRE, c'est la séance
+qui décidera de l'ordre d'exécution ». La phrase se réfutait elle-même.** Un
+superset n'a pas d'autre ordre d'exécution que l'alternance : une page qui
+montre l'un et une séance qui exécute l'autre sont deux réponses à une seule
+question, et la tranche 11 aurait dû redériver un ordre que l'écriture
+connaissait déjà. `routine_line.position` est donc l'ordre d'exécution, et
+`set_index` est le numéro de **tour**.
+
+**Les tours sont dérivés, jamais stockés**, ce qui laisse intacte la règle
+d'ouverture du module : le tour d'une ligne est son rang pour son propre
+exercice — ce que `setIndexOf` calculait déjà — et l'ordre à l'intérieur d'un
+tour est l'ordre d'apparition des exercices dans le bloc. Une source, le
+tableau.
+
+**Et c'est cette dérivation qui évite une migration.** Une routine stockée
+groupée par exercice se lit en tours corrects telle quelle, puisque les rangs
+par exercice sont les mêmes ; elle se réécrit entrelacée à la prochaine
+sauvegarde. Rien à migrer, rien à corriger en base, et les deux formes
+coexistent sans que l'écran sache laquelle il lit.
+
+Conséquence de vocabulaire, pas de cosmétique : dans un superset, « Ajouter une
+série » devient **« Ajouter un tour »** et ajoute une série de *chaque*
+exercice. Un demi-tour de superset ne s'entraîne pas.
+
+### Retirer un contrôle demande de dire où la règle passe (17/09/2026)
+
+**La flèche ↗ au bout de certaines lignes portait la règle de progression du
+§10.4.** La retirer seule aurait laissé cette règle sans aucune entrée : une
+colonne dans le schéma que plus rien ne peut jamais écrire, et que la tranche 12
+lirait toujours à zéro. Le réflexe — supprimer ce qui est demandé et passer à la
+suite — aurait produit un défaut invisible pendant deux tranches.
+
+Elle va au **bloc**, pour le motif exact qui y a déjà mis le repos : personne ne
+fait progresser la deuxième série d'un exercice et pas la troisième. **La
+colonne reste par ligne** — le §10.4 la définit ainsi, la tranche 12 la lira
+ainsi, et stocker un second état au bloc serait la valeur dérivée que D9 refuse.
+`blockProgression` est une **lecture** : vrai si toutes les séries de travail du
+bloc la portent. Les échauffements et les drop sets sont exclus de l'écriture ;
+un échauffement qui monterait de 2,5 kg par semaine a cessé d'en être un.
+
+### Une colonne relue partout et écrite nulle part (17/09/2026)
+
+**`routine_line.duration_seconds`, ajoutée par `0009`, ne figurait dans aucun
+`INSERT`.** Les 45 s d'un gainage étaient acceptées par le tableau,
+enregistrées, et perdues. Trouvé en touchant la table de projection de
+`writeContents`, pas par un écran en échec.
+
+**Rien d'autre ne pouvait l'attraper, et c'est le point à retenir** : la lecture
+rendait fidèlement le `null` qu'elle avait elle-même écrit, donc l'aller-retour
+était **cohérent et faux** — exactement la forme de défaut que la tranche 2
+décrit en refusant de comparer un export à un second export. Un aller-retour ne
+prouve rien d'une colonne qu'aucun côté ne remplit. Le test le fixe désormais
+par la **valeur**, pas par la symétrie.
+
+### Naviguer depuis un écran en cours d'édition ne perd rien (17/09/2026)
+
+Le nom d'un exercice était rendu non cliquable pendant l'édition d'une routine,
+pour protéger le brouillon. **Il n'y avait rien à protéger** : un `push` laisse
+l'écran précédent **monté** dessous — c'est la raison d'être des événements de
+focus d'un navigateur — donc l'état React survit à la visite et au retour. La
+prudence coûtait la seule action que le §10.2 demande sur un nom d'exercice.
+
+Au passage, un titre unique sur un bloc ne peut pas servir un superset : il
+n'ouvre que le premier de ses exercices. Le titre est donc une **liste de noms**,
+chacun préfixé de la lettre que ses lignes portent, chacun sa propre
+destination.
+
+### Ce que « ressembler à Hevy » a voulu dire, et ce qu'on n'a pas pris (17/09/2026)
+
+Demande sans critère mesurable, traduite en décisions nommables : nom
+d'exercice en couleur d'accent et cliquable, repos en une ligne sous les noms
+avec son glyphe de minuteur, tableau **sans cadre intérieur** — une grille
+dessinée dans une carte, ce sont deux boîtes — numéro de série en pastille, et
+un rail d'accent sur le bord gauche d'un superset.
+
+**Aucun jeton de couleur ajouté** : la pastille prend le fond de la **page**,
+qui la creuse dans la carte, plutôt qu'une sixième couleur que la palette
+devrait justifier avec ses mesures de contraste.
+
+**Ce qui n'a pas été pris, et pourquoi** — la vignette de l'exercice, parce que
+le média est hors de la tranche 10 et qu'un rond de remplacement est une
+promesse que l'application ne tient pas ; et la colonne « précédent », qui est
+l'historique de la tranche 12 : vide, elle dirait qu'il n'y a rien plutôt que
+que rien n'est encore enregistré.
+
+### La bibliothèque n'est pas une page du Journal (17/09/2026)
+
+**Renversement demandé, et le §3 de l'architecture avait raison depuis le
+début.** La tranche 3 avait descendu la bibliothèque dans la pile du Journal en
+écrivant exactement ce qui se passerait sinon : sœur de `(tabs)`, elle recouvre
+la barre d'onglets et emporte la minimisation iOS 26.
+
+**Ce qui change est le SIGNE de cette conséquence.** La bibliothèque est là où
+vivent les fiches d'aliments et de recettes, et chacun de ses écrans est une
+tâche avec sa propre sortie. Couvrir la barre est ce qui le dit. Le §7 la décrit
+comme un endroit où le Journal mène, ce qui reste vrai et ne dit rien de ce
+qu'elle doit recouvrir une fois qu'on y est.
+
+**La règle de la tranche 3 tient sans retouche** : consulter est un empilement,
+agir est une fenêtre. C'est toujours un empilement, avec le geste de retour du
+système. Seule la pile sur laquelle il se fait a changé.
+
+Prix nommé plutôt que découvert : la barre est absente pendant qu'on parcourt,
+donc partir vers un autre onglet coûte un retour d'abord.
+
+**Et le piège de la tranche 5 a mordu une troisième fois, trouvé en ouvrant la
+pile racine pour y déclarer la bibliothèque** : `(modals)/exercise-edit` et
+`(modals)/routine-edit`, ajoutées en tranche 10, n'y étaient pas déclarées. Une
+route non déclarée sous `(modals)/` prend le défaut de la pile — une carte
+opaque poussée par la **droite** — sans erreur ni avertissement, pendant
+qu'`OverlayPanel` la lève correctement sans que personne puisse le voir. **La
+règle se répète parce qu'elle ne se voit pas : toute route ajoutée sous
+`(modals)/` doit être déclarée, et l'oubli est silencieux.**
+
+### Un acte vise le jour qu'il est ; un libellé garde le jour qu'il avait (17/09/2026)
+
+Appuyer sur l'onglet Journal ramène à aujourd'hui. **Par la demande qui existait
+déjà** — celle que le calendrier utilise depuis la tranche 3 — et non par une
+seconde façon de dire au Journal quel jour montrer : le carrousel garde la date,
+la demande est consommée une fois, rien ne persiste.
+
+**Et l'horloge est lue AU MOMENT DE L'APPUI, pas par `useToday`.** C'est
+l'arbitrage que le planificateur de notifications avait déjà pris en tranche 9,
+et il se généralise : `useToday` est **gelé contre l'horloge** à dessein, pour
+qu'un libellé ne bouge pas sous une liste parce que minuit est passé ; un
+**acte** veut l'inverse, et une application laissée ouverte toute la nuit
+enverrait sinon sur hier en l'appelant aujourd'hui.
+
+**Réserve inscrite, et elle porte sur le choix d'implémentation, pas sur le
+comportement.** L'écoute est posée sur *chaque* appui de l'onglet et non
+seulement quand il est déjà actif. La forme restreinte est l'idiome iOS et
+collerait à la demande au mot près ; elle repose sur `navigation.isFocused()`
+dans `unstable-native-tabs`, qu'aucun test en Node ne peut exercer et qu'aucun
+appareil n'est là pour essayer — et **son mode de panne est le silence**, une
+fonctionnalité qui n'arrive simplement jamais. Conséquence assumée : revenir
+depuis un autre onglet atterrit aussi sur aujourd'hui.
+
+Conséquence de structure : `RequestedDateProvider` monte au-dessus des onglets,
+un déclencheur d'onglet étant déclaré dans la disposition des onglets.
+
+### Une carte doit dire OÙ, sinon elle n'est pas une carte (17/09/2026)
+
+Deux demandes en une phrase — « le muscle sélectionné doit se voir dans le
+schéma corporel » — et les deux lectures étaient vraies au même endroit.
+
+**Là où l'on *sélectionne* un muscle, c'est le formulaire d'exercice.** Le
+vocabulaire des quinze muscles est inventé en tranche 10 et n'a jamais rencontré
+un exercice réel : « lats » ou « traps » est un mot avant d'être un endroit. La
+figure est ce qui retraduit le choix en anatomie, et **la seule chose de ce
+formulaire capable de dire que la puce qu'on vient de toucher n'est pas le
+muscle qu'on visait.**
+
+**Et la carte elle-même ne disait pas où.** L'infobulle de la tranche 10
+répondait en mots sous les figures en laissant le dessin intact, donc la seule
+chose qu'elle ne pouvait pas dire était *où se trouve le muscle touché*. Le
+muscle est désormais cerné, toutes ses régions à la fois, pour que le nom en
+dessous et la forme au-dessus soient une seule réponse.
+
+**Deux modes de nuance, jamais un détournement du volume.** `volume` répond
+« combien de travail », `roles` répond « quelle part » — et un exercice n'a
+aucune série à compter. Faire passer un muscle principal pour dix séries
+pondérées aurait nuancé correctement **et** fait dire « 10 séries » à
+l'infobulle.
+
+**Un trait de contour se mesure en unités de viewBox, pas en points.** Les
+figures font environ 1 270 unités de haut et c'est la hauteur en points qui
+contraint l'échelle, donc une unité vaut `height / 1270` de point : douze
+unités valent près de deux points à toutes les tailles où cette carte est
+dessinée. Choisi par arithmétique parce que rien ici ne peut être regardé. Et
+**couleur du texte, pas de l'accent** : le remplissage est déjà une nuance
+d'accent, et un contour de la même teinte par-dessus n'est pas un contour.
+
+### Garder sa place demande de la remettre (17/09/2026)
+
+**Retirer le `scrollTo` ne suffisait pas, et le cas manquant est le premier.**
+La première visite d'une plage : le volet rend un indicateur de chargement, la
+page fait quelques centaines de points, **iOS y borne le décalage** — ce qui est
+correct, et irréversible, parce que plus rien ne se souvient d'où la page était
+quand le vrai contenu arrive une seconde plus tard.
+
+Le décalage est donc **retenu au changement** et remis dès que le contenu peut
+le porter. `onContentSizeChange` est l'événement qui dit « la page vient de
+faire cette hauteur », c'est-à-dire exactement la question posée — un délai
+deviné ne l'aurait jamais été.
+
+**Et un vrai glissement l'annule.** Quelqu'un qui fait défiler pendant que le
+volet charge a dit où il voulait être ; être ramené par une requête qui arrive
+serait la page qui bouge sous un doigt.
+
+Règle générale qui en sort : **un état de chargement plus court que son contenu
+est un état qui détruit le défilement**, et personne ne le voit tant que les
+données sont en cache.
+
+### La racine d'une pile ne dessine aucun bouton retour (17/09/2026)
+
+Trouvé en déplaçant la bibliothèque à la racine : elle s'ouvrait sur une barre
+**vide**, avec le seul balayage pour sortir. Dans sa propre pile il n'y a rien
+derrière son écran d'accueil, et le parent qui a le groupe d'onglets derrière
+lui montre `headerShown: false`.
+
+**Une pile imbriquée était le réflexe, sur le précédent de `settings/`, `stats/`
+et `training/` — et ces trois-là sont dans un ONGLET**, où personne n'attend un
+retour depuis leur écran d'accueil. La bibliothèque est poussée par-dessus tout,
+donc elle en veut un. Ses écrans sont déclarés à plat sur la pile racine.
+
+**Le bouton « en verre » demandé est celui du système, et c'est la règle prise
+du bon côté.** Un `GlassButton` dans un en-tête est du verre dans du verre — la
+direction iOS 26 le nomme, et la tranche 3 l'avait pris du mauvais côté une
+fois. Un bouton de barre natif **est** un `UIBarButtonItem`, et c'est à ses
+propres contrôles qu'UIKit applique le matériau : le demander revient à ne rien
+dessiner soi-même. `headerBackTitle` dit ce qu'il écrit, l'écran précédent étant
+un groupe d'onglets qui n'a pas de titre à prêter.
+
+### iOS révèle le champ focalisé UNE fois, et ce n'est pas celle qui manque (17/09/2026)
+
+**Le système révèle le premier répondant quand le clavier ARRIVE.** Ça couvre le
+premier toucher dans un formulaire et rien d'autre. Les chevrons déplacent le
+focus pendant que le clavier est déjà levé : aucune notification, aucun
+changement d'encart, rien à quoi réagir — donc descendre un formulaire met le
+curseur dans un champ **derrière le clavier**, et on tape dans quelque chose
+qu'on ne voit pas.
+
+C'est ce que `useFormScroll` existe pour faire, et l'éditeur d'aliment portait le
+défaut aussi, sans que ça se soit jamais vu : sa `KeyboardAvoidingView` fait la
+place, elle ne déplace pas la page.
+
+**Deux déclencheurs, et l'idempotence est ce qui les rend compatibles** : au
+focus, et à l'arrivée du clavier. Le premier ne connaît pas encore la hauteur du
+clavier au tout premier toucher ; le second la connaît. Un champ déjà dégagé
+rend **zéro**, donc les deux ne se battent jamais.
+
+**Et l'arithmétique est sortie dans `core/ui/reveal.ts`.** Un `.tsx` qui importe
+react-native est hors de portée de la suite Node — l'index du framework est du
+Flow que rolldown refuse — donc un calcul laissé dans un composant est un calcul
+que **rien** ne vérifie, et rien ne dessine un clavier en Node. Le §4 le
+demandait déjà ; ici c'est en plus le seul moyen que ces nombres soient jamais
+contrôlés.
+
+Le haut de la bande visible est **déduit, pas connu** : rien ici ne peut demander
+la hauteur d'un en-tête transparent. Ce qui se voit est que la vue défilante est
+plus courte que la fenêtre, et la différence est ce qui la borde. Prendre le tout
+pour le bord haut se trompe du bon côté — ça ne peut demander que moins de
+mouvement, jamais pousser un champ sous une barre.
+
+### Un chiffre est remplacé, un mot est corrigé (17/09/2026)
+
+**La sélection au focus n'est pas une préférence d'écran, c'est une propriété du
+contenu.** Un nombre : on en énonce un autre, et effacer quatre chiffres coûte
+quatre touchers sur une touche de retour. Un nom : toucher « Développé couché »
+pour corriger son accent ne doit pas armer toute la chaîne pour la suppression.
+
+**Le clavier dit lequel des deux c'est** — `decimal-pad`, `number-pad`,
+`numeric`, `numbers-and-punctuation` — donc c'est posé une fois dans `FormInput`,
+aucune rangée n'a à le déclarer et aucune ne peut l'oublier. Un appelant garde le
+dernier mot.
+
+**Et la sélection est demandée deux fois, ce qui n'est pas une ceinture de
+plus** : iOS applique `selectTextOnFocus` au début de l'édition, puis une valeur
+contrôlée est écrite dans le champ, et écrire du texte pousse le curseur à la
+fin. Lequel des deux atterrit en dernier ne nous appartient pas, donc la
+sélection est aussi **énoncée** à la frame suivante. Sélectionner tout deux fois
+sélectionne tout.
+
+### Toujours la Pressable, jamais une Pressable conditionnelle (17/09/2026)
+
+Presser une rangée de formulaire met le curseur dans son champ — « la rangée est
+le champ » était la règle de ce composant depuis la tranche 3, et le libellé à
+gauche était le seul endroit où elle ne tenait pas.
+
+**La rangée est TOUJOURS une `Pressable`, jamais une seulement quand un champ
+s'est inscrit.** Un champ s'inscrit depuis un effet, donc le type d'élément
+changerait après le premier rendu : React démonterait le sous-arbre et le
+remonterait, **en emportant le texte en cours de frappe**. Le prix de presser
+une rangée sans champ est qu'il ne se passe rien, ce qui est ce que presser une
+rangée faisait avant.
+
+**L'exception `flush` n'est pas un contournement.** Ce marqueur veut déjà dire
+« un contrôle a besoin de toute cette rangée », et celui qui le demande est la
+molette de quantité — un `UIPickerView` avec ses propres reconnaisseurs de
+gestes. Une `Pressable` JavaScript autour d'un contrôle natif qui défile est la
+seule imbrication sans contrepartie ici, sur un contrôle du chemin critique
+vérifié sur l'appareil. Le même marqueur décide des deux : **une rangée qui donne
+sa largeur donne aussi ses touchers.**
+
+### Tout écran qui remplace son contenu par une requête clignote (17/09/2026)
+
+Deuxième occurrence du défaut que la tranche 3 avait trouvé sur le carrousel, et
+la règle générale se dégage : **une requête qui répond en un temps assez long
+pour se voir et assez court pour que ce qu'on voie soit un éclair fait paraître
+la page défectueuse.** Un éclair se lit comme un défaut, pas comme du travail.
+
+Et **ça ne se voit jamais pendant qu'on développe**, parce qu'à ce moment-là
+tout a déjà été lu une fois : le défaut n'existe qu'à la visite où rien n'est en
+cache, c'est-à-dire la première de l'utilisateur.
+
+`useMinimumVisible` existe pour ça depuis la tranche 3 et n'avait qu'un appelant.
+Ce qui rend son usage gratuit est la propriété écrite dans le hook lui-même : le
+plancher n'est imposé qu'une fois **l'attente commencée**, donc rien n'est jamais
+retardé sur du contenu déjà là.
+
+**Le chiffre dépend du geste, pas de l'écran.** 500 ms quand on bascule après
+avoir touché un contrôle — on attend quelque chose qu'on vient de demander ;
+1 000 ms sur une journée qu'on balaie, qui doit rester continue.
+
+### Quitter et avoir fini sont deux actes, et un seul se garde (17/09/2026)
+
+La fenêtre d'ajout demande confirmation quand le panier n'est pas vide. La
+conception s'est jouée sur une distinction qu'aucune fenêtre n'avait eu besoin
+de faire jusque-là :
+
+- **`useDismiss` est ce qu'un écran appelle quand il a FINI** — une routine
+  créée, une quantité confirmée, un aliment enregistré ;
+- **`useRequestClose` est quitter sans finir.**
+
+Sans garde les deux sont le même, ce qui est pourquoi rien ne les distinguait.
+Avec un garde branché sur les deux, « Confirmer » demanderait s'il faut
+abandonner les lignes qu'il vient d'écrire — le garde qui se déclenche sur le
+seul chemin où il n'y a rien à perdre.
+
+**Les deux sorties sont gardées, le bouton et le glissement.** C'est une seule
+décision — quitter ça — et le geste est celui des deux qui se fait par accident.
+
+**Refuser ne coûte rien, et c'est la forme qui le décide** : gardée, une
+fermeture par glissement **remet d'abord la fenêtre en place** et demande
+ensuite. Pas « fermer puis annuler » — il n'y a rien à annuler une fois la
+fenêtre repliée, et une fenêtre qui part et revient est une plus mauvaise
+réponse qu'une qui n'est jamais partie.
+
+**Le drapeau du garde est une valeur partagée, pas la prop lue dans le
+worklet.** Le geste tourne sur le fil d'interface et ne voit d'une prop que ce
+qui a été capturé à sa construction ; un panier qui se remplit pendant que la
+fenêtre est ouverte doit armer le garde, pas la version qui existait au premier
+rendu.
+
+**Rien n'est demandé sur un panier vide.** Une confirmation sur une fenêtre qui
+ne contient rien est celle qui apprend à passer outre sans lire — et elle userait
+celles qui comptent. Même raison pour la formulation : « pas enregistrées »
+plutôt que « perdues », puisque rien n'a été écrit. **Une confirmation qui
+surestime ce qu'elle évite s'use.**
+
+### Deux canaux qui n'ont aucun ordre entre eux (17/09/2026)
+
+**Le carrousel a été rapporté deux fois, et c'est la deuxième fois qui donne la
+leçon.** Un jour voisin apparaissait après un balayage ; corrigé une première
+fois, il est revenu — cette fois comme *deux journées à la fois*, donc la bande
+à un décalage qui montre la couture.
+
+La cause n'est pas un mauvais endroit où écrire, c'est qu'un pas se jouait dans
+**deux canaux différents** : les trois pages voyagent sur le commit de React, le
+décalage de la bande voyage sur le canal de Reanimated vers le fil d'interface.
+**Rien n'ordonne les deux l'un par rapport à l'autre.** Le faire dans un effet de
+disposition était faux (il tourne après la peinture), le faire pendant le rendu
+était moins faux, et aucun des deux n'était juste — une course réduite reste une
+course.
+
+**La sortie est de retirer le mouvement d'un des deux canaux, pas de les
+synchroniser** — et il a fallu s'y reprendre à deux fois, ce qui donne la
+deuxième leçon.
+
+*Tentative qui a échoué, et pourquoi elle avait l'air juste* : rendre le décalage
+**cumulatif** pour n'avoir plus rien à réinitialiser, et le compenser par un
+**compte de pas en état React** passé en dépendance de `useAnimatedStyle`.
+L'état voyageait bien dans le commit. **Mais `useAnimatedStyle` livre son
+résultat par le canal de Reanimated même quand sa dépendance vient de React** —
+ce n'est écrit nulle part dans la documentation de la bibliothèque, et c'est la
+seule chose qui comptait ici. Intermittent, exactement comme rapporté.
+
+**La forme qui marche : les deux moitiés ne partagent plus de vue.**
+
+- la vue **extérieure** porte le pas, en style React ordinaire — c'est une prop,
+  elle voyage dans le même commit que les trois pages ;
+- l'`Animated.View` **intérieure** porte le glissement du geste et rien d'autre,
+  et ce glissement ne change pas quand la journée change.
+
+Les transformations se composent, donc la bande atterrit où elle a toujours
+atterri. Au moment du pas, **on ne demande rien au fil d'interface** : il ne
+reste rien qui puisse se désaccorder.
+
+Prix : un geste doit partir de là où la bande se trouve déjà, `translationX`
+comptant depuis le doigt et non depuis l'origine. Gratuit : sauter à une date par
+le calendrier ou l'onglet ne touche ni l'un ni l'autre, donc ce chemin-là ne peut
+pas clignoter non plus.
+
+**Deux règles générales en sortent.** Si deux choses doivent bouger ensemble et
+ne peuvent pas être posées par le même commit, faire en sorte que l'une des deux
+ne bouge pas. Et : **la seule façon de faire voyager une transformation avec les
+enfants qu'elle place est d'en faire une prop de style ordinaire sur une vue
+ordinaire** — un style animé, quelle que soit sa dépendance, prend l'autre
+chemin.
+
+### Un remède qui se voit n'est pas un remède (17/09/2026)
+
+Stats gardait sa place en **retenant le décalage puis en le remettant**. Ça
+marchait, et ça se voyait : la page montait en haut et redescendait — deux
+mouvements là où le bon nombre est zéro, et c'est ainsi que ça a été rapporté.
+
+**La bonne forme est d'empêcher la cause.** Pendant qu'un volet recharge, le
+conteneur garde une hauteur minimale égale à celle qu'il avait, donc le contenu
+ne rétrécit jamais, donc iOS n'a rien à borner et personne ne touche au
+décalage. Rien n'est restauré parce que rien n'est perdu.
+
+**Le volet dit quand relâcher**, par `onReady`, appelé à la fin du plancher de
+son propre indicateur : il est le seul à savoir s'il attend, et un délai deviné
+serait un troisième nombre à tenir. Et la hauteur n'est mesurée que **hors**
+plancher — mesurée sous lui, elle enregistrerait le plancher et le tiendrait
+pour toujours.
+
+### Ce qu'on ne peut pas emprunter au système, et qu'il faut dire (17/09/2026)
+
+La barre au-dessus du clavier a été demandée « exactement comme celle d'iOS 26 ».
+Elle ne peut pas l'être : **`InputAccessoryView` rend un conteneur vide**, et iOS
+n'expose aucune barre d'accessoire standard à demander — ni par React Native, ni
+par UIKit hors d'une vue web, d'où vient celle de Safari. Tout ce qui est dedans
+est dessiné ici.
+
+**Quatre formes ont été essayées à l'aveugle, et une capture d'écran a réglé la
+question en une image.** Dans l'ordre : la surface peinte d'origine (un
+accessoire d'avant iOS 26), des capsules de verre flottantes, une dalle de verre
+pleine largeur, puis des capsules dans un `GlassContainer` assez proches pour
+fusionner. Chacune était une conjecture défendable sur une question de **forme**,
+et aucune source textuelle ne donne une forme.
+
+**Ce qu'iOS 26 pose là est UNE SEULE capsule de verre** : en retrait des deux
+bords, dégagée du clavier, la page visible autour d'elle. Les contrôles sont
+dedans — ceux qui parcourent le formulaire au bord avant, celui qui termine au
+bord arrière — et il n'y a rien que du matériau entre les deux.
+
+**Trois détails qu'aucune description ne contenait**, et qui sont ce que l'image
+a apporté :
+
+- **aucun bouton de verre dedans.** Une capsule dans une capsule est du verre
+  dans du verre — la règle de l'en-tête, un cran plus bas. Les contrôles sont des
+  `Pressable` nus et la barre est le matériau ;
+- **les glyphes sont dans la couleur du texte, pas de l'accent.** Sur la barre du
+  système ils sont de la couleur d'un libellé ; en accent ils se liraient comme
+  des liens sur une surface dont tout le rôle est d'être neutre ;
+- **le contrôle de fin est une coche**, pas le mot « OK ».
+
+`GlassContainer` a donc été essayé puis retiré : le conteneur est la bonne pièce
+pour un **groupe** de contrôles de verre, et une barre d'accessoire n'en est pas
+un.
+
+C'est la troisième réserve de cette forme, après le balayage de suppression et le
+retour par glissement : **une reconstruction se dit, elle ne se laisse pas
+croire** — le matériau est celui du système, la forme et les glyphes sont lus sur
+une image et dessinés ici.
+
+**Et un fond uni restait derrière la capsule, qu'aucun style de ce projet ne
+pouvait atteindre.** Il appartient à la vue native : `InputAccessoryView` prend
+une prop `backgroundColor` et la passe telle quelle à
+`RCTInputAccessoryComponentView`, qui en peint sa vue de contenu. Lu dans la
+source de React Native — rien dans la documentation du composant n'annonce qu'une
+barre a un fond par défaut.
+
+**Corollaire général, et c'est le troisième de cette famille dans ce projet** —
+après l'`InputAccessoryView` qui ne se partage pas et le greffon Expo qui
+s'applique tout seul : **un conteneur natif peut peindre sous ce qu'on lui
+confie, donc « aucun fond dans mon style » ne veut pas dire « aucun fond ».**
+Quand une surface a l'air peinte et que rien dans l'arbre ne la peint, la réponse
+est dans la source du composant natif.
+
+**Et rendre l'accessoire transparent a découvert ce qu'il y avait dessous, qui
+n'était pas la page.** Le blanc a été cherché trois fois au mauvais endroit — la
+barre, l'accessoire natif, le conteneur de React Native — et il n'était dans
+aucun des trois.
+
+`behavior="padding"` garde la `KeyboardAvoidingView` à **pleine hauteur** et
+remonte le contenu par sa propre marge basse : la `ScrollView` **rétrécit** donc
+au-dessus du clavier. Ce qui ne peignait qu'elle cessait de peindre la bande où
+le clavier et son accessoire se posent, et ce qui se voyait à travers était la
+**fenêtre**, qui n'a aucun fond à elle.
+
+Ce n'est pas un constat neuf : la tranche 5 avait trouvé le même blanc autour de
+la fenêtre du calendrier, en notant qu'il ne se corrigerait que nativement, au
+prix d'un cycle CI. **Vu par en dessous il se corrige en JavaScript** : on peint
+la vue **rembourrée**, jamais celle qui se rétrécit.
+
+**Règle : dans une pile où une vue se rétrécit pour faire place au clavier, la
+couleur appartient à celle qui garde sa hauteur.** Cinq écrans portaient la même
+construction et la même erreur.
+
+**Et la leçon de méthode, qui vaut au-delà de cette barre : sur une question de
+forme, demander l'image plutôt que deviner quatre fois.** Deux tours ont été
+dépensés à reformuler une description ; le troisième a coûté une capture d'écran
+et n'a laissé aucune ambiguïté.
+
+### Une édition a deux fins honnêtes, et « revenir » n'en est pas une (17/09/2026)
+
+Quitter une modification non enregistrée demande désormais confirmation, sur un
+exercice comme sur une routine. Ce qui a décidé la **forme** est une question
+qu'on ne se pose qu'en l'écrivant : que fait le bouton retour ?
+
+Une édition non enregistrée a exactement deux fins honnêtes — **enregistrer** et
+**abandonner** — et un geste qui veut dire « revenir » ne se distingue d'aucune
+des deux. L'intercepter pour le contredire est possible (`beforeRemove`) et
+mauvais : la pile native le fait mal, et ce qu'on obtient est un écran qui part
+et revient — le défaut que le panier a évité en remettant la fenêtre **avant** de
+demander.
+
+**Donc on ne l'offre pas.** Pendant l'édition, le retour et le balayage sont
+coupés ; la seule sortie est nommée, et elle demande. Ne pas offrir une sortie
+est plus simple que de la reprendre.
+
+**Et rien n'est demandé quand rien n'a été touché.** La comparaison porte sur le
+brouillon **stocké**, pas sur un drapeau « touché » : taper un caractère et le
+retaper ne demande rien, ce qui est ce que la question veut dire. Une
+confirmation sur un formulaire encore exactement tel qu'il a été ouvert est celle
+qui apprend à passer outre sans lire — même raison que sur le panier vide.
+
+**Les égalités sont écrites champ par champ, jamais génériquement.** La question
+est « y a-t-il quelque chose à perdre », et une comparaison profonde y répondrait
+sur des champs que personne n'a choisi de garder — y compris celui qu'on ajoutera
+ensuite. Le test nomme donc **chaque** champ du brouillon, parce que le défaut
+qu'il garde est un champ ajouté et oublié dans la comparaison, que rien d'autre
+n'attraperait et qui ferait dire à une confirmation qu'il n'y a rien à perdre.
+
+Deux détails qui ne se devinent pas : `incrementKg` se compare comme la **chaîne**
+qu'elle est — « 2,5 » et « 2.5 » se parsent pareil et ne sont pas la même chose à
+retaper, et une confirmation parle de ce qui serait perdu, pas de ce qui serait
+stocké ; et `exerciseName` est délibérément absent d'une ligne de routine, étant
+porté pour l'affichage et venant de l'exercice, donc un renommage n'est pas une
+modification de cette routine.
+
+### La même correction, la deuxième fois, sur l'autre page (17/09/2026)
+
+Modifier un exercice se fait sur sa page. C'est mot pour mot ce que la routine a
+fait en tranche 10, et le fait que les deux pages aient eu besoin de la même
+correction dit quelque chose sur la règle plutôt que sur les pages :
+
+**« agir ouvre une fenêtre par-dessus » se lit trop littéralement dès que la
+chose sur laquelle on agit occupe déjà tout l'écran.** La règle existe pour que
+cette chose **reste visible** ; une fenêtre qui la couvre exactement ne gagne
+rien et dépense un congédiement. La création, elle, garde sa fenêtre dans les
+deux cas — il n'y a pas de page à basculer quand rien n'existe encore.
+
+Corollaire de structure, deux fois identique : une page en deux états demande
+**un** composant partagé (`RoutineBody`, puis `ExerciseBody`), sinon les deux
+états dérivent.
+
+### Une carte qui ne se voit qu'en éditant ne sert qu'à celui qui édite (17/09/2026)
+
+Le schéma corporel est désormais sur la page d'un exercice en permanence, pas
+seulement sur son formulaire. Ce qui le justifie n'est pas la symétrie : les
+quinze noms de muscles sont **inventés en tranche 10** et n'ont jamais rencontré
+un exercice réel, donc « lats » est un mot avant d'être un endroit — et la page
+d'un exercice est exactement là où « c'est où ? » se pose, par quelqu'un qui ne
+modifie rien.
+
+### Un champ multiligne n'est pas une option, c'est un autre objet (17/09/2026)
+
+`multiline` était déjà passé aux quatre champs de notes, et ils restaient d'une
+ligne. L'idiome du formulaire explique pourquoi : **« la rangée est le champ »
+marche parce qu'une valeur est courte et se lit le long du bord droit.** Une
+note est une phrase ou trois — alignée à droite elle se lit comme de la poésie
+en escalier, et centrée dans une rangée de 44 points elle ne peut pas grandir du
+tout.
+
+Ce qu'il fallait n'était donc pas un réglage mais un autre objet : pleine
+largeur, aligné à gauche, taille de paragraphe, une hauteur minimale de deux
+lignes et **aucune hauteur fixe** — c'est l'absence de hauteur qui laisse un
+champ grandir. Et **jamais `flex`** : dans une colonne il s'étirerait jusqu'au
+parent au lieu de son propre contenu, ce qui est exactement le contraire du but.
+
+Détail qui n'en est pas un : le libellé passe **au-dessus**, ce qui est déjà la
+forme qu'une note a en lecture. La page ne change donc pas de disposition en
+basculant en édition — c'est la même exigence que « présentation identique à la
+création », appliquée à un champ.
+
+**Et un champ qui grandit doit emmener la page avec lui.** `onContentSizeChange`
+est exactement l'événement « ce champ vient de grandir » : pas de sondage, pas de
+mesure à chaque frappe. Le révélage qu'il demande rend **zéro** quand le champ a
+encore de la place — c'est cette idempotence qui le rend sûr à appeler à chaque
+ligne gagnée, exactement comme elle le rend sûr à appeler au focus *et* à
+l'arrivée du clavier.
+
+**Une bagarre à trancher, qu'on ne voit pas en lisant le code.** Une note plus
+haute que ce que le clavier laisse voir déclenche les DEUX corrections à la
+fois : son bas est sous le clavier et son haut est hors de l'écran. Appliquées
+tour à tour, elles tirent la page d'avant en arrière à chaque ligne. **Le bas
+gagne**, parce que c'est là qu'est le curseur : ce qu'on écrit doit se voir, le
+début d'une note en cours d'écriture non. La correction du haut ne tourne donc
+que pour un champ qui **tient** dans la bande.
+
+### Une note se lit pendant la séance, pas à un toucher de là (17/09/2026)
+
+Les quatre notes d'un exercice s'affichent désormais sur la page de la séance. Le
+§6.3 les appelle « exécution, réglage, respiration, erreurs fréquentes » : elles
+sont écrites précisément pour être lues **pendant** l'entraînement, et la page
+ouverte à ce moment-là est celle de la séance. Une page plus loin, elles étaient
+une référence et pas un rappel.
+
+**En lecture seule, et c'est une règle et non une économie** : une note appartient
+à l'exercice. La modifier depuis une routine la modifierait pour toutes les
+routines qui l'utilisent, depuis un écran qui n'en dit rien. Le chemin vers elles
+existe déjà et il est nommé — toucher le nom de l'exercice ouvre sa page.
+
+**Et c'est gratuit pour une seule raison, qu'il faut redire** : les colonnes
+montent sur l'élément de **liste**, comme `tracks_duration` en tranche 10, parce
+qu'elles viennent de la même ligne et de la même requête. C'est le seul motif qui
+autorise un élément de liste à porter du texte que personne ne liste ; lire un
+exercice par bloc serait le coût par rangée que la tranche 4 a rencontré en
+étendant l'ajout rapide à toute la bibliothèque.
+
+## Points ouverts après la tranche 10
+
+- **Rien de la tranche 10 n'a tourné sur l'appareil.** Aucune dépendance n'a été
+  ajoutée, donc **aucun cycle CI n'est nécessaire** : Metro suffit, le binaire de
+  développement porte déjà `react-native-svg`, `gesture-handler` et le picker.
+  À vérifier dans cet ordre : que la carte corporelle **ressemble à un corps** et
+  s'allume aux bons endroits (c'est le seul point qu'aucun test ne couvre) ; que
+  le balayage d'une série réponde dans une liste imbriquée — deux niveaux de
+  rangées balayables n'ont jamais été exercés ici ; et que l'étape de choix
+  d'exercice revienne sans que la couche arrière apparaisse, le piège du `key`
+  de `SwipeBack` étant exactement celui-là. **S'y ajoutent depuis le
+  17/09/2026** : qu'un superset se lise bien en tours A,B,A,B ; que toucher un
+  nom d'exercice ouvre sa page depuis les deux états de la page ; et que
+  l'interrupteur de progression du bloc se manœuvre sans que le tableau
+  au-dessous perde le focus d'un champ. **Et depuis les retours de navigation
+  du 17/09/2026**, cinq choses qu'aucun test ne peut dire : que l'appui sur
+  l'onglet Journal ramène bien à aujourd'hui — l'écoute `tabPress` d'une API
+  marquée *unstable* est le point le plus incertain de tout ce lot, et son mode
+  de panne est le silence ; que la bibliothèque recouvre effectivement la barre
+  et que son bouton retour n'affiche qu'un chevron ; que les deux fenêtres de la
+  tranche 10 montent enfin du bas au lieu de glisser par la droite ; que le
+  contour d'un muscle touché se voie à douze unités de viewBox ; et que le
+  schéma du formulaire d'exercice tienne dans une fenêtre déjà longue.
+  **Et depuis les retours clavier du même jour**, quatre de plus : que les
+  chevrons emmènent bien la page avec le focus — la marge de 24 points et la
+  déduction du haut de bande sont de l'arithmétique, pas une observation ; que
+  presser le libellé d'une rangée focalise son champ sans gêner le « Ajouter »
+  des éditeurs de portions et d'ingrédients, qui est une `Pressable` désormais
+  imbriquée ; que la molette de quantité tourne exactement comme avant, la
+  rangée `flush` étant justement là pour ça ; et que la quantité pré-remplie
+  arrive bien sélectionnée.
+  **Et depuis les retours du soir**, trois de plus, dont une qui touche un
+  écran vérifié : que la barre au-dessus du clavier ressemble enfin à celle de
+  Safari — c'est le seul point où le rendu du verre décide, et rien ici ne peut
+  le regarder ; que fermer la fenêtre d'ajout par glissement la **remette** en
+  place avant de demander, et que « Confirmer » ne demande rien ; et que les
+  500 ms de plancher se lisent comme du travail plutôt que comme de la lenteur.
+  **Et depuis la reprise de ces trois points** : que la bande du Journal ne
+  montre plus jamais que la bonne journée — c'est le seul de tous ces points qui
+  a été rapporté **trois fois**, et la troisième correction est la première qui
+  ne repose sur aucun ordre entre deux canaux, elle le supprime ; que le
+  défilement de Stats ne bouge **pas du tout** au changement de plage ; et que
+  la barre du clavier ressemble à la capture d'écran de référence : une capsule
+  unique en retrait des bords, chevrons à gauche, coche à droite. **Le carrousel
+  est confirmé réglé** (17/09/2026), donc il sort de cette liste.
+- **Les seuils de nuance de la carte sont choisis, pas mesurés** : 3, 6 et 10
+  séries pondérées. La façon de savoir qu'ils sont faux est de regarder deux
+  routines qu'on sait différentes et de voir si la carte les distingue. Une
+  ligne dans `muscle-volume.ts`.
+- **La demi-série d'un secondaire est une convention**, pas une mesure. Si la
+  carte paraît surestimer les triceps et les épaules, c'est ce nombre qu'il faut
+  bouger — et il est à un seul endroit.
+- **La vignette du §10.1 n'est pas affichée et `media_uri` n'est écrite par
+  rien.** Choisir un média demande `expo-image-picker`, hors du §5 : c'est une
+  demande de dépendance native à valider, et elle coûterait un cycle CI. La
+  colonne existe parce qu'elle est nullable — donc gratuite — et que l'oublier
+  aurait coûté une migration.
+- **Le bouton de démarrage d'une routine n'existe pas**, ni les graphiques, les
+  records et l'historique de la page d'un exercice. Les quatre demandent
+  `session_set`, table de la tranche 11.
+- **Hypothèse signalée : l'incrément par défaut vaut 2,5 kg.** Le plus petit pas
+  qu'une barre encaisse vraiment, un disque de 1,25 kg de chaque côté. Choisi, pas
+  mesuré — d'où un réglage, pour que ça se corrige sans migration.
+- **Le vocabulaire est une hypothèse entière.** Quinze muscles et huit matériels
+  inventés en tranche 10, jamais confrontés à un exercice réel. C'est précisément
+  pourquoi aucune CHECK ne les tient : la correction est une ligne de TypeScript.
+  La façon de savoir qu'ils sont faux est de créer vingt exercices.
+- **`serratus` et `hip-flexors` sont rattachés par contiguïté**, pas par
+  anatomie — au pectoral et au quadriceps. Sur ce dessin l'enjeu est faible, les
+  deux étant minuscules. Les éteindre est une ligne dans `body-map.ts`.
+- **`lats` est posé sur `upper-back`**, qui couvre aussi les rhomboïdes et le
+  trapèze moyen. Le mot est celui qu'on emploie en salle ; le dessin est un peu
+  plus large que le mot.
+- **L'aller-retour export / import n'a toujours pas été refait sur l'appareil
+  depuis `0005`.** `0008` porte le total à **treize tables non vérifiées** dans
+  l'unique filet, contre sept avant. C'est la dette la plus vieille et la plus
+  chère de la liste, et elle vient de doubler.
+- **`sweepCache` n'a toujours pas de site d'appel** (hérité de la tranche 4).
+- **L'instrumentation des quatre transitions de D16 n'existe toujours pas.**
+- **Les tranches 6 et 8 n'ont toujours pas tourné sur l'appareil**, et le critère
+  de sortie de la tranche 9 — les conditions des notifications — n'est toujours
+  pas atteint.
+- **`fontVariant: ['tabular-nums']` n'est toujours pas vérifié sur Nunito**, et
+  `SetRow` s'en sert pour aligner les numéros de série.
+
 ## Points ouverts après la tranche 9
 
 - ~~**Rien de la tranche 9 n'a tourné sur l'appareil.**~~ **Une notification a
@@ -4489,9 +5504,19 @@ rien dedans.
   ses entrées reste matérialisée, l'utilisateur ayant bien agi dessus.
 
 ## Points hérités de la tranche 0, toujours ouverts
-- Où vit le sélecteur segmenté de l'onglet Entraînement, une fois qu'il
-  composera Musculation et Activités (tranche 10). L'écran est provisoirement
-  dans `features/strength`.
+- ~~Où vit le sélecteur segmenté de l'onglet Entraînement, une fois qu'il
+  composera Musculation et Activités (tranche 10).~~ **Résolu, et tranché
+  autrement que le §7 ne le dessinait.** Il vit dans
+  `features/strength/screens/training-screen.tsx`, et il n'y en a qu'UN :
+  Musculation / Activités. Le §7 décrit Musculation comme portant « Routines ·
+  Exercices · Historique », ce qui lu à la lettre donne un segmenté dans un
+  segmenté — forme que cette application n'emploie nulle part et qui coûte un
+  instant à chaque fois pour savoir quel niveau a bougé. Routines et Exercices
+  sont donc deux **sections d'une même page** : une routine se bâtit avec des
+  exercices, et les voir ensemble est la façon dont on remarque qu'il en manque
+  un. Specs amendées (`specs §14.20` n° 2). L'onglet gagne au passage son propre
+  `Stack` — quatrième application du motif de `(journal)`, `settings/` et
+  `stats/`.
 - ~~Les en-têtes natifs.~~ **Résolu.** Un groupe `app/(tabs)/(journal)/`
   n'ajoute aucun segment de chemin : l'écran reste la route index du groupe
   d'onglets et gagne un `Stack` natif. ~~L'icône de bibliothèque du §7 s'y

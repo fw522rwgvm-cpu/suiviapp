@@ -90,6 +90,31 @@ export const SETTING_KEYS = {
    * the receiving device.
    */
   defaultTemplateId: 'default_template_id',
+  /**
+   * The increment a NEW exercise starts from, in kilograms (specs 6.3, 10.4,
+   * 12), slice 10.
+   *
+   * Section 2.1 reserved this key from the start and slice 7 left it out with
+   * the note that it "arrives with its feature in V3". This is that.
+   *
+   * ## IT IS AN INITIAL VALUE, NEVER A FALLBACK, AND THAT IS THE WHOLE POINT
+   *
+   * Specs 6.3 and 10.4 both say the increment is "propre à l'exercice,
+   * initialisé depuis la valeur globale des Réglages". So it is read ONCE, when
+   * an exercise is created, and copied into exercise.increment_kg. It is never
+   * read again for that exercise.
+   *
+   * Read on every access instead, changing this setting would silently rewrite
+   * the progression of every exercise ever created — which "propre à
+   * l'exercice" rules out, and which nothing on screen would explain.
+   *
+   * That is also why exercise.increment_kg carries NO SQL DEFAULT: a default
+   * there would be a second source for the same initial value, free to drift
+   * from this one. Two paths to one number agree almost always, and the day
+   * they diverge both are plausible — the defect shape slice 4 chased out of
+   * quantity prefill.
+   */
+  progressionIncrementKg: 'progression_increment_default_kg',
 } as const;
 
 /**

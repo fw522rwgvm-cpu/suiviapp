@@ -181,6 +181,74 @@ describe('seedJournal', () => {
     expect(countRows(fixture.raw, 'journal_entry')).toBe(first.entries + second.entries);
   });
 
+  it('creates an exercise database and two routines, one a superset', () => {
+    /**
+     * The superset is the point of seeding routines at all. It is the shape
+     * where the rest moves from the line to the block, and having one in the
+     * development data means the page and the editor meet it every time rather
+     * than only when somebody remembers to build one.
+     */
+    const report = seedJournal(fixture.db, { endDate: END, days: 20, seed: 11 });
+
+    expect(report.exercises).toBeGreaterThan(8);
+    expect(report.routines).toBe(2);
+
+    const supersets = fixture.raw
+      .prepare(
+        'SELECT b.id, COUNT(DISTINCT l.exercise_id) AS exercises ' +
+          'FROM routine_block b JOIN routine_line l ON l.block_id = b.id ' +
+          'GROUP BY b.id HAVING exercises > 1',
+      )
+      .all();
+    expect(supersets.length).toBeGreaterThan(0);
+
+    // And its rest is on the BLOCK, which is the invariant restForLine keeps.
+    const blockRests = fixture.raw
+      .prepare(
+        'SELECT COUNT(*) AS n FROM routine_block b ' +
+          'WHERE (SELECT COUNT(DISTINCT exercise_id) FROM routine_line WHERE block_id = b.id) > 1 ' +
+          'AND b.rest_seconds IS NULL',
+      )
+      .get();
+    expect(blockRests).toEqual({ n: 0 });
+  });
+
+  it('gives the filter strips something on both axes, and the body map most of a body', () => {
+    // A catalogue that worked three muscles with one piece of equipment would
+    // exercise neither the filter nor the map, and both would look fine.
+    seedJournal(fixture.db, { endDate: END, days: 10, seed: 13 });
+
+    const muscles = fixture.raw
+      .prepare('SELECT DISTINCT primary_muscle AS m FROM exercise')
+      .all();
+    const equipment = fixture.raw
+      .prepare('SELECT DISTINCT equipment AS e FROM exercise WHERE equipment IS NOT NULL')
+      .all();
+
+    expect(muscles.length).toBeGreaterThanOrEqual(6);
+    expect(equipment.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('reuses the exercise catalogue on a second run, like the foods', () => {
+    const first = seedJournal(fixture.db, { endDate: END, days: 10, seed: 41 });
+    const second = seedJournal(fixture.db, { endDate: END, days: 10, seed: 43 });
+
+    expect(second.exercises).toBe(first.exercises);
+    // Routines are created once and not again: a second run must not leave two
+    // "Poussée A" that differ only by identity.
+    expect(second.routines).toBe(0);
+
+    const duplicates = fixture.raw
+      .prepare('SELECT name, COUNT(*) AS n FROM exercise GROUP BY name HAVING n > 1')
+      .all();
+    expect(duplicates).toEqual([]);
+
+    const routines = fixture.raw
+      .prepare('SELECT name, COUNT(*) AS n FROM routine GROUP BY name HAVING n > 1')
+      .all();
+    expect(routines).toEqual([]);
+  });
+
   it('logs foods that actually resolve, and some as portions', () => {
     const report = seedJournal(fixture.db, { endDate: END, days: 60, seed: 23 });
     expect(report.entries).toBeGreaterThan(0);

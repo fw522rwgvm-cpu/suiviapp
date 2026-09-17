@@ -1,8 +1,9 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import type { LocalDate } from '@/core/date';
 import { useTheme } from '@/core/theme';
 import { LoadingDots } from '@/core/ui/loading-dots';
+import { useMinimumVisible } from '@/core/ui/use-minimum-visible';
 import { Segmented } from '@/core/ui/segmented';
 import { Text } from '@/core/ui/text';
 import { AdherenceCard } from './adherence-card';
@@ -12,6 +13,7 @@ import { MacrosChart } from './macros-chart';
 import { SplitCard } from './split-card';
 import { useDailyFigures } from '../data/stats-queries';
 import { nutritionPanel } from '../domain/panel';
+import { PANEL_LOADING_MS } from '../domain/panel-loading';
 import {
   rangeLabel,
   STAT_RANGE_DAYS,
@@ -48,11 +50,21 @@ export function NutritionPanelSection({
   tolerancePct,
   range,
   onRangeChange,
+  onReady,
 }: {
   today: LocalDate;
   tolerancePct: number;
   range: StatRangeDays;
   onRangeChange: (range: StatRangeDays) => void;
+  /**
+   * Called once this panel is showing real content.
+   *
+   * The screen holds the page's height while a panel reloads, so that a
+   * short loading state cannot make iOS clamp the scroll offset. Only the
+   * panel knows when that is over, and it already does: `waiting` is the
+   * indicator's own floor.
+   */
+  onReady?: () => void;
 }) {
   const theme = useTheme();
 
@@ -75,6 +87,20 @@ export function NutritionPanelSection({
    * Every day of the range, today included: a journal started this morning has
    * nothing to aggregate but is not empty.
    */
+  /**
+   * The indicator, held to a floor once it has appeared at all.
+   *
+   * Not `panel === null` directly: a first visit answers fast enough to be seen
+   * and not fast enough to be missed, which is a flash, and a flash reads as a
+   * defect. Nothing is delayed on a range already read — useMinimumVisible only
+   * imposes the floor once the waiting has begun. See PANEL_LOADING_MS.
+   */
+  const waiting = useMinimumVisible(panel === null, PANEL_LOADING_MS);
+
+  useEffect(() => {
+    if (!waiting) onReady?.();
+  }, [waiting, onReady]);
+
   const empty = panel !== null && panel.days.every((day) => day.consumed === null);
 
   return (
@@ -91,7 +117,7 @@ export function NutritionPanelSection({
         grow
       />
 
-      {panel === null ? (
+      {waiting || panel === null ? (
         <View style={styles.waiting}>
           <LoadingDots />
         </View>

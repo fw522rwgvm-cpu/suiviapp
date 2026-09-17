@@ -1,16 +1,17 @@
 import { Stack } from 'expo-router';
 import { fontFamilyFor, useTheme } from '@/core/theme';
 import { useStackHeaderOptions } from '@/core/ui/stack-header';
-import { RequestedDateProvider } from '@/features/nutrition/hooks/requested-date';
 
 /**
  * A native stack inside the Journal tab, so the screens get a system header.
  *
  * NativeTabs supplies no header of its own, and the Journal has things a header
  * is for: the date being looked at, the previous/next navigation of specs 8.3,
- * and the library icon of specs 7. The same stack carries the library and the
- * food editor, pushed on top — which is why the tab bar stays put while you
- * browse (browsing is a push, adding is a modal).
+ * and the library icon of specs 7.
+ *
+ * It used to carry the library and the food editor too. They moved out to
+ * app/library/ (specs 14.24), where they cover the tab bar — so this stack is
+ * back to the two screens the Journal itself needs.
  *
  * The group parentheses matter: (journal) adds no path segment, so the Journal
  * stays the tabs group's index route rather than moving to /journal.
@@ -52,14 +53,13 @@ export default function JournalLayout() {
   // decision and not a mechanism three stacks have in common.
   const header = useStackHeaderOptions();
 
+  /*
+    The requested-date provider used to be mounted here. It moved to the root
+    layout when the Journal tab trigger started asking for today as well: a
+    trigger is declared in the tabs layout, which is above this stack, and a
+    provider has to be above everyone who reads it.
+  */
   return (
-    /*
-      The provider wraps the stack so the Journal and the calendar screen share
-      it: the calendar asks for a day, the Journal takes it once and clears it.
-      See features/nutrition/hooks/requested-date.tsx for why that is not a
-      route parameter. Mounting a provider is wiring, which is all app/ does.
-    */
-    <RequestedDateProvider>
     <Stack
       screenOptions={{
         ...header,
@@ -116,6 +116,5 @@ export default function JournalLayout() {
         }}
       />
     </Stack>
-    </RequestedDateProvider>
   );
 }

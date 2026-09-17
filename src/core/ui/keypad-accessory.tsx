@@ -1,10 +1,9 @@
 import { useId } from 'react';
-import { InputAccessoryView, Keyboard, Pressable, StyleSheet, View } from 'react-native';
-import { Text } from '@/core/ui/text';
-import { useTheme } from '@/core/theme';
+import { InputAccessoryView, Keyboard } from 'react-native';
+import { BarConfirm, BarSpacer, KEYBOARD_BAR_BACKDROP, KeyboardBar } from './keyboard-bar';
 
 /**
- * The bar above a numeric keypad, carrying one word: OK.
+ * The bar above a numeric keypad, carrying one control: the tick that finishes.
  *
  * ## WHY IT EXISTS AT ALL
  *
@@ -16,11 +15,11 @@ import { useTheme } from '@/core/theme';
  *
  * ## ONE FIELD, SO NO CHEVRONS
  *
- * FormNavigation's bar carries previous/next arrows, and is right to: it
- * serves a form of several fields. A lone field given the same bar would show
- * two arrows that are both disabled — two dead controls, which slice 4
- * refused in as many words. That is the whole difference between the two bars,
- * and why this is not a special case of that one.
+ * FormNavigation's bar carries previous/next arrows, and is right to: it serves
+ * a form of several fields. A lone field given the same bar would show two
+ * arrows that are both dead, which slice 4 refused in as many words. That is
+ * the whole difference between the two bars, and why this is not a special case
+ * of that one.
  *
  * ## ONE BAR PER FIELD, NEVER SHARED
  *
@@ -39,6 +38,9 @@ import { useTheme } from '@/core/theme';
  * has to be in the window already — which means mounted first. Hence the
  * render-prop shape: the caller writes the field, gets the id, and this places
  * the bar behind it.
+ *
+ * What the bar LOOKS like is in core/ui/keyboard-bar.tsx, shared with the form
+ * navigation's, so the two cannot drift.
  */
 export function KeypadAccessory({
   label,
@@ -49,43 +51,18 @@ export function KeypadAccessory({
   /** The field. Receives the id to put on its inputAccessoryViewID. */
   children: (accessoryId: string) => React.ReactNode;
 }) {
-  const theme = useTheme();
   const accessoryId = `keypad${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
 
   return (
     <>
       {children(accessoryId)}
 
-      <InputAccessoryView nativeID={accessoryId}>
-        <View
-          style={[
-            styles.bar,
-            { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border },
-          ]}
-        >
-          <Pressable
-            onPress={() => Keyboard.dismiss()}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel={label}
-          >
-            <Text style={[styles.done, { color: theme.colors.accent }]}>OK</Text>
-          </Pressable>
-        </View>
+      <InputAccessoryView nativeID={accessoryId} backgroundColor={KEYBOARD_BAR_BACKDROP}>
+        <KeyboardBar>
+          <BarSpacer />
+          <BarConfirm label={label} onPress={() => Keyboard.dismiss()} />
+        </KeyboardBar>
       </InputAccessoryView>
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  // Laid out absolutely by iOS and sized to its content, so the content has to
-  // declare a height of its own — here through its padding.
-  bar: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  done: { fontSize: 17, fontWeight: '600' },
-});

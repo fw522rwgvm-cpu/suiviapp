@@ -41,7 +41,16 @@ export const WEIGHT_RANGE_KEYS = ['7', '30', '90', '365'] as const;
  */
 export type WeightRangeKey = (typeof WEIGHT_RANGE_KEYS)[number];
 
-export const DEFAULT_WEIGHT_RANGE: WeightRangeKey = '30';
+/**
+ * The range the panel opens on.
+ *
+ * SEVEN DAYS, requested (specs 14.24), and the same value as the nutrition
+ * panel's so the two tabs open on the same span rather than on two.
+ *
+ * It is only honest because of the smoothing lead above: a week read without it
+ * would compute six of its seven smoothed points from short windows.
+ */
+export const DEFAULT_WEIGHT_RANGE: WeightRangeKey = '7';
 
 /** "90 jours", for the range control. */
 export function weightRangeLabel(key: WeightRangeKey): string {

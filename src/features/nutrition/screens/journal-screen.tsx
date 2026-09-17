@@ -1,6 +1,6 @@
 import { SymbolView } from 'expo-symbols';
 import { Stack, useRouter } from 'expo-router';
-import { useEffect, useLayoutEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -110,16 +110,50 @@ export function JournalScreen() {
   const deleteMeal = useDeleteMeal();
   const deleteEntry = useDeleteEntry();
 
-  const drag = useSharedValue(0);
+  /**
+   * ## TWO TRANSFORMS, BECAUSE TWO CHANNELS CANNOT BE ORDERED
+   *
+   * Reported three times, which is what makes this worth writing out in full.
+   * After a swipe the wrong day appeared for an instant; the second report
+   * named it exactly — two days at once, so the strip sat at an offset showing
+   * the seam; the third said it was still there, and intermittent.
+   *
+   * A step moves two things that have to agree: the three pages React renders,
+   * and the offset that decides which of them fills the screen. **The pages
+   * travel on React's commit and an offset given to Reanimated travels on
+   * Reanimated's own channel to the interface thread, and nothing orders those
+   * two against each other.** Every attempt so far tried to make them coincide:
+   *
+   *  - resetting in a layout effect — worst, it runs after the paint;
+   *  - resetting during the render — earlier, still a race;
+   *  - making the offset cumulative so nothing is reset, and compensating with
+   *    a count of steps in React state. That one looked airtight and is not:
+   *    `useAnimatedStyle` with a React dependency still delivers its result
+   *    through Reanimated. The state was in the commit; the transform computed
+   *    from it was not. Intermittent, exactly as reported.
+   *
+   * So the two stop sharing a view. The OUTER view carries a plain React style
+   * — `-width * (1 + shifted)` — which travels in the same commit as the pages,
+   * because it is an ordinary prop. The INNER Animated.View carries `slide` and
+   * nothing else, and `slide` does not change when the day does. Transforms
+   * compose, so the strip lands where it always did.
+   *
+   * At the moment of a step, the interface thread is not asked for anything.
+   * There is nothing left to get wrong.
+   *
+   * `slide` is cumulative — it never returns to zero, it grows by a page per
+   * step and stays where the animation left it — so a gesture starts from
+   * wherever the strip already is, hence `grip`: `event.translationX` counts
+   * from the finger going down, not from the origin.
+   */
+  const slide = useSharedValue(0);
+  const grip = useSharedValue(0);
+  const [shifted, setShifted] = useState(0);
 
-  // Recentres the strip in the same commit that shifts the pages. See the note
-  // above: the two movements cancel, so nothing moves on screen.
-  useLayoutEffect(() => {
-    drag.value = 0;
-  }, [date, drag]);
-
+  /** Applied together, by design: the list and the offset that places it. */
   function step(delta: number): void {
     setDate((current) => addDays(current, delta));
+    setShifted((current) => current - delta);
   }
 
   const pan = Gesture.Pan()
@@ -128,8 +162,13 @@ export function JournalScreen() {
     // handled by that row instead: the innermost gesture wins.
     .activeOffsetX([-20, 20])
     .failOffsetY([-20, 20])
+    .onBegin(() => {
+      // Where the strip stands. Every step leaves it a page further along, and
+      // a gesture measures from the finger rather than from the origin.
+      grip.value = slide.value;
+    })
     .onUpdate((event) => {
-      drag.value = event.translationX;
+      slide.value = grip.value + event.translationX;
     })
     .onEnd((event) => {
       // A deliberate flick wins over distance: releasing fast is an intent,
@@ -142,20 +181,27 @@ export function JournalScreen() {
       const direction = flicked !== 0 ? flicked : dragged;
 
       if (direction === 0) {
-        drag.value = withTiming(0, SLIDE);
+        slide.value = withTiming(grip.value, SLIDE);
         return;
       }
 
       // A finger moving right uncovers the page on the left, which is the day
       // before: the day moves against the direction of travel.
       const delta = -direction;
-      drag.value = withTiming(direction * width, SLIDE, (finished) => {
+      slide.value = withTiming(grip.value + direction * width, SLIDE, (finished) => {
         if (finished === true) runOnJS(step)(delta);
       });
     });
 
-  const stripStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: -width + drag.value }],
+  /**
+   * The gesture's half, and ONLY the gesture's half.
+   *
+   * It closes over nothing but the shared value, so a step never rebuilds it
+   * and never sends anything to the interface thread. That is the property the
+   * whole arrangement rests on.
+   */
+  const slideStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: slide.value }],
   }));
 
   /**
@@ -328,7 +374,7 @@ export function JournalScreen() {
 
               {/* The library, reached from the Journal header (specs 7). */}
               <Pressable
-                onPress={() => router.push('/(tabs)/(journal)/library')}
+                onPress={() => router.push('/library')}
                 hitSlop={12}
                 accessibilityRole="button"
                 accessibilityLabel="Bibliothèque"
@@ -345,16 +391,27 @@ export function JournalScreen() {
       />
 
       <GestureDetector gesture={pan}>
-        <Animated.View style={[styles.strip, { width: width * 3 }, stripStyle]}>
-          {/*
-            Keyed by date, so the three pages are reconciled by identity: on a
-            step, the page that was arriving is reused rather than remounted,
-            and keeps its unfolded meals and its scroll position.
-          */}
-          <DayPage key={previous} date={previous} active={false} {...pageProps} />
-          <DayPage key={date} date={date} active {...pageProps} />
-          <DayPage key={next} date={next} active={false} {...pageProps} />
-        </Animated.View>
+        {/*
+          THE STEP'S HALF, AS AN ORDINARY PROP.
+
+          A plain View with a plain style, so this transform is carried by the
+          same React commit as the three children below it. That is the entire
+          point: at a step, the day and the offset that places it move together
+          or not at all. See the note above for the three attempts that tried to
+          do this on the other side and could not.
+        */}
+        <View style={[styles.page, { transform: [{ translateX: -width * (1 + shifted) }] }]}>
+          <Animated.View style={[styles.strip, { width: width * 3 }, slideStyle]}>
+            {/*
+              Keyed by date, so the three pages are reconciled by identity: on a
+              step, the page that was arriving is reused rather than remounted,
+              and keeps its unfolded meals and its scroll position.
+            */}
+            <DayPage key={previous} date={previous} active={false} {...pageProps} />
+            <DayPage key={date} date={date} active {...pageProps} />
+            <DayPage key={next} date={next} active={false} {...pageProps} />
+          </Animated.View>
+        </View>
       </GestureDetector>
 
     </>
@@ -363,6 +420,9 @@ export function JournalScreen() {
 
 const styles = StyleSheet.create({
   strip: { flex: 1, flexDirection: 'row' },
+  // The outer layer, one screen wide: it only carries the step's transform, so
+  // the strip inside it keeps being three pages across.
+  page: { flex: 1 },
   // Padding rather than margin: it widens the touch target at the same time as
   // it pulls the icons off the edge, where a margin would only move them.
   headerGroup: {

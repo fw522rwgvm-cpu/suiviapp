@@ -1,0 +1,339 @@
+import { Pressable, StyleSheet, View } from 'react-native';
+import { Text } from '@/core/ui/text';
+import { FormInput, FormRow, FormSection } from '@/core/ui/form-section';
+import { useTheme } from '@/core/theme';
+import { EQUIPMENT, MUSCLES } from '@/core/db/schema';
+import { BodyMapView } from './body-map-view';
+import {
+  muscleRoles,
+  toggleSecondary,
+  type ExerciseDraft,
+} from '../domain/exercise-draft';
+import { EQUIPMENT_LABELS, MUSCLE_LABELS, equipmentLabel, muscleLabel } from '../domain/vocabulary';
+
+/**
+ * One exercise, read or edited, with ONE component for both.
+ *
+ * The shape RoutineBody settled in slice 10, applied to the other page of this
+ * tab: a page in two states rather than two pages that resemble each other, so
+ * there is no second rendering to drift from the first. `exercise-editor-screen`
+ * draws this too, which is what keeps creating and editing the same form.
+ *
+ * ## THE BODY MAP IS ALWAYS THERE
+ *
+ * Asked for (specs 14.27), and it settles something that was inconsistent: the
+ * figure had arrived on the editing form only, so the fifteen invented muscle
+ * names were turned back into anatomy while you chose them and never again. An
+ * exercise's page is exactly where "where is that" gets asked, and the map
+ * answers it without a tap.
+ *
+ * It shades by ROLE rather than by volume — an exercise has no sets to count —
+ * and it is the same component the routine page uses, so the two cannot drift
+ * about where a muscle is.
+ */
+export function ExerciseBody({
+  draft,
+  editable,
+  onChange,
+}: {
+  draft: ExerciseDraft;
+  editable: boolean;
+  onChange?: (next: ExerciseDraft) => void;
+}) {
+  const theme = useTheme();
+
+  function update(change: Partial<ExerciseDraft>): void {
+    onChange?.({ ...draft, ...change });
+  }
+
+  return (
+    <>
+      <View
+        style={[
+          styles.map,
+          {
+            backgroundColor: theme.colors.surface,
+            borderColor: theme.colors.border,
+            borderRadius: theme.radius.lg,
+          },
+        ]}
+      >
+        <BodyMapView
+          muscles={[draft.primaryMuscle, ...draft.secondaryMuscles]}
+          roles={muscleRoles(draft.primaryMuscle, draft.secondaryMuscles)}
+          height={200}
+        />
+      </View>
+
+      {editable ? (
+        <FormSection caption="IDENTITÉ">
+          <FormRow label="Nom">
+            <FormInput
+              value={draft.name}
+              onChangeText={(name) => update({ name })}
+              placeholder="Développé couché"
+              autoCapitalize="sentences"
+            />
+          </FormRow>
+          <FormRow label="Incrément (kg)">
+            <FormInput
+              value={draft.incrementKg}
+              onChangeText={(incrementKg) => update({ incrementKg })}
+              keyboardType="decimal-pad"
+              placeholder="2,5"
+            />
+          </FormRow>
+        </FormSection>
+      ) : (
+        <FormSection caption="EXERCICE">
+          <FormRow label="Muscle principal">
+            <Value text={muscleLabel(draft.primaryMuscle)} />
+          </FormRow>
+          {draft.secondaryMuscles.size === 0 ? null : (
+            <FormRow label="Muscles secondaires">
+              <Value text={[...draft.secondaryMuscles].map(muscleLabel).join(', ')} />
+            </FormRow>
+          )}
+          {draft.equipment === null ? null : (
+            <FormRow label="Matériel">
+              <Value text={equipmentLabel(draft.equipment) ?? ''} />
+            </FormRow>
+          )}
+          <FormRow label="Incrément">
+            <Value text={`${draft.incrementKg} kg`} />
+          </FormRow>
+        </FormSection>
+      )}
+
+      {editable ? (
+        <>
+          <ChoiceGroup
+            caption="MUSCLE PRINCIPAL"
+            options={MUSCLES.map((value) => ({ value, label: MUSCLE_LABELS[value] }))}
+            selected={[draft.primaryMuscle]}
+            onPress={(value) => {
+              const muscle = MUSCLES.find((item) => item === value);
+              if (muscle !== undefined) update({ primaryMuscle: muscle });
+            }}
+          />
+
+          <ChoiceGroup
+            caption="MUSCLES SECONDAIRES"
+            options={MUSCLES.filter((m) => m !== draft.primaryMuscle).map((value) => ({
+              value,
+              label: MUSCLE_LABELS[value],
+            }))}
+            selected={[...draft.secondaryMuscles]}
+            onPress={(value) => {
+              const muscle = MUSCLES.find((item) => item === value);
+              if (muscle === undefined) return;
+              update({ secondaryMuscles: toggleSecondary(draft.secondaryMuscles, muscle) });
+            }}
+          />
+
+          <ChoiceGroup
+            caption="MATÉRIEL"
+            options={EQUIPMENT.map((value) => ({ value, label: EQUIPMENT_LABELS[value] }))}
+            selected={draft.equipment === null ? [] : [draft.equipment]}
+            onPress={(value) => {
+              const item = EQUIPMENT.find((option) => option === value);
+              // Tapping the selected one clears it, as a filter chip does.
+              update({ equipment: item === undefined || draft.equipment === item ? null : item });
+            }}
+          />
+        </>
+      ) : null}
+
+      {editable ? (
+        <FormSection caption="NOTES">
+          <NoteField
+            label="Exécution"
+            value={draft.noteExecution}
+            onChange={(noteExecution) => update({ noteExecution })}
+          />
+          <NoteField
+            label="Réglage"
+            value={draft.noteSetup}
+            onChange={(noteSetup) => update({ noteSetup })}
+          />
+          <NoteField
+            label="Respiration"
+            value={draft.noteBreathing}
+            onChange={(noteBreathing) => update({ noteBreathing })}
+          />
+          <NoteField
+            label="Erreurs fréquentes"
+            value={draft.noteMistakes}
+            onChange={(noteMistakes) => update({ noteMistakes })}
+          />
+        </FormSection>
+      ) : hasNotes(draft) ? (
+        <FormSection caption="NOTES">
+          <Note label="Exécution" text={draft.noteExecution} first />
+          <Note label="Réglage" text={draft.noteSetup} />
+          <Note label="Respiration" text={draft.noteBreathing} />
+          <Note label="Erreurs fréquentes" text={draft.noteMistakes} />
+        </FormSection>
+      ) : null}
+    </>
+  );
+}
+
+/** A read-only value in a form row: right-aligned, quiet, drawing nothing. */
+function Value({ text }: { text: string }) {
+  const theme = useTheme();
+  return <Text style={[styles.value, { color: theme.colors.textMuted }]}>{text}</Text>;
+}
+
+function hasNotes(draft: ExerciseDraft): boolean {
+  return (
+    draft.noteExecution !== '' ||
+    draft.noteSetup !== '' ||
+    draft.noteBreathing !== '' ||
+    draft.noteMistakes !== ''
+  );
+}
+
+/**
+ * A note renders nothing at all when it is absent — never an empty row.
+ *
+ * Four labelled rows with three of them blank is a form, not a page. The
+ * section itself disappears when all four are empty, which is why hasNotes
+ * exists rather than each row deciding alone.
+ */
+function Note({ label, text, first }: { label: string; text: string; first?: boolean }) {
+  const theme = useTheme();
+  if (text === '') return null;
+
+  return (
+    <View
+      style={[
+        styles.note,
+        first === true
+          ? null
+          : { borderTopColor: theme.colors.border, borderTopWidth: StyleSheet.hairlineWidth },
+      ]}
+    >
+      <Text style={[styles.noteLabel, { color: theme.colors.textMuted }]}>{label}</Text>
+      <Text style={[styles.noteText, { color: theme.colors.text }]}>{text}</Text>
+    </View>
+  );
+}
+
+/**
+ * A note: its name above, the field below, across the whole row.
+ *
+ * NOT the labelled row the rest of the form uses, and the reason is the shape
+ * of the answer. A muscle or an increment is a value and reads down the right
+ * edge; a note is a sentence or three, and a paragraph pushed into the right
+ * half of a row is ragged and cannot grow.
+ *
+ * It is also the shape the note has when it is READ, a few lines below — so the
+ * page does not change layout when it flips into editing.
+ */
+function NoteField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const theme = useTheme();
+
+  return (
+    <FormRow>
+      <View style={styles.noteField}>
+        <Text style={[styles.noteLabel, { color: theme.colors.textMuted }]}>{label}</Text>
+        <FormInput
+          value={value}
+          onChangeText={onChange}
+          placeholder="Facultatif"
+          multiline
+          autoCapitalize="sentences"
+        />
+      </View>
+    </FormRow>
+  );
+}
+
+/**
+ * A group of chips, for a choice with more options than a segmented control
+ * can hold.
+ *
+ * Fifteen muscles do not fit in a segmented control and would not fit in a
+ * picker wheel either without hiding fourteen of them behind a scroll. Chips
+ * wrap, show every option at once, and are the same control the filter strips
+ * use — so choosing a muscle and filtering on one look alike, which they are.
+ */
+function ChoiceGroup({
+  caption,
+  options,
+  selected,
+  onPress,
+}: {
+  caption: string;
+  options: readonly { value: string; label: string }[];
+  selected: readonly string[];
+  onPress: (value: string) => void;
+}) {
+  const theme = useTheme();
+
+  return (
+    <View style={styles.group}>
+      <Text style={[styles.caption, { color: theme.colors.textFaint }]}>{caption}</Text>
+      <View style={styles.chips}>
+        {options.map((option) => {
+          const on = selected.includes(option.value);
+          return (
+            <Pressable
+              key={option.value}
+              onPress={() => onPress(option.value)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: on }}
+              style={({ pressed }) => [
+                styles.chip,
+                {
+                  backgroundColor: on ? theme.colors.accent : theme.colors.surface,
+                  borderColor: on ? theme.colors.accent : theme.colors.border,
+                  borderRadius: theme.radius.pill,
+                  opacity: pressed ? 0.7 : 1,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.chipLabel,
+                  { color: on ? theme.colors.onAccent : theme.colors.text },
+                ]}
+              >
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  map: {
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+    // The figures are drawn to the top of their viewBox and carry their own
+    // air above; the card owes them the bottom, as the routine page's does.
+    paddingBottom: 12,
+  },
+  value: { fontSize: 16, textAlign: 'right' },
+  note: { paddingVertical: 11, paddingHorizontal: 14, gap: 3 },
+  noteField: { flex: 1, gap: 3, paddingVertical: 4 },
+  noteLabel: { fontSize: 13 },
+  noteText: { fontSize: 15, lineHeight: 21 },
+  group: { gap: 7 },
+  caption: { fontSize: 12, fontWeight: '600', letterSpacing: 0.6, marginLeft: 16 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { paddingHorizontal: 13, paddingVertical: 8, borderWidth: StyleSheet.hairlineWidth },
+  chipLabel: { fontSize: 14 },
+});

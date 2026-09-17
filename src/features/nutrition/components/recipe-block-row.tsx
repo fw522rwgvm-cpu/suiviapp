@@ -6,7 +6,7 @@ import { useTheme } from '@/core/theme';
 import type { JournalEntryView } from '../data/day-reads';
 import { EntryRow } from './entry-row';
 import { ListSeparator } from '@/core/ui/list-separator';
-import { SwipeToDeleteRow } from './swipe-to-delete-row';
+import { SwipeToDeleteRow } from '@/core/ui/swipe-to-delete-row';
 
 /**
  * A grouped recipe block in the journal (specs 8.6).

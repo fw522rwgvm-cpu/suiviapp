@@ -34,7 +34,7 @@ describe('table catalog', () => {
     expect(unclassified).toEqual([]);
   });
 
-  it('carries the tables of slices 0 to 8, parents before children', () => {
+  it('carries the tables of slices 0 to 10, parents before children', () => {
     // The importer follows this order, never the file's key order.
     //
     // The planning block sits between the settings and the reference data, so
@@ -56,6 +56,13 @@ describe('table catalog', () => {
     // table of four rows holding what the user chose is configuration rather
     // than a domain. A reader repairing this file by hand (D7) finds the two
     // settings tables together, before any data.
+    //
+    // The strength block closes the file, and it is the first whose internal
+    // order is forced from end to end: `exercise` leads because both
+    // exercise_secondary_muscle and routine_line reference it, `routine`
+    // follows because its three children do, and routine_block precedes the
+    // lines that sit in it. Where the planning and recipe blocks chose an order
+    // a reader would expect, this one had no choice to make.
     expect(exportedTables().map((table) => table.name)).toEqual([
       'setting',
       'notification_setting',
@@ -74,6 +81,12 @@ describe('table catalog', () => {
       'journal_entry',
       'weight_goal',
       'weight_measure',
+      'exercise',
+      'exercise_secondary_muscle',
+      'routine',
+      'routine_warmup_step',
+      'routine_block',
+      'routine_line',
     ]);
   });
 
@@ -87,6 +100,19 @@ describe('table catalog', () => {
     const tags = exportedTables().find((table) => table.name === 'recipe_tag');
 
     expect(tags?.primaryKey).toEqual(['recipe_id', 'tag']);
+  });
+
+  it('finds the composite primary key of exercise_secondary_muscle too', () => {
+    // The second composite key in the schema, and the first since the fix. It
+    // gets its own assertion rather than riding on recipe_tag's because that is
+    // the difference between a mechanism that works and one that is KNOWN to:
+    // 0008 landed without this costing anything, and the only way to say that
+    // honestly is to have asked.
+    const secondary = exportedTables().find(
+      (table) => table.name === 'exercise_secondary_muscle',
+    );
+
+    expect(secondary?.primaryKey).toEqual(['exercise_id', 'muscle']);
   });
 
   it('dates the planning tables to 0004, so a slice-4 archive stays readable', () => {

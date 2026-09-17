@@ -57,6 +57,20 @@
       "when": 1789454661655,
       "tag": "0007_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1789465120985,
+      "tag": "0008_strength",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1789627800747,
+      "tag": "0009_duration",
+      "breakpoints": true
     }
   ]
 }

@@ -7,6 +7,8 @@ import {
   pendingEntryMacros,
   wasNameTruncated,
   type PendingEntry,
+  discardBasketDetail,
+  discardBasketQuestion,
 } from '../../src/features/nutrition/domain/pending-entry';
 import { describeMacros } from '../../src/features/nutrition/domain/macros';
 import { baseQuantity, portionQuantity } from '../../src/features/nutrition/domain/portions';
@@ -171,5 +173,40 @@ describe('the macro line, shared with the journal row', () => {
     expect(describeMacros({ protein: 8, carbs: 47, fat: 3, kcal: 265 })).toBe(
       'P 8,0 · G 47,0 · L 3,0',
     );
+  });
+});
+
+describe('what is asked before a basket is thrown away', () => {
+  it('names the number, because the number is the whole argument', () => {
+    /**
+     * "Abandonner ?" asks nothing useful: the answer depends entirely on
+     * whether there is one line in there or nine, and only the person knows
+     * which they meant to leave.
+     */
+    expect(discardBasketQuestion(3)).toContain('3');
+    expect(discardBasketQuestion(9)).toContain('9');
+  });
+
+  it('agrees with itself in the singular', () => {
+    expect(discardBasketQuestion(1)).toBe('Abandonner cette ligne ?');
+    expect(discardBasketDetail(1)).toContain('Elle');
+    expect(discardBasketDetail(1)).not.toContain('Elles');
+  });
+
+  it('agrees with itself in the plural', () => {
+    expect(discardBasketQuestion(2)).toBe('Abandonner ces 2 lignes ?');
+    expect(discardBasketDetail(2)).toContain('Elles');
+  });
+
+  it('says NOT SAVED rather than lost', () => {
+    /**
+     * Nothing has been written — that is the property the basket exists for.
+     * A confirmation that overstates what it prevents teaches people to tap
+     * through confirmations without reading them.
+     */
+    for (const count of [1, 4]) {
+      expect(discardBasketDetail(count)).toContain('enregistré');
+      expect(discardBasketDetail(count)).not.toContain('perd');
+    }
   });
 });

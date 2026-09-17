@@ -16,6 +16,23 @@ import { ACTION_WIDTH, settleSwipe } from './swipe-settle';
 /**
  * Swipe left to delete (specs 8.3), and to take a line out of the basket.
  *
+ * ## WHY THIS LIVES IN core/ui, AND WHY THAT TOOK TWO SLICES TOO LONG
+ *
+ * The project's rule is that a component moves here at its SECOND real user.
+ * This one reached that in slice 8, when weight-history-screen.tsx imported it
+ * from '@/features/nutrition/components/' — a cross-domain import that worked,
+ * shipped, and was written up nowhere. Slice 10 would have been the third
+ * domain reaching across into nutrition for a row that has nothing to do with
+ * food.
+ *
+ * Moved rather than imported a third time, because the alternative is how a
+ * feature folder quietly becomes a shared library: every caller after the first
+ * is evidence the rule already fired, and the only thing a missed promotion
+ * changes is where the next reader thinks the code belongs.
+ *
+ * Nothing about the behaviour changed with the move. swipe-settle.ts came with
+ * it, being the half of the decision that is deliberately not in the gesture.
+ *
  * ## How close this gets to the system, and where it stops
  *
  * The Files app uses UISwipeActionsConfiguration on a UITableView. React
@@ -273,13 +290,34 @@ export function SwipeToDeleteRow({
 
         <GestureDetector gesture={tap}>
           <Animated.View
-            // Open, the layer itself takes the touch: a press meant for the row
-            // would otherwise act on a row the finger cannot fully see.
-            // box-only throughout now: the row's own tap is what handles a
-            // press, so nothing inside needs to receive one — and a Pressable
-            // that slipped back into the content would reintroduce the very
-            // arbitration failure this component was fixed for.
-            pointerEvents="box-only"
+            /**
+             * WHO RECEIVES A TOUCH, and this line has now been wrong once.
+             *
+             * `box-only` means the layer takes the touch and NOTHING INSIDE
+             * EVER DOES. That was right while every caller handed plain text
+             * and let `onPress` carry the press: a Pressable slipping back into
+             * the content would reintroduce the arbitration failure this
+             * component was fixed for — React Native's responder system and
+             * gesture-handler do not arbitrate, so a release after a swipe
+             * reads as a press.
+             *
+             * It became wrong the moment a caller put FIELDS in a row. The set
+             * table's cells are TextInputs, and box-only meant none of them
+             * could ever take focus: the editor looked finished and typed
+             * nothing.
+             *
+             * So the layer swallows touches only when it has something to do
+             * with them — a row that is OPEN, where the tap closes it, or one
+             * that was given an onPress. A row with neither lets its content
+             * through.
+             *
+             * WHAT THIS DOES NOT FIX, stated rather than hidden: a field inside
+             * can still take focus on the release of a swipe, its responder not
+             * being arbitrated against the pan. That is survivable where a
+             * Pressable was not — focusing a field changes nothing, where the
+             * press it replaced deleted a row.
+             */
+            pointerEvents={open || onPress !== undefined ? 'box-only' : 'box-none'}
             accessible={onPress !== undefined}
             accessibilityRole={onPress === undefined ? undefined : 'button'}
             accessibilityLabel={accessibilityLabel}

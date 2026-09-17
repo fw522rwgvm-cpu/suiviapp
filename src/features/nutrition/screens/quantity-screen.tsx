@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -556,7 +556,16 @@ function QuantityBody({
           again, not a second one. In base units it is left out entirely: the
           brackets would repeat the words in front of them.
         */}
-        <FormRow label="Quantité">
+        {/*
+          THE WHOLE ROW OPENS IT, not just the figure (specs 14.25).
+
+          "The row is the field" is the rule this form is built on, and this row
+          was the one place it did not hold: the target was the number itself,
+          on the right, and the word "Quantité" did nothing. onPress rather than
+          the row's default of focusing a field, because there is no field to
+          focus yet — pressing is what creates it.
+        */}
+        <FormRow label="Quantité" onPress={() => setEditing(true)}>
           {/*
             THE ROW IS THE FIELD, once it is touched.
 
@@ -586,23 +595,21 @@ function QuantityBody({
               }}
             />
           ) : (
-            <Pressable
-              onPress={() => setEditing(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Saisir la quantité au clavier"
-              hitSlop={8}
-            >
-              <Text style={[styles.amount, { color: theme.colors.text }]}>
-                {choice === null
-                  ? '—'
-                  : chosen === null
-                    ? formatQuantity(choice.baseQuantity, baseUnit)
-                    : `${formatPortionCount(
-                        choice.portion?.count ?? 0,
-                        chosen.name,
-                      )} (${formatQuantity(choice.baseQuantity, baseUnit)})`}
-              </Text>
-            </Pressable>
+            /*
+              No Pressable of its own any more: the row carries the press, and a
+              Pressable inside a Pressable is the nesting this project keeps
+              out. The row declares the action for VoiceOver instead.
+            */
+            <Text style={[styles.amount, { color: theme.colors.text }]}>
+              {choice === null
+                ? '—'
+                : chosen === null
+                  ? formatQuantity(choice.baseQuantity, baseUnit)
+                  : `${formatPortionCount(
+                      choice.portion?.count ?? 0,
+                      chosen.name,
+                    )} (${formatQuantity(choice.baseQuantity, baseUnit)})`}
+            </Text>
           )}
         </FormRow>
 
@@ -663,15 +670,20 @@ function typedFrom(amount: number): string {
  * row opened and closed, and the bug that produces — a field opening on the
  * previous edit — is invisible until someone edits twice.
  *
- * ## autoFocus AND selectTextOnFocus WORK HERE, WHERE THEY DID NOT ELSEWHERE
+ * ## THE SELECTION IS STATED, BECAUSE THE PAIR WAS NOT ENOUGH
  *
- * Slice 3 found that the pair selects nothing when the value arrives from a
- * query: autoFocus fires at mount, the field is still empty then, and a
- * selection lands on an empty string. Here the value is in hand before the
- * field exists — it comes from the wheels, which are local state — so this is
- * the case the pair was built for: FOCUSING A FIELD THAT IS ALREADY FILLED.
- * Typing therefore replaces, which is the whole point of offering the current
- * value at all.
+ * `autoFocus` + `selectTextOnFocus` was what this did, on the reasoning that
+ * the value is in hand before the field exists — it comes from the wheels,
+ * which are local state — so this was the case the pair was built for. It was
+ * reported not selecting on the device, and the reasoning has a hole in it:
+ * iOS applies selectTextOnFocus as the field begins editing, and a CONTROLLED
+ * value is written into it afterwards; writing text moves the caret to the end.
+ * Which of the two lands last is not ours to decide.
+ *
+ * So the field is focused from an effect and the selection is stated on the
+ * NEXT FRAME — the remedy slice 3 already found for the pre-filled quantity
+ * field, applied here because the same thing was wrong. Typing therefore
+ * replaces, which is the whole point of offering the current value at all.
  *
  * ## THE VALUE IS APPLIED ON THE WAY OUT, NOT ON EVERY KEYSTROKE
  *
@@ -692,6 +704,24 @@ function TypedAmount({
 }) {
   const theme = useTheme();
   const [text, setText] = useState(initialText);
+  const field = useRef<TextInput>(null);
+
+  useEffect(() => {
+    /*
+      On the NEXT FRAME, not in this one. Focusing places the caret itself, so a
+      selection asked for in the same tick is overwritten by it — and the
+      controlled value is written after that again. One frame later, both have
+      happened and the selection is the last word.
+    */
+    const frame = requestAnimationFrame(() => {
+      field.current?.focus();
+      field.current?.setSelection(0, initialText.length);
+    });
+    return () => cancelAnimationFrame(frame);
+    // Once, on mount: this component is born when the row is touched and dies
+    // when it is left, so there is no second value to adopt.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <View style={styles.typedRow}>
@@ -706,10 +736,12 @@ function TypedAmount({
       <KeypadAccessory label="Valider la quantité">
         {(accessoryId) => (
           <TextInput
+            ref={field}
             value={text}
             onChangeText={setText}
             onBlur={() => onDone(text)}
-            autoFocus
+            // Kept for every LATER touch on the field, where it is the case it
+            // works in: focusing a field that is already filled and settled.
             selectTextOnFocus
             // French keyboards put the comma on this pad; parseDecimal takes both.
             keyboardType="decimal-pad"

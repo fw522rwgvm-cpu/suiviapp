@@ -1,6 +1,7 @@
 import { isLiquidGlassAvailable } from 'expo-glass-effect';
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { useTheme } from '@/core/theme';
+import { useRequestToday } from '@/features/nutrition/hooks/requested-date';
 
 /**
  * Four fixed tabs, identical from V1 to V4 (specs 7).
@@ -24,6 +25,7 @@ import { useTheme } from '@/core/theme';
  */
 export default function TabsLayout() {
   const theme = useTheme();
+  const requestToday = useRequestToday();
 
   return (
     <NativeTabs
@@ -38,7 +40,22 @@ export default function TabsLayout() {
         and therefore a system header carrying the date and the day navigation
         of specs 8.3.
       */}
-      <NativeTabs.Trigger name="(journal)">
+      {/*
+        PRESSING IT RETURNS TO TODAY (specs 14.24).
+
+        Through the same request the calendar uses, rather than a second way of
+        telling the Journal which day to show: the carousel keeps owning the
+        date, nothing is stored, and the request is consumed once.
+
+        On EVERY press, not only when the tab is already focused. The focused-
+        only form is the iOS idiom and would have matched the request exactly,
+        but it turns on navigation.isFocused() inside an unstable API this
+        machine cannot exercise — and its failure mode is silence, a feature
+        that simply never happens. Consequence accepted and stated: coming back
+        from another tab also lands on today, which is what specs 7 asks of a
+        launch and one swipe away from wherever you were.
+      */}
+      <NativeTabs.Trigger name="(journal)" listeners={{ tabPress: () => requestToday() }}>
         <NativeTabs.Trigger.Icon sf="fork.knife" />
         <NativeTabs.Trigger.Label>Journal</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>

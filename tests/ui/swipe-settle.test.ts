@@ -4,7 +4,7 @@ import {
   FLICK_VELOCITY,
   FULL_SWIPE,
   settleSwipe,
-} from '../../src/features/nutrition/components/swipe-settle';
+} from '../../src/core/ui/swipe-settle';
 
 /**
  * Removing a row takes two gestures, never one (specs 8.3).

@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { LocalDate } from '@/core/date';
+import { currentLocalDate, type LocalDate } from '@/core/date';
+import { usePreferences } from '@/features/settings/data/settings-queries';
 
 /**
  * How the calendar screen tells the Journal which day to show.
@@ -23,8 +24,16 @@ import type { LocalDate } from '@/core/date';
  * Journal takes it and clears it. Nothing persists, and the carousel keeps
  * owning the date exactly as it did before.
  *
- * Lives under hooks/ because that is where section 3 puts a feature's hooks,
- * and it is mounted by the Journal stack's layout so both screens see it.
+ * Lives under hooks/ because that is where section 3 puts a feature's hooks.
+ *
+ * ## IT IS MOUNTED ABOVE THE TABS, NOT ON THE JOURNAL'S STACK
+ *
+ * It started on the Journal stack, which was enough for the calendar. The
+ * Journal TAB TRIGGER also asks now — pressing it returns to today (specs
+ * 14.24) — and a trigger is declared in the tabs layout, which sits above that
+ * stack. A provider has to be above everyone who reads it, so it moved to the
+ * root. Nothing else changes: the Journal still takes the request and clears
+ * it, and nothing persists.
  */
 
 interface RequestedDate {
@@ -71,4 +80,26 @@ export function useRequestedDate(): RequestedDate {
 export function useRequestDate(): (date: LocalDate) => void {
   const { request } = useRequestedDate();
   return useCallback((date: LocalDate) => request(date), [request]);
+}
+
+/**
+ * "Take me back to today", for the Journal tab trigger.
+ *
+ * ## THE CLOCK IS READ AT THE PRESS, NOT AT MOUNT
+ *
+ * Deliberately NOT useToday, which is frozen against the clock so that a label
+ * does not move under a list when midnight goes past. This is the opposite
+ * case, and it is the one the notification scheduler already settled: pressing
+ * a tab to go to today is an ACT, so the day it lands on has to be the day it
+ * actually is — an application left open overnight would otherwise send you to
+ * yesterday and call it today.
+ *
+ * The cutoff still comes from the preference, so this and every other screen
+ * agree on where the day starts (D3).
+ */
+export function useRequestToday(): () => void {
+  const { request } = useRequestedDate();
+  const { cutoffHour } = usePreferences();
+
+  return useCallback(() => request(currentLocalDate(cutoffHour)), [request, cutoffHour]);
 }

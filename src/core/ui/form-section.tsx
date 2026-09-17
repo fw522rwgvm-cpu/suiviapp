@@ -1,7 +1,7 @@
-import { SymbolView } from 'expo-symbols';
 import {
   Children,
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useId,
@@ -12,17 +12,29 @@ import {
   type RefObject,
 } from 'react';
 import {
+  Dimensions,
   InputAccessoryView,
   Keyboard,
   Pressable,
+  ScrollView,
   StyleSheet,
   TextInput,
   View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   type TextInputProps,
 } from 'react-native';
 import { Text } from '@/core/ui/text';
 import { fontFamilyFor, useTheme } from '@/core/theme';
+import {
+  BarConfirm,
+  BarGlyph,
+  BarSpacer,
+  KEYBOARD_BAR_BACKDROP,
+  KeyboardBar,
+} from './keyboard-bar';
 import { ListSeparator } from './list-separator';
+import { shiftToReveal } from './reveal';
 
 /**
  * A group of form rows, in the idiom of the Settings app.
@@ -57,10 +69,152 @@ interface FormNav {
   /** Every field that has signed in, in the order they were mounted. */
   fields: readonly RefObject<TextInput | null>[];
   register(entry: RefObject<TextInput | null>): () => void;
+  /** Absent when the caller gave no scroll view to move. */
+  anchor?: FormScrollAnchor;
+}
+
+/**
+ * What a form needs from the scroll view it sits in, to keep the field being
+ * typed into where it can be seen.
+ *
+ * Handed in by the caller rather than found: a provider cannot reach the scroll
+ * view its own caller renders, and a context read by the component that
+ * provides it does not exist.
+ */
+export interface FormScrollAnchor {
+  /** Called when a field takes focus, and again when the keyboard arrives. */
+  onFieldFocus(field: TextInput | null): void;
+  onFieldBlur(field: TextInput | null): void;
+  /**
+   * Called when a field GROWS — a note gaining a line (specs 14.29).
+   *
+   * Separate from focus because it says something different: the field has not
+   * moved, the caret has. Revealing it again is idempotent, so a field with
+   * room to spare costs nothing.
+   */
+  onFieldGrow(field: TextInput | null): void;
 }
 
 /** Absent outside a FormNavigation, where fields simply get no accessory. */
 const FormNavContext = createContext<FormNav | null>(null);
+
+/**
+ * How a row reaches the field inside it.
+ *
+ * The row is the field (see the note at the top), so pressing anywhere on it
+ * should put the cursor in it — and until now only the field's own box did,
+ * which on a labelled row is everything except the words on the left. A context
+ * rather than a prop because the field can be nested anywhere inside the row:
+ * beside a unit, inside a pair, at the end of a line of figures.
+ */
+const FormRowContext = createContext<RefObject<TextInput | null> | null>(null);
+
+/**
+ * The scroll view's half of the bargain: keep the focused field visible.
+ *
+ * ## WHY THIS IS NOT LEFT TO THE SYSTEM
+ *
+ * iOS reveals the first responder when the keyboard ARRIVES, which covers
+ * tapping into a form and nothing else. Walking the form with the chevrons
+ * moves the responder while the keyboard is already up — no notification, no
+ * inset change, nothing to react to — so the field two rows down is focused
+ * behind the keyboard, and the person types into something they cannot see.
+ * That is what this exists for.
+ *
+ * ## EVERYTHING HERE IS A REF, AND THAT IS THE POINT
+ *
+ * None of it says anything about what is rendered. The offset in state would
+ * re-render the form on every frame of a scroll to change nothing at all.
+ *
+ * ## IT IS IDEMPOTENT ON PURPOSE
+ *
+ * A field already inside the band moves nothing, so this can run on focus AND
+ * when the keyboard appears without the two fighting — the second one is what
+ * catches the first tap into a form, where the keyboard's height is not yet
+ * known when the field takes focus.
+ */
+export function useFormScroll(): {
+  anchor: FormScrollAnchor;
+  scrollProps: {
+    ref: RefObject<ScrollView | null>;
+    onScroll: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+    onLayout: (event: { nativeEvent: { layout: { height: number } } }) => void;
+    scrollEventThrottle: number;
+  };
+} {
+  const ref = useRef<ScrollView>(null);
+  const offset = useRef(0);
+  const viewport = useRef(0);
+  const focused = useRef<TextInput | null>(null);
+  // Where the keyboard's top edge is, in screen coordinates. The window's own
+  // height until one shows, which is the honest answer to "nothing covers it".
+  const keyboardTop = useRef(Dimensions.get('window').height);
+
+  const reveal = useCallback((field: TextInput | null) => {
+    const scroll = ref.current;
+    if (field === null || scroll === null) return;
+
+    /*
+      measureInWindow rather than measureLayout: it needs no ancestor to be
+      relative to, so the form does not have to hand a node down through
+      everything between the scroll view and the row.
+    */
+    field.measureInWindow((_x, y, _width, height) => {
+      const wanted = shiftToReveal(y, height, {
+        keyboardTop: keyboardTop.current,
+        viewportHeight: viewport.current,
+        windowHeight: Dimensions.get('window').height,
+      });
+      if (wanted === 0) return;
+      scroll.scrollTo({ y: Math.max(0, offset.current + wanted), animated: true });
+    });
+  }, []);
+
+  useEffect(() => {
+    const shown = Keyboard.addListener('keyboardDidShow', (event) => {
+      keyboardTop.current = event.endCoordinates.screenY;
+      reveal(focused.current);
+    });
+    const hidden = Keyboard.addListener('keyboardWillHide', () => {
+      keyboardTop.current = Dimensions.get('window').height;
+    });
+    return () => {
+      shown.remove();
+      hidden.remove();
+    };
+  }, [reveal]);
+
+  const anchor = useRef<FormScrollAnchor>({
+    onFieldFocus: (field) => {
+      focused.current = field;
+      reveal(field);
+    },
+    onFieldBlur: (field) => {
+      if (focused.current === field) focused.current = null;
+    },
+    onFieldGrow: (field) => {
+      // Only the field being typed into. A note further down the form growing
+      // because its value arrived is not a reason to move the page.
+      if (focused.current === field) reveal(field);
+    },
+  });
+
+  return {
+    anchor: anchor.current,
+    scrollProps: {
+      ref,
+      onScroll: (event) => {
+        offset.current = event.nativeEvent.contentOffset.y;
+      },
+      onLayout: (event) => {
+        viewport.current = event.nativeEvent.layout.height;
+      },
+      // Sixty a second: the offset has to be current at the instant a chevron
+      // is pressed, and a coarser rate would scroll from a stale place.
+      scrollEventThrottle: 16,
+    },
+  };
+}
 
 /**
  * Chevrons above the keyboard, to walk a form without reaching for it.
@@ -91,8 +245,21 @@ const FormNavContext = createContext<FormNav | null>(null);
  * written, so the order in the source is the order on screen -- which is the
  * order a form is filled in. Nothing has to number them, and a row added later
  * takes its place by being written in its place.
+ *
+ * ## AND THE CHEVRONS NOW MOVE THE PAGE AS WELL AS THE FOCUS
+ *
+ * They always moved the focus and never the page, so walking down a form put
+ * the cursor in a field behind the keyboard. `anchor` is what fixes that, and
+ * it is optional: a form that does not scroll gives none and nothing changes.
  */
-export function FormNavigation({ children }: { children: ReactNode }) {
+export function FormNavigation({
+  anchor,
+  children,
+}: {
+  /** From useFormScroll, when the form scrolls. Omitted when it does not. */
+  anchor?: FormScrollAnchor;
+  children: ReactNode;
+}) {
   // State, not a ref: a field's position decides what its own bar may do, and
   // that has to be known while rendering, not only while handling a tap.
   const [fields, setFields] = useState<readonly RefObject<TextInput | null>[]>([]);
@@ -103,7 +270,7 @@ export function FormNavigation({ children }: { children: ReactNode }) {
   });
 
   return (
-    <FormNavContext.Provider value={{ fields, register: register.current }}>
+    <FormNavContext.Provider value={{ fields, register: register.current, anchor }}>
       {children}
     </FormNavContext.Provider>
   );
@@ -164,6 +331,7 @@ export function FormSection({
 export function FormRow({
   label,
   flush,
+  onPress,
   children,
 }: {
   label?: string;
@@ -173,19 +341,71 @@ export function FormRow({
    * insets then stand in for the row's.
    */
   flush?: boolean;
+  /**
+   * What pressing the row does, when it is not simply "focus the field".
+   *
+   * For a row whose value BECOMES a field when touched — the quantity screen —
+   * there is nothing to focus yet, and the press is what creates it.
+   */
+  onPress?: () => void;
   children: ReactNode;
 }) {
   const theme = useTheme();
+  const field = useRef<TextInput | null>(null);
 
-  return (
-    <View style={[styles.row, flush === true ? styles.flush : null]}>
+  const inside = (
+    <>
       {label === undefined ? null : (
         <Text style={[styles.label, { color: theme.colors.text }]} numberOfLines={1}>
           {label}
         </Text>
       )}
       <View style={label === undefined ? styles.wide : styles.value}>{children}</View>
-    </View>
+    </>
+  );
+
+  /*
+    A FLUSH ROW KEEPS ITS TOUCHES, as well as its width.
+
+    `flush` already means "a control needs every point of this row" -- and the
+    one that asks for it is the quantity wheel, a UIPickerView with gesture
+    recognisers of its own. A JavaScript Pressable wrapped around a native
+    control that scrolls is the one nesting this project has no reason to risk,
+    on a control that is on the critical path and verified on the device. So the
+    same marker decides both: a row that hands over its width hands over its
+    touches.
+  */
+  if (flush === true) {
+    return (
+      <FormRowContext.Provider value={field}>
+        <View style={[styles.row, styles.flush]}>{inside}</View>
+      </FormRowContext.Provider>
+    );
+  }
+
+  /*
+    ALWAYS A PRESSABLE OTHERWISE, never one only when a field signed in. A field
+    signs in from an effect, so the element type would change after the first
+    render, and React would unmount the subtree and mount it again -- taking the
+    field's own text with it. The cost of pressing a row that has no field is
+    nothing happening, which is what pressing it did before.
+
+    No role and no highlight: a row is not a button. A Pressable written inside
+    one -- the "Ajouter" of the portion and ingredient editors -- still answers
+    for itself, the deepest view being offered the touch first.
+  */
+  return (
+    <FormRowContext.Provider value={field}>
+      <Pressable
+        onPress={() => {
+          if (onPress !== undefined) onPress();
+          else field.current?.focus();
+        }}
+        style={styles.row}
+      >
+        {inside}
+      </Pressable>
+    </FormRowContext.Provider>
   );
 }
 
@@ -196,10 +416,35 @@ export function FormRow({
  * its placeholder; it only fixes what must not vary from row to row, and hangs
  * this field's own accessory bar under it.
  */
-export function FormInput({ style, ref, ...props }: TextInputProps & { ref?: Ref<TextInput> }) {
+export function FormInput({
+  style,
+  ref,
+  onFocus,
+  onBlur,
+  onContentSizeChange,
+  selectTextOnFocus,
+  ...props
+}: TextInputProps & { ref?: Ref<TextInput> }) {
   const theme = useTheme();
   const navigation = useContext(FormNavContext);
+  const row = useContext(FormRowContext);
   const own = useRef<TextInput | null>(null);
+
+  /**
+   * A FIGURE IS REPLACED, A WORD IS EDITED.
+   *
+   * Selecting on focus is right for a number — you are stating a new one, and
+   * clearing four digits first is four taps on a backspace. It is wrong for a
+   * name: touching "Développé couché" to fix its accent must not arm the whole
+   * string for deletion. The keyboard says which of the two this is, so nothing
+   * has to be declared row by row, and a caller can still say otherwise.
+   */
+  const numeric =
+    props.keyboardType === 'decimal-pad' ||
+    props.keyboardType === 'number-pad' ||
+    props.keyboardType === 'numeric' ||
+    props.keyboardType === 'numbers-and-punctuation';
+  const selects = selectTextOnFocus ?? numeric;
 
   // Punctuation-free: this crosses to a native view as a plain string, and
   // useId spells its own with colons.
@@ -226,6 +471,10 @@ export function FormInput({ style, ref, ...props }: TextInputProps & { ref?: Ref
       <TextInput
         ref={(instance) => {
           own.current = instance;
+          // The row keeps its own handle, so pressing the row's label reaches
+          // the field. Set here rather than registered, because a row holds one
+          // field and the last one written is the one it means.
+          if (row !== null) row.current = instance;
           // The caller's ref is served as well as ours: the quantity screen
           // needs one to focus and select the pre-filled value (specs 8.4).
           if (typeof ref === 'function') ref(instance);
@@ -233,9 +482,50 @@ export function FormInput({ style, ref, ...props }: TextInputProps & { ref?: Ref
         }}
         inputAccessoryViewID={navigation === null ? undefined : accessoryId}
         placeholderTextColor={theme.colors.textFaint}
+        selectTextOnFocus={selects}
+        onFocus={(event) => {
+          navigation?.anchor?.onFieldFocus(own.current);
+          /*
+            THE SELECTION IS ASKED FOR TWICE, AND THAT IS NOT A BELT AND BRACES.
+
+            selectTextOnFocus is applied by iOS as the field begins editing; a
+            CONTROLLED value is then written into it afterwards, and writing
+            text moves the caret to the end. Which of the two lands last is not
+            ours to decide, so the selection is also stated on the next frame —
+            the same requestAnimationFrame remedy slice 3 found for the quantity
+            field. Selecting all twice selects all.
+          */
+          if (selects) {
+            const length = typeof props.value === 'string' ? props.value.length : 0;
+            if (length > 0) {
+              requestAnimationFrame(() => own.current?.setSelection(0, length));
+            }
+          }
+          onFocus?.(event);
+        }}
+        onBlur={(event) => {
+          navigation?.anchor?.onFieldBlur(own.current);
+          onBlur?.(event);
+        }}
+        /*
+          THE EVENT THAT SAYS "THIS FIELD JUST GOT TALLER".
+
+          A note gains a line and the caret moves down with it, which on the
+          last rows of a form puts what is being written behind the keyboard.
+          onContentSizeChange is exactly that moment — no polling, no measuring
+          on every keystroke — and the reveal it asks for does nothing when the
+          field still has room.
+        */
+        onContentSizeChange={(event) => {
+          navigation?.anchor?.onFieldGrow(own.current);
+          onContentSizeChange?.(event);
+        }}
         {...props}
         style={[
           styles.input,
+          // A field that wraps stops being a value on a row and becomes text on
+          // a page. See the note on styles.multiline.
+          props.multiline === true ? styles.multiline : null,
           // A TextInput is not a Text, so core/ui/text does not reach it: a
           // field left in the system face beside a label in Nunito is the one
           // place the swap would be visible as a mistake.
@@ -250,89 +540,39 @@ export function FormInput({ style, ref, ...props }: TextInputProps & { ref?: Ref
         has to be in the window already -- which means mounted first.
       */}
       {navigation === null || position < 0 ? null : (
-        <InputAccessoryView nativeID={accessoryId}>
-          <View
-            style={[
-              styles.bar,
-              { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border },
-            ]}
-          >
-            <Arrow
+        <InputAccessoryView nativeID={accessoryId} backgroundColor={KEYBOARD_BAR_BACKDROP}>
+          {/*
+            ONE CAPSULE, WHICH IS WHAT iOS 26 PUTS THERE — see keyboard-bar.tsx
+            for the four shapes tried before a screenshot settled it. The
+            chevrons walk the form at the leading edge, the tick finishes at the
+            trailing one, and the material is the bar rather than anything drawn
+            on it.
+          */}
+          <KeyboardBar>
+            <BarGlyph
               symbol="chevron.up"
               label="Champ précédent"
               disabled={position === 0}
               onPress={() => move(-1)}
             />
-            <Arrow
+            <BarGlyph
               symbol="chevron.down"
               label="Champ suivant"
               disabled={position === navigation.fields.length - 1}
               onPress={() => move(1)}
             />
 
-            <View style={styles.spacer} />
+            <BarSpacer />
 
-            <Pressable
-              onPress={() => Keyboard.dismiss()}
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel="Fermer le clavier"
-            >
-              <Text style={[styles.done, { color: theme.colors.accent }]}>OK</Text>
-            </Pressable>
-          </View>
+            <BarConfirm label="Fermer le clavier" onPress={() => Keyboard.dismiss()} />
+          </KeyboardBar>
         </InputAccessoryView>
       )}
     </>
   );
 }
 
-function Arrow({
-  symbol,
-  label,
-  disabled,
-  onPress,
-}: {
-  symbol: 'chevron.up' | 'chevron.down';
-  label: string;
-  disabled: boolean;
-  onPress: () => void;
-}) {
-  const theme = useTheme();
-
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      hitSlop={10}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled }}
-      style={styles.arrow}
-    >
-      <SymbolView
-        name={symbol}
-        size={18}
-        tintColor={disabled ? theme.colors.textFaint : theme.colors.accent}
-      />
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
-  bar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 18,
-    paddingHorizontal: 16,
-    // An explicit height: the accessory is laid out absolutely and takes its
-    // size from what is inside it, so something has to say how tall it is.
-    height: 44,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  arrow: { paddingVertical: 4 },
-  spacer: { flex: 1 },
-  done: { fontSize: 17, fontWeight: '600' },
   group: { gap: 7 },
   // Uppercase and faint, the way a grouped table names its sections. Indented
   // to the card's own text, not to the screen.
@@ -363,4 +603,25 @@ const styles = StyleSheet.create({
   // No padding of its own: the row already places it, and a field that adds
   // its own leaves the column of values ragged.
   input: { flex: 1, fontSize: 17, textAlign: 'right', padding: 0 },
+  /**
+   * A MULTILINE FIELD BREAKS THE RIGHT-ALIGNED IDIOM, and has to.
+   *
+   * "The row is the field" works because a value is short and reads down the
+   * right-hand edge. A note is a sentence or three: right-aligned it reads as
+   * ragged poetry, and centred vertically in a 44-point row it cannot grow at
+   * all. So it takes the whole width, starts at the left like the text it is,
+   * and has no height of its own — which is what lets it grow line by line.
+   */
+  multiline: {
+    textAlign: 'left',
+    fontSize: 15,
+    lineHeight: 21,
+    // Two lines' worth, so an empty note looks like somewhere to write rather
+    // than like a value that happens to be missing.
+    minHeight: 42,
+    alignSelf: 'stretch',
+    // Never flex: inside a column it would stretch to the parent instead of to
+    // its own content, and the growth is the whole point.
+    flex: 0,
+  },
 });
