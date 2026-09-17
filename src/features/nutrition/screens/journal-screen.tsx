@@ -110,38 +110,41 @@ export function JournalScreen() {
   const deleteMeal = useDeleteMeal();
   const deleteEntry = useDeleteEntry();
 
-  const drag = useSharedValue(0);
-
   /**
-   * Recentres the strip DURING the render that shifts the pages.
+   * ## THE STRIP NEVER RECENTRES, AND THAT IS THE WHOLE FIX
    *
-   * ## WHY THE LAYOUT EFFECT THAT USED TO DO THIS FLICKERED
+   * Reported twice: after a swipe, the wrong day appeared for an instant, and
+   * the second report named the symptom exactly — two days at once, so the
+   * strip was sitting at an offset that shows the seam.
    *
-   * Reported as a wrong day appearing for an instant after a swipe, and it was
-   * exactly that. The step happens in two places at once: React commits three
-   * new pages, and the strip has to come back from ±width to 0 so the two
-   * movements cancel. A layout effect runs after its render has been PAINTED,
-   * and a shared value written from JavaScript is applied on the interface
-   * thread on its own schedule — so for a frame the new pages sat at the old
-   * offset, which shows the page next to the one that was wanted.
+   * The cause is that a step used to happen in two places that cannot be made
+   * to agree. React commits three new pages; the strip has to come back from
+   * ±width to 0 so the two movements cancel. The pages travel on React's commit
+   * and the offset travels on Reanimated's own channel to the interface thread,
+   * and NOTHING orders those two against each other. Doing the reset in a layout
+   * effect was worse (it runs after the paint) and doing it during the render
+   * was better and still a race — which is what the second report was.
    *
-   * Adjusting during the render is React's own answer to a value the render
-   * depends on, and this project has paid for it twice already: the carousel's
-   * own key in slice 3, and the quantity wheels in slice 4. The write is queued
-   * BEFORE the host children are committed rather than after they are painted,
-   * which is the whole difference.
+   * So the reset is gone. `slide` is CUMULATIVE: it never returns to zero, it
+   * grows by a page per step and stays where the animation left it. What
+   * compensates is `shifted`, a count of steps held in REACT STATE — so the
+   * page list and the offset that places it are set in the same `setState` and
+   * travel in the same commit. There is no longer anything for the two threads
+   * to disagree about: at the moment the day changes, the value on the
+   * interface thread does not move at all.
    *
-   * Writing zero twice is harmless, which is what makes it safe to do in a
-   * render React may discard.
+   * The price is that a gesture has to start from wherever the strip already
+   * is, hence `grip`. `event.translationX` counts from the finger going down,
+   * not from the origin.
    */
-  const [centred, setCentred] = useState<LocalDate>(date);
-  if (centred !== date) {
-    setCentred(date);
-    drag.value = 0;
-  }
+  const slide = useSharedValue(0);
+  const grip = useSharedValue(0);
+  const [shifted, setShifted] = useState(0);
 
+  /** Applied together, by design: the list and the offset that places it. */
   function step(delta: number): void {
     setDate((current) => addDays(current, delta));
+    setShifted((current) => current - delta);
   }
 
   const pan = Gesture.Pan()
@@ -150,8 +153,13 @@ export function JournalScreen() {
     // handled by that row instead: the innermost gesture wins.
     .activeOffsetX([-20, 20])
     .failOffsetY([-20, 20])
+    .onBegin(() => {
+      // Where the strip stands. Every step leaves it a page further along, and
+      // a gesture measures from the finger rather than from the origin.
+      grip.value = slide.value;
+    })
     .onUpdate((event) => {
-      drag.value = event.translationX;
+      slide.value = grip.value + event.translationX;
     })
     .onEnd((event) => {
       // A deliberate flick wins over distance: releasing fast is an intent,
@@ -164,21 +172,29 @@ export function JournalScreen() {
       const direction = flicked !== 0 ? flicked : dragged;
 
       if (direction === 0) {
-        drag.value = withTiming(0, SLIDE);
+        slide.value = withTiming(grip.value, SLIDE);
         return;
       }
 
       // A finger moving right uncovers the page on the left, which is the day
       // before: the day moves against the direction of travel.
       const delta = -direction;
-      drag.value = withTiming(direction * width, SLIDE, (finished) => {
+      slide.value = withTiming(grip.value + direction * width, SLIDE, (finished) => {
         if (finished === true) runOnJS(step)(delta);
       });
     });
 
-  const stripStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: -width + drag.value }],
-  }));
+  /**
+   * `shifted` is a dependency, so a step rebuilds this worklet and the new
+   * offset is carried by the same React commit as the new pages.
+   *
+   * At rest the two terms cancel exactly: `slide` is `shifted` pages, so the
+   * strip shows its middle child, which is `date`.
+   */
+  const stripStyle = useAnimatedStyle(
+    () => ({ transform: [{ translateX: -width * (1 + shifted) + slide.value }] }),
+    [width, shifted],
+  );
 
   /**
    * The add screen of specs 8.4 — quick access, search, and free entry one tap
