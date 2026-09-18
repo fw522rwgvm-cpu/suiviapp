@@ -9,6 +9,7 @@ import {
   type DayTemplateId,
   type DayTemplateMealId,
   type ExerciseId,
+  type ExerciseNoteId,
   type FoodId,
   type JournalEntryId,
   type RecipeId,
@@ -18,6 +19,10 @@ import {
   type RoutineId,
   type RoutineLineId,
   type RoutineWarmupStepId,
+  type SessionBlockId,
+  type SessionId,
+  type SessionSegmentId,
+  type SessionSetId,
   type WeightGoalId,
 } from '../../src/core/db/schema';
 import { buildDatabase } from '../../src/features/backup/domain/build-database';
@@ -516,6 +521,115 @@ function fillEveryColumn(raw: Database.Database): void {
    */
   insertLine.run(newId<RoutineLineId>(), blockSuperset, exerciseB, 0, 1, 'work', null, null, null, 1, null, 0, 45, 'Gainage');
   insertLine.run(newId<RoutineLineId>(), blockSuperset, exerciseA, 1, 1, 'long', 12, 20, 40, 3, null, 1, null, null);
+
+  /**
+   * TWO SESSIONS, AND THE COUNT IS FORCED BY ux_session_active.
+   *
+   * At most one session may be 'in_progress' at a time — the invariant of specs
+   * 10.3 and D12, carried by a partial unique index. So `ended_at` can only be
+   * covered by a FINISHED session, and a fixture wanting both columns filled
+   * needs exactly this shape: one done, one live. The constraint writes the
+   * fixture rather than the fixture working around the constraint.
+   */
+  const sessionDone = newId<SessionId>();
+  const sessionLive = newId<SessionId>();
+  const insertSession = raw.prepare(
+    'INSERT INTO session (id, date, routine_id, routine_name_snapshot, status, started_at, ' +
+      'ended_at, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  );
+  insertSession.run(
+    sessionDone, '2026-09-14', routineId, 'Haut du corps A', 'done',
+    1_789_500_100_000, 1_789_500_900_000, 'Bonne séance', 1_789_500_100_001, 1_789_500_900_001,
+  );
+  /**
+   * Every nullable column empty, and the status that the index constrains.
+   * A session started from nothing rather than from a routine is a path specs
+   * 10.3 describes in as many words ("Ajout d'exercice ou de bloc en direct"),
+   * so routine_id and its snapshot are legitimately NULL here.
+   */
+  insertSession.run(
+    sessionLive, '2026-09-15', null, null, 'in_progress',
+    1_789_600_000_000, null, null, null, null,
+  );
+
+  /**
+   * Two segments on the finished session: one CLOSED and one still open.
+   *
+   * `ended_at` needs a real value in some row or the round trip proves nothing
+   * about it — and it is the column the whole duration is summed from, so a
+   * serialiser dropping it would make every past workout read as ongoing.
+   */
+  const insertSegment = raw.prepare(
+    'INSERT INTO session_segment (id, session_id, started_at, ended_at) VALUES (?, ?, ?, ?)',
+  );
+  insertSegment.run(newId<SessionSegmentId>(), sessionDone, 1_789_500_100_000, 1_789_500_400_000);
+  insertSegment.run(newId<SessionSegmentId>(), sessionLive, 1_789_600_000_000, null);
+
+  /**
+   * Two blocks again, and the same two shapes: the superset states its rest on
+   * the block, the single exercise leaves it NULL.
+   */
+  const sessionBlockSingle = newId<SessionBlockId>();
+  const sessionBlockSuper = newId<SessionBlockId>();
+  const insertSessionBlock = raw.prepare(
+    'INSERT INTO session_block (id, session_id, position, rest_seconds) VALUES (?, ?, ?, ?)',
+  );
+  insertSessionBlock.run(sessionBlockSingle, sessionDone, 0, null);
+  insertSessionBlock.run(sessionBlockSuper, sessionDone, 1, 90);
+
+  const insertSet = raw.prepare(
+    'INSERT INTO session_set (id, session_block_id, exercise_id, exercise_name_frozen, position, ' +
+      'set_index, set_type, target_reps_min, target_reps_max, target_load_kg, target_rir, ' +
+      'target_duration_seconds, rest_seconds, progression_enabled, actual_reps, actual_load_kg, ' +
+      'actual_rir, actual_duration_seconds, status, completed_at) ' +
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  );
+  // Every column filled: a target range, a load, a half-RIR, its own rest, and
+  // what was actually performed against all of it.
+  insertSet.run(
+    newId<SessionSetId>(), sessionBlockSingle, exerciseA, 'Développé couché', 0, 1, 'work',
+    6, 8, 72.5, 1.5, null, 120, 1, 8, 75, 1, null, 'done', 1_789_500_200_000,
+  );
+  /**
+   * A set nobody reached: pending, with every actual NULL. The half of `status`
+   * that a fixture of completed sets alone would lose.
+   */
+  insertSet.run(
+    newId<SessionSetId>(), sessionBlockSingle, exerciseA, 'Développé couché', 1, 2, 'warmup',
+    null, null, null, null, null, null, 0, null, null, null, null, 'pending', null,
+  );
+  /**
+   * A TIMED set, the alternative to repetitions since 0009 — and the columns
+   * section 2.6 does not have, added by this slice because a plank put in a
+   * routine has to be performable.
+   */
+  insertSet.run(
+    newId<SessionSetId>(), sessionBlockSuper, exerciseB, 'Gainage', 0, 1, 'work',
+    null, null, null, null, 45, null, 0, null, null, null, 52, 'done', 1_789_500_300_000,
+  );
+  /**
+   * A SET WHOSE EXERCISE IS GONE, which is D5/R4 in one row: exercise_id NULL,
+   * exercise_name_frozen carrying what was performed. This is what
+   * deleteExercise() leaves behind, and specs 5.3 permits it explicitly — so an
+   * archive holding one is a valid archive, not damage, and the round trip has
+   * to say so.
+   */
+  insertSet.run(
+    newId<SessionSetId>(), sessionBlockSuper, null, 'Rowing menton', 1, 1, 'dropset',
+    10, 12, 30, 2, null, null, 0, null, null, null, null, 'skipped', null,
+  );
+
+  /**
+   * Two notes: one waiting for its next session, one already consumed.
+   *
+   * consumed_at is the column that decides whether a note is still offered, and
+   * NULL on both sides is exactly what a dropped column looks like.
+   */
+  const insertNote = raw.prepare(
+    'INSERT INTO exercise_note (id, exercise_id, text, created_at, consumed_at) VALUES (?, ?, ?, ?, ?)',
+  );
+  insertNote.run(newId<ExerciseNoteId>(), exerciseA, 'Monter la charge à 75', 1_789_500_500_000, null);
+  insertNote.run(newId<ExerciseNoteId>(), exerciseB, 'Coudes plus serrés', 1_789_400_000_000, 1_789_500_100_000);
 }
 
 function roundTrip(): void {
@@ -525,7 +639,13 @@ function roundTrip(): void {
   const parsed: unknown = JSON.parse(serializeExportFile(file));
 
   const verdict = validateImportFile(parsed, BINARY);
-  expect(verdict.ok, 'the file this binary just wrote must validate').toBe(true);
+  expect(
+    verdict.ok,
+    // Naming the problems rather than only the verdict: a refusal here is
+    // always a fixture or a rule disagreeing about one column, and "expected
+    // false to be true" does not say which.
+    verdict.ok ? '' : JSON.stringify(verdict.problems),
+  ).toBe(true);
   if (!verdict.ok) return;
 
   const built = buildDatabase(restored.db, verdict.value);

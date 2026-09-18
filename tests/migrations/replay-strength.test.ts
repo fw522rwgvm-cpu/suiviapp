@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import { describe, expect, it } from 'vitest';
 import {
   applyAllMigrations,
+  applyMigrationsAfter,
   applyMigrationsUpTo,
   applyOneMigration,
   columnNames,
@@ -148,32 +149,50 @@ describe('migration 0008 — what it creates', () => {
     db.close();
   });
 
-  it('creates none of the session tables, which belong to slice 11', () => {
+  it('creates none of the session tables, which waited for 0010', () => {
     /**
-     * THE ASSERTION THAT KEEPS THE SLICE HONEST.
+     * THE ASSERTION THAT KEPT THE SLICE HONEST, NOW PHRASED SO IT STAYS TRUE.
      *
      * Section 2.6 describes the whole of V3 in one block, so the tempting move
-     * is to create it all at once — and section 7 forbids exactly that, no
-     * layer built "for later". Deferring costs nothing here because every
-     * foreign key points the right way: session_set.exercise_id is declared in
-     * session_set, which 0009 creates whole against an `exercise` that already
-     * exists.
+     * was to create it all at once — and section 7 forbids exactly that, no
+     * layer built "for later". Deferring cost nothing because every foreign key
+     * points the right way: session_set.exercise_id is declared in session_set,
+     * which `0010` creates whole against an `exercise` that already exists.
      *
-     * This fails the day somebody adds them early, which is when the reasoning
-     * above is worth re-reading rather than re-deriving.
+     * ## WHY THIS NOW REPLAYS UP TO 0008 INSTEAD OF EVERYTHING
+     *
+     * It used to assert the five tables were absent after ALL migrations, which
+     * was right exactly until the day they landed — and then it failed, which
+     * is the good failure: it made somebody come back here and read the
+     * paragraph above before changing it.
+     *
+     * The half that is permanently true is the one about 0008, so that is what
+     * it asserts now: 0008 created none of them, so the deferral really
+     * happened and nothing was rebuilt to pay for it. Slice 10's own lesson
+     * says why the bound matters — a test naming a future table as its
+     * counter-example goes green by asserting nothing, on the day it is worth
+     * most. This one names a PAST migration, which cannot move.
      */
     const db = openEmptyDatabase();
-    applyAllMigrations(db);
+    applyMigrationsUpTo(db, indexOfTag(STRENGTH_MIGRATION));
 
-    const names = new Set(tableNames(db));
-    for (const deferred of [
+    const afterStrength = new Set(tableNames(db));
+    const deferred = [
       'session',
       'session_segment',
       'session_block',
       'session_set',
       'exercise_note',
-    ]) {
-      expect(names.has(deferred), `${deferred} belongs to 0009`).toBe(false);
+    ];
+    for (const table of deferred) {
+      expect(afterStrength.has(table), `${table} was deferred past 0008`).toBe(false);
+    }
+
+    // And they do arrive, so the deferral is a deferral and not an omission.
+    applyMigrationsAfter(db, indexOfTag(STRENGTH_MIGRATION));
+    const afterAll = new Set(tableNames(db));
+    for (const table of deferred) {
+      expect(afterAll.has(table), `${table} arrives in 0010`).toBe(true);
     }
     db.close();
   });
