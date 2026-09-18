@@ -4,6 +4,7 @@ import { FormInput, FormRow, FormSection } from '@/core/ui/form-section';
 import { useTheme } from '@/core/theme';
 import { EQUIPMENT, MUSCLES } from '@/core/db/schema';
 import { BodyMapView } from './body-map-view';
+import { ExerciseDrawing } from './exercise-drawing';
 import {
   muscleRoles,
   toggleSecondary,
@@ -34,10 +35,22 @@ import { EQUIPMENT_LABELS, MUSCLE_LABELS, equipmentLabel, muscleLabel } from '..
 export function ExerciseBody({
   draft,
   editable,
+  mediaUri,
   onChange,
 }: {
   draft: ExerciseDraft;
   editable: boolean;
+  /**
+   * The drawing, which is NOT part of the draft.
+   *
+   * Deliberately a separate prop: a draft is what the form edits, and nothing
+   * on this screen edits the medium — choosing a file needs expo-image-picker,
+   * outside section 5 (specs 14.20 no 4), and a catalogue key is written once
+   * at install. Putting it on the draft would make it something
+   * sameExerciseDraft has to compare and the editor has to preserve, for a
+   * value neither of them can change.
+   */
+  mediaUri?: string | null;
   onChange?: (next: ExerciseDraft) => void;
 }) {
   const theme = useTheme();
@@ -48,6 +61,34 @@ export function ExerciseBody({
 
   return (
     <>
+      {/*
+        THE DRAWING, ABOVE THE BODY MAP, AND THE ORDER IS THE POINT.
+
+        They answer two different questions and the first one asked is "what is
+        this movement" — the drawing — before "where does it work", which is the
+        map. Somebody who has just installed the catalogue is looking at a name
+        they may not know; somebody choosing secondary muscles is looking at the
+        figure. Both are on the page, in the order they are needed.
+
+        It ANIMATES here, unlike in the catalogue list: this is one exercise
+        being looked at, which is exactly where a movement belongs. A page of
+        thirty-three would not sit still to be read.
+      */}
+      {mediaUri === undefined || mediaUri === null ? null : (
+        <View
+          style={[
+            styles.drawing,
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+              borderRadius: theme.radius.lg,
+            },
+          ]}
+        >
+          <ExerciseDrawing mediaUri={mediaUri} height={180} />
+        </View>
+      )}
+
       <View
         style={[
           styles.map,
@@ -355,6 +396,7 @@ function ChoiceGroup({
 }
 
 const styles = StyleSheet.create({
+  drawing: { borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden', padding: 10 },
   map: {
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',

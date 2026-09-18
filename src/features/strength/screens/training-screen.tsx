@@ -164,7 +164,57 @@ export function TrainingScreen() {
                 filtering: isFiltering(filter),
               })}
             </Text>
+          ) : null}
+
+          {/*
+            THE CATALOGUE, AND WHY IT IS A LINK RATHER THAN A DIALOG.
+
+            Specs 10.1 describes a library with a creation button and nothing
+            else, so a fresh installation starts empty — the one place in the
+            application that asks for a quarter of an hour before it serves.
+            Thirty-three exercises are offered instead of typed.
+
+            NOT installed on first launch, and not a seed in `0010`: a migration
+            is replayed by every import (G4), so a seed would reinject these
+            rows into an archive that deliberately held none, with fresh ULIDs.
+            The rule since slice 4 covers the rest — what the user SAVES is
+            written, what they merely look at is not.
+
+            PROMINENT WHEN THE LIBRARY IS EMPTY, quiet afterwards, never gone:
+            somebody who took ten and wants the other twenty-three later should
+            not have to empty their library to be offered them again.
+          */}
+          {held.length === 0 ? (
+            <Pressable
+              onPress={() => router.push('/(tabs)/training/catalog')}
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                styles.catalogPrimary,
+                {
+                  backgroundColor: theme.colors.accent,
+                  borderRadius: theme.radius.lg,
+                  opacity: pressed ? 0.8 : 1,
+                },
+              ]}
+            >
+              <Text style={{ color: theme.colors.onAccent, fontSize: 16, fontWeight: '600' }}>
+                Ajouter des exercices courants
+              </Text>
+            </Pressable>
           ) : (
+            <Pressable
+              onPress={() => router.push('/(tabs)/training/catalog')}
+              accessibilityRole="button"
+              style={styles.catalogQuiet}
+              hitSlop={6}
+            >
+              <Text style={{ color: theme.colors.accent, fontSize: 15 }}>
+                Ajouter des exercices courants
+              </Text>
+            </Pressable>
+          )}
+
+          {shown.length === 0 ? null : (
             <View
               style={[
                 styles.list,
@@ -204,6 +254,8 @@ const styles = StyleSheet.create({
   screenTitle: { fontSize: 32, fontWeight: '700' },
   sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   sectionTitle: { fontSize: 20, fontWeight: '600' },
+  catalogPrimary: { paddingVertical: 14, alignItems: 'center' },
+  catalogQuiet: { paddingVertical: 6, alignItems: 'center' },
   empty: { fontSize: 15, lineHeight: 21 },
   list: { borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
 });
