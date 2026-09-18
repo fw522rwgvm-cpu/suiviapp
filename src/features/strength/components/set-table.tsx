@@ -8,6 +8,7 @@ import { SET_TYPES } from '@/core/db/schema';
 import type { BlockDraft, LineDraft } from '../domain/routine-draft';
 import { exercisesOfBlock, roundsOf } from '../domain/routine-draft';
 import { setTypeShort } from '../domain/routine-text';
+import { SetCell, SetChip, formatCell, parseCell, setColumns } from './set-cell';
 
 /**
  * The sets of a block, as a table (specs 10.2).
@@ -81,14 +82,14 @@ export function SetTable({
   return (
     <View>
       <View style={styles.head}>
-        <Text style={[styles.headCell, styles.colSet, { color: theme.colors.textMuted }]}>
+        <Text style={[styles.headCell, setColumns.colSet, { color: theme.colors.textMuted }]}>
           {lettered ? 'Tour' : 'Série'}
         </Text>
-        <Text style={[styles.headCell, styles.colValue, { color: theme.colors.textMuted }]}>kg</Text>
-        <Text style={[styles.headCell, styles.colReps, { color: theme.colors.textMuted }]}>
+        <Text style={[styles.headCell, setColumns.colValue, { color: theme.colors.textMuted }]}>kg</Text>
+        <Text style={[styles.headCell, setColumns.colReps, { color: theme.colors.textMuted }]}>
           {tracksDuration ? 'Temps' : 'Reps'}
         </Text>
-        <Text style={[styles.headCell, styles.colValue, { color: theme.colors.textMuted }]}>
+        <Text style={[styles.headCell, setColumns.colValue, { color: theme.colors.textMuted }]}>
           RIR
         </Text>
       </View>
@@ -148,33 +149,7 @@ function SetRowInner({
     if (next !== undefined) onChange({ setType: next });
   }
 
-  /*
-    The number in a chip, which is where the eye goes first down a table of
-    figures: it is the only cell that is not a measurement, so it reads as the
-    row's handle rather than as a fifth number.
-  */
-  const chip = (
-    <View
-      style={[
-        styles.chip,
-        {
-          // The page's own ground, so the chip reads as recessed into the card
-          // rather than as a sixth colour the palette would have to justify.
-          backgroundColor: theme.colors.background,
-          borderRadius: theme.radius.sm,
-        },
-      ]}
-    >
-      <Text
-        style={[
-          styles.setLabel,
-          { color: line.setType === 'work' ? theme.colors.textMuted : theme.colors.accent },
-        ]}
-      >
-        {label}
-      </Text>
-    </View>
-  );
+  const chip = <SetChip label={label} accented={line.setType !== 'work'} />;
 
   const content = (
     <View style={styles.row}>
@@ -183,16 +158,16 @@ function SetRowInner({
           onPress={cycleType}
           accessibilityRole="button"
           accessibilityLabel={`Type de série : ${label}`}
-          style={styles.colSet}
+          style={setColumns.colSet}
         >
           {chip}
         </Pressable>
       ) : (
-        <View style={styles.colSet}>{chip}</View>
+        <View style={setColumns.colSet}>{chip}</View>
       )}
 
-      <Cell
-        style={styles.colValue}
+      <SetCell
+        style={setColumns.colValue}
         editable={editable}
         value={line.targetLoadKg}
         decimals
@@ -202,8 +177,8 @@ function SetRowInner({
       />
 
       {tracksDuration ? (
-        <Cell
-          style={styles.colReps}
+        <SetCell
+          style={setColumns.colReps}
           editable={editable}
           value={line.durationSeconds}
           placeholder="—"
@@ -220,8 +195,8 @@ function SetRowInner({
         />
       )}
 
-      <Cell
-        style={styles.colValue}
+      <SetCell
+        style={setColumns.colValue}
         editable={editable}
         value={line.targetRir}
         decimals
@@ -248,87 +223,6 @@ function SetRowInner({
     >
       {content}
     </SwipeToDeleteRow>
-  );
-}
-
-/**
- * One numeric cell: text when read, a field when edited.
- *
- * ## THE FIELD HOLDS THE TEXT, THE DRAFT HOLDS THE NUMBER
- *
- * Not the other way round — and the first version of this file got it wrong
- * while its own comment described the fix. Bound straight to the draft, "6,"
- * parses to 6, re-renders as "6", and the separator just typed vanishes under
- * the caret. That is exactly what slice 8 found by shipping it on the weight
- * field.
- *
- * So the text is local state. It travels OUT on every keystroke, as a number or
- * as null, and travels IN only when the draft changed for some other reason — a
- * set duplicated, a routine reloaded. Comparing the incoming number with what
- * the text parses to is what tells those two apart.
- */
-function Cell({
-  style,
-  editable,
-  value,
-  decimals,
-  placeholder,
-  suffix,
-  label,
-  onChange,
-}: {
-  style: object;
-  editable: boolean;
-  value: number | null;
-  decimals?: boolean;
-  placeholder: string;
-  suffix?: string;
-  label: string;
-  onChange: (value: number | null) => void;
-}) {
-  const theme = useTheme();
-  const [text, setText] = useState(() => (value === null ? '' : formatCell(value)));
-
-  /**
-   * Adopt an incoming value only when it says something the text does not.
-   *
-   * Adjusted DURING the render rather than in an effect, which is React's own
-   * answer to this: an effect runs after its render has been painted, so the
-   * cell would show the stale text for a frame. Slice 3 paid for that on the
-   * day carousel and slice 4 on the quantity wheels.
-   */
-  const [lastValue, setLastValue] = useState(value);
-  if (value !== lastValue) {
-    setLastValue(value);
-    if (parseCell(text) !== value) setText(value === null ? '' : formatCell(value));
-  }
-
-  if (!editable) {
-    const shown =
-      value === null ? null : `${formatCell(value)}${suffix === undefined ? '' : ` ${suffix}`}`;
-    return (
-      <Text
-        style={[styles.cell, style, { color: shown === null ? theme.colors.textFaint : theme.colors.text }]}
-      >
-        {shown ?? placeholder}
-      </Text>
-    );
-  }
-
-  return (
-    <TextInput
-      style={[styles.cell, styles.input, style, { color: theme.colors.text }]}
-      value={text}
-      onChangeText={(next) => {
-        setText(next);
-        onChange(parseCell(next));
-      }}
-      keyboardType={decimals === true ? 'decimal-pad' : 'number-pad'}
-      placeholder={placeholder}
-      placeholderTextColor={theme.colors.textFaint}
-      accessibilityLabel={label}
-      selectTextOnFocus
-    />
   );
 }
 
@@ -360,8 +254,8 @@ function RangeCell({
     return (
       <Text
         style={[
-          styles.cell,
-          styles.colReps,
+          setColumns.cellText,
+          setColumns.colReps,
           { color: shown === '—' ? theme.colors.textFaint : theme.colors.text },
         ]}
       >
@@ -371,8 +265,8 @@ function RangeCell({
   }
 
   return (
-    <View style={[styles.colReps, styles.range]}>
-      <Cell
+    <View style={[setColumns.colReps, styles.range]}>
+      <SetCell
         style={styles.rangeField}
         editable
         value={min}
@@ -381,7 +275,7 @@ function RangeCell({
         onChange={(repsMin) => onChange({ repsMin })}
       />
       <Text style={{ color: theme.colors.textFaint, fontSize: 13 }}>–</Text>
-      <Cell
+      <SetCell
         style={styles.rangeField}
         editable
         value={max}
@@ -401,26 +295,6 @@ function rangeText(min: number | null, max: number | null): string {
   return min === max ? String(min) : `${min}-${max}`;
 }
 
-/** A comma, because a French keyboard offers one. No trailing zero. */
-function formatCell(value: number): string {
-  return String(value).replace('.', ',');
-}
-
-/**
- * A complete number, or null.
- *
- * An empty field CLEARS the target rather than writing zero: Number('') is 0,
- * and a set showing "0 kg" nobody typed is the defect slice 4 named. A
- * half-typed "2," parses to 2 and the field keeps showing what was typed,
- * because the draft holds the number and the text is the field's own.
- */
-function parseCell(text: string): number | null {
-  const trimmed = text.trim().replace(',', '.');
-  if (trimmed === '') return null;
-  const parsed = Number(trimmed);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 const styles = StyleSheet.create({
   head: {
     flexDirection: 'row',
@@ -438,13 +312,6 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     minHeight: 44,
   },
-  colSet: { width: 46 },
-  colValue: { width: 58, textAlign: 'center' },
-  colReps: { flex: 1, minWidth: 74, textAlign: 'center' },
-  chip: { minWidth: 30, paddingHorizontal: 7, paddingVertical: 4, alignItems: 'center' },
-  setLabel: { fontSize: 13, fontWeight: '600', fontVariant: ['tabular-nums'] },
-  cell: { fontSize: 16, fontVariant: ['tabular-nums'] },
-  input: { paddingVertical: 4, paddingHorizontal: 2 },
   range: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
   rangeField: { width: 34, textAlign: 'center' },
 });

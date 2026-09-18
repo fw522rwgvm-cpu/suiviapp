@@ -30,34 +30,21 @@ function line(exerciseId: ExerciseId, overrides: Partial<PlannableLine> = {}): P
     targetRir: 2,
     durationSeconds: null,
     progressionEnabled: 1,
+    restSeconds: null,
     tracksDuration: 0,
     ...overrides,
   };
 }
 
-/** restForBlock takes a BlockDraft; a PlannableBlock is the same two fields. */
-function rest(block: PlannableBlock): number | null {
-  return restForBlock({
-    id: null,
-    restSeconds: block.restSeconds,
-    lines: block.lines.map(
-      (item): LineDraft => ({
-        id: null,
-        exerciseId: item.exerciseId,
-        exerciseName: item.exerciseName,
-        setType: item.setType,
-        repsMin: item.repsMin,
-        repsMax: item.repsMax,
-        targetLoadKg: item.targetLoadKg,
-        targetRir: item.targetRir,
-        durationSeconds: item.durationSeconds,
-        restSeconds: null,
-        progressionEnabled: item.progressionEnabled === 1,
-        note: '',
-      }),
-    ),
-  });
-}
+/**
+ * restForBlock takes the two fields it reads, so a PlannableBlock IS one.
+ *
+ * It used to need an adapter rebuilding a LineDraft, which was a second place
+ * that knew what a block looks like. Widening the domain signature removed it —
+ * and the point of the widening is that there is ONE rest resolution, so a
+ * session and the routine it came from can never prescribe different rests.
+ */
+const rest = restForBlock;
 
 describe('a routine becomes a session', () => {
   it('copies the targets a set was prescribed', () => {
@@ -153,31 +140,23 @@ describe('a routine becomes a session', () => {
     // LINE. restForBlock reads it as a fallback, and the answer is what the
     // session stores — rows this application did not write are displayed, never
     // corrected, and never carried forward as a second question.
-    const legacy: PlannableBlock = { restSeconds: null, lines: [line(A)] };
-    const asDraft: BlockDraft = {
-      id: null,
+    const legacy: PlannableBlock = {
       restSeconds: null,
-      lines: [
-        {
-          id: null,
-          exerciseId: A,
-          exerciseName: 'Développé couché',
-          setType: 'work',
-          repsMin: 6,
-          repsMax: 8,
-          targetLoadKg: 60,
-          targetRir: 2,
-          durationSeconds: null,
-          restSeconds: 150,
-          progressionEnabled: true,
-          note: '',
-        },
-      ],
+      lines: [line(A, { restSeconds: 150 })],
     };
 
-    expect(planFromRoutine('X', [legacy], () => restForBlock(asDraft)).blocks[0]?.restSeconds).toBe(
-      150,
-    );
+    expect(planFromRoutine('X', [legacy], rest).blocks[0]?.restSeconds).toBe(150);
+  });
+
+  it('prefers the block over a line that also states one', () => {
+    // The other side, and the invariant of specs 14.21 no 3: the block owns the
+    // rest in every shape, so a line's value is a FALLBACK and never a rival.
+    const both: PlannableBlock = {
+      restSeconds: 90,
+      lines: [line(A, { restSeconds: 150 })],
+    };
+
+    expect(planFromRoutine('X', [both], rest).blocks[0]?.restSeconds).toBe(90);
   });
 });
 

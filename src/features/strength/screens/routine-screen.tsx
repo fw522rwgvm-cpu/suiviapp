@@ -22,10 +22,13 @@ import {
   useRoutineDraft,
   useUpdateRoutine,
 } from '../data/routine-queries';
+import { useStartSession } from '../data/session-queries';
+import { planFromRoutine } from '../domain/session-plan';
 import {
   addExerciseBlock,
   addExerciseToBlock,
   musclesOfDraft,
+  restForBlock,
   sameRoutineDraft,
   validateRoutineDraft,
   type RoutineDraft,
@@ -38,6 +41,8 @@ import {
   type ExerciseFilter,
 } from '../domain/exercise-search';
 import { routineProblemText } from '../domain/routine-text';
+import { currentLocalDate } from '@/core/date';
+import { usePreferences } from '@/features/settings/data/settings-queries';
 import { tallyMuscles } from '../domain/muscle-volume';
 
 /**
@@ -82,10 +87,13 @@ export function RoutineScreen() {
   const catalogue = useExercises();
   const update = useUpdateRoutine();
   const remove = useDeleteRoutine();
+  const start = useStartSession();
+  const preferences = usePreferences();
 
   const [mode, setMode] = useState<Mode>({ kind: 'reading' });
   const [submitted, setSubmitted] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [starting, setStarting] = useState(false);
 
   const byId = useMemo(
     () => new Map((catalogue.data ?? []).map((item) => [item.id, item])),
@@ -189,6 +197,59 @@ export function RoutineScreen() {
       return;
     }
     setMode({ kind: 'reading' });
+  }
+
+  /**
+   * Starts a session from this routine (specs 10.2, 10.3).
+   *
+   * ## THE REFUSAL IS THE INTERESTING HALF
+   *
+   * Only one session may run at a time, and the database says so rather than
+   * this screen (D12). What this screen owes is a sentence when the write comes
+   * back refused — and the honest one offers the session that IS running,
+   * because that is almost always what was meant: somebody tapped a routine
+   * having forgotten they were already training.
+   *
+   * It does NOT offer to replace it. Discarding a workout in progress to start
+   * another is not a thing anybody does by accident, and a confirmation that
+   * offers destruction as one of two buttons is the one people learn to tap.
+   * Finishing the live session is a named action on its own screen.
+   */
+  function confirmStart(): void {
+    if (id === null || view === null) return;
+    setStarting(true);
+    start.mutate(
+      {
+        // The clock is read AT THE ACT, never from useToday, which is frozen
+        // against the clock on purpose. Slice 9's arbitration, generalised in
+        // specs 14.24 no 3: an act targets the day it is, a label keeps the day
+        // it had.
+        date: currentLocalDate(preferences.cutoffHour),
+        routineId: id,
+        plan: planFromRoutine(view.name, view.blocks, restForBlock),
+      },
+      {
+        onSuccess: (result) => {
+          setStarting(false);
+          if (result.ok) {
+            router.push('/(tabs)/training/session');
+            return;
+          }
+          Alert.alert(
+            'Une séance est déjà en cours',
+            'Terminez-la avant d’en démarrer une autre.',
+            [
+              { text: 'Annuler', style: 'cancel' },
+              {
+                text: 'Reprendre',
+                onPress: () => router.push('/(tabs)/training/session'),
+              },
+            ],
+          );
+        },
+        onError: () => setStarting(false),
+      },
+    );
   }
 
   function confirmDelete(): void {
@@ -298,24 +359,55 @@ export function RoutineScreen() {
           </Text>
         </Pressable>
       ) : (
-        <Pressable
-          onPress={confirmDelete}
-          disabled={deleting}
-          accessibilityRole="button"
-          style={({ pressed }) => [
-            styles.delete,
-            {
-              backgroundColor: theme.colors.surface,
-              borderColor: theme.colors.border,
-              borderRadius: theme.radius.lg,
-              opacity: pressed || deleting ? 0.6 : 1,
-            },
-          ]}
-        >
-          <Text style={[styles.deleteLabel, { color: theme.colors.danger }]}>
-            Supprimer la routine
-          </Text>
-        </Pressable>
+        <>
+          {/*
+            THE BUTTON SPECS 10.2 ASKED FOR AND SLICE 10 COULD NOT DRAW.
+
+            Specs 14.20 no 6 wrote it down: "le bouton de démarrage d'une
+            routine n'existe pas encore [...] un bouton qui ne ferait rien
+            serait pire que son absence". It does something now.
+
+            The primary action of the page, so it takes the filled accent that
+            "Enregistrer" takes in the other mode — one page, one thing it is
+            for. Delete keeps its outlined, danger-coloured form below.
+          */}
+          <Pressable
+            onPress={confirmStart}
+            disabled={starting}
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.primary,
+              {
+                backgroundColor: theme.colors.accent,
+                borderRadius: theme.radius.lg,
+                opacity: pressed || starting ? 0.8 : 1,
+              },
+            ]}
+          >
+            <Text style={{ color: theme.colors.onAccent, fontSize: 16, fontWeight: '600' }}>
+              Démarrer la séance
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={confirmDelete}
+            disabled={deleting}
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.delete,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+                borderRadius: theme.radius.lg,
+                opacity: pressed || deleting ? 0.6 : 1,
+              },
+            ]}
+          >
+            <Text style={[styles.deleteLabel, { color: theme.colors.danger }]}>
+              Supprimer la routine
+            </Text>
+          </Pressable>
+        </>
       )}
     </ScrollView>
   );

@@ -111,8 +111,21 @@ export function isSuperset(block: BlockDraft): boolean {
  * any more; a row that carries one is still shown rather than ignored — the
  * rule since meal-kinds.ts, that rows this application did not write are
  * displayed, never corrected.
+ *
+ * ## IT TAKES THE TWO FIELDS IT READS, NOT A BlockDraft
+ *
+ * Slice 11 gave it a second caller whose blocks come out of SQL rather than out
+ * of the editor, and the two shapes differ by an id this resolution never looks
+ * at. Widened structurally rather than duplicated: which of the two rest columns
+ * is in force is ONE rule, and a second spelling of it is how a session and the
+ * routine it came from end up prescribing different rests.
  */
-export function restForBlock(block: BlockDraft): number | null {
+export interface RestBearingBlock {
+  restSeconds: number | null;
+  lines: readonly { restSeconds: number | null }[];
+}
+
+export function restForBlock(block: RestBearingBlock): number | null {
   if (block.restSeconds !== null) return block.restSeconds;
   // An archive from before the rest moved. First line that states one wins:
   // they were only ever written identically.

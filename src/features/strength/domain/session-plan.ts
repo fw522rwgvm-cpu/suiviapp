@@ -83,6 +83,14 @@ export interface PlannableLine {
   targetRir: number | null;
   durationSeconds: number | null;
   progressionEnabled: 0 | 1;
+  /**
+   * The rest a line states, which nothing writes any more.
+   *
+   * Carried because restForBlock reads it as the fallback for a routine written
+   * by the first version of slice 10 — and resolving that at the snapshot is
+   * what stops a session ever having to ask the question again.
+   */
+  restSeconds: number | null;
   /** Whether the EXERCISE is measured in time, carried on the line. */
   tracksDuration: 0 | 1;
 }
