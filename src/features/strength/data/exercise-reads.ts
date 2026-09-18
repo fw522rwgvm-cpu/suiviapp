@@ -178,6 +178,7 @@ export function readExerciseDraft(
     noteBreathing: view.noteBreathing ?? '',
     noteMistakes: view.noteMistakes ?? '',
     incrementKg: formatIncrement(view.incrementKg),
+    tracksDuration: view.tracksDuration === 1,
     isFavorite: view.isFavorite === 1,
   };
 }

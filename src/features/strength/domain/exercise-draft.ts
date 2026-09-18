@@ -73,6 +73,30 @@ export interface ExerciseDraft {
    * is what the field holds; the number is what validation reads.
    */
   incrementKg: string;
+  /**
+   * Whether this exercise is measured in SECONDS rather than repetitions
+   * (specs 14.21 no 1).
+   *
+   * ## THE COLUMN EXISTED SINCE `0009` AND NOTHING COULD EVER SET IT
+   *
+   * Found in slice 11, by writing a session that has to perform a plank. The
+   * flag was read in four places — exercise-reads, routine-reads, SetTable,
+   * RoutineBody — and written in none: it was absent from this draft, from
+   * columnsOf and from readExerciseDraft. So tracks_duration was 0 on every
+   * exercise that has ever existed, the "Temps" column could never appear, and
+   * routine_line.duration_seconds was unreachable.
+   *
+   * THE SAME DEFECT SLICE 10 ALREADY FIXED ONE LEVEL DOWN, and the same way it
+   * was found: by touching a projection rather than by a screen failing.
+   * duration_seconds was read everywhere and written nowhere, and the lesson
+   * written down then applies here word for word — the round trip was coherent
+   * and wrong, because the read faithfully returned the default the write had
+   * never overridden.
+   *
+   * A BOOLEAN IN THE DRAFT AND 0 | 1 IN THE TABLE, like isFavorite: every
+   * column must map to a JSON scalar, and a draft is not a row.
+   */
+  tracksDuration: boolean;
   isFavorite: boolean;
 }
 
@@ -158,6 +182,7 @@ export function emptyExerciseDraft(defaultIncrementKg: number): ExerciseDraft {
     noteBreathing: '',
     noteMistakes: '',
     incrementKg: formatIncrement(defaultIncrementKg),
+    tracksDuration: false,
     isFavorite: false,
   };
 }
@@ -239,6 +264,7 @@ export function sameExerciseDraft(a: ExerciseDraft, b: ExerciseDraft): boolean {
     a.primaryMuscle === b.primaryMuscle &&
     a.equipment === b.equipment &&
     a.incrementKg === b.incrementKg &&
+    a.tracksDuration === b.tracksDuration &&
     a.isFavorite === b.isFavorite &&
     a.noteExecution === b.noteExecution &&
     a.noteSetup === b.noteSetup &&

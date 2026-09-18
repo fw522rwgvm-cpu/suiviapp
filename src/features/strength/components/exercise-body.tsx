@@ -102,6 +102,17 @@ export function ExerciseBody({
           <FormRow label="Incrément">
             <Value text={`${draft.incrementKg} kg`} />
           </FormRow>
+          {/*
+            Shown only when it is true, unlike the increment, which is always
+            there. "Répétitions" on every ordinary exercise is a row that says
+            what every reader already assumes; "Temps" is the one that changes
+            what the page below it means.
+          */}
+          {draft.tracksDuration ? (
+            <FormRow label="Mesure">
+              <Value text="Temps" />
+            </FormRow>
+          ) : null}
         </FormSection>
       )}
 
@@ -140,6 +151,31 @@ export function ExerciseBody({
               // Tapping the selected one clears it, as a filter chip does.
               update({ equipment: item === undefined || draft.equipment === item ? null : item });
             }}
+          />
+
+          {/*
+            THE CONTROL THAT WAS MISSING SINCE `0009`.
+
+            exercise.tracks_duration was read in four places and written in
+            none — no exercise could ever be timed, so the "Temps" column of
+            SetTable could not appear and routine_line.duration_seconds was
+            unreachable. Found in slice 11, writing a session that has to
+            perform a plank.
+
+            A ChoiceGroup rather than a switch, because the two values are
+            NAMED here: "Temps" and "Répétitions" say what the set table will
+            ask for, where a toggle labelled "chronométré" would leave the
+            reader to work out what changes. It is also the idiom the three
+            groups above already use.
+          */}
+          <ChoiceGroup
+            caption="MESURE"
+            options={[
+              { value: 'reps', label: 'Répétitions' },
+              { value: 'time', label: 'Temps' },
+            ]}
+            selected={[draft.tracksDuration ? 'time' : 'reps']}
+            onPress={(value) => update({ tracksDuration: value === 'time' })}
           />
         </>
       ) : null}

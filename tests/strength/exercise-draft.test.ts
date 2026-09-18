@@ -283,28 +283,48 @@ describe('whether two drafts say the same thing', () => {
 
   it('notices EVERY field of the draft', () => {
     /**
-     * Named one by one rather than spot-checked, because the failure this
-     * guards against is a field added to ExerciseDraft and forgotten in the
-     * comparison — which nothing else would catch, and which would make a
-     * confirmation say there is nothing to lose when there is.
+     * ## THE LIST IS KEYED BY THE TYPE, AND IT HAD TO BECOME SO
+     *
+     * The defect this guards is a field added to ExerciseDraft and forgotten in
+     * sameExerciseDraft — which nothing else would catch, and which would make
+     * a confirmation say there is nothing to lose when there is.
+     *
+     * It was an ARRAY, and slice 11 proved the array does not do the job:
+     * `tracksDuration` was added to the draft and this test stayed green,
+     * because a hand-kept list of examples cannot notice what is missing from
+     * it. It was green on exactly the day it was written to be red.
+     *
+     * A Record keyed by `keyof ExerciseDraft` makes the compiler ask instead:
+     * omit a field and `tsc` names it. That is the device this project already
+     * uses for Record<Muscle, string> and for the switch in problemText, and it
+     * belongs here more than anywhere, because here the test IS the barrier.
      */
-    const changes: Partial<ExerciseDraft>[] = [
-      { name: 'Développé incliné' },
-      { primaryMuscle: 'shoulders' },
-      { equipment: 'dumbbell' },
+    const changes: Record<keyof ExerciseDraft, Partial<ExerciseDraft>> = {
+      name: { name: 'Développé incliné' },
+      primaryMuscle: { primaryMuscle: 'shoulders' },
+      equipment: { equipment: 'dumbbell' },
+      incrementKg: { incrementKg: '1,25' },
+      tracksDuration: { tracksDuration: true },
+      isFavorite: { isFavorite: false },
+      noteExecution: { noteExecution: 'autre' },
+      noteSetup: { noteSetup: 'autre' },
+      noteBreathing: { noteBreathing: 'autre' },
+      noteMistakes: { noteMistakes: 'autre' },
+      secondaryMuscles: { secondaryMuscles: new Set(['triceps']) },
+    };
+
+    for (const change of Object.values(changes)) {
+      expect(sameExerciseDraft(filled(), { ...filled(), ...change })).toBe(false);
+    }
+
+    // Extra shapes of the fields where one example is not enough: clearing the
+    // equipment, and sets that differ by size in both directions.
+    const more: Partial<ExerciseDraft>[] = [
       { equipment: null },
-      { incrementKg: '1,25' },
-      { isFavorite: false },
-      { noteExecution: 'autre' },
-      { noteSetup: 'autre' },
-      { noteBreathing: 'autre' },
-      { noteMistakes: 'autre' },
-      { secondaryMuscles: new Set(['triceps']) },
       { secondaryMuscles: new Set(['triceps', 'shoulders', 'abs']) },
       { secondaryMuscles: new Set(['triceps', 'abs']) },
     ];
-
-    for (const change of changes) {
+    for (const change of more) {
       expect(sameExerciseDraft(filled(), { ...filled(), ...change })).toBe(false);
     }
   });

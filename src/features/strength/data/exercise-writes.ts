@@ -67,6 +67,17 @@ function columnsOf(draft: ExerciseDraft) {
     noteBreathing: trimmedOrNull(draft.noteBreathing),
     noteMistakes: trimmedOrNull(draft.noteMistakes),
     incrementKg: incrementOf(draft),
+    /**
+     * WRITTEN HERE SINCE SLICE 11, AND THE OMISSION IS THE POINT.
+     *
+     * The column landed in `0009` and nothing ever projected it: read in four
+     * places, written in none, so tracks_duration was 0 on every exercise that
+     * has ever existed and the "Temps" column could not appear. Found the same
+     * way slice 10 found duration_seconds one level down — by touching this
+     * table, not by a screen failing, because the read returned the default the
+     * write had never overridden and the round trip was coherent and wrong.
+     */
+    tracksDuration: draft.tracksDuration ? (1 as const) : (0 as const),
   };
 }
 

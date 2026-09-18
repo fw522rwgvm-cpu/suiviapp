@@ -153,6 +153,48 @@ describe('creating and reading an exercise', () => {
     expect([...(view?.secondaryMuscles ?? [])].sort()).toEqual(['shoulders', 'triceps']);
   });
 
+  it('stores a TIMED exercise as timed, by the value and not by symmetry', () => {
+    /**
+     * THE GUARD FOR A COLUMN READ EVERYWHERE AND WRITTEN NOWHERE.
+     *
+     * exercise.tracks_duration landed in `0009` and was never projected: absent
+     * from ExerciseDraft, from columnsOf and from readExerciseDraft. So it was
+     * 0 on every exercise that has ever existed, the "Temps" column of SetTable
+     * could not appear, and routine_line.duration_seconds was unreachable —
+     * `0009` was dead in the water. Found in slice 11, writing a session that
+     * has to perform a plank.
+     *
+     * SLICE 10 FOUND EXACTLY THIS ONE LEVEL DOWN and wrote the lesson: nothing
+     * else could catch it, because the read faithfully returned the default the
+     * write had never overridden, so the round trip was coherent and wrong. The
+     * test therefore asserts the VALUE — true in, true out — rather than that
+     * what goes in comes back.
+     *
+     * The other half of the guard is not here: sameExerciseDraft's test is now
+     * keyed by `keyof ExerciseDraft`, so a field added and forgotten fails the
+     * typecheck by name. That one was an ARRAY when this happened, and it
+     * stayed green on the day it was written to be red.
+     */
+    const timed = createExercise(db.db, draft({ name: 'Gainage', tracksDuration: true }));
+    const ordinary = createExercise(db.db, draft({ name: 'Squat' }));
+
+    expect(readExercise(db.db, timed)?.tracksDuration).toBe(1);
+    expect(readExercise(db.db, ordinary)?.tracksDuration).toBe(0);
+    // And it survives back into a draft, which is what the editor reopens on.
+    expect(readExerciseDraft(db.db, timed)?.tracksDuration).toBe(true);
+    expect(readExerciseDraft(db.db, ordinary)?.tracksDuration).toBe(false);
+  });
+
+  it('lets an exercise stop being timed', () => {
+    // The other direction, because a projection that only ever writes 1 would
+    // pass the test above.
+    const id = createExercise(db.db, draft({ name: 'Gainage', tracksDuration: true }));
+
+    updateExercise(db.db, id, { ...draft({ name: 'Gainage' }), tracksDuration: false });
+
+    expect(readExercise(db.db, id)?.tracksDuration).toBe(0);
+  });
+
   it('writes an empty note as NULL rather than an empty string', () => {
     const id = createExercise(db.db, draft({ noteExecution: '   ' }));
 
