@@ -61,14 +61,24 @@ L'application doit tolérer un arrêt forcé à tout moment sans perte.
 ---
 
 ## État du projet
-Tranches 0 à 10 livrées. La tranche 9 (notifications) **clôt la V2** ; la
-tranche 10 (exercices et routines) **ouvre la V3**.
-**1439 tests verts** sous les trois fuseaux, `tsc` vert, bundle produit.
+Tranches 0 à 11 livrées. La tranche 9 (notifications) **clôt la V2** ; les
+tranches 10 (exercices et routines) et 11 (séance en direct) **ouvrent la V3**.
+**1626 tests verts** sous les trois fuseaux, `tsc` vert, bundle produit.
 
-**La tranche 10 n'a rien exercé sur l'appareil, et elle n'a pas besoin d'un
-cycle CI pour l'être** : aucune dépendance n'a été ajoutée. `react-native-svg`
-porte la carte corporelle depuis la tranche 7, `gesture-handler` le balayage
-depuis la tranche 3. Metro suffit.
+**La tranche 11 ne demande AUCUN cycle CI, et c'est vérifiable avant de
+commencer** : aucune dépendance n'entre. `expo-notifications` est dans le
+binaire depuis la tranche 9 — prouvé, pas déduit, une notification a été reçue
+le 15/09 — `react-native-svg` depuis `dev-b19`. Les dessins d'exercices sont
+des chaînes de chemins dans un module TypeScript, le mécanisme de
+`paths.generated.ts` : du JavaScript. Metro suffit.
+
+**Le bundle passe de 6,3 à 7,6 Mo, et la répartition compte** : tout le code de
+la séance vaut 0,1 Mo, les trente-deux dessins valent 1,2. Le compte
+d'exercices est donc une molette — environ 40 Ko par exercice — et la mesure
+est dans `specs §14.30` n° 14.
+
+**Rien de la tranche 11 n'a tourné sur l'appareil**, et elle s'empile sur les
+tranches 6, 8 et 10 qui n'y ont jamais tourné non plus.
 
 Ce qui reste à voir est ce qu'aucun test ne couvre : **que la carte corporelle
 ressemble à un corps et s'allume aux bons endroits.** Un test dit que `chest`
@@ -186,8 +196,9 @@ est morte, et l'export est l'unique filet du projet.
 
 **Le schéma est gelé. Ajout seul désormais (D6/G2).** La migration initiale
 n'a jamais été dégelée : `0001_journal` a été ajoutée à côté, puis `0002_food`,
-`0003_barcode_off_cache`, `0004_templates_planning`, `0005_recipes` et
-`0006_weight`.
+`0003_barcode_off_cache`, `0004_templates_planning`, `0005_recipes`,
+`0006_weight`, `0007_notifications`, `0008_strength`, `0009_duration` et
+`0010_session`.
 Réécrire `0000` aurait changé son horodatage, fait voir une migration en
 attente à l'installation quotidienne, qui aurait tenté de recréer `setting` et
 échoué au démarrage. Le dégel servait à corriger `0000` ; `0000` n'avait rien à
@@ -4918,6 +4929,299 @@ autorise un élément de liste à porter du texte que personne ne liste ; lire u
 exercice par bloc serait le coût par rangée que la tranche 4 a rencontré en
 étendant l'ajout rapide à toute la bibliothèque.
 
+## Ce que la tranche 11 a établi
+
+**`0009` était morte dans l'eau, et personne ne pouvait le savoir.**
+`exercise.tracks_duration` était lue en quatre endroits — `exercise-reads`,
+`routine-reads`, `SetTable`, `RoutineBody` — et écrite **nulle part** : absente
+d'`ExerciseDraft`, de `columnsOf`, de `readExerciseDraft`. Donc `0` sur tous
+les exercices ayant jamais existé, la colonne « Temps » inatteignable, et
+`routine_line.duration_seconds` hors de portée.
+
+C'est **le même défaut que la tranche 10 a corrigé un étage plus bas**, trouvé
+de la même façon — en touchant une table de projection, pas par un écran en
+échec — et pour la même raison, qu'il faut redire parce qu'elle est la leçon :
+**la lecture rendait fidèlement le défaut que l'écriture n'avait jamais écrasé,
+donc l'aller-retour était cohérent et faux.** Un test le garde désormais par la
+valeur, jamais par la symétrie.
+
+**Et le test censé l'attraper ne l'a pas attrapé.** « notice EVERY field of the
+draft » existe précisément pour un champ ajouté et oublié (`architecture
+§9.22 n° 2`) ; sa liste était un **tableau**, donc elle est restée verte le jour
+où elle devait rougir. Elle est maintenant un `Record<keyof ExerciseDraft, …>` :
+omettre un champ fait échouer `tsc` **en le nommant**. Vérifié par mutation.
+
+> **Règle qui en sort : un test qui garde l'exhaustivité d'un type doit être
+> indexé PAR ce type, jamais par une liste d'exemples.** Une liste tenue à la
+> main ne peut pas remarquer ce qui n'y est pas.
+
+**« Une seule séance en cours » est une PAIRE, pas un index.**
+`ux_session_active` est partiel — `WHERE status = 'in_progress'` — donc il ne
+contraint **rien** sur une ligne dont le statut dit autre chose. Une archive
+posant deux séances à `'running'` importerait proprement et l'application
+tiendrait deux séances vivantes : exactement la contournabilité que D12 exige
+d'impossible, atteinte par la route que D12 dit d'éviter. `ck_session_status`
+est ce qui rend l'index total. **C'est le seul endroit du schéma où c'est vrai
+d'un index**, et un test insère la ligne en contournant la fonction — sans lui,
+l'index pourrait disparaître sans qu'aucun autre test bronche.
+
+Et l'objection de la tranche 5 ne s'applique pas : `day_meal` avait vu son index
+partiel refusé parce qu'une base en service portait déjà les lignes qui le
+violeraient. `session` est **neuve**, donc il se construit toujours. Argument de
+`weight_goal.is_active`, mot pour mot.
+
+**La fin d'un segment est estampillée par l'écriture SUIVANTE, jamais par un
+minuteur.** D12 dit « se ferme après 30 minutes sans aucune écriture », ce qui
+est inimplémentable lu comme une consigne à un minuteur : rien de l'application
+ne tourne en arrière-plan ou après un kill, donc la fermeture n'aurait aucun
+moment où se produire et un segment resterait ouvert trois jours.
+
+D'où la décision qui porte tout : **`ended_at` n'est jamais NULL pendant que
+l'application tourne.** La forme évidente — NULL tant que le segment est
+ouvert — oblige à deviner une fin à la lecture, et `COALESCE(ended_at, now)`
+compte la nuit entière. Un arrêt forcé laisse donc le segment finissant à la
+dernière chose qui s'est réellement produite, sans que personne ait rien à
+calculer.
+
+**Conséquence acceptée, trouvée par un test dont la première version supposait
+le contraire** : un silence plus long que le seuil n'est pas compté **même au
+tout début**. Un échauffement n'écrit rien, donc il ne compte pas. La règle
+appliquée plutôt qu'un trou dedans — compter un silence parce qu'il est le
+premier voudrait dire que le même silence compte au début et pas au milieu.
+
+**Réserve inscrite : la durée affichée REDESCEND** au franchissement du seuil,
+d'au plus trente minutes. C'est juste, et il faut quelqu'un qui regarde cet
+écran trente minutes sans rien écrire pour le voir. Plafonner la queue au seuil
+montrerait une demi-heure d'entraînement qui n'a pas eu lieu.
+
+**Le minuteur de repos n'est PAS une cinquième sorte de notification — et la
+tranche 9 s'était trompée par écrit, deux fois.** Le commentaire de
+`notification_setting` disait « slice 11 puts the rest timer on a local
+notification » et le catalogue d'export disait « slice 11 adds a kind here ».
+Suivre l'invitation aurait introduit exactement le défaut que la **même**
+tranche 9 a écrit un paragraphe pour éviter : `diffSchedule` décide ce qui
+appartient au planificateur avec `NOTIFICATION_KINDS.some(kind =>
+id.startsWith(kind + ':'))` et annule tout ce qu'il possède et qui n'est pas
+dans le plan, à chaque passage au premier plan. Le minuteur aurait été annulé en
+pleine séance, silencieusement.
+
+Il vit donc dans `rest:<séance>`, **aucune ligne de la tranche 9 ne bouge**, et
+un test assert qu'aucune sorte n'en est un préfixe — parce que la propriété est
+**invisible** : elle tient à ce que deux constantes ne se rencontrent pas, et
+rien dans l'une ni dans l'autre ne le dit. Les deux commentaires sont corrigés.
+
+**Et le minuteur ne stocke rien.** D12 demande de stocker l'instant de départ ;
+il existait déjà — `session_set.completed_at`, écrit dans la même transaction
+que la série. Le décompte est entièrement dérivé, donc il survit à un arrêt
+forcé parce que la séance y survit. Un seul identifiant par **séance**, ce qui
+rend l'annulation du §9.3 automatique : programmer le suivant remplace le
+précédent par identité.
+
+**TIME_INTERVAL ici, CALENDAR pour les quatre sortes quotidiennes**, et c'est
+le même constat de la tranche 9 qui donne les deux réponses : un déclencheur de
+délai figé dérive sur sept jours et un changement d'heure, ce qui le rend faux
+pour une date et exactement juste pour un compte à rebours de quatre-vingt-dix
+secondes.
+
+**Le placeholder est une promesse, et la plage est l'exception qui compte.** Le
+§10.3 dit que les champs portent les valeurs attendues « en texte indicatif » :
+valider sans toucher au champ enregistre donc ce qui était prescrit, ce qui rend
+le parcours courant à deux touchers. Une plage ne prescrit aucun nombre, et
+remplir le **haut** est le défaut tentant — le §10.4 déclenche la suggestion de
+progression quand toutes les séries atteignent le haut de la plage, donc ce
+serait proposer une charge plus lourde parce que quelqu'un a touché un RIR.
+`needsReps` le **dit** au lieu de refuser en silence : une rangée de RIR qui ne
+ferait rien se lirait comme un contrôle cassé.
+
+**`deleteExercise` aurait levé dès la première séance enregistrée.**
+`session_set.exercise_id` est en NO ACTION comme `routine_line.exercise_id`, et
+rien ne l'aurait signalé avant qu'une vraie séance existe. Le schéma porte la
+réponse en deux colonnes : l'id est nullable, `exercise_name_frozen` est
+NOT NULL. Le lien meurt, le nom survit (D5/R4). La transaction délie ; la clé
+étrangère reste le filet qui prouvera qu'elle a tourné.
+
+**Et l'avertissement du §5.3 gagne ce que la tranche 10 lui avait retiré.** Le
+`specs §14.20 n° 3` écrivait qu'il ne mentionne « ni séances, ni records, ni
+graphiques » **parce qu'ils demandent `session_set`**. Ce motif expire ici — et
+un amendement dont la raison a cessé et dont la phrase ne bouge pas est
+exactement la façon dont un avertissement cesse de dire vrai sans que personne
+l'édite. Les routines sont **nommées**, l'historique est **compté**, et ce sont
+deux phrases parce que ce sont deux pertes différentes : une ligne de routine
+est retirée, une série enregistrée est gardée et seulement déliée. Un test
+refuse le mot « perdues ».
+
+### Les dessins, et ce que chercher a coûté
+
+**Rien d'animé n'existe sous licence permissive**, et c'est vérifié avant
+qu'une ligne ne soit copiée :
+
+- les jeux de GIF animés (hasaneyldrm, FitnessDB, RepDB) sont MIT sur le
+  **dépôt** et disent eux-mêmes que les médias sont © Gym Visual, redistribués
+  avec une permission accordée à ce dépôt-là ;
+- `yuhonas/free-exercise-db` se déclare Unlicense. Une image regardée : ce sont
+  les photographies de studio de Bodybuilding.com, d'une personne identifiable.
+  **La déclaration n'appartenait pas à celui qui l'a faite** ;
+- `everkinetic/data` est le seul dont l'éditeur avait le droit d'accorder la
+  licence. **CC-BY-SA 4.0**, donc du copyleft — le terrain sur lequel Wikimedia
+  a été refusée pour la carte corporelle — accepté sur décision explicite.
+
+**Trois choses vérifiées plutôt que supposées, et les trois ont servi :**
+
+1. **Les deux poses partagent leur `viewBox`.** Mesuré sur cinq exercices avant
+   d'écrire quoi que ce soit, parce que les **PNG** du même jeu ne le partagent
+   pas — 947×1064 contre 948×860 pour le développé couché — ce qui aurait fait
+   sauter la figure entre deux images. Le script **refuse** une paire qui ne le
+   ferait pas.
+2. **La structure, pas la couleur.** La première règle comparait deux hex et la
+   source a mis trois coups : `#fff` en minuscules, puis `#2e2e2c` et `#40413f`
+   sur le soulevé de terre. Recensé sur les 64 fichiers : deux groupes, papier
+   puis encre, dans 64 cas sur 64 ; l'encre varie dans 2. **C'est l'ordre qui
+   décide**, et la luminosité garde contre un dessin d'une autre famille.
+3. **Les chemins sont copiés verbatim**, vérifié par exécution : 52 chemins
+   retrouvés caractère pour caractère dans les fichiers source. La leçon de la
+   tranche 10 — `0.999.5` arrondi donne **un** nombre là où il y en avait deux.
+
+**Un trou de la source trouvé par un 404** plutôt que par un dessin manquant :
+elle liste 293 exercices et n'en dessine que 269. Le tirage vertical prise large
+et le rowing barre classique en font partie.
+
+**Le catalogue est offert, jamais installé — et surtout pas par une migration.**
+La tranche 5 avait déjà refusé une graine, mais le motif qui décide ici est plus
+fort : **une migration est rejouée par chaque import (G4)**, donc la graine
+réinjecterait ces lignes dans une archive qui n'en portait aucune, **avec des
+ULID neufs** — importer deux fois la même archive produirait deux exemplaires de
+tout. Idempotent **par nom**, jamais par clé de média : celui qui a tapé
+« Squat » lui-même a un Squat, et en installer un second serait l'application
+qui le contredit sur sa propre bibliothèque.
+
+**`media_uri` porte deux espaces de noms, et la valeur dit lequel.** Un dessin
+du catalogue est du **code** — dans le binaire, jamais manquant, survivant à une
+réinstallation ; un média choisi est un fichier du conteneur. Le préfixe
+`catalog:` les distingue **sur la valeur seule**, sans consultation. Conséquence
+bonne : une valeur `catalog:` revient **vivante** après un aller-retour.
+
+**Le vocabulaire de la tranche 10 rencontre enfin des exercices réels.** Trois
+constats, et deux confirment que la tranche 10 avait raison :
+
+- **`shoulders` est un mot pour trois muscles** entraînés séparément. Gardé en
+  un groupe sur décision explicite — et le dessin est d'accord, `deltoids` y
+  étant une région **unique**, donc scinder aurait donné trois valeurs allumant
+  la même forme.
+- **`forearms` n'est le primaire de rien**, et c'est exactement le faux négatif
+  contre lequel la demi-série d'un secondaire a été écrite (`specs §14.21 n° 5`).
+  Il apparaît huit fois en secondaire.
+- **`kettlebell` n'a aucun exercice** dans la source — un trou de la source, pas
+  du vocabulaire.
+
+### Deux pièces sorties, et où elles vont
+
+- `set-cell.tsx` — la cellule numérique d'une table de séries, à son deuxième
+  utilisateur réel. **Dans la feature, pas dans `core/ui`** : elle sait qu'elle
+  est une cellule de table. `core/ui/decimal-input` est la forme générique et
+  enveloppe une rangée de **formulaire**. Deux formes, deux composants, une
+  règle partagée en prose — dit parce que les fusionner est le rangement tentant.
+- `restForBlock` prend désormais **les deux champs qu'elle lit** au lieu d'un
+  `BlockDraft`. Élargie structurellement plutôt que dupliquée : quel repos
+  s'applique est **une** règle, et une seconde écriture est la façon dont une
+  séance et la routine dont elle vient finiraient par prescrire des repos
+  différents.
+
+## Points ouverts après la tranche 11
+
+- **Rien de la tranche 11 n'a tourné sur l'appareil, et aucun cycle CI n'est
+  nécessaire** : aucune dépendance n'entre. `expo-notifications` est dans le
+  binaire depuis la tranche 9, `react-native-svg` depuis `dev-b19`, et les
+  dessins sont du JavaScript. Metro suffit.
+
+  À regarder dans cet ordre, parce que les premiers rendent les suivants
+  observables :
+  1. **que les dessins ressemblent à l'exercice qu'ils nomment**, et qu'alterner
+     deux poses se lise comme un mouvement plutôt que comme un tic. C'est le
+     seul point qu'aucun test ne peut couvrir — même classe que « un test dit
+     que `chest` possède un tracé, pas que ce tracé traverse les pectoraux » ;
+  2. **où se pose le bandeau de séance.** 49 points sont déclarés pour la barre
+     d'onglets parce que sa hauteur n'est pas lisible depuis JavaScript
+     (`useBottomTabBarHeight` appartient au navigateur JS et lève sous
+     `unstable-native-tabs`). L'erreur possible laisse un jour, pas un
+     recouvrement — mais elle n'a pas été regardée ;
+  3. **que le minuteur de repos sonne.** iOS ne déclenche rien en Node. Et la
+     permission est demandée **au premier armement**, ce qui n'a jamais été
+     exercé : c'est le seul endroit de l'application qui demande hors des
+     Réglages ;
+  4. **qu'un arrêt forcé en pleine séance la retrouve intacte.** Le critère de
+     sortie n° 2, et il demande de tuer l'application pour de vrai ;
+  5. **qu'une séance laissée une nuit ne compte pas la nuit.** Testé en
+     arithmétique et contre un vrai fichier SQLite, jamais contre une vraie
+     nuit ;
+  6. que le balayage supprime une série **dans une liste imbriquée** — deux
+     niveaux de rangées balayables, jamais exercés ici ;
+  7. que la rangée de RIR tienne sur 390 points : huit cellules, à la limite des
+     44 points d'Apple, d'où une rangée plus **haute** plutôt que plus étroite.
+
+- **Ce qu'aucun test ne pourra couvrir, dit plutôt que laissé croire.**
+  Qu'iOS déclenche le minuteur ; que le vidage en arrière-plan tourne avant
+  qu'iOS suspende (`AppState` n'existe pas en Node — ce qui est testable est que
+  la fonction de vidage écrive ce qui était en attente) ; que les dessins soient
+  anatomiquement justes ; qu'un arrêt forcé laisse une séance reprenable (ce qui
+  est testable est que toute écriture soit transactionnelle). Le temps lui-même
+  se teste contre une horloge injectée, ce qui fixe la **règle** et non la
+  plateforme — exactement la limite du client Open Food Facts contre un `fetch`
+  injecté.
+
+- **L'aller-retour export / import n'a toujours pas été refait sur l'appareil
+  depuis `0005`.** `0010` porte le total à **dix-huit tables non vérifiées**
+  dans l'unique filet, contre treize avant. C'est la dette la plus vieille et la
+  plus chère de la liste, et elle vient de grossir d'un tiers. Les six tables
+  neuves sont couvertes par le round-trip en Node, avec une ligne remplissant
+  **chaque** colonne — mais rien de la bascule elle-même, qui est du natif
+  `expo-sqlite`.
+
+- **La position du bandeau est le seul nombre deviné de la tranche.** 49 points,
+  constante de plateforme depuis iOS 7, et une ligne à changer. Voir
+  `architecture §9.24` n° 14.
+
+- **Le seuil de trente minutes et le battement de 400 ms sont choisis, pas
+  mesurés.** Le premier vient de D12 ; le second est « une fraction de seconde »
+  traduite en un nombre. La façon de savoir qu'ils sont faux est de s'entraîner
+  avec.
+
+- **La durée affichée redescend au franchissement du seuil**, d'au plus trente
+  minutes. Réserve assumée : il faut regarder l'écran trente minutes sans rien
+  écrire pour le voir. Si ça se voit malgré tout, le remède n'est **pas** de
+  plafonner la queue — ce serait montrer une demi-heure qui n'a pas eu lieu.
+
+- **`glutes` n'a qu'un exercice primaire, et c'est un jugement.** Le soulevé de
+  terre est classé glutes-primaire plutôt que lombaires-primaire pour que le
+  groupe ne soit pas gris à jamais. Les deux lectures se défendent ; celle-ci se
+  change en une ligne.
+
+- **`kettlebell` n'a aucun exercice** : la source n'en contient pas un seul sur
+  ses 293 entrées. Un filtre matériel vide est une chose qu'un utilisateur peut
+  trouver.
+
+- **Aucune note n'est livrée avec le catalogue**, et c'est une décision : les
+  quatre notes du §6.3 sont écrites pour un corps et des erreurs précises, et la
+  page de séance les affiche pendant chaque entraînement. Du texte générique là
+  apprendrait à l'œil à sauter l'endroit où une vraie note ira.
+
+- **Une séance terminée n'a pas d'écran d'historique pour y revenir.** Le §10.3
+  dit qu'elle « reste éditable et supprimable » ; le §7 met l'historique en
+  tranche 12. Ce qui est livré : elle reste atteignable tant qu'elle est en
+  cours. Le trou est nommé, pas comblé — un écran d'historique bâti maintenant
+  serait la couche « pour plus tard » que le §7 interdit.
+
+- **La progression du §10.4 n'est ni lue ni suggérée.** `progression_enabled`
+  est copiée sur chaque `session_set`, donc la tranche 12 a tout ce qu'il lui
+  faut ; rien ne la lit encore, ce qui est le périmètre.
+
+- **`sweepCache` n'a toujours pas de site d'appel** (hérité de la tranche 4).
+- **L'instrumentation des quatre transitions de D16 n'existe toujours pas.**
+- **Les tranches 6, 8 et 10 n'ont toujours pas tourné sur l'appareil**, et le
+  critère de sortie de la tranche 9 — les conditions des notifications —
+  demande toujours de dormir une nuit.
+- **`fontVariant: ['tabular-nums']` n'est toujours pas vérifié sur Nunito**, et
+  la table de séries en direct s'en sert comme `SetRow`.
+
 ## Points ouverts après la tranche 10
 
 - **Rien de la tranche 10 n'a tourné sur l'appareil.** Aucune dépendance n'a été
@@ -4975,9 +5279,10 @@ exercice par bloc serait le coût par rangée que la tranche 4 a rencontré en
   demande de dépendance native à valider, et elle coûterait un cycle CI. La
   colonne existe parce qu'elle est nullable — donc gratuite — et que l'oublier
   aurait coûté une migration.
-- **Le bouton de démarrage d'une routine n'existe pas**, ni les graphiques, les
-  records et l'historique de la page d'un exercice. Les quatre demandent
-  `session_set`, table de la tranche 11.
+- ~~**Le bouton de démarrage d'une routine n'existe pas.**~~ **Livré en
+  tranche 11.** Restent les graphiques, les records et l'historique de la page
+  d'un exercice : ils lisent `session_set`, qui existe depuis `0010`, et sont
+  le périmètre de la tranche 12.
 - **Hypothèse signalée : l'incrément par défaut vaut 2,5 kg.** Le plus petit pas
   qu'une barre encaisse vraiment, un disque de 1,25 kg de chaque côté. Choisi, pas
   mesuré — d'où un réglage, pour que ça se corrige sans migration.
@@ -4992,9 +5297,9 @@ exercice par bloc serait le coût par rangée que la tranche 4 a rencontré en
   trapèze moyen. Le mot est celui qu'on emploie en salle ; le dessin est un peu
   plus large que le mot.
 - **L'aller-retour export / import n'a toujours pas été refait sur l'appareil
-  depuis `0005`.** `0008` porte le total à **treize tables non vérifiées** dans
-  l'unique filet, contre sept avant. C'est la dette la plus vieille et la plus
-  chère de la liste, et elle vient de doubler.
+  depuis `0005`.** `0008` portait le total à treize tables non vérifiées ;
+  **`0010` le porte à dix-huit** (voir les points de la tranche 11). C'est la
+  dette la plus vieille et la plus chère de la liste.
 - **`sweepCache` n'a toujours pas de site d'appel** (hérité de la tranche 4).
 - **L'instrumentation des quatre transitions de D16 n'existe toujours pas.**
 - **Les tranches 6 et 8 n'ont toujours pas tourné sur l'appareil**, et le critère
@@ -5036,11 +5341,15 @@ exercice par bloc serait le coût par rangée que la tranche 4 a rencontré en
   remède n'est pas d'anticiper des chiffres qui n'existent pas : ce serait une
   occurrence au texte générique, donc un amendement au §9.3 qui demande « l'état
   des macros ».
-- **Le minuteur de repos de la tranche 11 est la prochaine sorte**, et la
-  question des déclencheurs répétitifs se reposera avec lui — cinq sortes, et
-  une notification unique qui n'a ni heure ni activation. `notification_setting`
-  l'accueillera sans migration si elle en veut une : c'est exactement ce que
-  l'absence de CHECK sur `kind` achète.
+- ~~**Le minuteur de repos de la tranche 11 est la prochaine sorte.**~~
+  **FAUX, et corrigé en tranche 11.** Il n'en est pas une : `diffSchedule`
+  décide ce qui appartient au planificateur en testant si un identifiant
+  commence par une sorte, et annule tout ce qu'il possède et qui n'est pas dans
+  le plan. L'ajouter aurait fait annuler le minuteur **en pleine séance**, par
+  un planificateur qui n'en a jamais entendu parler — exactement ce que le
+  paragraphe voisin de la même tranche 9 avait écrit pour l'éviter. Il vit dans
+  `rest:<séance>`, sans réglage, et l'absence de CHECK sur `kind` n'a pas été
+  dépensée.
 - **`sweepCache` n'a toujours pas de site d'appel** (hérité de la tranche 4).
   Inchangé.
 - **L'instrumentation des quatre transitions de D16 n'existe toujours pas.**
