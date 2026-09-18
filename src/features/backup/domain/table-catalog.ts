@@ -495,9 +495,12 @@ const VALUE_RULES: Record<string, Record<string, ValueRule>> = {
      * constraint. D7 wants a file repairable by hand.
      *
      * Named from the schema rather than respelled, the shape PORTION_NAMES set.
-     * Slice 11 adds a kind here for the rest timer; widening it is a one-line
-     * deliberate act with a diff attached, where a CHECK would be a table
-     * rebuild.
+     *
+     * THIS COMMENT USED TO SAY "slice 11 adds a kind here for the rest timer".
+     * It did not, and the correction matters more than the prediction did: the
+     * rest timer has no setting to store, and adding a kind would have made the
+     * daily planner claim its identifier and cancel it mid-workout. It lives in
+     * its own `rest:` namespace instead. See the note on notification_setting.
      */
     kind: { rule: 'one_of', allowed: NOTIFICATION_KINDS },
     /**

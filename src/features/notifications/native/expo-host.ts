@@ -141,6 +141,35 @@ export const expoNotificationHost: NotificationHost = {
     });
   },
 
+  /**
+   * The rest timer of specs 10.3, and the one place TIME_INTERVAL is right.
+   *
+   * Point 4 above explains why the daily kinds must not use it: it is a delay
+   * frozen at scheduling time, so it drifts across a daylight saving change and
+   * means the wrong wall-clock hour by the end of a seven-day horizon.
+   *
+   * A rest is the opposite question. Ninety seconds from now is ninety seconds
+   * from now; there is no civil date in it, and nothing can drift inside a
+   * window shorter than a set. Using CALENDAR here would mean converting an
+   * interval into wall-clock components and back, which is arithmetic added to
+   * gain nothing.
+   *
+   * iOS refuses an interval under one second, so it is floored rather than
+   * passed through: a rest that short is a rest that has already elapsed, and
+   * the caller is not asked to know that.
+   */
+  async scheduleAfter({ id, title, body, seconds }) {
+    await Notifications.scheduleNotificationAsync({
+      identifier: id,
+      content: { title, body, sound: 'default' },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds: Math.max(1, Math.round(seconds)),
+        repeats: false,
+      },
+    });
+  },
+
   async cancel(id: string) {
     await Notifications.cancelScheduledNotificationAsync(id);
   },

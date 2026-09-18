@@ -19,8 +19,9 @@ import {
 } from '../data/session-queries';
 import { useDeferredSetWrites } from '../hooks/use-deferred-set-writes';
 import { useLiveDuration } from '../hooks/use-live-duration';
+import { useRestTimer } from '../hooks/use-rest-timer';
 import { recordSet, type TypedSet } from '../domain/session-set';
-import { durationText, progressText } from '../domain/session-text';
+import { durationText, progressText, restText } from '../domain/session-text';
 import { setColumns } from '../components/set-cell';
 import { LiveSetRow } from '../components/live-set-row';
 
@@ -108,6 +109,7 @@ function LiveSession({ session, onLeave }: { session: SessionView; onLeave: () =
   const [typing, setTyping] = useState<Record<string, TypedSet>>({});
 
   const liveMs = useLiveDuration(session.segments);
+  const rest = useRestTimer(session.id, session.blocks);
 
   function typedFor(set: SessionSetView): TypedSet {
     return (
@@ -215,6 +217,31 @@ function LiveSession({ session, onLeave }: { session: SessionView; onLeave: () =
         >
           <Figure label="Durée" value={durationText(liveMs)} />
           <Figure label="Séries" value={progressText(session.doneSets, session.totalSets)} />
+          {/*
+            THE REST APPEARS ONLY WHILE ONE IS RUNNING, and takes the accent.
+
+            A third figure sitting at "0:00" between sets would be a countdown
+            that is always there and almost never means anything — and the two
+            figures beside it are the ones read at a glance. It arrives when a
+            set is validated, which is the moment it becomes the only number
+            anybody is waiting for, and leaves when it is up.
+
+            The band does not change height with it: the placeholder keeps the
+            column, so validating a set never makes the page jump under the
+            thumb. Slice 8's rule from the weight card, where a card growing
+            under the meals was the same defect in smaller.
+          */}
+          <View style={styles.figure}>
+            <Text style={[styles.figureLabel, { color: theme.colors.textMuted }]}>Repos</Text>
+            <Text
+              style={[
+                styles.figureValue,
+                { color: rest.endsAt === null ? theme.colors.textFaint : theme.colors.accent },
+              ]}
+            >
+              {rest.endsAt === null ? '—' : restText(rest.remainingMs)}
+            </Text>
+          </View>
         </View>
 
         {session.blocks.map((block) => (
