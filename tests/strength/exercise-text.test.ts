@@ -25,6 +25,8 @@ describe('the deletion warning specs 5.3 requires', () => {
     const text = deletionWarning({
       routineNames: ['Full body', 'Haut du corps'],
       lineCount: 5,
+      setCount: 0,
+      sessionCount: 0,
     });
 
     expect(text).toContain('Full body');
@@ -33,27 +35,87 @@ describe('the deletion warning specs 5.3 requires', () => {
   });
 
   it('says so plainly when nothing uses the exercise', () => {
-    expect(deletionWarning({ routineNames: [], lineCount: 0 })).toBe(
-      'Cet exercice n’est utilisé par aucune routine.',
-    );
+    expect(
+      deletionWarning({ routineNames: [], lineCount: 0, setCount: 0, sessionCount: 0 }),
+    ).toBe('Cet exercice n’est utilisé par aucune routine.');
   });
 
   it('agrees in number, for one routine and for one set', () => {
-    const one = deletionWarning({ routineNames: ['Haut du corps'], lineCount: 1 });
+    const one = deletionWarning({
+      routineNames: ['Haut du corps'],
+      lineCount: 1,
+      setCount: 0,
+      sessionCount: 0,
+    });
 
     expect(one).toBe('Une série sera retirée de la routine « Haut du corps ».');
   });
 
-  it('claims nothing about sessions, which do not exist yet', () => {
+  it('claims nothing about sessions when there are none', () => {
     /**
-     * Specs 5.3 also names the charts, the records and the history. They need
-     * session_set, which is slice 11's table. Announcing them now would warn
-     * about data that does not exist — worse than silence, because the reader
-     * has no way to check.
+     * The half that stays true after slice 11: an exercise never performed
+     * loses no history, and saying otherwise would be the warning overstating
+     * what it prevents — the failure mode specs 14.26 no 2 named on the cart.
+     * A confirmation that exaggerates wears out.
      */
-    const text = deletionWarning({ routineNames: ['Haut du corps'], lineCount: 2 });
+    const text = deletionWarning({
+      routineNames: ['Haut du corps'],
+      lineCount: 2,
+      setCount: 0,
+      sessionCount: 0,
+    });
 
-    expect(text).not.toMatch(/séance|record|graphique|historique/i);
+    expect(text).not.toMatch(/séance|record|graphique/i);
+  });
+
+  it('counts the recorded history, where it names the routines', () => {
+    /**
+     * Specs 14.20 no 3 deferred this: the warning mentioned "ni séances, ni
+     * records, ni graphiques" because they needed session_set, "table de la
+     * tranche 11". It exists, so the sentence says them.
+     *
+     * COUNTED and not named, unlike the routines, and the asymmetry is the
+     * decision: a routine name lets you decide without opening anything, while
+     * "séance du 14 septembre" identifies nothing — nobody recognises a workout
+     * by its date. What the reader needs here is the size of what breaks.
+     */
+    const text = deletionWarning({
+      routineNames: ['Haut du corps'],
+      lineCount: 2,
+      setCount: 24,
+      sessionCount: 6,
+    });
+
+    expect(text).toContain('24 séries enregistrées');
+    expect(text).toContain('6 séances');
+    expect(text).toContain('records');
+  });
+
+  it('says the history is kept and only stops counting', () => {
+    /**
+     * THE ASSERTION THAT KEEPS THE SENTENCE HONEST.
+     *
+     * The rows are not deleted: deleteExercise() nulls session_set.exercise_id
+     * and exercise_name_frozen carries what was performed (D5/R4). What breaks
+     * is specs 5.3's "continuité statistique", not the record of the workout.
+     *
+     * So the wording must not say "perdues". Writing the reassuring direction
+     * would be the usual failure; here the honest direction is the reassuring
+     * one, and it is still the one that has to be checked — an editor tightening
+     * this sentence would reach for "perdues" first.
+     */
+    const text = deletionWarning({
+      routineNames: [],
+      lineCount: 0,
+      setCount: 3,
+      sessionCount: 1,
+    });
+
+    expect(text).toContain('garderont le nom');
+    expect(text).not.toMatch(/perdue/i);
+    // One session, singular, and no routine sentence in front of it.
+    expect(text).toContain('1 séance ');
+    expect(text).not.toContain('routine');
   });
 });
 

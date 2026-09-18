@@ -6,6 +6,8 @@ import {
   routine,
   routineBlock,
   routineLine,
+  sessionBlock,
+  sessionSet,
   setting,
   type ExerciseId,
 } from '@/core/db/schema';
@@ -113,9 +115,13 @@ export function useExerciseUsage(id: ExerciseId | null) {
   return useQuery<ExerciseUsage>({
     queryKey: exerciseKeys.usage(id),
     queryFn: () =>
-      id === null ? { routineNames: [], lineCount: 0 } : readExerciseUsage(getAppDatabase(), id),
+      id === null
+        ? { routineNames: [], lineCount: 0, setCount: 0, sessionCount: 0 }
+        : readExerciseUsage(getAppDatabase(), id),
     enabled: id !== null,
-    meta: readsFrom(routineLine, routineBlock, routine),
+    // session_set and session_block joined in since slice 11: the warning now
+    // counts recorded history, so finishing a set has to make it stale.
+    meta: readsFrom(routineLine, routineBlock, routine, sessionSet, sessionBlock),
   });
 }
 

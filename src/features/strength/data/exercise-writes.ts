@@ -7,6 +7,8 @@ import {
   routine,
   routineBlock,
   routineLine,
+  sessionBlock,
+  sessionSet,
   type ExerciseId,
   type Muscle,
 } from '@/core/db/schema';
@@ -164,6 +166,29 @@ export interface ExerciseUsage {
   routineNames: string[];
   /** How many routine lines will go, which is what actually disappears. */
   lineCount: number;
+  /**
+   * How many recorded sets lose their link to this exercise (slice 11).
+   *
+   * ## THE HALF SPECS 5.3 ASKED FOR AND SLICE 10 COULD NOT GIVE
+   *
+   * Specs 14.20 no 3 wrote that the warning mentions "ni séances, ni records,
+   * ni graphiques" because they need session_set, "table de la tranche 11", and
+   * announcing a loss that does not exist is worse than silence.
+   *
+   * That reason expires with this slice, and this is what it expires into. The
+   * amendment is honoured rather than left to rot — a motive that has lapsed
+   * and a sentence that never changes is exactly how a warning stops telling
+   * the truth without anybody editing it.
+   *
+   * COUNTED, NOT NAMED, where the routines are named. The asymmetry is real:
+   * routine names let you decide without opening anything, and "Séance du 14
+   * septembre, séance du 9 septembre, ..." is a list that grows without bound
+   * and identifies nothing — nobody recognises a workout by its date. What the
+   * reader needs here is the SIZE of what breaks.
+   */
+  setCount: number;
+  /** How many sessions those sets belong to, which is the unit of history. */
+  sessionCount: number;
 }
 
 export function readExerciseUsage(db: AppDatabase, exerciseId: ExerciseId): ExerciseUsage {
@@ -174,7 +199,20 @@ export function readExerciseUsage(db: AppDatabase, exerciseId: ExerciseId): Exer
     .where(eq(routineLine.exerciseId, exerciseId))
     .all();
 
-  if (rows.length === 0) return { routineNames: [], lineCount: 0 };
+  /**
+   * Read on ix_set_exercise, whose first caller this is — the index exists for
+   * slice 12's per-exercise history and earns its keep a slice early.
+   */
+  const setRows = db
+    .select({ sessionId: sessionBlock.sessionId })
+    .from(sessionSet)
+    .innerJoin(sessionBlock, eq(sessionSet.sessionBlockId, sessionBlock.id))
+    .where(eq(sessionSet.exerciseId, exerciseId))
+    .all();
+  const setCount = setRows.length;
+  const sessionCount = new Set(setRows.map((row) => row.sessionId)).size;
+
+  if (rows.length === 0) return { routineNames: [], lineCount: 0, setCount, sessionCount };
 
   const routineIds = [...new Set(rows.map((row) => row.routineId))];
   const names = db
@@ -185,7 +223,7 @@ export function readExerciseUsage(db: AppDatabase, exerciseId: ExerciseId): Exer
     .map((row) => row.name)
     .sort((a, b) => a.localeCompare(b));
 
-  return { routineNames: names, lineCount: rows.length };
+  return { routineNames: names, lineCount: rows.length, setCount, sessionCount };
 }
 
 /**
@@ -202,6 +240,27 @@ export function readExerciseUsage(db: AppDatabase, exerciseId: ExerciseId): Exer
  * without its exercise says nothing at all, where an ingredient keeps its
  * macros and stays meaningful. So the lines go.
  *
+ * ## THE SESSIONS ARE THE OPPOSITE CASE, AND THE SCHEMA SAYS SO IN TWO COLUMNS
+ *
+ * session_set.exercise_id is NO ACTION too, so this function would simply start
+ * THROWING the day a session referenced the exercise — the defect this slice
+ * had to find rather than meet. But the answer is not to delete those rows:
+ * a session is HISTORY, and specs 5.3 promises history survives.
+ *
+ * exercise_id is nullable and exercise_name_frozen is NOT NULL, which is the
+ * whole mechanism written into the table: the link dies, the name survives. So
+ * the sets are UNLINKED, not removed, and a workout from two years ago still
+ * says what was performed. D5/R4 calls this link "vivant" precisely so that it
+ * can be cut.
+ *
+ * Done here rather than by ON DELETE SET NULL for the reason the routine lines
+ * are done here: specs 5.3 wants a warning naming what will be lost, and to
+ * name it the application must count it first. Having counted, it can cut what
+ * it announced.
+ *
+ * exercise_note cascades and needs nothing: a note is advice for next time and
+ * means nothing without the movement it is about.
+ *
  * ## AND THE BLOCKS EMPTIED BY THAT GO TOO
  *
  * The consequence that is easy to miss: removing the last line of a block
@@ -214,6 +273,14 @@ export function readExerciseUsage(db: AppDatabase, exerciseId: ExerciseId): Exer
  */
 export function deleteExercise(db: AppDatabase, exerciseId: ExerciseId): void {
   db.transaction((tx) => {
+    // History first: unlink, never delete. The name is already frozen on the
+    // row, so nothing about what was performed is lost.
+    tx
+      .update(sessionSet)
+      .set({ exerciseId: null })
+      .where(eq(sessionSet.exerciseId, exerciseId))
+      .run();
+
     const affectedBlocks = [
       ...new Set(
         tx

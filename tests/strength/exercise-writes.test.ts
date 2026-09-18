@@ -1,14 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { newId } from '../../src/core/id';
+import { toLocalDate } from '../../src/core/date';
 import {
   routine,
   routineBlock,
   routineLine,
+  session,
+  sessionBlock,
+  sessionSet,
   type ExerciseId,
   type RoutineBlockId,
   type RoutineId,
   type RoutineLineId,
+  type SessionBlockId,
+  type SessionId,
+  type SessionSetId,
 } from '../../src/core/db/schema';
 import {
   countExercises,
@@ -80,6 +87,45 @@ function routineUsing(exerciseId: ExerciseId, name: string): RoutineId {
     })
     .run();
   return routineId;
+}
+
+/**
+ * A finished session holding one recorded set of this exercise.
+ *
+ * Returns the block id so a caller can add a second set to the SAME session —
+ * which is what separates "two sets" from "two sessions" in the warning.
+ */
+function sessionUsing(exerciseId: ExerciseId): SessionBlockId {
+  const sessionId = newId<SessionId>();
+  const blockId = newId<SessionBlockId>();
+  db.db
+    .insert(session)
+    .values({
+      id: sessionId,
+      date: toLocalDate('2026-09-14'),
+      status: 'done',
+      startedAt: 1_789_500_000_000,
+      endedAt: 1_789_500_900_000,
+    })
+    .run();
+  db.db.insert(sessionBlock).values({ id: blockId, sessionId, position: 0 }).run();
+  db.db
+    .insert(sessionSet)
+    .values({
+      id: newId<SessionSetId>(),
+      sessionBlockId: blockId,
+      exerciseId,
+      exerciseNameFrozen: 'Développé couché',
+      position: 0,
+      setIndex: 1,
+      setType: 'work',
+      actualReps: 8,
+      actualLoadKg: 72.5,
+      status: 'done',
+      completedAt: 1_789_500_200_000,
+    })
+    .run();
+  return blockId;
 }
 
 describe('creating and reading an exercise', () => {
@@ -232,7 +278,12 @@ describe('what deleting an exercise will cost, counted before it is paid', () =>
   it('reports nothing for an exercise no routine uses', () => {
     const id = createExercise(db.db, draft());
 
-    expect(readExerciseUsage(db.db, id)).toEqual({ routineNames: [], lineCount: 0 });
+    expect(readExerciseUsage(db.db, id)).toEqual({
+      routineNames: [],
+      lineCount: 0,
+      setCount: 0,
+      sessionCount: 0,
+    });
   });
 
   it('names a routine once however many lines it holds', () => {
@@ -339,6 +390,88 @@ describe('deleting an exercise, which is never blocked', () => {
     deleteExercise(db.db, doomed);
 
     expect(listExercises(db.db).map((e) => e.name)).toEqual(['Survivor']);
+  });
+
+  it('unlinks its recorded sets instead of deleting them, and keeps the name', () => {
+    /**
+     * D5/R4 IN ONE ASSERTION, and the defect it guards is that this function
+     * would simply THROW without it: session_set.exercise_id is NO ACTION like
+     * routine_line's, so the first session referencing an exercise would make
+     * deleting it fail — and specs 5.3 says no deletion is ever blocked.
+     *
+     * The answer is not to delete the sets. A session is HISTORY, which specs
+     * 5.3 promises survives, and the schema says how in two columns: the id is
+     * nullable, exercise_name_frozen is NOT NULL. The link dies, the name
+     * survives, and a workout from two years ago still says what was performed.
+     *
+     * Three things are checked because each fails differently: that it does not
+     * throw (the defect), that the row is still there (history kept), and that
+     * the name is intact (history still legible).
+     */
+    const id = createExercise(db.db, draft({ name: 'Développé couché' }));
+    sessionUsing(id);
+
+    expect(() => deleteExercise(db.db, id)).not.toThrow();
+
+    const sets = db.db.select().from(sessionSet).all();
+    expect(sets).toHaveLength(1);
+    expect(sets[0]?.exerciseId).toBeNull();
+    expect(sets[0]?.exerciseNameFrozen).toBe('Développé couché');
+    // And what was actually lifted is still on the row.
+    expect(sets[0]?.actualLoadKg).toBe(72.5);
+  });
+
+  it('leaves the sets of other exercises linked', () => {
+    // The other side: the UPDATE is filtered, not a blanket clear. Without the
+    // WHERE it would pass every assertion above and quietly detach the whole
+    // history of the library.
+    const doomed = createExercise(db.db, draft({ name: 'Doomed' }));
+    const kept = createExercise(db.db, draft({ name: 'Kept' }));
+    const blockId = sessionUsing(doomed);
+    db.db
+      .insert(sessionSet)
+      .values({
+        id: newId<SessionSetId>(),
+        sessionBlockId: blockId,
+        exerciseId: kept,
+        exerciseNameFrozen: 'Kept',
+        position: 1,
+        setIndex: 1,
+        setType: 'work',
+        status: 'done',
+      })
+      .run();
+
+    deleteExercise(db.db, doomed);
+
+    const linked = db.db.select().from(sessionSet).where(eq(sessionSet.exerciseId, kept)).all();
+    expect(linked).toHaveLength(1);
+  });
+
+  it('counts the history it is about to unlink', () => {
+    // What the warning of specs 5.3 says, and specs 14.20 no 3 deferred: the
+    // sets and the sessions they sit in. Counted before the deletion, because
+    // naming what will be lost means counting it first.
+    const id = createExercise(db.db, draft());
+    const blockId = sessionUsing(id);
+    db.db
+      .insert(sessionSet)
+      .values({
+        id: newId<SessionSetId>(),
+        sessionBlockId: blockId,
+        exerciseId: id,
+        exerciseNameFrozen: 'Développé couché',
+        position: 1,
+        setIndex: 2,
+        setType: 'work',
+        status: 'done',
+      })
+      .run();
+
+    const usage = readExerciseUsage(db.db, id);
+    // Two sets, but ONE session: the distinction the sentence makes.
+    expect(usage.setCount).toBe(2);
+    expect(usage.sessionCount).toBe(1);
   });
 });
 
