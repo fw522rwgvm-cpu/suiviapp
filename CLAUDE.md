@@ -63,7 +63,7 @@ L'application doit tolérer un arrêt forcé à tout moment sans perte.
 ## État du projet
 Tranches 0 à 11 livrées. La tranche 9 (notifications) **clôt la V2** ; les
 tranches 10 (exercices et routines) et 11 (séance en direct) **ouvrent la V3**.
-**1626 tests verts** sous les trois fuseaux, `tsc` vert, bundle produit.
+**1636 tests verts** sous les trois fuseaux, `tsc` vert, bundle produit.
 
 **La tranche 11 ne demande AUCUN cycle CI, et c'est vérifiable avant de
 commencer** : aucune dépendance n'entre. `expo-notifications` est dans le
@@ -72,11 +72,11 @@ le 15/09 — `react-native-svg` depuis `dev-b19`. Les dessins d'exercices sont
 des chaînes de chemins dans un module TypeScript, le mécanisme de
 `paths.generated.ts` : du JavaScript. Metro suffit.
 
-**Le bundle JavaScript passe de 6,3 à 6,5 Mo, et 520 exercices tiennent dans
-ces 0,2 Mo.** Les dessins sont des **assets** — 11 Mo dans `dist/assets`, que
-Hermes n'analyse jamais. La première version inlinait 32 SVG et coûtait 1,2 Mo
-de bundle JS analysé à chaque démarrage à froid ; la mesure est dans
-`architecture §9.25` n° 2.
+**Le bundle JavaScript passe de 6,3 à 7,0 Mo, et 876 exercices tiennent dans
+ces 0,7 Mo.** Les photographies sont des **assets** — 30,8 Mo dans
+`dist/assets`, que Hermes n'analyse jamais. La première version inlinait 32 SVG
+et coûtait 1,2 Mo de bundle JS analysé à chaque démarrage à froid ; les mesures
+sont dans `architecture §9.25` n° 2 et `§9.27` n° 1.
 
 **Rien de la tranche 11 n'a tourné sur l'appareil**, et elle s'empile sur les
 tranches 6, 8 et 10 qui n'y ont jamais tourné non plus.
@@ -5051,7 +5051,14 @@ deux phrases parce que ce sont deux pertes différentes : une ligne de routine
 est retirée, une série enregistrée est gardée et seulement déliée. Un test
 refuse le mot « perdues ».
 
-### Les dessins, et pourquoi la source a changé deux fois
+### Les images, et pourquoi la source a changé TROIS fois
+
+> **Mise à jour du 19/09/2026 : la source est désormais `free-exercise-db`**
+> (876 exercices, 1746 photographies, Unlicense). Tout ce qui suit décrit le
+> chemin qui y a mené et **reste vrai de ce qu'il énonce**, sauf un point
+> corrigé en place plus bas : j'avais écrit que ce dépôt se *déclarait*
+> Unlicense sans en avoir le droit. Il a bien un `LICENSE.md` au texte intégral
+> de l'Unlicense. Voir `specs §14.33` et `architecture §9.27`.
 
 **La licence ne dépend pas du nombre d'utilisateurs, et c'est la première chose
 à savoir.** « Seul moi l'utilise » serait vrai d'un dépôt privé. D15 fait du
@@ -5067,9 +5074,13 @@ soit copiée :
 - les jeux de GIF animés (hasaneyldrm, FitnessDB, RepDB) sont MIT sur le
   **dépôt** et disent eux-mêmes que les médias sont © Gym Visual, dont les
   conditions exigent d'**acheter** une licence pour s'en servir ;
-- `yuhonas/free-exercise-db` se déclare Unlicense. Une image regardée : ce sont
-  les photographies de studio de Bodybuilding.com, d'une personne identifiable.
-  **La déclaration n'appartenait pas à celui qui l'a faite.**
+- ~~`yuhonas/free-exercise-db` se déclare Unlicense sans en avoir le droit.~~
+  **FAUX, corrigé le 19/09/2026.** Le dépôt porte un `LICENSE.md` contenant le
+  texte intégral de l'Unlicense ; j'avais cherché `LICENSE` sans extension et
+  pris le 404 pour une réponse. **Ce qui reste vrai** : ce sont des
+  photographies de studio d'une personne identifiable, et une dédicace de droit
+  d'auteur règle qui peut copier le fichier, pas ce que cette personne a
+  accepté. Distinction signalée, décision prise, `specs §14.33 n° 7`.
 
 **La première version a pris `everkinetic/data`** : 293 exercices, anglais
 seulement, dont 32 nommés à la main en français. Ce n'était pas assez, et ce qui
@@ -5084,10 +5095,29 @@ par ses contributeurs. Changer de source n'était donc pas troquer un jeu contre
 un autre — c'était prendre les mêmes dessins plus cinq cents exercices, le
 nommage fait. 520 exercices, 194 dessins, CC-BY-SA crédité par auteur.
 
-**Et un PNG est structurellement moins cher qu'un chemin inliné.** Hermes ne le
-lit jamais : le bundle JavaScript redescend de 7,6 à 6,5 Mo pendant que le
-catalogue passe de 32 à 520, et les 11 Mo d'images partent dans les assets,
-chargés à l'affichage.
+**Et une image est structurellement moins chère qu'un chemin inliné.** Hermes ne
+la lit jamais : le bundle JavaScript est redescendu de 7,6 à 6,5 Mo pendant que
+le catalogue passait de 32 à 520, et il ne remonte qu'à 7,0 Mo à 876 — les
+30,8 Mo d'images partent dans les assets, chargés à l'affichage.
+
+**La troisième source a été prise pour sa licence, et elle a coûté les noms.**
+wger livrait ses exercices **déjà traduits par ses contributeurs**, ce qui avait
+compté comme un bénéfice de cette source. free-exercise-db est en anglais seul :
+les 876 noms sont donc écrits un par un dans `scripts/exercise-names-fr.mjs`,
+jamais produits par un traducteur par jetons. Un tel traducteur traite sept noms
+sur dix et se trompe sur la traîne idiomatique — or **un nom faux dans une
+bibliothèque n'est pas un écran cassé, c'est une étiquette plausible sur le
+mauvais mouvement.**
+
+Un contrôle a d'ailleurs attrapé exactement ça : « Cable Incline Pushdown »
+était traduit « Extension triceps » alors que sa source dit
+`primaryMuscles: ['lats']` — c'est un pull-over bras tendus. Trouvé en comparant
+le muscle que le nom français annonce aux muscles réels de l'exercice, pas à la
+relecture.
+
+**Et la paire d'images EST le mouvement** : [0] le départ, [1] l'arrivée. La
+rangée de liste montre la première, la fiche montre les deux — « jusqu'où
+est-il descendu » est précisément ce qu'une photo seule ne dit pas.
 
 **Deux conséquences assumées, écrites plutôt que découvertes :**
 
@@ -5107,13 +5137,21 @@ Restent vraies les deux autres moitiés : `shoulders` est toujours un mot pour
 trois muscles, gardé en un groupe sur décision explicite ; et un exercice sans
 matériel ne répond à aucun filtre.
 
-**Et une règle de nom PRIME sur wger pour trois muscles, sur aucun autre.** Il ne
-modélise ni lombaires, ni avant-bras, ni adducteurs. La première version ne
-laissait une règle de nom que *compléter* un primaire absent — ce qui n'en a
-atteint aucun, wger disant toujours quelque chose : une hyperextension revenait
-en ischio-jambiers. Or cette réponse n'est pas *différente* de la nôtre, c'est
-**la moins fausse que wger puisse donner**. Déférer à un vocabulaire pour un
-muscle qu'il ne sait pas exprimer, c'est déférer à un choix forcé.
+**Et une règle de nom PRIME sur la source pour les muscles qu'elle ne sait pas
+exprimer, sur aucun autre.** wger ne modélisait ni lombaires, ni avant-bras, ni
+adducteurs, et la première version ne laissait une règle de nom que *compléter*
+un primaire absent — ce qui n'en a atteint aucun, wger disant toujours quelque
+chose : une hyperextension revenait en ischio-jambiers. Or cette réponse n'est
+pas *différente* de la nôtre, c'est **la moins fausse que la source puisse
+donner**. Déférer à un vocabulaire pour un muscle qu'il ne sait pas exprimer,
+c'est déférer à un choix forcé.
+
+**free-exercise-db nomme les trois, ce qui retire l'instrument — et il n'en
+reste qu'un.** `obliques`, qu'elle replie dans `abdominals`. La règle survit
+pour lui seul et **ne se déclenche QUE lorsque la source dit `abdominals`** :
+elle réattribue à l'intérieur de la famille abdominale et ne peut donc pas voler
+un exercice de pectoraux à « Incline Dumbbell Flyes - With A Twist ». C'est la
+raison pour laquelle le mot `twist` seul n'est pas dans le motif.
 
 **Défaut dans six tests, et la leçon vaut au-delà d'eux** : ils nommaient des
 clés du catalogue en **littéraux**. C'était juste tant que trente-trois entrées
@@ -5131,11 +5169,26 @@ Idempotent **par nom**, jamais par clé de média : celui qui a tapé « Squat �
 lui-même a un Squat, et en installer un second serait l'application qui le
 contredit sur sa propre bibliothèque.
 
-**Ce qui a changé, c'est QUI demande.** Les 194 exercices qui portent un dessin
-sont installés seuls au premier lancement (`useDefaultCatalogOnce`). « Courant »
-veut dire « a un dessin », et ce n'est pas une opinion sur ce que les gens font :
-les contributeurs de wger ont dessiné les exercices qu'on cherche vraiment, et ce
-vote-là est plus large que le nôtre. L'effet de bord vaut à lui seul le critère —
+**Ce qui a changé, c'est QUI demande.** Les 552 exercices de musculation sont
+installés seuls au premier lancement (`useDefaultCatalogOnce`).
+
+**Le critère a été faux deux fois avant d'être juste.** « A un dessin » marchait
+tant que 194 entrées sur 520 en avaient un ; avec free-exercise-db tout en a un,
+donc l'instrument disparaît. `level: 'beginner'` a été essayé ensuite et **il
+est cassé** — vérifié en listant les mouvements de base contre lui : il exclut
+le soulevé de terre, le développé militaire, le soulevé de terre roumain, la
+fente et le front squat. Ce champ note la **difficulté technique**, pas la
+fréquence, et une bibliothèque par défaut sans soulevé de terre est une
+bibliothèque cassée.
+
+Ce qui reste est la question honnête — est-ce qu'on fait ça en séries et
+répétitions — et la `category` de la source y répond : `strength` et
+`powerlifting` entrent, les étirements, le cardio, la pliométrie, le strongman
+et l'haltérophilie restent au catalogue. **552 sur 876, les quinze muscles
+couverts.**
+
+La propriété qui comptait dans le premier critère survit et est désormais
+**dérivée au lieu d'être définitionnelle**, donc elle a son propre test :
 **toute ligne de la bibliothèque a une image dès le premier jour**, donc le
 substitut du §5.4 n° 3 n'y ressemble pas à un défaut le jour de l'installation.
 
@@ -5159,10 +5212,11 @@ cette tranche reçoit les défauts au lancement suivant, comme une installation
 neuve. Un test tient les deux directions.
 
 **Et l'écran est une RECHERCHE — celle du RESTE.** À trente-trois entrées, tout
-cocher évitait trente-trois questions ; à cinq cent vingt, tout installer ne
-serait pas une bibliothèque mais une copie de la base wger sur le téléphone. Les
-194 dessinés arrivent seuls, les 326 autres se cherchent ici. Rien n'est coché,
-on cherche ce qu'on fait. **Les
+cocher évitait trente-trois questions ; à huit cent soixante-seize, tout
+installer ne serait pas une bibliothèque mais une copie d'une base de données
+sur le téléphone. Les 552 exercices de musculation arrivent seuls, les 324
+autres — étirements, cardio, pliométrie, strongman, haltérophilie — se cherchent
+ici. Rien n'est coché, on cherche ce qu'on fait. **Les
 résultats sont plafonnés à quarante et la page le dit** — D16 écarte une liste
 virtualisée, donc la réponse est d'en montrer moins, pas d'en montrer autrement.
 La sélection survit au terme et aux filtres : affiner après avoir coché ne doit
@@ -5181,11 +5235,30 @@ constats, et deux confirment que la tranche 10 avait raison :
   un groupe sur décision explicite — et le dessin est d'accord, `deltoids` y
   étant une région **unique**, donc scinder aurait donné trois valeurs allumant
   la même forme.
-- **`forearms` n'est le primaire de rien**, et c'est exactement le faux négatif
-  contre lequel la demi-série d'un secondaire a été écrite (`specs §14.21 n° 5`).
-  Il apparaît huit fois en secondaire.
-- **`kettlebell` n'a aucun exercice** dans la source — un trou de la source, pas
-  du vocabulaire.
+- ~~**`forearms` n'est le primaire de rien.**~~ Vrai d'everkinetic, puis atteint
+  par une règle de nom chez wger. **free-exercise-db lui donne 25 exercices
+  primaires** : c'était un trou de la source, pas du vocabulaire. Le constat du
+  `specs §14.21 n° 5` — les avant-bras sont rarement le primaire de quelqu'un —
+  garde son sens, et la demi-série d'un secondaire garde sa raison d'être.
+- ~~**`kettlebell` n'a aucun exercice** dans la source.~~ Zéro chez everkinetic,
+  onze chez wger, **cinquante-six ici**. Le vocabulaire avait raison et les
+  données n'arrêtaient pas d'être maigres.
+- **Il ne reste qu'un muscle qu'aucune source n'exprime : `obliques`**, replié
+  dans les abdominaux. Atteint par une règle de nom qui ne se déclenche que sur
+  `abdominals`.
+
+**Une régression évitée en relisant les tests, pas un écran en échec.** Le
+générateur réécrit pour free-exercise-db avait **perdu `tracksDuration`** — la
+colonne exacte que la tranche 11 a trouvée morte dans l'eau, lue en quatre
+endroits et écrite nulle part. Le catalogue est le **seul** à y poser une valeur
+non nulle sur une installation neuve : la perdre l'aurait remise à `0` partout,
+en silence, reproduisant `0009` à l'identique un jour après l'avoir corrigé.
+161 exercices sont chronométrés, dont 8 dans le jeu par défaut — étirements et
+cardio par catégorie, gainages, portages et isométriques par nom.
+
+**Et le dépôt grossit de 30,8 Mo, ce qui est le prix assumé de « toute ligne a
+une image ».** Chaque `checkout` de la CI les tire. Écrit ici plutôt que
+découvert au premier build lent.
 
 **Vider la base est un bouton des Réglages dev, et il supprime des LIGNES, pas
 le fichier.** Il n'existait aucun moyen de retrouver un état neuf sans
@@ -5220,15 +5293,16 @@ silencieusement ignoré, et restauré dans un `finally`.
 
 ## Points ouverts après la tranche 11
 
-- **free-exercise-db a été demandé et refusé.** Le dépôt **n'a aucun fichier
-  LICENSE** — vérifié, 404 ; seul le README affiche un badge « Unlicense », qui
-  n'est pas une licence accordée. Et ses images sont les photographies de studio
-  de Bodybuilding.com : une personne identifiable, dont le droit à l'image ne se
-  règle pas par une licence logicielle même si elle existait. Le dépôt est public
-  et les IPA sont en release : deux diffusions (`specs §14.31 n° 8`). La demande
-  sous-jacente — des exercices sans avoir à les ajouter — est satisfaite par
-  l'installation par défaut. **À rouvrir uniquement si une source photographique
-  sous licence écrite apparaît**, pas par insistance.
+- **La source du catalogue est free-exercise-db, et mon refus initial reposait
+  sur un fait faux.** J'avais annoncé que le dépôt n'avait aucun fichier de
+  licence : il en a un, `LICENSE.md`, texte intégral de l'**Unlicense**. J'avais
+  cherché `LICENSE` sans extension et pris le 404 pour une réponse. Vérifié
+  depuis en lisant le fichier.
+  **Ce qui reste vrai et n'est pas une objection juridique** : les photographies
+  montrent une personne identifiable, et une dédicace de droit d'auteur n'est
+  pas une autorisation de droit à l'image — elle règle qui peut copier le
+  fichier, pas ce que la personne a accepté. Signalé, décision prise en
+  connaissance de cause, consignée en `specs §14.33 n° 7` pour rester visible.
 - **Rien de la tranche 11 n'a tourné sur l'appareil, et aucun cycle CI n'est
   nécessaire** : aucune dépendance n'entre. `expo-notifications` est dans le
   binaire depuis la tranche 9, `react-native-svg` depuis `dev-b19`, et les

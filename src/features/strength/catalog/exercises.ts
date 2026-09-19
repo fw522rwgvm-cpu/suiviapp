@@ -32,9 +32,14 @@ import { EXERCISE_CATALOG, type CatalogExercise } from './catalog.generated';
  * ## THE LIST ITSELF IS GENERATED, AND THAT IS THE POINT
  *
  * It used to be thirty-three entries written by hand from everkinetic's English
- * titles. Five hundred and seventeen now come from wger, already in French,
- * already carrying muscles and equipment — see catalog.generated.ts for what
- * the switch cost and bought, and ./LICENSE.md for who is credited.
+ * titles, then five hundred and twenty from wger. Eight hundred and seventy-six
+ * now come from free-exercise-db, which is public domain — see
+ * catalog.generated.ts for what that third switch cost and bought, and
+ * ./LICENSE.md for the provenance.
+ *
+ * The FRENCH NAMES are the part that is not generated from the source: it is
+ * English only, so the translation is this project's own and lives in
+ * scripts/exercise-names-fr.mjs.
  *
  * ## WHAT IS DELIBERATELY NOT HERE: THE FOUR NOTES
  *

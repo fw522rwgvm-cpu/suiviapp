@@ -38,7 +38,7 @@ const ALL = EXERCISE_CATALOG.map((entry) => entry.key);
  *
  * The first version of these tests named 'squat', 'crunch' and 'gainage' as
  * literals, which was fine while thirty-three entries were written by hand in
- * the file next door. The list is generated from wger now, so a literal is a
+ * the file next door. The list is generated from a third party now, so a literal is a
  * bet on somebody else's naming — and when the source changed, six tests failed
  * on keys that no longer existed rather than on behaviour that had.
  *
@@ -80,11 +80,13 @@ describe('installing', () => {
 
   it('writes a media key even for an entry with no drawing', () => {
     /**
-     * wger describes three hundred and twenty-six exercises it has no image
-     * for, and they still get a key. The key is what the exercise IS, not a
-     * promise that a picture exists — and withholding it would make "no
-     * drawing" mean two different things depending on why, where the substitute
-     * of specs 5.4 no 3 is one path.
+     * Three catalogue entries have no photographs, and they still get a key.
+     * The key is what the exercise IS, not a promise that a picture exists —
+     * and withholding it would make "no drawing" mean two different things
+     * depending on why, where the substitute of specs 5.4 no 3 is one path.
+     *
+     * It used to be three hundred and twenty-six under wger, so this path was
+     * exercised daily; it is rare now, which is exactly why it needs a test.
      */
     installCatalogExercises(db.db, [UNDRAWN], 2.5);
 

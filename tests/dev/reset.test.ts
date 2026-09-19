@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { toLocalDate } from '../../src/core/date';
 import { newId } from '../../src/core/id';
-import { exercise, session, sessionBlock, type SessionId } from '../../src/core/db/schema';
+import { MUSCLES, exercise, session, sessionBlock, type SessionId } from '../../src/core/db/schema';
 import { resetDatabase } from '../../src/dev/reset';
 import { allSchemaTableNames } from '../../src/features/backup/domain/table-catalog';
 import {
@@ -99,12 +99,12 @@ describe('emptying the database', () => {
 });
 
 describe('the default exercises', () => {
-  it('installs the ones that have a drawing, and nothing else', () => {
+  it('installs the strength movements, and nothing else', () => {
     /**
-     * "Has a drawing" is the criterion rather than an opinion about what is
-     * common: wger's contributors drew the exercises people actually look up.
-     * And it gives the resulting library a picture on EVERY row, so the
-     * substitute of specs 5.4 no 3 does not look like a defect on day one.
+     * The criterion is the SOURCE's category rather than an opinion about what
+     * is common — and it is a subset, which is the point: the stretches, the
+     * cardio, the plyometrics and the strongman work stay in the catalogue to
+     * be chosen.
      */
     const report = installDefaultCatalogOnce(db.db, 2.5, 1_789_600_000_000);
 
@@ -112,6 +112,40 @@ describe('the default exercises', () => {
     expect(defaultCatalogKeys().length).toBeGreaterThan(100);
     expect(defaultCatalogKeys().length).toBeLessThan(EXERCISE_CATALOG.length);
     expect(count('exercise')).toBe(defaultCatalogKeys().length);
+  });
+
+  it('GIVES EVERY DEFAULT ROW A PICTURE', () => {
+    /**
+     * The property that used to be definitional and is now DERIVED, which is
+     * why it needs a test of its own.
+     *
+     * The old criterion was literally "has a drawing", so this could not fail.
+     * The criterion is now the source's category, and nothing about a category
+     * promises an image — so a source that stopped shipping photographs for one
+     * of them would put the substitute of specs 5.4 no 3 on a library nobody
+     * has touched yet, on day one, and read as a defect rather than as a
+     * missing file.
+     */
+    const defaults = new Set(defaultCatalogKeys());
+    const withoutImage = EXERCISE_CATALOG.filter(
+      (entry) => defaults.has(entry.key) && entry.hasImage !== true,
+    );
+
+    expect(withoutImage.map((entry) => entry.name)).toEqual([]);
+  });
+
+  it('covers every muscle, so no filter opens empty on a fresh library', () => {
+    // A default library that never trains a muscle makes that muscle's filter
+    // return nothing on the first visit, which reads as a broken screen rather
+    // than as a library somebody has not filled in yet.
+    const defaults = new Set(defaultCatalogKeys());
+    const reached = new Set(
+      EXERCISE_CATALOG.filter((entry) => defaults.has(entry.key)).map(
+        (entry) => entry.primaryMuscle,
+      ),
+    );
+
+    expect(MUSCLES.filter((muscle) => !reached.has(muscle))).toEqual([]);
   });
 
   it('does nothing the second time, on a flag rather than on emptiness', () => {

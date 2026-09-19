@@ -19,9 +19,10 @@ import { regionsForMuscle } from '../../src/features/strength/body-map/body-map'
  * what that found — they are assertions about the VOCABULARY rather than about
  * the catalogue.
  *
- * The list is generated from wger, so these do not check hand-written data:
- * they check that the MAPPING from a third party's vocabulary onto ours cannot
- * produce something the schema or the body map will not accept.
+ * The list is generated from free-exercise-db, so these do not check
+ * hand-written data: they check that the MAPPING from a third party's
+ * vocabulary onto ours cannot produce something the schema or the body map will
+ * not accept.
  */
 
 describe('every entry is well formed', () => {
@@ -120,12 +121,15 @@ describe('what this catalogue reveals about the slice 10 vocabulary', () => {
      * presque jamais le primaire de personne" — and justified the half-count
      * for a secondary muscle.
      *
-     * wger does not model forearms, lower_back or adductors AT ALL, so all
-     * three would have been empty. They are reached by NAME rules in the
-     * generator instead, which is a weaker instrument than a field and says so
-     * where it lives. This is what checks the instrument still works: if a
-     * rename upstream stops the patterns matching, a muscle goes permanently
-     * grey on the body map and nothing else would notice.
+     * wger did not model forearms, lower_back or adductors AT ALL, so all
+     * three had to be reached by name rules. free-exercise-db names all three,
+     * which retires that instrument — and leaves exactly ONE muscle it cannot
+     * express: `obliques`, which it folds into `abdominals`.
+     *
+     * So the name rule survives for that one, and this is what checks it still
+     * works: if a rename upstream stops OBLIQUE_PATTERN matching, a muscle goes
+     * permanently grey on the body map and its filter comes back empty, and
+     * nothing else would notice.
      */
     const primaries = new Set(EXERCISE_CATALOG.map((entry) => entry.primaryMuscle));
     const never = MUSCLES.filter((muscle) => !primaries.has(muscle));
@@ -134,8 +138,9 @@ describe('what this catalogue reveals about the slice 10 vocabulary', () => {
   });
 
   it('covers every equipment value', () => {
-    // `kettlebell` had no entry at all under the old source — a gap in that
-    // dataset rather than in the vocabulary. wger has eleven.
+    // `kettlebell` had no entry at all under the FIRST source — a gap in that
+    // dataset rather than in the vocabulary. wger had eleven; this one has
+    // fifty-six. The vocabulary was right and the data kept being thin.
     const used = new Set(
       EXERCISE_CATALOG.map((entry) => entry.equipment).filter((value) => value !== null),
     );
@@ -145,14 +150,14 @@ describe('what this catalogue reveals about the slice 10 vocabulary', () => {
 
   it('leaves some entries with NO equipment, which is an answer rather than a gap', () => {
     /**
-     * wger has no generic "machine" and leaves many records with no equipment
-     * at all. A name rule fills in what it can name for certain; what is left
-     * keeps NULL — and slice 10 already decided what that means: an exercise
-     * with no equipment matches NO filter, because pretending it matches would
-     * assert something nobody said.
+     * free-exercise-db leaves seventy-seven records with no equipment at all —
+     * stretches, mostly, and bodyweight work it declined to classify. That
+     * stays NULL rather than being guessed, and slice 10 already decided what
+     * it means: an exercise with no equipment matches NO filter, because
+     * pretending it matches would assert something nobody said.
      *
-     * Asserted as a RANGE rather than a number, so improving the name rules
-     * does not break the test, but losing them all does.
+     * Asserted as a RANGE rather than a number, so the count moving upstream
+     * does not break the test, but the column silently filling in does.
      */
     const unstated = EXERCISE_CATALOG.filter((entry) => entry.equipment === null);
 
@@ -163,7 +168,8 @@ describe('what this catalogue reveals about the slice 10 vocabulary', () => {
   it('has exercises measured in time', () => {
     // tracks_duration had never met a real exercise either — slice 11 found it
     // was written by NOTHING, read in four places and set nowhere. The
-    // catalogue exercises the column on day one.
+    // catalogue exercises the column on day one, and this is the test that
+    // would notice if a source change dropped it again.
     const timed = EXERCISE_CATALOG.filter((entry) => entry.tracksDuration === true);
 
     expect(timed.length).toBeGreaterThan(0);

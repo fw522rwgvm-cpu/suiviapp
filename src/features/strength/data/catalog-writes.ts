@@ -164,25 +164,33 @@ export const CATALOG_SEEDED_KEY = 'catalog_seeded_at';
 /**
  * The exercises a fresh installation gets WITHOUT being asked (slice 11).
  *
- * ## THE ONES WITH A DRAWING, AND THAT IS THE CRITERION
+ * ## THE CRITERION IS THE SOURCE'S, AND THE FIRST TWO WERE WRONG
  *
- * Requested: the common exercises should already be there. Five hundred and
- * twenty would not be a library, it would be a copy of the wger database — so
- * something has to choose, and "has a drawing" is the honest line rather than
- * an opinion about what is common. wger's contributors drew the exercises
- * people actually look up, so the set is curated by somebody who trained rather
- * than by a rule invented here.
+ * Requested: the common exercises should already be there. Eight hundred and
+ * seventy-six would not be a library, it would be a copy of a database — so
+ * something has to choose.
  *
- * It has a second property that matters more than it sounds: the library that
- * results has a picture on EVERY row. A default set mixing drawn and undrawn
- * entries would make the substitute of specs 5.4 no 3 look like a defect on day
- * one, on a screen nobody has touched yet.
+ * "Has a drawing" was the first line and it worked only while 194 of 520 had
+ * one. Every free-exercise-db entry has photographs, so that instrument is
+ * gone.
  *
- * The other three hundred and twenty-six stay one tap away, in the catalogue
- * screen, which is also where they can be searched and filtered.
+ * `level: 'beginner'` was the second, and it is WRONG — caught by listing the
+ * staple lifts against it: it excludes the deadlift, the overhead press, the
+ * Romanian deadlift, the lunge and the front squat. That field grades TECHNICAL
+ * DIFFICULTY, not how ordinary a movement is.
+ *
+ * What is left is the honest question — is this a thing you do for sets and
+ * reps — and the source's `category` answers it. The flag is computed there and
+ * read here; see DEFAULT_CATEGORIES in scripts/fetch-exercise-catalog.mjs.
+ *
+ * The result keeps the property that mattered about the first criterion: every
+ * row of the resulting library has a picture, so the substitute of specs 5.4
+ * no 3 does not look like a defect on day one. The remaining entries —
+ * stretches, cardio, plyometrics, strongman, olympic lifts — stay one tap away
+ * in the catalogue screen, where they can be searched and filtered.
  */
 export function defaultCatalogKeys(): string[] {
-  return EXERCISE_CATALOG.filter((entry) => entry.hasImage === true).map((entry) => entry.key);
+  return EXERCISE_CATALOG.filter((entry) => entry.isDefault === true).map((entry) => entry.key);
 }
 
 /**

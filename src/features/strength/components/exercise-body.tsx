@@ -70,7 +70,7 @@ export function ExerciseBody({
         they may not know; somebody choosing secondary muscles is looking at the
         figure. Both are on the page, in the order they are needed.
 
-        The wger drawing shows the start and the end side by side with an
+        The two photographs show the start and the end of the movement, which an
         arrow, so a still says the movement — which is what the two-pose
         animation of the first version was saying, in a glance.
       */}
@@ -85,7 +85,8 @@ export function ExerciseBody({
             },
           ]}
         >
-          <ExerciseDrawing mediaUri={mediaUri} height={180} />
+          {/* Both poses here: the start and the end are what say how the movement runs. */}
+          <ExerciseDrawing mediaUri={mediaUri} height={180} poses="both" />
         </View>
       )}
 

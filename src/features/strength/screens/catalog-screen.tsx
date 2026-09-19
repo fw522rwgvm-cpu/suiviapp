@@ -34,12 +34,17 @@ import { equipmentLabel, muscleLabel } from '../domain/vocabulary';
  * ticked and the button installed the lot: asking thirty-three questions
  * instead of one was the same wall in a different shape.
  *
- * It holds five hundred and twenty now, and the same default would be absurd —
- * a library of five hundred exercises is not a library, it is the wger database
- * with a copy on your phone. So the screen is a SEARCH: find what you actually
- * do, tick it, add it. The reason the catalogue exists is unchanged — nobody
- * should type "Développé couché" and its muscles by hand — but at this size the
- * offer has to be "which ones", not "all of them".
+ * It holds eight hundred and seventy-six now, and the same default would be
+ * absurd — a library of that size is not a library, it is a copy of a database
+ * on your phone. So the screen is a SEARCH: find what you actually do, tick it,
+ * add it. The reason the catalogue exists is unchanged — nobody should type
+ * "Développé couché" and its muscles by hand — but at this size the offer has
+ * to be "which ones", not "all of them".
+ *
+ * AND WHAT IS LEFT HERE IS THE REST. The strength movements are installed on
+ * first launch, so this screen is where the stretches, the cardio, the
+ * plyometrics and the strongman work live — things somebody chooses rather than
+ * is given.
  *
  * ## THE RESULTS ARE CAPPED, AND THE CAP IS VISIBLE
  *
@@ -122,8 +127,9 @@ export function CatalogScreen() {
         keyboardDismissMode="on-drag"
       >
         <Text style={[styles.intro, { color: theme.colors.textMuted }]}>
-          {EXERCISE_CATALOG.length} exercices au catalogue. Les plus courants sont
-          déjà dans votre bibliothèque ; cherchez ici ceux qui manquent.
+          {EXERCISE_CATALOG.length} exercices au catalogue. Les exercices de
+          musculation sont déjà dans votre bibliothèque ; on trouve ici le reste
+          — étirements, cardio, pliométrie, force athlétique.
         </Text>
 
         <SearchField value={term} onChange={setTerm} />
