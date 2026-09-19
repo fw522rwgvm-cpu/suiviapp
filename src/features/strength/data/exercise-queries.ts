@@ -6,6 +6,7 @@ import {
   routine,
   routineBlock,
   routineLine,
+  session,
   sessionBlock,
   sessionSet,
   setting,
@@ -29,6 +30,7 @@ import {
   updateExercise,
   type ExerciseUsage,
 } from './exercise-writes';
+import { readExerciseHistory, type HistorySet } from './history-reads';
 import {
   readProgressionIncrement,
   readRestAlert,
@@ -63,6 +65,7 @@ export const exerciseKeys = {
   usage: (id: ExerciseId | null) => ['exercise', 'usage', id] as const,
   increment: () => ['exercise', 'increment-default'] as const,
   restAlert: () => ['exercise', 'rest-alert'] as const,
+  history: (id: ExerciseId | null) => ['exercise', 'history', id] as const,
 };
 
 /**
@@ -103,6 +106,37 @@ export function useExercise(id: ExerciseId | null) {
     queryFn: () => (id === null ? null : readExercise(getAppDatabase(), id)),
     enabled: id !== null,
     meta: readsFrom(exercise, exerciseSecondaryMuscle),
+  });
+}
+
+/**
+ * Everything this exercise has ever been given (specs 10.1).
+ *
+ * ## ONE QUERY FOR THE CHARTS, THE RECORDS AND THE HISTORY LIST
+ *
+ * The three read the same rows and fold them differently, which is the whole
+ * design of the slice: three queries would be three chances to disagree about
+ * what counted. Changing the range or the metric touches no database at all —
+ * it re-folds what is already in hand, which is what makes those controls feel
+ * instant on a page budgeted by D16.
+ *
+ * ## IT DECLARES `session` AS WELL AS THE SETS, AND `exercise` NOT AT ALL
+ *
+ * The civil date and the start of every point come from `session`, so
+ * finishing a workout — or correcting its date through an import — has to move
+ * these charts.
+ *
+ * `exercise` is deliberately absent: nothing here reads a column of it.
+ * Renaming an exercise must not re-read its history, and deleting one nulls
+ * `session_set.exercise_id`, which is a write to `session_set` and is already
+ * covered.
+ */
+export function useExerciseHistory(id: ExerciseId | null) {
+  return useQuery<HistorySet[]>({
+    queryKey: exerciseKeys.history(id),
+    queryFn: () => (id === null ? [] : readExerciseHistory(getAppDatabase(), id)),
+    enabled: id !== null,
+    meta: readsFrom(session, sessionBlock, sessionSet),
   });
 }
 
