@@ -15,15 +15,18 @@ import {
   useFinishSession,
   usePendingNotes,
   useRemoveSet,
+  useReopenSet,
+  useSetSetRir,
   useSkipSet,
 } from '../data/session-queries';
 import { useDeferredSetWrites } from '../hooks/use-deferred-set-writes';
 import { useLiveDuration } from '../hooks/use-live-duration';
 import { useRestTimer } from '../hooks/use-rest-timer';
 import { recordSet, type TypedSet } from '../domain/session-set';
-import { durationText, progressText, restText } from '../domain/session-text';
+import { elapsedText, progressText, restText } from '../domain/session-text';
 import { setColumns } from '../components/set-cell';
 import { LiveSetRow } from '../components/live-set-row';
+import { RirPicker } from '../components/rir-picker';
 
 /**
  * The live session (specs 10.3).
@@ -79,6 +82,8 @@ export function SessionScreen() {
 function LiveSession({ session, onLeave }: { session: SessionView; onLeave: () => void }) {
   const theme = useTheme();
   const complete = useCompleteSet();
+  const reopen = useReopenSet();
+  const setRir = useSetSetRir();
   const skip = useSkipSet();
   const remove = useRemoveSet();
   const addRound = useAddRound();
@@ -107,6 +112,16 @@ function LiveSession({ session, onLeave }: { session: SessionView; onLeave: () =
 
   /** What is being typed, keyed by set. Empty means "show the placeholders". */
   const [typing, setTyping] = useState<Record<string, TypedSet>>({});
+
+  /**
+   * Which set the RIR window is about. `null` means it is closed.
+   *
+   * An id rather than the set itself, so the window always shows what the
+   * DATABASE holds: picking a RIR writes immediately and the row re-reads, and
+   * a captured object would go on showing the value it had when it was opened.
+   */
+  const [rirFor, setRirFor] = useState<SessionSetId | null>(null);
+  const rirTarget = rirFor === null ? null : (sets.find((set) => set.id === rirFor) ?? null);
 
   const liveMs = useLiveDuration(session.segments);
   const rest = useRestTimer(session.id, session.blocks);
@@ -152,6 +167,21 @@ function LiveSession({ session, onLeave }: { session: SessionView; onLeave: () =
         rir,
       ),
     });
+    /*
+      The typing entry is DROPPED, so the row goes back to reading the database.
+
+      Without this a set validated with untouched fields keeps `{reps: null}` in
+      the local map, and the cell falls back to its placeholder — the same
+      NUMBER, in the faint colour, so a recorded set would read as an empty one.
+      After a discrete act the stored row is the truth; the local map only
+      exists for the milliseconds between a keystroke and its flush.
+    */
+    setTyping((current) => {
+      const next = { ...current };
+      delete next[set.id];
+      return next;
+    });
+
     // Let the next unfinished set take the row.
     setPinned(null);
   }
@@ -192,21 +222,23 @@ function LiveSession({ session, onLeave }: { session: SessionView; onLeave: () =
         }}
       />
 
-      <ScrollView
-        style={{ backgroundColor: theme.colors.background }}
-        contentContainerStyle={styles.content}
-        contentInsetAdjustmentBehavior="automatic"
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-      >
+      <View style={[styles.page, { backgroundColor: theme.colors.background }]}>
         {/*
           The upper band of specs 10.3: elapsed time and sets done over total.
           Two figures and nothing else — it is read between two sets, by someone
           out of breath.
+
+          PINNED ABOVE THE SCROLLER since specs 14.38, rather than being the
+          first thing in it. It used to scroll away, which meant the one figure
+          the screen exists to carry was gone as soon as you reached the third
+          block — on the screen where you are least able to go looking for it.
+          The cost is a permanent band; it is three short figures high, and it
+          is what the page is for.
         */}
         <View
           style={[
             styles.band,
+            styles.pinnedBand,
             {
               backgroundColor: theme.colors.surface,
               borderColor: theme.colors.border,
@@ -215,7 +247,12 @@ function LiveSession({ session, onLeave }: { session: SessionView; onLeave: () =
             theme.shadow,
           ]}
         >
-          <Figure label="Durée" value={durationText(liveMs)} />
+          {/*
+            To the SECOND here, unlike the persistent banner. The reasoning is
+            in elapsedText: a ticking figure is noise on every other screen and
+            is the point on this one.
+          */}
+          <Figure label="Durée" value={elapsedText(liveMs)} />
           <Figure label="Séries" value={progressText(session.doneSets, session.totalSets)} />
           {/*
             THE REST APPEARS ONLY WHILE ONE IS RUNNING, and takes the accent.
@@ -244,36 +281,68 @@ function LiveSession({ session, onLeave }: { session: SessionView; onLeave: () =
           </View>
         </View>
 
-        {session.blocks.map((block) => (
-          <BlockCard
-            key={block.id}
-            block={block}
-            notes={notes.data ?? new Map()}
-            activeSetId={activeSetId}
-            typedFor={typedFor}
-            onActivate={(id) => setPinned(id)}
-            onType={onType}
-            onValidate={onValidate}
-            onSkip={(set) =>
-              skip.mutate({
-                setId: set.id as SessionSetId,
-                sessionId: session.id,
-                skipped: set.status !== 'skipped',
-              })
-            }
-            onRemove={(set) =>
-              remove.mutate({ setId: set.id as SessionSetId, sessionId: session.id })
-            }
-            onAddRound={() => addRound.mutate({ blockId: block.id as never, sessionId: session.id })}
-          />
-        ))}
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+        >
+          {session.blocks.map((block) => (
+            <BlockCard
+              key={block.id}
+              block={block}
+              notes={notes.data ?? new Map()}
+              activeSetId={activeSetId}
+              typedFor={typedFor}
+              onActivate={(id) => setPinned(id)}
+              onType={onType}
+              onOpenRir={(set) => setRirFor(set.id as SessionSetId)}
+              onValidate={onValidate}
+              onReopen={(set) =>
+                reopen.mutate({ setId: set.id as SessionSetId, sessionId: session.id })
+              }
+              onSkip={(set) =>
+                skip.mutate({
+                  setId: set.id as SessionSetId,
+                  sessionId: session.id,
+                  skipped: set.status !== 'skipped',
+                })
+              }
+              onRemove={(set) =>
+                remove.mutate({ setId: set.id as SessionSetId, sessionId: session.id })
+              }
+              onAddRound={() =>
+                addRound.mutate({ blockId: block.id as never, sessionId: session.id })
+              }
+            />
+          ))}
 
-        {session.blocks.length === 0 ? (
-          <Text style={[styles.empty, { color: theme.colors.textMuted }]}>
-            Aucun exercice. Ajoutez-en un pour commencer.
-          </Text>
-        ) : null}
-      </ScrollView>
+          {session.blocks.length === 0 ? (
+            <Text style={[styles.empty, { color: theme.colors.textMuted }]}>
+              Aucun exercice. Ajoutez-en un pour commencer.
+            </Text>
+          ) : null}
+        </ScrollView>
+      </View>
+
+      {/*
+        The RIR window belongs to the SCREEN, not to a row.
+
+        One Modal for the whole page rather than one per set: eight hundred
+        mounted modals is the shape this screen spent the day removing, and a
+        picker is a single conversation — which set it is about is state, and
+        `null` means nobody is having it.
+      */}
+      <RirPicker
+        visible={rirFor !== null}
+        current={rirTarget === null ? null : (rirTarget.actualRir ?? rirTarget.targetRir)}
+        onDismiss={() => setRirFor(null)}
+        onPick={(rir) => {
+          if (rirFor !== null) {
+            setRir.mutate({ setId: rirFor, sessionId: session.id, rir });
+          }
+          setRirFor(null);
+        }}
+      />
     </>
   );
 }
@@ -303,7 +372,9 @@ function BlockCard({
   typedFor,
   onActivate,
   onType,
+  onOpenRir,
   onValidate,
+  onReopen,
   onSkip,
   onRemove,
   onAddRound,
@@ -314,7 +385,9 @@ function BlockCard({
   typedFor: (set: SessionSetView) => TypedSet;
   onActivate: (id: SessionSetId) => void;
   onType: (set: SessionSetView, typed: TypedSet) => void;
+  onOpenRir: (set: SessionSetView) => void;
   onValidate: (set: SessionSetView, rir: number) => void;
+  onReopen: (set: SessionSetView) => void;
   onSkip: (set: SessionSetView) => void;
   onRemove: (set: SessionSetView) => void;
   onAddRound: () => void;
@@ -436,9 +509,15 @@ function BlockCard({
           <Text style={[styles.headCell, setColumns.colReps, { color: theme.colors.textMuted }]}>
             {block.sets.some((set) => set.tracksDuration === 1) ? 'Temps' : 'Reps'}
           </Text>
-          <Text style={[styles.headCell, setColumns.colValue, { color: theme.colors.textMuted }]}>
-            État
+          <Text style={[styles.headCell, setColumns.colRir, { color: theme.colors.textMuted }]}>
+            RIR
           </Text>
+          {/*
+            The check column has no word above it. "Fait" over a column of
+            checkmarks is the label saying what the glyph already says, and the
+            four characters cost the reps column width it needs more.
+          */}
+          <View style={setColumns.colCheck} />
         </View>
 
         {block.sets.map((set, index) => (
@@ -452,7 +531,9 @@ function BlockCard({
               active={activeSetId === set.id}
               onActivate={() => onActivate(set.id as SessionSetId)}
               onType={(typed) => onType(set, typed)}
+              onOpenRir={() => onOpenRir(set)}
               onValidate={(rir) => onValidate(set, rir)}
+              onReopen={() => onReopen(set)}
               onDelete={() => onRemove(set)}
             />
           </View>
@@ -481,7 +562,11 @@ function BlockCard({
 const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'] as const;
 
 const styles = StyleSheet.create({
+  page: { flex: 1 },
   content: { padding: 16, gap: 16, paddingBottom: 96 },
+  // Outside the scroller now, so it carries the margin the content container
+  // used to give it.
+  pinnedBand: { marginHorizontal: 16, marginTop: 16, marginBottom: 4 },
   centre: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   band: {
     flexDirection: 'row',

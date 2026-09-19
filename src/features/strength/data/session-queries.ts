@@ -27,8 +27,10 @@ import {
   deleteSession,
   finishSession,
   removeSet,
+  reopenSet,
   saveTypedSet,
   setSessionNotes,
+  setSetRir,
   setSkipped,
   startSession,
 } from './session-writes';
@@ -154,6 +156,35 @@ export function useCompleteSet() {
         completeSet(getAppDatabase(), input.setId, input.sessionId, input.recorded, {
           now: Date.now(),
         }),
+      ),
+  });
+}
+
+/**
+ * Taking a validated set back to pending, so it can be corrected.
+ *
+ * Same immediate rhythm as validating, and for the same reason: it is a
+ * decision, not a stream of keystrokes.
+ */
+export function useReopenSet() {
+  return useMutation({
+    mutationFn: (input: { setId: Parameters<typeof reopenSet>[1]; sessionId: SessionId }) =>
+      Promise.resolve(
+        reopenSet(getAppDatabase(), input.setId, input.sessionId, { now: Date.now() }),
+      ),
+  });
+}
+
+/** Recording a RIR, which since specs 14.38 does not decide whether the set happened. */
+export function useSetSetRir() {
+  return useMutation({
+    mutationFn: (input: {
+      setId: Parameters<typeof setSetRir>[1];
+      sessionId: SessionId;
+      rir: number;
+    }) =>
+      Promise.resolve(
+        setSetRir(getAppDatabase(), input.setId, input.sessionId, input.rir, { now: Date.now() }),
       ),
   });
 }

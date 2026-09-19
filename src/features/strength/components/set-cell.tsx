@@ -158,7 +158,18 @@ export function parseCell(text: string): number | null {
 export const setColumns = StyleSheet.create({
   colSet: { width: 46 },
   colValue: { width: 58, textAlign: 'center' },
-  colReps: { flex: 1, minWidth: 74, textAlign: 'center' },
+  colReps: { flex: 1, minWidth: 64, textAlign: 'center' },
+  /**
+   * The two columns only a LIVE set has (specs 14.38).
+   *
+   * The routine table has four columns and ends at the target RIR; a session
+   * row has five, because the RIR it records and the fact that it happened are
+   * two different answers. They live here rather than in live-set-row so the
+   * header the session draws by hand cannot drift from the cells underneath —
+   * the same reason colSet and colValue are shared.
+   */
+  colRir: { width: 44, textAlign: 'center' },
+  colCheck: { width: 34, textAlign: 'center' },
   /** The type a cell's text is set in, for callers drawing one by hand. */
   cellText: { fontSize: 16, fontVariant: ['tabular-nums'] },
 });

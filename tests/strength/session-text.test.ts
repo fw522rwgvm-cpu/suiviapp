@@ -8,6 +8,7 @@ import {
   repsPlaceholder,
   restText,
   rirLabel,
+  elapsedText,
 } from '../../src/features/strength/domain/session-text';
 
 /**
@@ -129,5 +130,44 @@ describe('how far through the sets a session is', () => {
   it('says done over total', () => {
     expect(progressText(3, 12)).toBe('3/12');
     expect(progressText(0, 0)).toBe('0/0');
+  });
+});
+
+describe('elapsedText', () => {
+  it('shows minutes and seconds under an hour', () => {
+    expect(elapsedText(0)).toBe('0:00');
+    expect(elapsedText(9_000)).toBe('0:09');
+    expect(elapsedText(5 * 60_000 + 23_000)).toBe('5:23');
+    expect(elapsedText(59 * 60_000 + 59_000)).toBe('59:59');
+  });
+
+  it('gains the hours field only when there are hours', () => {
+    // "0:05:23" spends three characters saying zero, on the one figure this
+    // block exists to carry — the same rule durationText follows above.
+    expect(elapsedText(60 * 60_000)).toBe('1:00:00');
+    expect(elapsedText(65 * 60_000 + 23_000)).toBe('1:05:23');
+  });
+
+  it('TICKS, which is the reason it exists beside durationText', () => {
+    /**
+     * durationText refuses seconds because the banner it feeds sits on every
+     * screen, where a twitching figure is a cost paid on pages that have
+     * nothing to do with training. On the session's own page the opposite is
+     * true: a workout clock that does not move looks stopped.
+     *
+     * So the two must NOT agree second by second, and this is what would fail
+     * if somebody folded them back into one function.
+     */
+    const a = elapsedText(5 * 60_000);
+    const b = elapsedText(5 * 60_000 + 1_000);
+
+    expect(a).not.toBe(b);
+    expect(durationText(5 * 60_000)).toBe(durationText(5 * 60_000 + 1_000));
+  });
+
+  it('never goes negative, whatever the clock says', () => {
+    // Same guard as durationText: a device clock moved backwards must not
+    // produce "-1:-30" on the figure somebody reads between two sets.
+    expect(elapsedText(-5_000)).toBe('0:00');
   });
 });

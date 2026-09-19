@@ -253,6 +253,86 @@ export function completeSet(
 }
 
 /**
+ * Takes a validated set back to pending (specs 10.3, "reste éditable").
+ *
+ * ## WHY THIS HAD TO EXIST BEFORE A SET COULD BE CORRECTED
+ *
+ * Slice 11 shipped a row that stopped being a form once validated, on the
+ * theory that "correcting is the business of the finished session, not of the
+ * row you have moved past". Requested changed (specs 14.38): you notice the
+ * wrong load one set later, not one session later.
+ *
+ * Editing the FIELDS of a done set needs nothing new — saveTypedSet never
+ * touched `status`, so it updates the recorded values and leaves the set done.
+ * What needed a write is the other direction: saying a set did not happen after
+ * all.
+ *
+ * ## `completed_at` IS CLEARED, AND THAT IS NOT BOOKKEEPING
+ *
+ * It is the instant the rest timer counts from (D12), and the index
+ * `ix_set_exercise` is built on it. A set that is no longer done must not
+ * anchor a rest, and must not appear in a history of things that were lifted.
+ *
+ * ## THE RECORDED VALUES STAY
+ *
+ * Reopening a set to fix its reps must not lose its load or its RIR. They are
+ * what the fields then show, which is the whole point of reopening it.
+ */
+export function reopenSet(
+  db: AppDatabase,
+  setId: SessionSetId,
+  sessionId: SessionId,
+  clock: WriteClock,
+): void {
+  db.transaction((tx) => {
+    tx
+      .update(sessionSet)
+      .set({ status: 'pending', completedAt: null })
+      .where(eq(sessionSet.id, setId))
+      .run();
+
+    touchSession(tx, sessionId, clock);
+  });
+}
+
+/**
+ * Records the RIR of a set, without deciding whether the set happened.
+ *
+ * ## WHY IT IS ITS OWN WRITE AND ITS OWN COLUMN NOW
+ *
+ * Slice 11 made the RIR the ACT of validating: picking a number completed the
+ * set. That is two things in one control, and the second one is unreachable —
+ * there was no way to change a RIR you had just mis-tapped, and no way to say
+ * "three" before doing the set. Requested split (specs 14.38): a RIR column and
+ * a validation button.
+ *
+ * ## WRITTEN IMMEDIATELY, LIKE A VALIDATION AND UNLIKE TYPING
+ *
+ * D12 gives two rhythms and the line between them is not the table it touches:
+ * it is whether the act is DISCRETE. Typing a load is a stream of keystrokes
+ * and is debounced; choosing a RIR from eight buttons is one decision, so it is
+ * written the way validating is — and survives a kill for the same reason.
+ *
+ * ## IT DOES NOT TOUCH `status`
+ *
+ * A RIR on a pending set is a plan, on a done set a correction, and neither is
+ * a statement that the set was performed. That statement has its own button.
+ */
+export function setSetRir(
+  db: AppDatabase,
+  setId: SessionSetId,
+  sessionId: SessionId,
+  rir: number,
+  clock: WriteClock,
+): void {
+  db.transaction((tx) => {
+    tx.update(sessionSet).set({ actualRir: rir }).where(eq(sessionSet.id, setId)).run();
+
+    touchSession(tx, sessionId, clock);
+  });
+}
+
+/**
  * Saves what is being typed — the deferred rhythm of D12.
  *
  * > Écriture différée d'une fraction de seconde pour les champs en cours de

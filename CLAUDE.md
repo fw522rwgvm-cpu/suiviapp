@@ -63,7 +63,7 @@ L'application doit tolérer un arrêt forcé à tout moment sans perte.
 ## État du projet
 Tranches 0 à 11 livrées. La tranche 9 (notifications) **clôt la V2** ; les
 tranches 10 (exercices et routines) et 11 (séance en direct) **ouvrent la V3**.
-**1649 tests verts** sous les trois fuseaux, `tsc` vert, bundle produit.
+**1658 tests verts** sous les trois fuseaux, `tsc` vert, bundle produit.
 
 **La tranche 11 ne demande AUCUN cycle CI, et c'est vérifiable avant de
 commencer** : aucune dépendance n'entre. `expo-notifications` est dans le
@@ -5007,6 +5007,51 @@ premier voudrait dire que le même silence compte au début et pas au milieu.
 d'au plus trente minutes. C'est juste, et il faut quelqu'un qui regarde cet
 écran trente minutes sans rien écrire pour le voir. Plafonner la queue au seuil
 montrerait une demi-heure d'entraînement qui n'a pas eu lieu.
+
+**La table de séance s'est scindée, et ça renverse une décision de tête de la
+tranche.** « RIR valide la série » était dans l'énoncé même de la tranche 11, et
+c'est faux à l'usage : un contrôle qui fait deux choses rend la seconde
+inatteignable. Il n'y avait **aucun moyen de corriger un RIR mal tapé**, ni d'en
+noter un avant d'avoir fait la série.
+
+Cinq colonnes désormais — Série · kg · Reps/Temps · RIR · ✓ — et chacune des
+deux dernières est réversible seule. Le ✓ pressé une seconde fois annule la
+validation : c'est **une** question à deux réponses, donc un bouton.
+
+**Et une série validée reste un formulaire**, ce qui renverse l'autre moitié du
+choix. La tranche 11 la figeait en arguant que « corriger est l'affaire de la
+séance terminée, pas de la ligne qu'on vient de dépasser ». On remarque la
+mauvaise charge **une série plus tard**, pas une séance plus tard. Gratuit :
+`saveTypedSet` n'a jamais touché `status`.
+
+Deux écritures neuves portent le reste. `reopenSet` **efface `completed_at`** —
+ce n'est pas de la comptabilité, c'est l'instant depuis lequel le repos compte
+et la colonne sur laquelle `ix_set_exercise` est bâti, donc une série qui n'est
+plus faite ne doit ni ancrer un repos ni apparaître dans un historique de ce qui
+a été soulevé. `setSetRir` **ne touche pas `status`** : un RIR sur une série en
+attente est un plan, sur une série faite une correction, et ni l'un ni l'autre
+n'affirme que la série a eu lieu.
+
+**Le RIR s'écrit immédiatement**, et la ligne entre les deux rythmes de D12
+n'est pas la table touchée : c'est si l'acte est **discret**. Taper une charge
+est un flux de frappes ; choisir parmi huit boutons est une décision.
+
+**Un détail qui aurait menti** : l'état de frappe est lâché à la validation.
+Sans ça, une série validée sans avoir touché aux champs garde `{reps: null}` en
+mémoire et la cellule retombe sur son texte indicatif — le **même nombre, en
+pâle**, donc une série enregistrée se lit comme une série vide.
+
+**Le bloc de durée est épinglé et compte les secondes.** Deux formateurs et non
+un avec un drapeau : le bandeau persistant refuse les secondes parce qu'il est
+sur tous les écrans, où un chiffre qui tressaute est un coût payé sur des pages
+sans rapport ; sur la page de la séance c'est l'inverse, **une horloge
+d'entraînement qui ne bouge pas a l'air arrêtée**. Le motif n'est pas renversé,
+il ne s'applique simplement pas là.
+
+**Câblage mort signalé et non élargi** : `onSkip` est passé à `BlockCard` et
+n'est jamais rendu. Le statut `skipped` existe en base, `setSkipped` est écrit
+et testé, et **aucun contrôle ne l'atteint**. Préexistant ; nommé pour que ça ne
+passe pas pour du support.
 
 **Le minuteur de repos n'est PAS une cinquième sorte de notification — et la
 tranche 9 s'était trompée par écrit, deux fois.** Le commentaire de

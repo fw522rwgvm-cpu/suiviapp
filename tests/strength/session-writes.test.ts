@@ -22,7 +22,9 @@ import {
   deleteSession,
   finishSession,
   removeSet,
+  reopenSet,
   saveTypedSet,
+  setSetRir,
   setSkipped,
   startSession,
   addExerciseNote,
@@ -694,5 +696,121 @@ describe('listing the sessions', () => {
 
   it('is empty on a database with no sessions, without reading anything else', () => {
     expect(listSessions(db.db)).toEqual([]);
+  });
+});
+
+describe('correcting a set after it was validated', () => {
+  it('REOPENS it without losing what was recorded', () => {
+    /**
+     * Slice 11 froze a validated row, arguing that correcting belonged to the
+     * finished session. Requested reversed (specs 14.38): you notice the wrong
+     * load one set later, not one session later.
+     *
+     * What must survive is the recording. Reopening a set to fix its reps that
+     * dropped its load would make the correction cost more than the mistake.
+     */
+    const id = start(planWith(anExercise()));
+    const setId = firstSetOf(id);
+    completeSet(
+      db.db,
+      setId as never,
+      id,
+      { reps: 8, loadKg: 72.5, durationSeconds: null, rir: 2 },
+      { now: START + 5 * MINUTE },
+    );
+
+    reopenSet(db.db, setId as never, id, { now: START + 6 * MINUTE });
+
+    const set = readSession(db.db, id)?.blocks[0]?.sets[0];
+    expect(set?.status).toBe('pending');
+    expect(set?.actualLoadKg).toBe(72.5);
+    expect(set?.actualReps).toBe(8);
+    expect(set?.actualRir).toBe(2);
+  });
+
+  it('CLEARS completed_at, because a reopened set anchors no rest', () => {
+    /**
+     * `completed_at` is the instant the rest timer counts from (D12) and the
+     * column `ix_set_exercise` is built on. A set that is no longer done must
+     * not start a countdown and must not appear in a history of things that
+     * were lifted.
+     */
+    const id = start(planWith(anExercise()));
+    const setId = firstSetOf(id);
+    completeSet(
+      db.db,
+      setId as never,
+      id,
+      { reps: 8, loadKg: 60, durationSeconds: null, rir: 2 },
+      { now: START + 5 * MINUTE },
+    );
+    expect(readSession(db.db, id)?.blocks[0]?.sets[0]?.completedAt).toBe(START + 5 * MINUTE);
+
+    reopenSet(db.db, setId as never, id, { now: START + 6 * MINUTE });
+
+    expect(readSession(db.db, id)?.blocks[0]?.sets[0]?.completedAt).toBeNull();
+  });
+
+  it('takes the set back out of the done count', () => {
+    const id = start(planWith(anExercise()));
+    const setId = firstSetOf(id);
+    completeSet(
+      db.db,
+      setId as never,
+      id,
+      { reps: 8, loadKg: 60, durationSeconds: null, rir: 2 },
+      { now: START + 5 * MINUTE },
+    );
+    expect(readSession(db.db, id)?.doneSets).toBe(1);
+
+    reopenSet(db.db, setId as never, id, { now: START + 6 * MINUTE });
+
+    expect(readSession(db.db, id)?.doneSets).toBe(0);
+    // And the list read agrees, which is the pair slice 12 will depend on.
+    expect(listSessions(db.db)[0]?.doneSets).toBe(0);
+  });
+});
+
+describe('recording a RIR on its own', () => {
+  it('DOES NOT validate the set, which is the whole point of the split', () => {
+    /**
+     * Slice 11 made picking a RIR the act of validating. That put two things in
+     * one control and made the second unreachable — no way to change a
+     * mis-tapped RIR, no way to record one before the set was done.
+     *
+     * This is the test that would fail if the two were ever folded back
+     * together, which is the tempting simplification.
+     */
+    const id = start(planWith(anExercise()));
+    const setId = firstSetOf(id);
+
+    setSetRir(db.db, setId as never, id, 1.5, { now: START + MINUTE });
+
+    const set = readSession(db.db, id)?.blocks[0]?.sets[0];
+    expect(set?.actualRir).toBe(1.5);
+    expect(set?.status).toBe('pending');
+    expect(set?.completedAt).toBeNull();
+    expect(readSession(db.db, id)?.doneSets).toBe(0);
+  });
+
+  it('can be changed on a set that is already done, without reopening it', () => {
+    const id = start(planWith(anExercise()));
+    const setId = firstSetOf(id);
+    completeSet(
+      db.db,
+      setId as never,
+      id,
+      { reps: 8, loadKg: 60, durationSeconds: null, rir: 3 },
+      { now: START + 5 * MINUTE },
+    );
+
+    setSetRir(db.db, setId as never, id, 0, { now: START + 6 * MINUTE });
+
+    const set = readSession(db.db, id)?.blocks[0]?.sets[0];
+    expect(set?.actualRir).toBe(0);
+    expect(set?.status).toBe('done');
+    // Still done, so still counted and still anchoring its rest.
+    expect(set?.completedAt).toBe(START + 5 * MINUTE);
+    expect(readSession(db.db, id)?.doneSets).toBe(1);
   });
 });

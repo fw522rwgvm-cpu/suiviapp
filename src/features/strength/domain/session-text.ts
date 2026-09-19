@@ -28,6 +28,36 @@ export function durationText(ms: number): string {
   return `${hours} h ${String(minutes).padStart(2, '0')}`;
 }
 
+/**
+ * The same duration, to the second, for the block that stays on the session
+ * page (specs 14.38).
+ *
+ * ## WHY THERE ARE TWO FORMATTERS AND NOT ONE WITH A FLAG
+ *
+ * `durationText` above refuses seconds, and the reason it gives is exact: a
+ * seconds digit changes every second, so it makes the BANNER move — and that
+ * banner sits on every screen of the application, where something twitching in
+ * the corner of the eye is a cost paid on screens that have nothing to do with
+ * training.
+ *
+ * None of that is true of the session's own page. You are on it because you are
+ * training, the figure is the thing you came to read, and a workout clock that
+ * does not tick looks stopped. So the reason is not reversed here — it simply
+ * does not apply, which is why the two live side by side rather than one taking
+ * a parameter.
+ *
+ * HOURS ONLY WHEN THERE ARE HOURS, exactly as above: "0:05:23" spends three
+ * characters saying zero on the one figure this block exists to carry.
+ */
+export function elapsedText(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  if (hours === 0) return `${minutes}:${String(seconds).padStart(2, '0')}`;
+  return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
 /** How far through the sets a session is (specs 10.3, "séries effectuées sur le total"). */
 export function progressText(done: number, total: number): string {
   return `${done}/${total}`;

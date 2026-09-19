@@ -71,7 +71,7 @@ export function SessionBanner() {
   return (
     <View
       pointerEvents="box-none"
-      style={[styles.dock, { bottom: insets.bottom + TAB_BAR_HEIGHT }]}
+      style={[styles.dock, { bottom: insets.bottom + TAB_BAR_HEIGHT + BAR_GAP }]}
     >
       <Pressable
         onPress={() => router.push('/(tabs)/training/session')}
@@ -123,6 +123,17 @@ export function SessionBanner() {
  * error, if there is one, points the harmless way.
  */
 const TAB_BAR_HEIGHT = 49;
+
+/**
+ * The air between the band and the tab bar (specs 14.38).
+ *
+ * It sat flush on top of it, which read as one two-storey control rather than
+ * as something floating above the chrome — and floating is the whole metaphor
+ * iOS uses here, the Music mini player and the in-call pill both stand clear.
+ * Eight points, the same gap the cards of this application keep from each
+ * other.
+ */
+const BAR_GAP = 8;
 
 const styles = StyleSheet.create({
   dock: { position: 'absolute', left: 0, right: 0, paddingHorizontal: 12 },
