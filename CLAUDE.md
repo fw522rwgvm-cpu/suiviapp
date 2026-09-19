@@ -5424,37 +5424,35 @@ silencieusement ignoré, et restauré dans un `finally`.
   pas une autorisation de droit à l'image — elle règle qui peut copier le
   fichier, pas ce que la personne a accepté. Signalé, décision prise en
   connaissance de cause, consignée en `specs §14.33 n° 7` pour rester visible.
-- **Rien de la tranche 11 n'a tourné sur l'appareil, et aucun cycle CI n'est
-  nécessaire** : aucune dépendance n'entre. `expo-notifications` est dans le
-  binaire depuis la tranche 9, `react-native-svg` depuis `dev-b19`, et les
-  dessins sont du JavaScript. Metro suffit.
+- **La moitié « bibliothèque » de la tranche 11 a tourné sur l'appareil
+  (19/09/2026) ; la moitié « séance » n'a jamais tourné.** Aucun cycle CI n'est
+  nécessaire : aucune dépendance n'entre. `expo-notifications` est dans le
+  binaire depuis la tranche 9, `react-native-svg` depuis `dev-b19`. Metro
+  suffit.
 
-  À regarder dans cet ordre, parce que les premiers rendent les suivants
+  ~~1. que les dessins ressemblent à l'exercice qu'ils nomment, et qu'ils soient
+  lisibles à 44 points.~~ **Fait**, avec les listes fenêtrées, le catalogue, les
+  trois sous-onglets et le « + » qui bifurque.
+
+  Reste à regarder, dans cet ordre, parce que les premiers rendent les suivants
   observables :
-  1. **que les dessins ressemblent à l'exercice qu'ils nomment**, et qu'ils
-     soient lisibles à 44 points dans une rangée de liste. C'est le seul point
-     qu'aucun test ne peut couvrir — même classe que « un test dit que `chest`
-     possède un tracé, pas que ce tracé traverse les pectoraux ». **Et la carte
-     blanche en thème sombre** : c'est le seul endroit où une surface ne suit
-     pas le thème, et il faut vérifier que ça se lit comme une image et non
-     comme un défaut ;
-  2. **où se pose le bandeau de séance.** 49 points sont déclarés pour la barre
+  1. **où se pose le bandeau de séance.** 49 points sont déclarés pour la barre
      d'onglets parce que sa hauteur n'est pas lisible depuis JavaScript
      (`useBottomTabBarHeight` appartient au navigateur JS et lève sous
      `unstable-native-tabs`). L'erreur possible laisse un jour, pas un
      recouvrement — mais elle n'a pas été regardée ;
-  3. **que le minuteur de repos sonne.** iOS ne déclenche rien en Node. Et la
+  2. **que le minuteur de repos sonne.** iOS ne déclenche rien en Node. Et la
      permission est demandée **au premier armement**, ce qui n'a jamais été
      exercé : c'est le seul endroit de l'application qui demande hors des
      Réglages ;
-  4. **qu'un arrêt forcé en pleine séance la retrouve intacte.** Le critère de
+  3. **qu'un arrêt forcé en pleine séance la retrouve intacte.** Le critère de
      sortie n° 2, et il demande de tuer l'application pour de vrai ;
-  5. **qu'une séance laissée une nuit ne compte pas la nuit.** Testé en
+  4. **qu'une séance laissée une nuit ne compte pas la nuit.** Testé en
      arithmétique et contre un vrai fichier SQLite, jamais contre une vraie
      nuit ;
-  6. que le balayage supprime une série **dans une liste imbriquée** — deux
+  5. que le balayage supprime une série **dans une liste imbriquée** — deux
      niveaux de rangées balayables, jamais exercés ici ;
-  7. que la rangée de RIR tienne sur 390 points : huit cellules, à la limite des
+  6. que la rangée de RIR tienne sur 390 points : huit cellules, à la limite des
      44 points d'Apple, d'où une rangée plus **haute** plutôt que plus étroite.
 
 - **Ce qu'aucun test ne pourra couvrir, dit plutôt que laissé croire.**
