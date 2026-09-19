@@ -61,9 +61,30 @@ L'application doit tolérer un arrêt forcé à tout moment sans perte.
 ---
 
 ## État du projet
-Tranches 0 à 11 livrées. La tranche 9 (notifications) **clôt la V2** ; les
-tranches 10 (exercices et routines) et 11 (séance en direct) **ouvrent la V3**.
-**1683 tests verts** sous les trois fuseaux, `tsc` vert, bundle produit.
+Tranches 0 à 12 livrées. La tranche 9 (notifications) **clôt la V2** ; les
+tranches 10 à 12 **font la V3**, et la tranche 12 la clôt.
+**1781 tests verts** sous les trois fuseaux, `tsc` vert, bundle produit.
+
+**La tranche 12 est écrite et vérifiée en Node ; RIEN n'a tourné sur
+l'appareil.** Aucune dépendance n'entre, donc aucun cycle CI n'est nécessaire :
+Metro suffit. Ce qu'elle ajoute — page d'une séance terminée, suggestion de
+progression, graphiques et records d'exercice, volet musculation — s'observe
+avec le jeu d'essai, qui écrit désormais des séances.
+
+**Sa forme tient en une phrase : une lecture, trois plis.** Les cinq
+graphiques du §10.1, les quatre records et la condition du §10.4 sont trois
+questions sur les mêmes lignes — les séries de travail qu'un exercice a jamais
+reçues. `readExerciseHistory` les rend une fois, `exercise-stats` et
+`progression` les plient. Trois lectures séparées auraient fini par ne plus
+être d'accord sur ce qui compte.
+
+**Aucune migration, et la règle le justifie.** Tout ce que la tranche affiche
+est dérivé — D9 nomme déjà records, volume, 1RM, suggestion et durée parmi les
+recalculés — et les deux index dont elle vit existent depuis `0008` et `0010`.
+Le corollaire joue dans le bon sens : un index n'est pas irréversible, donc
+rien ne justifiait d'en embarquer un par anticipation. Conséquence directe :
+**le compte de tables non vérifiées sur l'appareil reste à dix-huit**, il n'a
+pas grossi.
 
 **La tranche 11 ne demande AUCUN cycle CI, et c'est vérifiable avant de
 commencer** : aucune dépendance n'entre. `expo-notifications` est dans le
@@ -5557,6 +5578,278 @@ silencieusement ignoré, et restauré dans un `finally`.
   séance et la routine dont elle vient finiraient par prescrire des repos
   différents.
 
+## Ce que la tranche 12 a établi
+
+**Une lecture, trois plis — et c'est toute la conception de la tranche.** Les
+cinq graphiques du §10.1, les quatre records du §10.1 et la condition du §10.4
+sont trois questions sur les **mêmes lignes** : les séries de travail qu'un
+exercice a jamais reçues. `readExerciseHistory` les rend une fois ;
+`exercise-stats.ts` et `progression.ts` les plient. Trois lectures séparées
+auraient fini par ne plus être d'accord sur ce qui compte, et c'est exactement
+le défaut que ce projet poursuit depuis le pré-remplissage de la quantité.
+
+Changer de plage ou de métrique ne touche donc **aucune base** : ça re-plie ce
+qui est déjà en main. C'est ce qui rend ces contrôles instantanés sur des pages
+que D16 budgète.
+
+**La même frontière, lue dans les deux sens : `previousFor` remonte par le nom
+figé, `readExerciseHistory` jamais.** La colonne PRÉCÉDENT fait le pont pour
+qu'un squat supprimé puis recréé n'affiche pas une colonne vide. La page
+d'exercice fait l'inverse, et le motif est normatif plutôt que technique :
+
+> Les séances passées conservent le nom figé de l'exercice, mais la continuité
+> statistique est rompue **définitivement**. (§5.3)
+
+L'utilisateur lit cette phrase dans l'avertissement, avant de confirmer. Faire
+remonter les anciennes séries par leur nom lui rendrait en silence les records
+qu'on lui a dit avoir détruits — sur la seule suppression que le §5.3 appelle
+destructrice. Deux règles délibérément différentes, et un test les tient
+séparées.
+
+**La requête d'historique ne filtre PAS le `status`, et c'est le point de cette
+lecture qu'on se tromperait le plus facilement.** Les graphiques veulent les
+séries validées et le disent par `countsTowardsVolume` ; le §10.4 a besoin des
+autres, puisque c'est une série **non faite** qui rend sa condition fausse.
+Filtrer dans la requête ferait passer une séance abandonnée pour une séance
+parfaite, et proposerait plus de charge pour moins de travail.
+
+### Le défaut que cette tranche est allée chercher
+
+**Éditer une séance terminée lui ajoutait du temps actif.** Toutes les
+écritures de séance passent par `touchSession`, qui ouvre un segment neuf dès
+que le dernier s'est terminé il y a plus de trente minutes (D12). Le §10.5 rend
+une séance terminée éditable et le §5.3 n'y met aucune limite de temps — donc
+corriger une charge **trois semaines plus tard** créait un segment de plus, et
+le « temps actif » de la séance grossissait du temps passé à corriger une faute
+de frappe. Sur le chiffre même que le §10.6 dessine.
+
+Silencieux, plausible, et visible seulement de qui le soupçonnait déjà.
+
+Le garde est dans `touchSession` et non à chaque site d'écriture, pour la raison
+que son propre commentaire donnait déjà des trente minutes : un endroit, aucun
+appelant qui puisse l'oublier. `updated_at` est toujours horodaté — la ligne a
+bien changé. Deux tests rougissent quand on le retire.
+
+**Et `completed_at` d'une série validée après coup prend l'`ended_at` de la
+séance**, jamais l'horloge du jour. « J'ai oublié de cocher la 3e série » est
+une correction ordinaire une semaine plus tard, et l'horloge du jour placerait
+la série une semaine **après** la séance à laquelle elle appartient — or
+`ix_set_exercise` est bâti sur cette colonne. Ce n'est pas la vérité ; c'est à
+l'intérieur de la séance, qui est la propriété dont tout dépend en aval. Sans
+danger précisément parce que l'instant ne décide pas du jour : `session.date`
+le fait (D3).
+
+**Le gain de D9 se constate ici pour la première fois** : corriger une charge
+déplace les records à la lecture suivante, sans une seule invalidation écrite à
+la main. Éditer l'historique n'est bon marché **que** parce que rien de dérivé
+n'a été stocké. Un test le fixe plutôt que de le proclamer.
+
+### Un test qui ne gardait rien, trouvé en mutant
+
+Le test « la séance en cours est exclue de sa propre preuve » passait — et
+passait encore après avoir retiré l'exclusion par identifiant, **et** après
+avoir retiré le filtre `status = 'done'`. Une séance en cours est écartée
+**deux fois**, donc aucune mutation seule ne le tuait.
+
+Un second test passe une séance **terminée** comme séance courante, ce que
+l'écran d'historique rend atteignable, et celui-là rougit. Le filtre de statut
+reste, redondant par construction — `ux_session_active` n'autorise qu'une
+séance en cours — parce que la règle est « la dernière séance que tu as
+**terminée** », et qu'un index est un mauvais endroit où lire ça.
+
+La leçon générale : **deux gardes indépendants sur une même propriété rendent
+la propriété vraie et le test inutile.** Il faut alors un cas qui n'en active
+qu'un.
+
+### Ce que les documents ne tranchaient pas, et qui est tranché
+
+- **La suggestion du §10.4 s'affiche sur la carte de bloc de la séance en
+  direct**, en lecture seule. **Pas dans le texte indicatif du champ charge** :
+  ce texte porte la cible de la routine et c'est lui qui est enregistré si on
+  ne touche à rien, donc l'y écrire *serait* l'application modifiant la charge
+  cible — ce que le §10.4 interdit — et ce serait indiscernable de la cible en
+  le faisant.
+- **« Toutes les séries de travail » veut dire les séries gouvernées.** Le
+  §10.4 dit ensuite « ne s'applique qu'aux lignes où la règle est activée » :
+  décocher une ligne est la façon de dire « ne raisonne pas sur cette série ».
+  L'autre lecture ferait qu'une seule case décochée désactive la progression de
+  tout l'exercice, en silence.
+- **Des cibles de charge différentes ne produisent rien.** « À la charge
+  cible » est au singulier ; la double progression porte sur un poids de
+  travail fixe, et une pyramide est un autre schéma. Il n'existe aucun nombre
+  honnête à proposer.
+- **Les records portent sur tout l'historique, jamais sur la plage**, et la
+  carte est donc **au-dessus** du sélecteur, pour que rien ne suggère qu'ils en
+  dépendent. Chacun affiche sa date, que le §10.1 ne demande pas : « 120 kg »
+  seul ne dit pas si c'est une progression ou un exercice abandonné.
+- **Les cinq graphiques partagent la portée que le §10.1 n'écrit que pour le
+  volume.** Un échauffement n'est pas votre charge maximale, et surtout « total
+  de répétitions » et « volume de séance » sont sur la même page : deux
+  graphiques comptant des séries différentes se contrediraient sous les yeux du
+  lecteur.
+- **Trois séries se regroupent par MAXIMUM, quatre par MOYENNE.** D9 tranche
+  les totaux et pas les maxima ; un graphique intitulé « charge maximale » dont
+  les points seraient des moyennes contredit son propre titre. Les figures par
+  séance prennent la moyenne, qui survit en outre à un seau partiel en bout de
+  plage là où une somme se lirait comme un effondrement. **Le graphique le dit**
+  — « Maximum par semaine » — dès que le grain n'est plus la séance.
+- **Le grain suit la règle de span de D9 et n'est pas assoupli.** Un an d'un
+  exercice fait deux fois par semaine est une centaine de points, déjà sous les
+  deux cents de D13 : rien ne forçait le regroupement. Il est appliqué quand
+  même parce que D9 est normatif et n'exempte pas les séries creuses, et parce
+  qu'une règle conditionnelle — « regrouper seulement s'il y a trop de points »
+  — est une règle que quelqu'un doit se rappeler.
+- **Pas de mode édition sur une séance terminée.** La page d'exercice en a un ;
+  la différence est où vit la valeur pendant qu'on la change. L'éditeur
+  d'exercice tient un **brouillon** en React, donc en sortir a deux fins
+  honnêtes ; ici chaque frappe part en base. Rien à enregistrer, rien à jeter,
+  rien à garder — et « détail » et « édition », les deux mots du §10.5, sont un
+  seul écran.
+- **La suppression d'une séance demande confirmation**, et ça change le
+  commentaire de `deleteSession`. Il s'appuyait sur le Journal, qui a pu
+  retirer les siennes parce que supprimer y demande **deux gestes** avec un
+  bouton nommé et visible entre les deux. Un bouton en pied de page en demande
+  un.
+
+### Trois pièces qui se sont partagées, et une règle de calendrier
+
+- **`components/session-block-card.tsx`** — `BlockCard` sort de la séance en
+  direct à son deuxième utilisateur réel (D10). Le §10.2 exige déjà que les
+  deux tables se ressemblent, et deux écritures s'accorderaient sur un bloc
+  ordinaire pour diverger sur un superset avec échauffement. Trois props disent
+  ce qui diffère, et chaque absence signifie quelque chose : `showPrevious`
+  parce qu'une séance terminée ne peut pas répondre honnêtement « qu'as-tu fait
+  la dernière fois » — `readPreviousSets` rend la dernière séance faite **autre
+  que celle-ci**, ce qui pour une séance de mars est celle de juin.
+- **`components/session-series-chart.tsx`** — `ExerciseChart` généralisé au
+  même titre. Ce qui différait entre la page d'exercice et le tableau de bord
+  était entièrement la **métrique**, donc la métrique est sortie.
+- **`domain/exercise-range.ts`** — les plages 3 mois / 1 an / tout, partagées
+  par le §10.1 et le §10.6, qui donnent les mêmes trois. Deux copies auraient
+  été libres de diverger sur ce que « tout » veut dire.
+- **Le calendrier des séances est une semaine par colonne**, pas une grille
+  mensuelle. `MonthCalendar` existe et n'est délibérément pas réutilisé : c'est
+  un **sélecteur** d'un mois, et ce calendrier suit la plage des graphiques. Une
+  grille mensuelle ne peut pas montrer un an. Les jours de rembourrage sont
+  marqués **hors plage** plutôt que dessinés comme des jours sans
+  entraînement — une case grise pour un jour que la plage ne couvre pas dirait
+  « tu ne t'es pas entraîné » d'un jour dont personne n'a parlé.
+
+**Le graphique croisé aligne ses deux séries par `bucketOf`.** L'axe vient de
+la lecture du poids, dense, et le volume est indexé par la fonction même par
+laquelle `readWeightSeries` regroupe. C'est exactement pourquoi
+`core/db/date-bucket` vit dans le noyau : deux séries d'un graphique tombant
+sur des seaux distants de six jours mettrait ici une semaine d'entraînement en
+face du mauvais poids. Et le grain y est forcé à la semaine au minimum : un
+volume par séance contre un poids qui bouge sur des semaines, ce sont deux
+nuages.
+
+**Le générateur écrit enfin des séances**, ce que `seedRoutines` différait en
+toutes lettres jusqu'à cette tranche — le quatrième travail que D15 lui donne.
+Par les fonctions d'écriture ordinaires, donc les **segments** sont écrits par
+`touchSession` plutôt qu'inventés et `ux_session_active` est respecté
+gratuitement. L'instant vient de `toDayNumber`, jamais d'un `Date` : la suite
+tourne sous trois fuseaux et une séance tombant sur le mauvais jour civil
+ferait diverger les graphiques du calendrier à côté. Les charges montent d'un
+demi pour cent par semaine et six pour cent des séries ne sont pas faites —
+sans quoi la règle du §10.4 se déclencherait toujours et l'écran **sans**
+suggestion, qui est l'état ordinaire, ne se verrait jamais.
+
+**Deux colonnes écrites et jamais relues sont branchées.**
+`session_set.progression_enabled`, qui était le périmètre, et `session.notes`,
+qui avait sa colonne, son écriture et son crochet depuis la tranche 11 sans
+qu'aucun écran ne la lise. La note va sur la page d'une séance terminée : ce
+qu'on a à dire d'un entraînement, on le dit une fois qu'il est fini.
+
+## Points ouverts après la tranche 12
+
+- **RIEN de la tranche 12 n'a tourné sur l'appareil.** Aucune dépendance
+  n'entre, donc **aucun cycle CI n'est nécessaire** : Metro suffit, et le jeu
+  d'essai écrit désormais des séances, donc tout est observable dès le premier
+  lancement. À regarder, dans cet ordre :
+  1. **que la page d'une séance terminée s'ouvre depuis la liste Séances**, et
+     qu'on puisse y corriger une charge. C'est le §10.5 en entier ;
+  2. **que la durée affichée ne bouge pas après une correction.** C'est le
+     défaut central de la tranche, gardé par deux tests — mais un test en Node
+     dit que `touchSession` refuse, pas que l'écran affiche le bon nombre ;
+  3. **que la suggestion de progression apparaisse**, et qu'elle n'apparaisse
+     pas toujours. Le jeu d'essai est réglé pour les deux ;
+  4. **que les cinq graphiques d'un exercice se dessinent et se touchent.** Le
+     rendu n'est testé nulle part, par construction ;
+  5. **que le calendrier du volet musculation tienne sur 390 points** — cases
+     de 11 points, colonnes de 3 d'écart, cinquante-deux colonnes sur « 1 an »
+     avec défilement horizontal, poussé à droite au montage ;
+  6. **que la carte corporelle du tableau de bord ne soit pas entièrement
+     rouge** sur trois mois. Voir la réserve sur les seuils, ci-dessous.
+
+- **Les seuils de `levelOf` sont calibrés pour UNE séance et servent désormais
+  trois mois.** « Trois, six et dix séries pondérées » est ce à quoi une séance
+  ressemble ; un trimestre les dépasse sur tout muscle travaillé, donc la carte
+  du tableau de bord dit très bien **quels** muscles sont travaillés et mal
+  **combien**. Non recalibré délibérément : un second jeu de seuils serait une
+  seconde réponse à la même question. La sortie propre, le jour où ça se voit,
+  est de rendre les seuils **relatifs à la plage** — une fonction du nombre de
+  séances — plutôt que d'en écrire deux jeux.
+
+- **Le graphique croisé est aveugle à l'entraînement plus fréquent.** Il trace
+  la moyenne par séance, cohérente avec le graphique au-dessus et avec D9 ;
+  deux séances par semaine et cinq y tracent donc la même ligne à volume par
+  séance égal. Le tonnage hebdomadaire est le premier remède et tient en une
+  ligne — il n'est pas pris parce qu'une somme dont les seaux diffèrent de
+  taille en bout de plage est sa propre erreur de lecture.
+
+- **OBSERVATION SUR DU CODE LIVRÉ, signalée et non corrigée :** `weightPanel`
+  applique `smoothSeries` avec sa fenêtre de **sept positions** quel que soit
+  le grain. Sur « 1 an », regroupé par semaine, c'est donc une moyenne mobile
+  de sept **semaines**. Or le commentaire de `showRaw` justifie de masquer la
+  série brute au-delà de 90 jours en disant qu'à grain grossier les deux séries
+  « se confondent visuellement » — ce qui ne peut pas être vrai en même temps.
+  Le graphique croisé de cette tranche emprunte le même chemin **volontairement**
+  : être bizarre à l'identique vaut mieux qu'être bizarre différemment. À
+  trancher, et ça touche le volet Poids autant que celui-ci.
+
+- **`setSkipped` et `useSkipSet` n'ont aucun site d'appel.** La prop morte
+  `onSkip` qui les faisait paraître branchés est retirée ; l'écriture reste,
+  sur le précédent de `sweepCache`. `status = 'skipped'` est un état spécifié
+  que `LiveSetRow` rend différemment et que l'import peut produire — seul le
+  chemin pour l'atteindre depuis l'interface manque. Un balayage ou un appui
+  long le rendrait atteignable ; le §10.3 ne dit pas lequel.
+
+- **La condition du §10.4 ne regarde pas le RIR, et c'est le document qui le
+  dit** (« le RIR n'entre pas dans la condition »). Conséquence assumée : trois
+  séries au haut de la plage avec un RIR de 0 déclenchent la même suggestion
+  que les mêmes avec un RIR de 3. Défendable — les répétitions et la charge
+  sont ce qui s'est passé, le RIR est un ressenti — mais c'est la première
+  chose qu'on voudra changer à l'usage, et ce serait un amendement.
+
+- **`readExerciseHistory` lit TOUT l'historique à chaque ouverture de page.**
+  Estimé à deux à quatre cents lignes par an pour un exercice travaillé deux
+  fois par semaine, de l'ordre du millier sur plusieurs années, sur un index
+  qui existe. **Estimé, pas mesuré.** L'échappatoire de D9 — « recalculer et
+  mettre en cache le résultat, pas le stocker » — est React Query et elle est
+  déjà là. La façon de savoir que c'est trop est d'ouvrir la page après deux
+  ans d'usage.
+
+- **L'instrumentation des quatre transitions de D16 n'existe toujours pas**, et
+  cette tranche ajoute deux écrans qui lisent beaucoup : la page d'exercice et
+  le volet musculation. C'est la troisième tranche d'affilée où le point est
+  reporté.
+
+- **`sweepCache` n'a toujours pas de site d'appel** (hérité de la tranche 4).
+
+- **L'aller-retour export / import n'a toujours pas été refait sur l'appareil
+  depuis `0005` : dix-huit tables.** La tranche 12 n'en ajoute **aucune** — pas
+  de migration — donc la dette ne grossit pas pour la première fois depuis la
+  tranche 6. Elle reste la plus vieille et la plus chère de la liste.
+
+- **Les tranches 6, 8 et 10 n'ont toujours pas tourné sur l'appareil**, non
+  plus que la moitié « séance » de la tranche 11 — minuteur, arrêt forcé, nuit.
+  La tranche 12 s'empile dessus : sa page de séance terminée réutilise la table
+  de la séance en direct, qui n'a jamais été touchée par un doigt.
+
+- **`fontVariant: ['tabular-nums']` n'est toujours pas vérifié sur Nunito**, et
+  les records, les axes et les infobulles de cette tranche s'en servent.
+
 ## Points ouverts après la tranche 11
 
 - **La source du catalogue est free-exercise-db, et mon refus initial reposait
@@ -5613,7 +5906,8 @@ silencieusement ignoré, et restauré dans un `finally`.
 - **L'aller-retour export / import n'a toujours pas été refait sur l'appareil
   depuis `0005`.** `0010` porte le total à **dix-huit tables non vérifiées**
   dans l'unique filet, contre treize avant. C'est la dette la plus vieille et la
-  plus chère de la liste, et elle vient de grossir d'un tiers. Les six tables
+  plus chère de la liste, et elle vient de grossir d'un tiers. *(La tranche 12
+  n'y ajoute rien : elle ne porte aucune migration.)* Les six tables
   neuves sont couvertes par le round-trip en Node, avec une ligne remplissant
   **chaque** colonne — mais rien de la bascule elle-même, qui est du natif
   `expo-sqlite`.
@@ -5646,15 +5940,16 @@ silencieusement ignoré, et restauré dans un `finally`.
   page de séance les affiche pendant chaque entraînement. Du texte générique là
   apprendrait à l'œil à sauter l'endroit où une vraie note ira.
 
-- **Une séance terminée n'a pas d'écran d'historique pour y revenir.** Le §10.3
-  dit qu'elle « reste éditable et supprimable » ; le §7 met l'historique en
-  tranche 12. Ce qui est livré : elle reste atteignable tant qu'elle est en
-  cours. Le trou est nommé, pas comblé — un écran d'historique bâti maintenant
-  serait la couche « pour plus tard » que le §7 interdit.
+- ~~**Une séance terminée n'a pas d'écran d'historique pour y revenir.**~~
+  **Comblé en tranche 12** : `app/(tabs)/training/session/[id].tsx`, éditable à
+  vue et supprimable. Le trou avait été nommé plutôt que comblé, et c'était le
+  bon choix — l'écran bâti en tranche 11 aurait été la couche « pour plus
+  tard » que le §7 interdit, et il aurait manqué le défaut des segments, que
+  seule l'édition différée fait apparaître.
 
-- **La progression du §10.4 n'est ni lue ni suggérée.** `progression_enabled`
-  est copiée sur chaque `session_set`, donc la tranche 12 a tout ce qu'il lui
-  faut ; rien ne la lit encore, ce qui est le périmètre.
+- ~~**La progression du §10.4 n'est ni lue ni suggérée.**~~ **Lue en tranche
+  12.** `progression_enabled` cesse d'être la quatrième colonne écrite que rien
+  ne relit.
 
 - **`sweepCache` n'a toujours pas de site d'appel** (hérité de la tranche 4).
 - **L'instrumentation des quatre transitions de D16 n'existe toujours pas.**
