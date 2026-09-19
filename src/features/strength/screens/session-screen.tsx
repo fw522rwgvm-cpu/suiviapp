@@ -33,6 +33,7 @@ import { SESSION_TICK_MS, useLiveDuration } from '../hooks/use-live-duration';
 import { SESSION_ACTIVE_GAP_MS } from '../domain/session-activity';
 import { useRestTimer } from '../hooks/use-rest-timer';
 import { needsReps, recordSet, type TypedSet } from '../domain/session-set';
+import { workSetNumbers } from '../domain/set-number';
 import { elapsedText, progressText, restText } from '../domain/session-text';
 import { setColumns } from '../components/set-cell';
 import { LiveSetRow } from '../components/live-set-row';
@@ -530,20 +531,20 @@ function BlockCard({
     exercises.map((item, index) => [item.id ?? item.name, LETTERS[index] ?? '?']),
   );
 
-  /** A set's round: its rank for its own exercise, derived from the order. */
-  function roundOf(index: number): number {
-    const set = block.sets[index];
-    if (set === undefined) return 1;
-    const key = set.exerciseId ?? set.exerciseName;
-    let rank = 0;
-    for (let i = 0; i <= index; i += 1) {
-      const candidate = block.sets[i];
-      if (candidate !== undefined && (candidate.exerciseId ?? candidate.exerciseName) === key) {
-        rank += 1;
-      }
-    }
-    return rank;
-  }
+  /**
+   * The number each row shows — working sets only, per exercise (specs 14.41).
+   *
+   * Computed once for the block rather than per row: the rank of a set depends
+   * on everything above it, so a per-row loop was the same walk repeated for
+   * every row. And the rule itself lives in the domain, because the routine
+   * table numbers its sets the same way and two spellings would drift.
+   */
+  const numbers = workSetNumbers(
+    block.sets.map((set) => ({
+      key: set.exerciseId ?? set.exerciseName,
+      setType: set.setType,
+    })),
+  );
 
   const shownNotes = exercises.flatMap((item) =>
     item.id === null ? [] : (notes.get(item.id) ?? []),
@@ -662,7 +663,7 @@ function BlockCard({
             {index === 0 ? null : <ListSeparator />}
             <LiveSetRow
               set={set}
-              round={roundOf(index)}
+              number={numbers[index] ?? null}
               letter={superset ? (letters.get(set.exerciseId ?? set.exerciseName) ?? '?') : null}
               typed={typedFor(set)}
               active={activeSetId === set.id}

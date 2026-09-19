@@ -1441,3 +1441,12 @@ a froid.
 | 5 | **DEFAUT, §4** | **`useLiveDuration` avait UN intervalle pour deux lecteurs** | 15 s, juste tant que seuls des minutes s'affichaient. Le §14.38 a mis les secondes sur la page de seance. Deux constantes exportees plutot qu'un parametre devine au site d'appel, parce que le choix se justifie et pas seulement se passe |
 | 6 | **DEFAUT, §4 — TROISIEME OCCURRENCE** | **`pointerEvents="box-only"` avale les controles d'une rangee balayable** | La tranche 10 l'avait rencontre avec les champs du tableau de routine et l'avait borne : la couche n'avale que si la rangee est ouverte OU si on lui a donne un `onPress`. La rangee de seance a ensuite gagne deux boutons ET garde son `onPress`, donc la borne ne protegeait plus rien. **La regle generale a en tirer : une rangee qui possede la pression ne peut pas aussi contenir des controles** |
 | 7 | **§4** | **L'epinglage de la rangee active disparait** | Il existait pour deplacer la bande de RIR, devenue une colonne sur chaque ligne (§14.38). Ce qui reste d'`active` est de decider ou s'affiche l'indication, et c'est derive : la premiere serie non terminee |
+
+### 9.34 La numerotation des series sort dans le domaine (19/09/2026)
+
+| No | Section | Amendement | Motif |
+| --- | --- | --- | --- |
+| 1 | **§3, §4** | **`domain/set-number.ts` : `workSetNumbers`** | Deux tables appliquent la regle — la routine numerote ce qu'on prevoit, la seance ce qu'on fait — et le §10.2 exige qu'elles se ressemblent. Une regle d'une phrase merite un module quand DEUX ecrans la relisent : elles s'accorderaient sur les blocs faciles et divergeraient sur un superset avec echauffement |
+| 2 | **D9** | **La numerotation est DERIVEE de l'ordre et des types, jamais stockee** | `set_index` reste le tour et compte toutes les series. C'est ce sur quoi la colonne PRECEDENT s'apparie (§9.32 n° 2), donc la renumeroter reapparierait silencieusement les series de deux seances differentes. Identite et etiquette sont deux choses, et la separation est ce qui rend ce changement gratuit |
+| 3 | **§4** | **`null` plutot qu'un numero que personne n'affiche** | Les trois autres sortes montrent leur propre mot court. Rendre un nombre pour elles serait une valeur calculee pour etre jetee, et le prochain lecteur supposerait raisonnablement qu'elle veut dire quelque chose |
+| 4 | **D16** | **Calcule une fois par bloc, pas une fois par rangee** | Le rang d'une serie depend de tout ce qui la precede, donc la version par rangee refaisait la meme marche pour chaque rangee. La table de seance en avait une, remplacee |

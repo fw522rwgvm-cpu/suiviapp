@@ -8,6 +8,7 @@ import { SET_TYPES } from '@/core/db/schema';
 import type { BlockDraft, LineDraft } from '../domain/routine-draft';
 import { exercisesOfBlock, roundsOf } from '../domain/routine-draft';
 import { setTypeShort } from '../domain/routine-text';
+import { workSetNumbers } from '../domain/set-number';
 import { SetCell, SetChip, formatCell, parseCell, setColumns } from './set-cell';
 
 /**
@@ -73,6 +74,16 @@ export function SetTable({
   const theme = useTheme();
 
   const rounds = roundsOf(block);
+  /**
+   * The number each row shows — working sets only, per exercise (specs 14.41).
+   *
+   * Over `block.lines`, which is execution order, so a superset counts A and B
+   * apart. Indexed by `lineIndex` below, which is the index into that same
+   * array — the rounds are a VIEW of it, not a second ordering.
+   */
+  const numbers = workSetNumbers(
+    block.lines.map((line) => ({ key: line.exerciseId, setType: line.setType })),
+  );
   const exercises = exercisesOfBlock(block);
   const letters = new Map(exercises.map((item, index) => [item.exerciseId, LETTERS[index] ?? '?']));
   const lettered = exercises.length > 1;
@@ -94,7 +105,7 @@ export function SetTable({
         </Text>
       </View>
 
-      {rounds.map((round, roundIndex) =>
+      {rounds.map((round) =>
         round.map(({ line, lineIndex }) => {
           const wasSeparated = separated;
           separated = true;
@@ -103,7 +114,7 @@ export function SetTable({
               {wasSeparated ? <ListSeparator /> : null}
               <SetRowInner
                 line={line}
-                round={roundIndex + 1}
+                number={numbers[lineIndex] ?? null}
                 letter={lettered ? (letters.get(line.exerciseId) ?? '?') : null}
                 tracksDuration={tracksDuration}
                 editable={editable}
@@ -123,7 +134,7 @@ const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'] as const;
 
 function SetRowInner({
   line,
-  round,
+  number,
   letter,
   tracksDuration,
   editable,
@@ -131,7 +142,11 @@ function SetRowInner({
   onDelete,
 }: {
   line: LineDraft;
-  round: number;
+  /**
+   * What the first cell shows for a WORKING line. `null` for the other kinds,
+   * which state their own short word instead (specs 14.41).
+   */
+  number: number | null;
   /** The exercise's letter in a superset; null in an ordinary block. */
   letter: string | null;
   tracksDuration: boolean;
@@ -140,8 +155,8 @@ function SetRowInner({
   onDelete: () => void;
 }) {
   const theme = useTheme();
-  const number = line.setType === 'work' ? String(round) : setTypeShort(line.setType);
-  const label = letter === null ? number : `${letter}${number}`;
+  const shown = number === null ? setTypeShort(line.setType) : String(number);
+  const label = letter === null ? shown : `${letter}${shown}`;
 
   function cycleType(): void {
     const at = SET_TYPES.indexOf(line.setType);

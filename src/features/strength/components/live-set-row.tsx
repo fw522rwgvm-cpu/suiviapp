@@ -60,7 +60,7 @@ import { SetCell, SetChip, setColumns } from './set-cell';
  */
 export function LiveSetRow({
   set,
-  round,
+  number,
   letter,
   typed,
   previous,
@@ -73,7 +73,11 @@ export function LiveSetRow({
   onDelete,
 }: {
   set: SessionSetView;
-  round: number;
+  /**
+   * What the first cell shows for a WORKING set. `null` for the other kinds,
+   * which show their own short word instead (specs 14.41).
+   */
+  number: number | null;
   letter: string | null;
   typed: TypedSet;
   /** What this same set did last time the routine was done. `null` when never. */
@@ -98,8 +102,14 @@ export function LiveSetRow({
   };
   const done = set.status === 'done';
   const skipped = set.status === 'skipped';
-  const number = set.setType === 'work' ? String(round) : setTypeShort(set.setType);
-  const label = letter === null ? number : `${letter}${number}`;
+  /*
+    A warm-up, a drop set and a long set state their kind; a working set states
+    its rank among the working sets only — so [Éch, travail, travail] reads
+    Éch · 1 · 2. The rule is workSetNumbers, in the domain, because the routine
+    table numbers its rows the same way.
+  */
+  const shown = number === null ? setTypeShort(set.setType) : String(number);
+  const label = letter === null ? shown : `${letter}${shown}`;
 
   /**
    * Seconds or repetitions, decided by the EXERCISE and read live.

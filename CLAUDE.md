@@ -63,7 +63,7 @@ L'application doit tolérer un arrêt forcé à tout moment sans perte.
 ## État du projet
 Tranches 0 à 11 livrées. La tranche 9 (notifications) **clôt la V2** ; les
 tranches 10 (exercices et routines) et 11 (séance en direct) **ouvrent la V3**.
-**1676 tests verts** sous les trois fuseaux, `tsc` vert, bundle produit.
+**1683 tests verts** sous les trois fuseaux, `tsc` vert, bundle produit.
 
 **La tranche 11 ne demande AUCUN cycle CI, et c'est vérifiable avant de
 commencer** : aucune dépendance n'entre. `expo-notifications` est dans le
@@ -5096,6 +5096,23 @@ il ne s'applique simplement pas là.
 n'est jamais rendu. Le statut `skipped` existe en base, `setSkipped` est écrit
 et testé, et **aucun contrôle ne l'atteint**. Préexistant ; nommé pour que ça ne
 passe pas pour du support.
+
+**Seules les séries de travail sont numérotées.** Un bloc [échauffement,
+travail, travail] se lit **Éch · 1 · 2** et non Éch · 2 · 3 : un échauffement
+est ce qu'on fait *avant* que l'exercice commence, et lui laisser le numéro 1
+faisait appeler « deuxième » la première vraie série, sur tout exercice qu'on
+échauffe.
+
+La règle vit dans `domain/set-number.ts` parce que **deux tables l'appliquent** —
+la routine numérote ce qu'on prévoit, la séance ce qu'on fait — et le §10.2
+exige qu'elles se ressemblent. Deux écritures s'accorderaient sur les blocs
+faciles et divergeraient sur un superset avec échauffement.
+
+**Et rien de stocké ne bouge, ce qui est le point à ne pas défaire plus tard :**
+`set_index` reste le tour et continue de compter toutes les séries, parce que
+c'est la clé sur laquelle la colonne PRÉCÉDENT s'apparie. La renuméroter
+réapparierait en silence les séries de cette semaine avec d'autres de la semaine
+dernière. Identité d'un côté, étiquette de l'autre.
 
 **Le repos VIBRE et ne notifie plus, et la limite est réelle.** Demandé. Une
 vibration pilotée par l'application ne part que si l'application est au
