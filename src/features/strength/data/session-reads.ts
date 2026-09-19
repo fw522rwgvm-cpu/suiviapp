@@ -309,7 +309,7 @@ export function listSessions(db: AppDatabase): SessionListItem[] {
       startedAt: session.startedAt,
     })
     .from(session)
-    .orderBy(desc(session.date), desc(session.startedAt))
+    .orderBy(...SESSION_ORDER)
     .all();
 
   if (heads.length === 0) return [];
@@ -457,7 +457,7 @@ export function readPreviousSets(
         ne(session.id, currentSessionId),
       ),
     )
-    .orderBy(desc(session.date), desc(session.startedAt))
+    .orderBy(...SESSION_ORDER)
     .limit(1)
     .all();
 
@@ -523,3 +523,29 @@ export function previousFor(
   }
   return previous.get(previousSetKey(null, set.exerciseName, set.setIndex)) ?? null;
 }
+
+/**
+ * The order sessions are read in, everywhere (specs 14.39, 9.32 no 2).
+ *
+ * ## ONE SPELLING, BECAUSE THERE WERE ALREADY TWO AND SLICE 12 WOULD HAVE MADE
+ * ## THREE
+ *
+ * `listSessions` orders the Séances list, `readPreviousSets` picks the last
+ * session of a routine, and the exercise history picks the last session
+ * containing an exercise. All three mean the same thing by "the last one", and
+ * all three wrote it out by hand.
+ *
+ * ## THE CIVIL DATE FIRST, THE INSTANT ONLY TO SEPARATE
+ *
+ * `date` is the civil day the session belongs to (D3) and is what somebody
+ * reads; `started_at` separates two sessions of the same day. Ordering on the
+ * instant alone would be right today and wrong the first time a session is
+ * logged for yesterday — and that case is not hypothetical, since specs 10.3
+ * resumes a session "sans limite de temps".
+ *
+ * The precedent is slice 4's ROW_NUMBER, which had to match readLastEntryForFood
+ * character for character and is held to it by a test. Same here: a second
+ * spelling would agree on every example anybody writes by hand and diverge on
+ * the session logged for yesterday, which is the one nobody tries.
+ */
+export const SESSION_ORDER = [desc(session.date), desc(session.startedAt)] as const;
