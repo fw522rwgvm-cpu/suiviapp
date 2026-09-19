@@ -40,3 +40,20 @@ export function writeProgressionIncrement(db: AppDatabase, kg: number): void {
   );
 }
 
+/**
+ * Whether the end of a rest makes the phone vibrate (specs 14.40).
+ *
+ * ## DEFAULTS TO ON, AND THE CLAMP IS THE PROJECT'S USUAL DIRECTION
+ *
+ * An absent row means nobody has been asked, and the useful behaviour is the
+ * one the request describes. Anything that is not the literal "0" reads as on:
+ * a corrupt settings row must never leave somebody with a rest timer that ends
+ * in silence and no explanation.
+ */
+export function readRestAlert(db: AppDatabase): boolean {
+  return readSetting(db, SETTING_KEYS.restAlertEnabled) !== '0';
+}
+
+export function writeRestAlert(db: AppDatabase, enabled: boolean): void {
+  writeSetting(db, SETTING_KEYS.restAlertEnabled, enabled ? '1' : '0');
+}

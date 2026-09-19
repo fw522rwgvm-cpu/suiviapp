@@ -55,6 +55,35 @@ export interface NotificationHost {
 
   schedule(notification: PlannedNotification): Promise<void>;
 
+  /**
+   * A one-shot notification a fixed number of seconds from now.
+   *
+   * ## A COUNTDOWN IS A DELAY; A REMINDER IS A DATE. THEY ARE NOT THE SAME CALL
+   *
+   * Slice 9 read the package source and found that expo's `DATE` trigger is a
+   * UNTimeIntervalNotificationTrigger built from timeIntervalSinceNow — a delay
+   * in seconds frozen at scheduling time. That made it the WRONG tool for the
+   * four daily kinds: a delay computed today drifts across a daylight saving
+   * change and means the wrong wall-clock time by the end of a seven-day
+   * horizon. Hence CALENDAR everywhere, matched on components, which is D3 at
+   * the native boundary.
+   *
+   * The rest timer of specs 10.3 is the opposite case, and the same fact makes
+   * a frozen delay exactly right: ninety seconds from now IS ninety seconds
+   * from now, there is no civil date in the question at all, and nothing can
+   * drift inside a window shorter than a set.
+   *
+   * A separate method rather than a flag on schedule(), so neither can be
+   * reached by the other's caller: the planner has no business asking for a
+   * delay, and a countdown has no components to state.
+   */
+  scheduleAfter(input: {
+    id: string;
+    title: string;
+    body: string;
+    seconds: number;
+  }): Promise<void>;
+
   cancel(id: string): Promise<void>;
 }
 
@@ -71,5 +100,6 @@ export const inertNotificationHost: NotificationHost = {
   requestPermission: () => Promise.resolve('undetermined'),
   getPending: () => Promise.resolve([]),
   schedule: () => Promise.resolve(),
+  scheduleAfter: () => Promise.resolve(),
   cancel: () => Promise.resolve(),
 };

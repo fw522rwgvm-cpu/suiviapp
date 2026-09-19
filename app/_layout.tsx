@@ -1,6 +1,7 @@
 import { isLiquidGlassAvailable } from 'expo-glass-effect';
 import { Stack } from 'expo-router';
 import type { ReactNode } from 'react';
+import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { DatabaseGate } from '@/core/db/database-gate';
 import { QueryProvider } from '@/core/query';
@@ -9,7 +10,9 @@ import { useNotificationScheduling } from '@/features/notifications/hooks/use-no
 import { setNotificationHost } from '@/features/notifications/host-registry';
 import { expoNotificationHost } from '@/features/notifications/native/expo-host';
 import { RequestedDateProvider } from '@/features/nutrition/hooks/requested-date';
+import { SessionBanner } from '@/features/strength/components/session-banner';
 import { useSweepOffCacheOnce } from '@/features/nutrition/off/off-queries';
+import { useDefaultCatalogOnce } from '@/features/strength/hooks/use-default-catalog';
 import { usePreferences } from '@/features/settings/data/settings-queries';
 
 // THE ONE LINE THAT MAKES NOTIFICATIONS REAL, and it is wiring.
@@ -65,7 +68,24 @@ export default function RootLayout() {
               more. Mounting a provider is wiring, which is all app/ does.
             */}
             <RequestedDateProvider>
-              <RootStack />
+              {/*
+                THE BAND OF SPECS 10.3 SITS ABOVE THE WHOLE ROUTER.
+
+                "Bandeau persistant dans toute l'application" means exactly
+                that: not a screen's element, but something over all of them, so
+                a live session is reachable from the Journal, from Stats, from
+                the Settings. Mounting it here is wiring; everything it decides
+                — including when it draws nothing at all — is written where it
+                lives.
+
+                A sibling AFTER the stack, so it paints over the screens; the
+                dock is pointerEvents="box-none", so only the band itself takes
+                a touch and the page underneath keeps all of its own.
+              */}
+              <View style={{ flex: 1 }}>
+                <RootStack />
+                <SessionBanner />
+              </View>
             </RequestedDateProvider>
           </ThemeFromPreference>
         </QueryProvider>
@@ -103,6 +123,12 @@ function RootStack() {
   // Once per launch, after the first paint. Mounting it is wiring; what it
   // does and why it is not in the startup sequence is written where it lives.
   useSweepOffCacheOnce();
+
+  // Same shape, same reason: the default exercises land once per installation,
+  // decided by a `setting` row rather than by this line. Requested — an empty
+  // library was the one place the application asked for a quarter of an hour
+  // before it served.
+  useDefaultCatalogOnce();
 
   // For the lifetime of the application, on the same precedent: the scheduler
   // has to re-read on every foreground (D14), so it cannot live on a screen —

@@ -9,6 +9,7 @@ import type {
 } from '../../src/features/notifications/domain/host';
 import { summaryContent } from '../../src/features/notifications/domain/messages';
 import type { PlannedNotification } from '../../src/features/notifications/domain/plan';
+import { NOTIFICATION_KINDS, type SessionId } from '../../src/core/db/schema';
 
 /**
  * Applying a plan, against a fake notification centre.
@@ -40,6 +41,22 @@ class FakeHost implements NotificationHost {
 
   getPending() {
     return Promise.resolve([...this.pending]);
+  }
+
+  /**
+   * The rest timer's door, added in slice 11.
+   *
+   * Recorded in the SAME `pending` list as the daily kinds, deliberately: iOS
+   * keeps one queue for the whole application, and a fake that kept two would
+   * make it impossible to test that the planner leaves the rest timer alone.
+   */
+  scheduleAfter(input: { id: string; title: string; body: string; seconds: number }) {
+    this.scheduled.push(input.id);
+    this.pending = [
+      ...this.pending.filter((item) => item.id !== input.id),
+      { id: input.id, title: input.title, body: input.body },
+    ];
+    return Promise.resolve();
   }
 
   schedule(notification: PlannedNotification) {
@@ -198,21 +215,55 @@ describe('applyPlan', () => {
 });
 
 describe('turning everything off', () => {
-  it('empties our queue and leaves everyone else’s alone', async () => {
-    // There is no separate "cancel all" path, and there should not be: with no
-    // setting enabled the plan is empty, and an empty plan already cancels
-    // everything of ours through the ordinary diff. A second path would be a
-    // second place that decides what is ours.
+  it('empties our queue and leaves the REST TIMER alone', async () => {
+    /**
+     * There is no separate "cancel all" path, and there should not be: with no
+     * setting enabled the plan is empty, and an empty plan already cancels
+     * everything of ours through the ordinary diff. A second path would be a
+     * second place that decides what is ours.
+     *
+     * ## THE IDENTIFIER IS THE REAL ONE NOW, AND THAT IS THE POINT
+     *
+     * Slice 9 wrote it with 'rest_timer:abc', a plausible guess at an
+     * identifier nobody would ever mint; slice 11 pointed it at the real
+     * `rest:<sessionId>` the rest timer used; specs 14.40 then removed that
+     * notification altogether — the end of a rest vibrates and nothing is
+     * scheduled.
+     *
+     * So the counter-example is a plainly FOREIGN identifier again, and this
+     * time deliberately: what is being tested is the planner's own rule — it
+     * cancels what it owns and leaves everything else alone — and that rule
+     * does not need a second feature to exist in order to be true. The trap
+     * slice 10 named still applies to the reasoning: a test naming something
+     * FUTURE goes green by asserting nothing.
+     */
     const host = new FakeHost();
+    const foreign = 'not_a_kind:whatever';
     host.pending = [
       { id: 'weigh_in:2026-09-16', title: 'Pesée du matin', body: '' },
       { id: 'daily_summary:2026-09-15', title: 'Bilan', body: '' },
-      { id: 'rest_timer:abc', title: 'Repos terminé', body: '' },
+      { id: foreign, title: 'Autre chose', body: '' },
     ];
 
     await applyPlan(host, []);
 
-    expect(host.pending.map((item) => item.id)).toEqual(['rest_timer:abc']);
+    expect(host.pending.map((item) => item.id)).toEqual([foreign]);
+    expect(host.cancelled).not.toContain(foreign);
+  });
+
+  it('owns an identifier only when a kind is its prefix', () => {
+    /**
+     * The property stated directly rather than only exercised.
+     *
+     * `diffSchedule` decides ownership with
+     * `NOTIFICATION_KINDS.some(kind => id.startsWith(kind + ':'))` and cancels
+     * everything it owns that is not in the plan — on every foreground. Any
+     * feature that schedules its own notification must therefore keep out of
+     * that namespace, which is invisible from either side.
+     */
+    for (const kind of NOTIFICATION_KINDS) {
+      expect('not_a_kind:whatever'.startsWith(`${kind}:`)).toBe(false);
+    }
   });
 });
 

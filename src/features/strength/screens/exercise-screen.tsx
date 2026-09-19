@@ -10,6 +10,7 @@ import type { ExerciseId } from '@/core/db/schema';
 import { ExerciseBody } from '../components/exercise-body';
 import {
   useDeleteExercise,
+  useExercise,
   useExerciseDraft,
   useExerciseUsage,
   useUpdateExercise,
@@ -56,6 +57,13 @@ export function ExerciseScreen() {
   const id = toEntityId<ExerciseId>(params.id ?? '');
 
   const stored = useExerciseDraft(id);
+  /*
+    Read alongside the draft for ONE field: the medium. It is not part of what
+    the form edits — choosing a file needs expo-image-picker, outside section 5
+    — so putting it on the draft would make it a value sameExerciseDraft has to
+    compare and the editor has to carry, for something neither can change.
+  */
+  const view = useExercise(id);
   const usage = useExerciseUsage(id);
   const update = useUpdateExercise();
   const remove = useDeleteExercise();
@@ -140,12 +148,21 @@ export function ExerciseScreen() {
      * ACTION and readExerciseUsage exists. A cascade would have done the same
      * work silently and left this text guessing.
      *
-     * Sessions do not exist yet, so what is named is the routines. Slice 11
-     * adds the rest of the sentence.
+     * Since slice 11 it names the recorded history too — what specs 14.20 no 3
+     * deferred because session_set did not exist yet.
+     *
+     * THE FALLBACK IS ALL ZEROES AND THAT IS THE SAFE DIRECTION HERE, unlike
+     * describeRecipeUses, which returns null on "not read yet" so a
+     * confirmation can never claim there is nothing to lose. The difference is
+     * that this alert cannot open before the page has rendered, and the page
+     * does not render without its query — so the zeroes are unreachable rather
+     * than reassuring.
      */
     Alert.alert(
       `Supprimer « ${saved.name} » ?`,
-      deletionWarning(usage.data ?? { routineNames: [], lineCount: 0 }),
+      deletionWarning(
+        usage.data ?? { routineNames: [], lineCount: 0, setCount: 0, sessionCount: 0 },
+      ),
       [
         { text: 'Annuler', style: 'cancel' },
         {
@@ -208,6 +225,10 @@ export function ExerciseScreen() {
         <ExerciseBody
           draft={draft}
           editable={editing}
+          // From the STORED exercise, never from the draft: the medium is not
+          // something this form edits, so it does not belong in what the form
+          // holds. It stays put while the draft changes around it.
+          mediaUri={view.data?.mediaUri ?? null}
           onChange={(next) =>
             setMode((current) =>
               current.kind === 'reading' ? current : { kind: 'editing', draft: next },

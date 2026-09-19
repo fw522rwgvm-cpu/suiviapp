@@ -61,14 +61,38 @@ L'application doit tolérer un arrêt forcé à tout moment sans perte.
 ---
 
 ## État du projet
-Tranches 0 à 10 livrées. La tranche 9 (notifications) **clôt la V2** ; la
-tranche 10 (exercices et routines) **ouvre la V3**.
-**1439 tests verts** sous les trois fuseaux, `tsc` vert, bundle produit.
+Tranches 0 à 11 livrées. La tranche 9 (notifications) **clôt la V2** ; les
+tranches 10 (exercices et routines) et 11 (séance en direct) **ouvrent la V3**.
+**1683 tests verts** sous les trois fuseaux, `tsc` vert, bundle produit.
 
-**La tranche 10 n'a rien exercé sur l'appareil, et elle n'a pas besoin d'un
-cycle CI pour l'être** : aucune dépendance n'a été ajoutée. `react-native-svg`
-porte la carte corporelle depuis la tranche 7, `gesture-handler` le balayage
-depuis la tranche 3. Metro suffit.
+**La tranche 11 ne demande AUCUN cycle CI, et c'est vérifiable avant de
+commencer** : aucune dépendance n'entre. `expo-notifications` est dans le
+binaire depuis la tranche 9 — prouvé, pas déduit, une notification a été reçue
+le 15/09 — `react-native-svg` depuis `dev-b19`. Les dessins d'exercices sont
+des chaînes de chemins dans un module TypeScript, le mécanisme de
+`paths.generated.ts` : du JavaScript. Metro suffit.
+
+**Le bundle JavaScript passe de 6,3 à 7,0 Mo, et 876 exercices tiennent dans
+ces 0,7 Mo.** Les photographies sont des **assets** — 30,8 Mo dans
+`dist/assets`, que Hermes n'analyse jamais. La première version inlinait 32 SVG
+et coûtait 1,2 Mo de bundle JS analysé à chaque démarrage à froid ; les mesures
+sont dans `architecture §9.25` n° 2 et `§9.27` n° 1.
+
+**Une partie de la tranche 11 a tourné sur l'appareil (19/09/2026), et il faut
+lire précisément ce que ça couvre.** Rapporté : « ça marche bien sur le
+téléphone », après le passage aux listes fenêtrées.
+
+*Constaté* : l'onglet Entraînement et ses trois sous-onglets, les deux listes
+fenêtrées — donc le défilement reste fluide et le champ de recherche garde son
+focus — le catalogue et ses photographies, et le « + » qui bifurque.
+
+*NON exercé, et à lire comme tel* : tout ce qui demande de provoquer un
+événement — que le minuteur de repos sonne, qu'un arrêt forcé en pleine séance
+la retrouve intacte, qu'une séance laissée une nuit ne compte pas la nuit, et
+où se pose le bandeau de séance. Voir les points ouverts.
+
+La tranche s'empile toujours sur les tranches 6, 8 et 10, qui n'ont jamais
+tourné sur l'appareil.
 
 Ce qui reste à voir est ce qu'aucun test ne couvre : **que la carte corporelle
 ressemble à un corps et s'allume aux bons endroits.** Un test dit que `chest`
@@ -186,8 +210,9 @@ est morte, et l'export est l'unique filet du projet.
 
 **Le schéma est gelé. Ajout seul désormais (D6/G2).** La migration initiale
 n'a jamais été dégelée : `0001_journal` a été ajoutée à côté, puis `0002_food`,
-`0003_barcode_off_cache`, `0004_templates_planning`, `0005_recipes` et
-`0006_weight`.
+`0003_barcode_off_cache`, `0004_templates_planning`, `0005_recipes`,
+`0006_weight`, `0007_notifications`, `0008_strength`, `0009_duration` et
+`0010_session`.
 Réécrire `0000` aurait changé son horodatage, fait voir une migration en
 attente à l'installation quotidienne, qui aurait tenté de recréer `setting` et
 échoué au démarrage. Le dégel servait à corriger `0000` ; `0000` n'avait rien à
@@ -4918,6 +4943,727 @@ autorise un élément de liste à porter du texte que personne ne liste ; lire u
 exercice par bloc serait le coût par rangée que la tranche 4 a rencontré en
 étendant l'ajout rapide à toute la bibliothèque.
 
+## Ce que la tranche 11 a établi
+
+**`0009` était morte dans l'eau, et personne ne pouvait le savoir.**
+`exercise.tracks_duration` était lue en quatre endroits — `exercise-reads`,
+`routine-reads`, `SetTable`, `RoutineBody` — et écrite **nulle part** : absente
+d'`ExerciseDraft`, de `columnsOf`, de `readExerciseDraft`. Donc `0` sur tous
+les exercices ayant jamais existé, la colonne « Temps » inatteignable, et
+`routine_line.duration_seconds` hors de portée.
+
+C'est **le même défaut que la tranche 10 a corrigé un étage plus bas**, trouvé
+de la même façon — en touchant une table de projection, pas par un écran en
+échec — et pour la même raison, qu'il faut redire parce qu'elle est la leçon :
+**la lecture rendait fidèlement le défaut que l'écriture n'avait jamais écrasé,
+donc l'aller-retour était cohérent et faux.** Un test le garde désormais par la
+valeur, jamais par la symétrie.
+
+**Et le test censé l'attraper ne l'a pas attrapé.** « notice EVERY field of the
+draft » existe précisément pour un champ ajouté et oublié (`architecture
+§9.22 n° 2`) ; sa liste était un **tableau**, donc elle est restée verte le jour
+où elle devait rougir. Elle est maintenant un `Record<keyof ExerciseDraft, …>` :
+omettre un champ fait échouer `tsc` **en le nommant**. Vérifié par mutation.
+
+> **Règle qui en sort : un test qui garde l'exhaustivité d'un type doit être
+> indexé PAR ce type, jamais par une liste d'exemples.** Une liste tenue à la
+> main ne peut pas remarquer ce qui n'y est pas.
+
+**« Une seule séance en cours » est une PAIRE, pas un index.**
+`ux_session_active` est partiel — `WHERE status = 'in_progress'` — donc il ne
+contraint **rien** sur une ligne dont le statut dit autre chose. Une archive
+posant deux séances à `'running'` importerait proprement et l'application
+tiendrait deux séances vivantes : exactement la contournabilité que D12 exige
+d'impossible, atteinte par la route que D12 dit d'éviter. `ck_session_status`
+est ce qui rend l'index total. **C'est le seul endroit du schéma où c'est vrai
+d'un index**, et un test insère la ligne en contournant la fonction — sans lui,
+l'index pourrait disparaître sans qu'aucun autre test bronche.
+
+Et l'objection de la tranche 5 ne s'applique pas : `day_meal` avait vu son index
+partiel refusé parce qu'une base en service portait déjà les lignes qui le
+violeraient. `session` est **neuve**, donc il se construit toujours. Argument de
+`weight_goal.is_active`, mot pour mot.
+
+**La fin d'un segment est estampillée par l'écriture SUIVANTE, jamais par un
+minuteur.** D12 dit « se ferme après 30 minutes sans aucune écriture », ce qui
+est inimplémentable lu comme une consigne à un minuteur : rien de l'application
+ne tourne en arrière-plan ou après un kill, donc la fermeture n'aurait aucun
+moment où se produire et un segment resterait ouvert trois jours.
+
+D'où la décision qui porte tout : **`ended_at` n'est jamais NULL pendant que
+l'application tourne.** La forme évidente — NULL tant que le segment est
+ouvert — oblige à deviner une fin à la lecture, et `COALESCE(ended_at, now)`
+compte la nuit entière. Un arrêt forcé laisse donc le segment finissant à la
+dernière chose qui s'est réellement produite, sans que personne ait rien à
+calculer.
+
+**Conséquence acceptée, trouvée par un test dont la première version supposait
+le contraire** : un silence plus long que le seuil n'est pas compté **même au
+tout début**. Un échauffement n'écrit rien, donc il ne compte pas. La règle
+appliquée plutôt qu'un trou dedans — compter un silence parce qu'il est le
+premier voudrait dire que le même silence compte au début et pas au milieu.
+
+**Réserve inscrite : la durée affichée REDESCEND** au franchissement du seuil,
+d'au plus trente minutes. C'est juste, et il faut quelqu'un qui regarde cet
+écran trente minutes sans rien écrire pour le voir. Plafonner la queue au seuil
+montrerait une demi-heure d'entraînement qui n'a pas eu lieu.
+
+**La colonne PRÉCÉDENT, et la règle d'appariement qui décide tout.** Elle
+montre ce que la **même série** a fait la dernière fois que cette routine a été
+faite — « 50kg × 5 », et en dessous « RIR 2 ».
+
+L'appariement est `(exercice, set_index)`, **jamais la position** : la position
+est l'ordre d'exécution et elle bouge — ajouter un exercice en cours de séance,
+retirer une série, réordonner un superset la décalent tous. Une colonne qui
+apparierait discrètement un développé couché avec le curl de la semaine dernière
+parce qu'une ligne a été insérée au-dessus est le genre de faux plausible et
+invisible que ce projet traite comme grave.
+
+**Et `previousFor` essaie l'id puis le nom figé**, ce que la première version ne
+faisait pas. Supprimer un exercice annule son id sur toutes les séries qui l'ont
+utilisé ; qui le recrée obtient un id neuf, donc un appariement par id seul
+afficherait une colonne vide pour du travail réellement fait. Une seule fonction
+porte la règle, parce qu'une seconde écriture se tromperait précisément sur le
+cas que personne n'essaie à la main.
+
+**Un défaut trouvé dans le test avant de l'être dans le code** : `anExercise()`
+crée un exercice **neuf** à chaque appel, donc trois séances construites par
+trois appels portaient trois exercices différents et la colonne ne trouvait rien
+**en ayant l'air parfaitement correcte**. C'est exactement le défaut que ce test
+existe pour attraper, rencontré d'abord dans le test lui-même.
+
+**Une plage de répétitions se remplit désormais avec son HAUT, et la conséquence
+est acceptée plutôt qu'écartée.** La tranche 11 le refusait explicitement, et
+l'argument était juste : le §10.4 déclenche la progression quand toutes les
+séries de travail atteignent le haut de la plage, donc **une plage laissée
+intacte proposera une charge plus lourde la semaine suivante**. L'échange est
+dans le bon sens pour qui le paie : faire la série comme écrit est le cas
+courant et coûtait un toucher à chaque série de chaque séance ; être en dessous
+est le cas rare, et c'est déjà là qu'on tend la main vers le champ.
+
+**Le type de série se change en direct**, et ce n'est pas cosmétique : le §10.1
+ne compte le volume que sur les séries de travail et le §10.4 lit « toutes les
+séries de travail ». Un échauffement enregistré en travail gonfle les deux, en
+silence et pour toujours.
+
+**Régression introduite la veille et corrigée** : épingler le bloc de durée lui
+a fait perdre `contentInsetAdjustmentBehavior="automatic"`, donc il se dessinait
+**derrière le titre et le bouton Terminer**. La page déclare son encart et le
+défilement passe en `never` — la sortie que la tranche 3 avait déjà trouvée,
+appliquée à un cas qu'elle n'avait pas prévu.
+
+**La table de séance s'est scindée, et ça renverse une décision de tête de la
+tranche.** « RIR valide la série » était dans l'énoncé même de la tranche 11, et
+c'est faux à l'usage : un contrôle qui fait deux choses rend la seconde
+inatteignable. Il n'y avait **aucun moyen de corriger un RIR mal tapé**, ni d'en
+noter un avant d'avoir fait la série.
+
+Cinq colonnes désormais — Série · kg · Reps/Temps · RIR · ✓ — et chacune des
+deux dernières est réversible seule. Le ✓ pressé une seconde fois annule la
+validation : c'est **une** question à deux réponses, donc un bouton.
+
+**Et une série validée reste un formulaire**, ce qui renverse l'autre moitié du
+choix. La tranche 11 la figeait en arguant que « corriger est l'affaire de la
+séance terminée, pas de la ligne qu'on vient de dépasser ». On remarque la
+mauvaise charge **une série plus tard**, pas une séance plus tard. Gratuit :
+`saveTypedSet` n'a jamais touché `status`.
+
+Deux écritures neuves portent le reste. `reopenSet` **efface `completed_at`** —
+ce n'est pas de la comptabilité, c'est l'instant depuis lequel le repos compte
+et la colonne sur laquelle `ix_set_exercise` est bâti, donc une série qui n'est
+plus faite ne doit ni ancrer un repos ni apparaître dans un historique de ce qui
+a été soulevé. `setSetRir` **ne touche pas `status`** : un RIR sur une série en
+attente est un plan, sur une série faite une correction, et ni l'un ni l'autre
+n'affirme que la série a eu lieu.
+
+**Le RIR s'écrit immédiatement**, et la ligne entre les deux rythmes de D12
+n'est pas la table touchée : c'est si l'acte est **discret**. Taper une charge
+est un flux de frappes ; choisir parmi huit boutons est une décision.
+
+**Un détail qui aurait menti** : l'état de frappe est lâché à la validation.
+Sans ça, une série validée sans avoir touché aux champs garde `{reps: null}` en
+mémoire et la cellule retombe sur son texte indicatif — le **même nombre, en
+pâle**, donc une série enregistrée se lit comme une série vide.
+
+**Le bloc de durée est épinglé et compte les secondes.** Deux formateurs et non
+un avec un drapeau : le bandeau persistant refuse les secondes parce qu'il est
+sur tous les écrans, où un chiffre qui tressaute est un coût payé sur des pages
+sans rapport ; sur la page de la séance c'est l'inverse, **une horloge
+d'entraînement qui ne bouge pas a l'air arrêtée**. Le motif n'est pas renversé,
+il ne s'applique simplement pas là.
+
+**Câblage mort signalé et non élargi** : `onSkip` est passé à `BlockCard` et
+n'est jamais rendu. Le statut `skipped` existe en base, `setSkipped` est écrit
+et testé, et **aucun contrôle ne l'atteint**. Préexistant ; nommé pour que ça ne
+passe pas pour du support.
+
+**Seules les séries de travail sont numérotées.** Un bloc [échauffement,
+travail, travail] se lit **Éch · 1 · 2** et non Éch · 2 · 3 : un échauffement
+est ce qu'on fait *avant* que l'exercice commence, et lui laisser le numéro 1
+faisait appeler « deuxième » la première vraie série, sur tout exercice qu'on
+échauffe.
+
+La règle vit dans `domain/set-number.ts` parce que **deux tables l'appliquent** —
+la routine numérote ce qu'on prévoit, la séance ce qu'on fait — et le §10.2
+exige qu'elles se ressemblent. Deux écritures s'accorderaient sur les blocs
+faciles et divergeraient sur un superset avec échauffement.
+
+**Et rien de stocké ne bouge, ce qui est le point à ne pas défaire plus tard :**
+`set_index` reste le tour et continue de compter toutes les séries, parce que
+c'est la clé sur laquelle la colonne PRÉCÉDENT s'apparie. La renuméroter
+réapparierait en silence les séries de cette semaine avec d'autres de la semaine
+dernière. Identité d'un côté, étiquette de l'autre.
+
+**Le repos VIBRE et ne notifie plus, et la limite est réelle.** Demandé. Une
+vibration pilotée par l'application ne part que si l'application est au
+**premier plan** : écran verrouillé ou app en arrière-plan, le repos se termine
+sans rien signaler — c'est exactement ce que la notification couvrait. Écrit
+ici, écrit sur la page de réglage, et réversible : la programmation tenait en
+six lignes.
+
+**Pas de son**, et ce n'est pas un oubli : jouer un son demande un module audio
+hors du §5, donc une dépendance native à valider et un cycle CI. `Vibration`
+appartient à React Native.
+
+Le réglage est une ligne `setting` et **pas une cinquième `NOTIFICATION_KIND`** —
+rien n'est programmé ni annulé, donc le planificateur de D14 ne doit rien
+posséder ici. `restNotificationId` et `REST_NOTIFICATION` sont **supprimés**, et
+les deux tests qui gardaient leur invariant changent de sujet plutôt que de
+valeur : le contre-exemple redevient un identifiant étranger, ce qui teste la
+règle du planificateur elle-même.
+
+**Trois défauts de la table de séance, corrigés le même jour :**
+
+- **le champ de durée ne bougeait que toutes les quinze secondes.**
+  `useLiveDuration` avait **un** intervalle pour deux lecteurs, juste tant que
+  seuls des minutes s'affichaient ; les secondes sont arrivées sur la page de
+  séance et elle paraissait arrêtée quatorze secondes sur quinze. Deux
+  constantes, parce que l'intervalle du bandeau tourne sur **tous** les écrans ;
+- **choisir un RIR valide la série.** Ça ne défait pas la scission : le RIR
+  reste une valeur à part et le bouton bascule toujours seul. Ce qui revient est
+  le raccourci. **Une série déjà validée n'est que corrigée**, jamais
+  revalidée — refaire `completeSet` réécrirait `completed_at` et relancerait le
+  repos d'une série finie il y a dix minutes ;
+- **il fallait parfois appuyer deux fois pour valider.**
+  `pointerEvents="box-only"` avale les touchers dès qu'une rangée balayable a un
+  `onPress`, donc le premier appui activait la rangée — ce qui retirait
+  l'`onPress` — et seul le second atteignait le bouton. **Troisième occurrence
+  du même piège**, après les champs du tableau de routine en tranche 10. La
+  règle générale : **une rangée qui possède la pression ne peut pas aussi
+  contenir des contrôles.** L'activation est supprimée, la bande de RIR qu'elle
+  déplaçait étant devenue une colonne.
+
+**Le minuteur de repos n'est PAS une cinquième sorte de notification — et la
+tranche 9 s'était trompée par écrit, deux fois.** Le commentaire de
+`notification_setting` disait « slice 11 puts the rest timer on a local
+notification » et le catalogue d'export disait « slice 11 adds a kind here ».
+Suivre l'invitation aurait introduit exactement le défaut que la **même**
+tranche 9 a écrit un paragraphe pour éviter : `diffSchedule` décide ce qui
+appartient au planificateur avec `NOTIFICATION_KINDS.some(kind =>
+id.startsWith(kind + ':'))` et annule tout ce qu'il possède et qui n'est pas
+dans le plan, à chaque passage au premier plan. Le minuteur aurait été annulé en
+pleine séance, silencieusement.
+
+Il vit donc dans `rest:<séance>`, **aucune ligne de la tranche 9 ne bouge**, et
+un test assert qu'aucune sorte n'en est un préfixe — parce que la propriété est
+**invisible** : elle tient à ce que deux constantes ne se rencontrent pas, et
+rien dans l'une ni dans l'autre ne le dit. Les deux commentaires sont corrigés.
+
+**Et le minuteur ne stocke rien.** D12 demande de stocker l'instant de départ ;
+il existait déjà — `session_set.completed_at`, écrit dans la même transaction
+que la série. Le décompte est entièrement dérivé, donc il survit à un arrêt
+forcé parce que la séance y survit. Un seul identifiant par **séance**, ce qui
+rend l'annulation du §9.3 automatique : programmer le suivant remplace le
+précédent par identité.
+
+**TIME_INTERVAL ici, CALENDAR pour les quatre sortes quotidiennes**, et c'est
+le même constat de la tranche 9 qui donne les deux réponses : un déclencheur de
+délai figé dérive sur sept jours et un changement d'heure, ce qui le rend faux
+pour une date et exactement juste pour un compte à rebours de quatre-vingt-dix
+secondes.
+
+**Le placeholder est une promesse, et la plage est l'exception qui compte.** Le
+§10.3 dit que les champs portent les valeurs attendues « en texte indicatif » :
+valider sans toucher au champ enregistre donc ce qui était prescrit, ce qui rend
+le parcours courant à deux touchers. Une plage ne prescrit aucun nombre, et
+remplir le **haut** est le défaut tentant — le §10.4 déclenche la suggestion de
+progression quand toutes les séries atteignent le haut de la plage, donc ce
+serait proposer une charge plus lourde parce que quelqu'un a touché un RIR.
+`needsReps` le **dit** au lieu de refuser en silence : une rangée de RIR qui ne
+ferait rien se lirait comme un contrôle cassé.
+
+**`deleteExercise` aurait levé dès la première séance enregistrée.**
+`session_set.exercise_id` est en NO ACTION comme `routine_line.exercise_id`, et
+rien ne l'aurait signalé avant qu'une vraie séance existe. Le schéma porte la
+réponse en deux colonnes : l'id est nullable, `exercise_name_frozen` est
+NOT NULL. Le lien meurt, le nom survit (D5/R4). La transaction délie ; la clé
+étrangère reste le filet qui prouvera qu'elle a tourné.
+
+**Et l'avertissement du §5.3 gagne ce que la tranche 10 lui avait retiré.** Le
+`specs §14.20 n° 3` écrivait qu'il ne mentionne « ni séances, ni records, ni
+graphiques » **parce qu'ils demandent `session_set`**. Ce motif expire ici — et
+un amendement dont la raison a cessé et dont la phrase ne bouge pas est
+exactement la façon dont un avertissement cesse de dire vrai sans que personne
+l'édite. Les routines sont **nommées**, l'historique est **compté**, et ce sont
+deux phrases parce que ce sont deux pertes différentes : une ligne de routine
+est retirée, une série enregistrée est gardée et seulement déliée. Un test
+refuse le mot « perdues ».
+
+### Les images, et pourquoi la source a changé TROIS fois
+
+> **Mise à jour du 19/09/2026 : la source est désormais `free-exercise-db`**
+> (876 exercices, 1746 photographies, Unlicense). Tout ce qui suit décrit le
+> chemin qui y a mené et **reste vrai de ce qu'il énonce**, sauf un point
+> corrigé en place plus bas : j'avais écrit que ce dépôt se *déclarait*
+> Unlicense sans en avoir le droit. Il a bien un `LICENSE.md` au texte intégral
+> de l'Unlicense. Voir `specs §14.33` et `architecture §9.27`.
+
+**La licence ne dépend pas du nombre d'utilisateurs, et c'est la première chose
+à savoir.** « Seul moi l'utilise » serait vrai d'un dépôt privé. D15 fait du
+dépôt un dépôt **public** et les IPA sont publiées en release : ce sont deux
+**diffusions**, et le droit d'auteur porte sur la copie et la diffusion, pas sur
+l'usage privé. Le seul contournement propre — dépôt privé, releases privées —
+coûterait les minutes de CI gratuites que D15 nomme comme la contrainte la plus
+pénible du projet. Mauvais échange.
+
+**Rien d'animé n'existe sous licence permissive**, vérifié avant qu'une ligne ne
+soit copiée :
+
+- les jeux de GIF animés (hasaneyldrm, FitnessDB, RepDB) sont MIT sur le
+  **dépôt** et disent eux-mêmes que les médias sont © Gym Visual, dont les
+  conditions exigent d'**acheter** une licence pour s'en servir ;
+- ~~`yuhonas/free-exercise-db` se déclare Unlicense sans en avoir le droit.~~
+  **FAUX, corrigé le 19/09/2026.** Le dépôt porte un `LICENSE.md` contenant le
+  texte intégral de l'Unlicense ; j'avais cherché `LICENSE` sans extension et
+  pris le 404 pour une réponse. **Ce qui reste vrai** : ce sont des
+  photographies de studio d'une personne identifiable, et une dédicace de droit
+  d'auteur règle qui peut copier le fichier, pas ce que cette personne a
+  accepté. Distinction signalée, décision prise, `specs §14.33 n° 7`.
+
+**La première version a pris `everkinetic/data`** : 293 exercices, anglais
+seulement, dont 32 nommés à la main en français. Ce n'était pas assez, et ce qui
+rendait la croissance chère était la **taille** — un SVG inliné coûte ~40 Ko de
+chemins dans le bundle JavaScript, analysés à chaque démarrage à froid, et les
+chemins ne peuvent pas être raccourcis : ils contiennent des **arcs**, le cas
+exact que la tranche 10 a documenté comme indécidable à re-sérialiser.
+
+**wger tranche, et la raison est presque drôle : il CONTIENT déjà everkinetic.**
+Une grande part de ses images leur est créditée, **déjà traduites en français**
+par ses contributeurs. Changer de source n'était donc pas troquer un jeu contre
+un autre — c'était prendre les mêmes dessins plus cinq cents exercices, le
+nommage fait. 520 exercices, 194 dessins, CC-BY-SA crédité par auteur.
+
+**Et une image est structurellement moins chère qu'un chemin inliné.** Hermes ne
+la lit jamais : le bundle JavaScript est redescendu de 7,6 à 6,5 Mo pendant que
+le catalogue passait de 32 à 520, et il ne remonte qu'à 7,0 Mo à 876 — les
+30,8 Mo d'images partent dans les assets, chargés à l'affichage.
+
+**La troisième source a été prise pour sa licence, et elle a coûté les noms.**
+wger livrait ses exercices **déjà traduits par ses contributeurs**, ce qui avait
+compté comme un bénéfice de cette source. free-exercise-db est en anglais seul :
+les 876 noms sont donc écrits un par un dans `scripts/exercise-names-fr.mjs`,
+jamais produits par un traducteur par jetons. Un tel traducteur traite sept noms
+sur dix et se trompe sur la traîne idiomatique — or **un nom faux dans une
+bibliothèque n'est pas un écran cassé, c'est une étiquette plausible sur le
+mauvais mouvement.**
+
+Un contrôle a d'ailleurs attrapé exactement ça : « Cable Incline Pushdown »
+était traduit « Extension triceps » alors que sa source dit
+`primaryMuscles: ['lats']` — c'est un pull-over bras tendus. Trouvé en comparant
+le muscle que le nom français annonce aux muscles réels de l'exercice, pas à la
+relecture.
+
+**Et la paire d'images EST le mouvement** : [0] le départ, [1] l'arrivée. La
+rangée de liste montre la première, la fiche montre les deux — « jusqu'où
+est-il descendu » est précisément ce qu'une photo seule ne dit pas.
+
+**Deux conséquences assumées, écrites plutôt que découvertes :**
+
+- **Le dessin ne s'anime plus, et il n'a plus à le faire.** Un dessin wger montre
+  le départ et l'arrivée **côte à côte avec une flèche** — ce que l'animation
+  deux poses disait, en un coup d'œil au lieu de deux secondes.
+- **Un PNG ne prend pas le thème.** L'encre est noire, donc sur une carte sombre
+  le dessin serait un trou dans la page. La carte est **blanche dans les deux
+  thèmes** : c'est le seul endroit de l'application où une surface ne suit pas
+  le thème, et c'est la forme honnête de « ceci est une image ».
+
+**Le vocabulaire : deux des trois constats de la première version étaient des
+trous de la SOURCE, pas du vocabulaire.** `forearms` n'avait aucun exercice
+primaire et `kettlebell` aucun exercice du tout ; wger en a onze au kettlebell,
+et les quinze muscles comme les huit matériels sont désormais tous atteints.
+Restent vraies les deux autres moitiés : `shoulders` est toujours un mot pour
+trois muscles, gardé en un groupe sur décision explicite ; et un exercice sans
+matériel ne répond à aucun filtre.
+
+**Et une règle de nom PRIME sur la source pour les muscles qu'elle ne sait pas
+exprimer, sur aucun autre.** wger ne modélisait ni lombaires, ni avant-bras, ni
+adducteurs, et la première version ne laissait une règle de nom que *compléter*
+un primaire absent — ce qui n'en a atteint aucun, wger disant toujours quelque
+chose : une hyperextension revenait en ischio-jambiers. Or cette réponse n'est
+pas *différente* de la nôtre, c'est **la moins fausse que la source puisse
+donner**. Déférer à un vocabulaire pour un muscle qu'il ne sait pas exprimer,
+c'est déférer à un choix forcé.
+
+**free-exercise-db nomme les trois, ce qui retire l'instrument — et il n'en
+reste qu'un.** `obliques`, qu'elle replie dans `abdominals`. La règle survit
+pour lui seul et **ne se déclenche QUE lorsque la source dit `abdominals`** :
+elle réattribue à l'intérieur de la famille abdominale et ne peut donc pas voler
+un exercice de pectoraux à « Incline Dumbbell Flyes - With A Twist ». C'est la
+raison pour laquelle le mot `twist` seul n'est pas dans le motif.
+
+**Défaut dans six tests, et la leçon vaut au-delà d'eux** : ils nommaient des
+clés du catalogue en **littéraux**. C'était juste tant que trente-trois entrées
+étaient écrites à la main dans le fichier d'à côté ; le catalogue étant généré,
+un littéral est un pari sur le nommage d'un tiers. Au changement de source, six
+tests ont rougi sur des clés disparues plutôt que sur un comportement qui aurait
+bougé. Ils indexent le catalogue désormais.
+
+**Le catalogue n'est JAMAIS installé par une migration.** La tranche 5 avait
+déjà refusé une graine, mais le motif qui décide ici est plus fort : **une
+migration est rejouée par chaque import (G4)**, donc la graine réinjecterait ces
+lignes dans une archive qui n'en portait aucune, **avec des ULID neufs** —
+importer deux fois la même archive produirait deux exemplaires de tout.
+Idempotent **par nom**, jamais par clé de média : celui qui a tapé « Squat »
+lui-même a un Squat, et en installer un second serait l'application qui le
+contredit sur sa propre bibliothèque.
+
+**Ce qui a changé, c'est QUI demande.** Les 552 exercices de musculation sont
+installés seuls au premier lancement (`useDefaultCatalogOnce`).
+
+**Le critère a été faux deux fois avant d'être juste.** « A un dessin » marchait
+tant que 194 entrées sur 520 en avaient un ; avec free-exercise-db tout en a un,
+donc l'instrument disparaît. `level: 'beginner'` a été essayé ensuite et **il
+est cassé** — vérifié en listant les mouvements de base contre lui : il exclut
+le soulevé de terre, le développé militaire, le soulevé de terre roumain, la
+fente et le front squat. Ce champ note la **difficulté technique**, pas la
+fréquence, et une bibliothèque par défaut sans soulevé de terre est une
+bibliothèque cassée.
+
+Ce qui reste est la question honnête — est-ce qu'on fait ça en séries et
+répétitions — et la `category` de la source y répond : `strength` et
+`powerlifting` entrent, les étirements, le cardio, la pliométrie, le strongman
+et l'haltérophilie restent au catalogue. **552 sur 876, les quinze muscles
+couverts.**
+
+La propriété qui comptait dans le premier critère survit et est désormais
+**dérivée au lieu d'être définitionnelle**, donc elle a son propre test :
+**toute ligne de la bibliothèque a une image dès le premier jour**, donc le
+substitut du §5.4 n° 3 n'y ressemble pas à un défaut le jour de l'installation.
+
+Le hook tourne **après la première peinture**, jamais dans la séquence de
+démarrage : ses cinq étapes doivent toutes finir avant qu'on dessine, et y
+glisser deux cents insertions mettrait une écriture que personne n'attend devant
+les 1,5 s que D16 budgète pour un chiffre lisible à froid. La Journée est déjà à
+l'écran, et le bus de D8 fait apparaître la bibliothèque quand elle atterrit.
+
+**Et la décision se prend sur un DRAPEAU, jamais sur une bibliothèque vide.** Le
+test évident — « si elle est vide, remplis-la » — est faux exactement là où il
+compte : le §5.3 fait de la suppression d'un exercice le seul acte de
+l'application qui détruise quelque chose, donc la défaire au nom de
+l'utilisateur, au lancement, sans rien demander, est le pire moment possible pour
+rendre service. Une ligne `setting` (`catalog_seeded_at`) dit que la question a
+été posée. Elle n'a besoin d'aucune colonne ni d'aucune migration, et le
+catalogue d'export ne pose **aucune** règle `one_of` sur `setting.key` — vérifié,
+pas supposé — donc elle traverse l'aller-retour sans code en plus : vider sa
+bibliothèque exprès survit à un export / import, et une archive antérieure à
+cette tranche reçoit les défauts au lancement suivant, comme une installation
+neuve. Un test tient les deux directions.
+
+**Et l'écran est une RECHERCHE — celle du RESTE.** À trente-trois entrées, tout
+cocher évitait trente-trois questions ; à huit cent soixante-seize, tout
+installer ne serait pas une bibliothèque mais une copie d'une base de données
+sur le téléphone. Les 552 exercices de musculation arrivent seuls, les 324
+autres — étirements, cardio, pliométrie, strongman, haltérophilie — se cherchent
+ici. Rien n'est coché, on cherche ce qu'on fait. **Les
+résultats sont plafonnés à quarante et la page le dit** — D16 écarte une liste
+virtualisée, donc la réponse est d'en montrer moins, pas d'en montrer autrement.
+La sélection survit au terme et aux filtres : affiner après avoir coché ne doit
+pas laisser tomber ce qui l'était.
+
+**`media_uri` porte deux espaces de noms, et la valeur dit lequel.** Un dessin
+du catalogue est du **code** — dans le binaire, jamais manquant, survivant à une
+réinstallation ; un média choisi est un fichier du conteneur. Le préfixe
+`catalog:` les distingue **sur la valeur seule**, sans consultation. Conséquence
+bonne : une valeur `catalog:` revient **vivante** après un aller-retour.
+
+**Le vocabulaire de la tranche 10 rencontre enfin des exercices réels.** Trois
+constats, et deux confirment que la tranche 10 avait raison :
+
+- **`shoulders` est un mot pour trois muscles** entraînés séparément. Gardé en
+  un groupe sur décision explicite — et le dessin est d'accord, `deltoids` y
+  étant une région **unique**, donc scinder aurait donné trois valeurs allumant
+  la même forme.
+- ~~**`forearms` n'est le primaire de rien.**~~ Vrai d'everkinetic, puis atteint
+  par une règle de nom chez wger. **free-exercise-db lui donne 25 exercices
+  primaires** : c'était un trou de la source, pas du vocabulaire. Le constat du
+  `specs §14.21 n° 5` — les avant-bras sont rarement le primaire de quelqu'un —
+  garde son sens, et la demi-série d'un secondaire garde sa raison d'être.
+- ~~**`kettlebell` n'a aucun exercice** dans la source.~~ Zéro chez everkinetic,
+  onze chez wger, **cinquante-six ici**. Le vocabulaire avait raison et les
+  données n'arrêtaient pas d'être maigres.
+- **Il ne reste qu'un muscle qu'aucune source n'exprime : `obliques`**, replié
+  dans les abdominaux. Atteint par une règle de nom qui ne se déclenche que sur
+  `abdominals`.
+
+**Une régression évitée en relisant les tests, pas un écran en échec.** Le
+générateur réécrit pour free-exercise-db avait **perdu `tracksDuration`** — la
+colonne exacte que la tranche 11 a trouvée morte dans l'eau, lue en quatre
+endroits et écrite nulle part. Le catalogue est le **seul** à y poser une valeur
+non nulle sur une installation neuve : la perdre l'aurait remise à `0` partout,
+en silence, reproduisant `0009` à l'identique un jour après l'avoir corrigé.
+161 exercices sont chronométrés, dont 8 dans le jeu par défaut — étirements et
+cardio par catégorie, gainages, portages et isométriques par nom.
+
+**Et le dépôt grossit de 30,8 Mo, ce qui est le prix assumé de « toute ligne a
+une image ».** Chaque `checkout` de la CI les tire. Écrit ici plutôt que
+découvert au premier build lent.
+
+**Et la vignette a coûté une régression de rendu, le jour même.** Rapporté
+depuis l'appareil : « l'app est beaucoup plus lente ». La liste rendait ses
+**552 rangées d'un coup**, donc 552 photographies décodées pour ouvrir un
+onglet. C'était invisible tant que la bibliothèque contenait ce que quelqu'un
+avait tapé ; le catalogue par défaut l'a rendue visible en une journée.
+
+Premier remède : un plafond à quarante, annoncé sur la page, parce que D16
+écartait une liste virtualisée. **Renversé le jour même, sur demande** — un
+plafond oblige à filtrer avant de pouvoir parcourir. Les deux longues listes
+sont désormais **fenêtrées** (`core/ui/virtual-list.ts`), et l'amendement à D16
+est étroit : `FlatList` est du cœur de React Native, donc aucune dépendance
+n'entre et le risque que D16 visait — un moteur de liste tiers sur le chemin
+critique — n'est pas pris. C'est la moitié « vues standard » de la phrase qui
+tombe, pas l'autre.
+
+**`windowSize` est la moitié « décharge » de la demande** : c'est lui qui
+démonte les rangées éloignées et libère leurs photographies. Son défaut vaut 21
+écrans, soit presque toute une liste de huit cents lignes.
+
+**Réserve honnête** : rien ici ne chronomètre un rendu React Native, donc ce
+qui est corrigé est la **cause** — un nombre d'images montées — et non un
+chiffre observé.
+
+**La vignette est aussi sur la page d'une routine**, à gauche de chaque nom de
+bloc — et dans un superset chaque nom garde la sienne, puisque chaque nom est
+déjà sa propre destination. Gratuit pour la même raison que les quatre notes du
+§6.3 : `media_uri` voyage sur l'élément de liste que la page tient déjà. **Et le
+brouillon n'est pas étendu** — une ligne de routine ne fige rien et lit son
+exercice en direct, donc une `media_uri` recopiée serait une seconde réponse à
+une question que l'exercice répond déjà.
+
+**Trois pièges de liste virtualisée, et les trois se paient en silence.**
+
+- **Une liste virtualisée dans une `ScrollView` du même axe ne virtualise pas du
+  tout.** L'écran Entraînement est donc une `FlatList` dans *tous* ses états,
+  Activités compris — une liste vide avec un message, pas une autre sorte de
+  page. Ça règle du même coup l'échange de type d'élément entre deux états, que
+  la tranche 3 avait trouvé derrière la page de journée qui sautait.
+- **`ListHeaderComponent` reçoit un ÉLÉMENT, jamais une fonction écrite en
+  ligne.** Une flèche dans le JSX est un **nouveau type de composant à chaque
+  rendu**, donc React démonte et remonte le sous-arbre — lequel contient le
+  champ de recherche, qui perdrait le focus à chaque frappe. Même famille que le
+  `key` du carrousel : c'est l'identité qui décide du remontage.
+- **Le séparateur va DANS la rangée, jamais en `ItemSeparatorComponent`.** Un
+  `FlatList` le dessine entre les items, donc en frère des rangées — et un frère
+  ne porte pas les bords latéraux qu'elles peignent. La carte aurait un trou
+  dans ses deux bordures verticales à chaque séparateur.
+
+**Et la carte est reconstruite PAR ses rangées** (`core/ui/list-card.tsx`).
+Toutes les listes du projet dessinent une carte autour d'un `map` ; cette forme
+cesse de marcher dès qu'une liste est virtualisée, les rangées n'étant plus
+toutes là. Chaque rangée peint donc la surface et les deux bords, la première
+arrondit le haut, la dernière le bas. **Sans ombre** : une ombre est dessinée
+hors des limites d'une vue, donc une par rangée s'empilerait le long de chaque
+séparateur en une couture grise.
+
+**Le catalogue ne propose plus que ce qu'on n'a pas.** Les exercices déjà dans
+la bibliothèque étaient listés et désactivés, avec « Déjà là » à la place de la
+coche, pour qu'une seconde visite n'ait pas l'air d'aller tout dupliquer. Ce
+motif est parti avec le catalogue par défaut : à 552 installés d'office, les
+lister ferait de cet écran surtout une liste de choses sur lesquelles on ne peut
+rien faire. **La réponse à « est-ce que ça va dupliquer ? » est mieux donnée en
+ne proposant pas le doublon.** La soustraction se fait **avant** les filtres,
+pour qu'une puce ne propose jamais un muscle qui ne rend rien.
+
+**Le « + » est devenu une bifurcation, et le lien « Parcourir le catalogue » est
+supprimé.** C'étaient deux contrôles disant la même chose à deux endroits, et un
+lien en bas d'une liste n'est pas où l'on regarde quand on veut ajouter quelque
+chose. Créer un exercice, ou le prendre au catalogue : une feuille d'action,
+parce que c'est une bifurcation et non une étape.
+
+**L'onglet Séances existe, et ses rangées terminées ne sont pas cliquables.** Il
+n'y a qu'un écran de séance et il montre celle **en cours** ; l'historique est
+la tranche 12. Une rangée qui a l'air cliquable et ne fait rien est pire qu'une
+rangée qui se présente comme un relevé — et tout ce que la liste peut
+honnêtement montrer est déjà dessus. `listSessions` en trois requêtes groupées,
+tenue d'accord avec `readSession` par un test vérifié par mutation.
+
+**Et le drapeau ne rattrape pas un changement de source.** `catalog_seeded_at`
+dit « la question a été posée », pas « ce catalogue-ci est installé ». C'est
+voulu — le §5.3 interdit de défaire une suppression délibérée — et la
+conséquence est qu'une bibliothèque installée **avant** une bascule de catalogue
+garde l'ancienne. Le bouton de réinitialisation est la réponse.
+
+**La vignette est enfin sur la rangée d'exercice, et le motif de son absence
+avait expiré.** Le §10.1 la demandait mot pour mot ; la tranche 10 ne pouvait
+pas l'honorer parce que rien ne savait écrire `media_uri` — chaque rangée aurait
+montré le **même** carré gris, « ce qui n'est pas une vignette mais une
+excuse ». Le catalogue l'écrit désormais, donc la colonne est faite de
+photographies et le gris redevient l'exception qu'il devait être. Une seule pose
+en liste, les deux sur la fiche.
+
+**Et le jeu d'essai créait des exercices SANS photographie — troisième
+occurrence de la même classe de défaut.** Rapporté depuis l'appareil : « les
+vignettes s'affichent dans le catalogue mais pas dans la page de l'exercice ».
+Les douze exercices de démonstration étaient des brouillons écrits à la main, or
+`media_uri` n'est délibérément **pas** un champ de `ExerciseDraft` — ils n'en
+avaient donc aucune, et une fiche sans média masque la carte entière au lieu
+d'en dessiner une vide.
+
+Rien d'autre ne pouvait l'attraper : les lignes étaient valides, la liste les
+montrait, les routines pointaient dessus ; la seule chose fausse était **une
+colonne qu'aucun test ne lisait**. C'est `tracks_duration` en `0009`, puis
+`duration_seconds` en tranche 10, une troisième fois. Le jeu d'essai installe
+désormais depuis le catalogue, ce qui règle au passage un second défaut qu'on
+n'avait pas vu : un « Squat » tapé à la main à côté d'un « Squat à la barre »
+installé faisait **deux exercices pour un mouvement, dont l'un vide.**
+
+**Vider la base est un bouton des Réglages dev, et il supprime des LIGNES, pas
+le fichier.** Il n'existait aucun moyen de retrouver un état neuf sans
+reconstruire un binaire — quinze minutes de CI pour repartir de zéro. Supprimer
+`Documents/SQLite/suivi.db` serait le reset évident et il est impossible de
+l'intérieur : la connexion est un singleton ouvert une fois, et rien du §5 ne
+sait redémarrer une application — c'est exactement ce que la tranche 2 avait
+établi en devant **basculer** une base en place plutôt qu'en rouvrir une. Les
+lignes partent, le schéma reste, et le résultat **est** l'état qu'une
+installation neuve atteint après ses migrations.
+
+La liste des tables est **dérivée** (`allSchemaTableNames()`), jamais écrite : une
+liste tenue à la main serait le défaut même que le catalogue d'export existe pour
+empêcher, dans le seul endroit où se tromper est invisible — un reset qui oublie
+une table a l'air d'avoir marché, et les lignes restantes ressortent en données
+impossibles trois jours plus tard. `PRAGMA foreign_keys` **hors** de la
+transaction, la tranche 2 ayant déjà payé pour apprendre qu'il y est
+silencieusement ignoré, et restauré dans un `finally`.
+
+### Deux pièces sorties, et où elles vont
+
+- `set-cell.tsx` — la cellule numérique d'une table de séries, à son deuxième
+  utilisateur réel. **Dans la feature, pas dans `core/ui`** : elle sait qu'elle
+  est une cellule de table. `core/ui/decimal-input` est la forme générique et
+  enveloppe une rangée de **formulaire**. Deux formes, deux composants, une
+  règle partagée en prose — dit parce que les fusionner est le rangement tentant.
+- `restForBlock` prend désormais **les deux champs qu'elle lit** au lieu d'un
+  `BlockDraft`. Élargie structurellement plutôt que dupliquée : quel repos
+  s'applique est **une** règle, et une seconde écriture est la façon dont une
+  séance et la routine dont elle vient finiraient par prescrire des repos
+  différents.
+
+## Points ouverts après la tranche 11
+
+- **La source du catalogue est free-exercise-db, et mon refus initial reposait
+  sur un fait faux.** J'avais annoncé que le dépôt n'avait aucun fichier de
+  licence : il en a un, `LICENSE.md`, texte intégral de l'**Unlicense**. J'avais
+  cherché `LICENSE` sans extension et pris le 404 pour une réponse. Vérifié
+  depuis en lisant le fichier.
+  **Ce qui reste vrai et n'est pas une objection juridique** : les photographies
+  montrent une personne identifiable, et une dédicace de droit d'auteur n'est
+  pas une autorisation de droit à l'image — elle règle qui peut copier le
+  fichier, pas ce que la personne a accepté. Signalé, décision prise en
+  connaissance de cause, consignée en `specs §14.33 n° 7` pour rester visible.
+- **La moitié « bibliothèque » de la tranche 11 a tourné sur l'appareil
+  (19/09/2026) ; la moitié « séance » n'a jamais tourné.** Aucun cycle CI n'est
+  nécessaire : aucune dépendance n'entre. `expo-notifications` est dans le
+  binaire depuis la tranche 9, `react-native-svg` depuis `dev-b19`. Metro
+  suffit.
+
+  ~~1. que les dessins ressemblent à l'exercice qu'ils nomment, et qu'ils soient
+  lisibles à 44 points.~~ **Fait**, avec les listes fenêtrées, le catalogue, les
+  trois sous-onglets et le « + » qui bifurque.
+
+  Reste à regarder, dans cet ordre, parce que les premiers rendent les suivants
+  observables :
+  1. **où se pose le bandeau de séance.** 49 points sont déclarés pour la barre
+     d'onglets parce que sa hauteur n'est pas lisible depuis JavaScript
+     (`useBottomTabBarHeight` appartient au navigateur JS et lève sous
+     `unstable-native-tabs`). L'erreur possible laisse un jour, pas un
+     recouvrement — mais elle n'a pas été regardée ;
+  2. **que le minuteur de repos sonne.** iOS ne déclenche rien en Node. Et la
+     permission est demandée **au premier armement**, ce qui n'a jamais été
+     exercé : c'est le seul endroit de l'application qui demande hors des
+     Réglages ;
+  3. **qu'un arrêt forcé en pleine séance la retrouve intacte.** Le critère de
+     sortie n° 2, et il demande de tuer l'application pour de vrai ;
+  4. **qu'une séance laissée une nuit ne compte pas la nuit.** Testé en
+     arithmétique et contre un vrai fichier SQLite, jamais contre une vraie
+     nuit ;
+  5. que le balayage supprime une série **dans une liste imbriquée** — deux
+     niveaux de rangées balayables, jamais exercés ici ;
+  6. que la rangée de RIR tienne sur 390 points : huit cellules, à la limite des
+     44 points d'Apple, d'où une rangée plus **haute** plutôt que plus étroite.
+
+- **Ce qu'aucun test ne pourra couvrir, dit plutôt que laissé croire.**
+  Qu'iOS déclenche le minuteur ; que le vidage en arrière-plan tourne avant
+  qu'iOS suspende (`AppState` n'existe pas en Node — ce qui est testable est que
+  la fonction de vidage écrive ce qui était en attente) ; que les dessins soient
+  anatomiquement justes ; qu'un arrêt forcé laisse une séance reprenable (ce qui
+  est testable est que toute écriture soit transactionnelle). Le temps lui-même
+  se teste contre une horloge injectée, ce qui fixe la **règle** et non la
+  plateforme — exactement la limite du client Open Food Facts contre un `fetch`
+  injecté.
+
+- **L'aller-retour export / import n'a toujours pas été refait sur l'appareil
+  depuis `0005`.** `0010` porte le total à **dix-huit tables non vérifiées**
+  dans l'unique filet, contre treize avant. C'est la dette la plus vieille et la
+  plus chère de la liste, et elle vient de grossir d'un tiers. Les six tables
+  neuves sont couvertes par le round-trip en Node, avec une ligne remplissant
+  **chaque** colonne — mais rien de la bascule elle-même, qui est du natif
+  `expo-sqlite`.
+
+- **La position du bandeau est le seul nombre deviné de la tranche.** 49 points,
+  constante de plateforme depuis iOS 7, et une ligne à changer. Voir
+  `architecture §9.24` n° 14.
+
+- **Le seuil de trente minutes et le battement de 400 ms sont choisis, pas
+  mesurés.** Le premier vient de D12 ; le second est « une fraction de seconde »
+  traduite en un nombre. La façon de savoir qu'ils sont faux est de s'entraîner
+  avec.
+
+- **La durée affichée redescend au franchissement du seuil**, d'au plus trente
+  minutes. Réserve assumée : il faut regarder l'écran trente minutes sans rien
+  écrire pour le voir. Si ça se voit malgré tout, le remède n'est **pas** de
+  plafonner la queue — ce serait montrer une demi-heure qui n'a pas eu lieu.
+
+- **`glutes` n'a qu'un exercice primaire, et c'est un jugement.** Le soulevé de
+  terre est classé glutes-primaire plutôt que lombaires-primaire pour que le
+  groupe ne soit pas gris à jamais. Les deux lectures se défendent ; celle-ci se
+  change en une ligne.
+
+- **`kettlebell` n'a aucun exercice** : la source n'en contient pas un seul sur
+  ses 293 entrées. Un filtre matériel vide est une chose qu'un utilisateur peut
+  trouver.
+
+- **Aucune note n'est livrée avec le catalogue**, et c'est une décision : les
+  quatre notes du §6.3 sont écrites pour un corps et des erreurs précises, et la
+  page de séance les affiche pendant chaque entraînement. Du texte générique là
+  apprendrait à l'œil à sauter l'endroit où une vraie note ira.
+
+- **Une séance terminée n'a pas d'écran d'historique pour y revenir.** Le §10.3
+  dit qu'elle « reste éditable et supprimable » ; le §7 met l'historique en
+  tranche 12. Ce qui est livré : elle reste atteignable tant qu'elle est en
+  cours. Le trou est nommé, pas comblé — un écran d'historique bâti maintenant
+  serait la couche « pour plus tard » que le §7 interdit.
+
+- **La progression du §10.4 n'est ni lue ni suggérée.** `progression_enabled`
+  est copiée sur chaque `session_set`, donc la tranche 12 a tout ce qu'il lui
+  faut ; rien ne la lit encore, ce qui est le périmètre.
+
+- **`sweepCache` n'a toujours pas de site d'appel** (hérité de la tranche 4).
+- **L'instrumentation des quatre transitions de D16 n'existe toujours pas.**
+- **Les tranches 6, 8 et 10 n'ont toujours pas tourné sur l'appareil**, et le
+  critère de sortie de la tranche 9 — les conditions des notifications —
+  demande toujours de dormir une nuit.
+- **`fontVariant: ['tabular-nums']` n'est toujours pas vérifié sur Nunito**, et
+  la table de séries en direct s'en sert comme `SetRow`.
+
 ## Points ouverts après la tranche 10
 
 - **Rien de la tranche 10 n'a tourné sur l'appareil.** Aucune dépendance n'a été
@@ -4975,9 +5721,10 @@ exercice par bloc serait le coût par rangée que la tranche 4 a rencontré en
   demande de dépendance native à valider, et elle coûterait un cycle CI. La
   colonne existe parce qu'elle est nullable — donc gratuite — et que l'oublier
   aurait coûté une migration.
-- **Le bouton de démarrage d'une routine n'existe pas**, ni les graphiques, les
-  records et l'historique de la page d'un exercice. Les quatre demandent
-  `session_set`, table de la tranche 11.
+- ~~**Le bouton de démarrage d'une routine n'existe pas.**~~ **Livré en
+  tranche 11.** Restent les graphiques, les records et l'historique de la page
+  d'un exercice : ils lisent `session_set`, qui existe depuis `0010`, et sont
+  le périmètre de la tranche 12.
 - **Hypothèse signalée : l'incrément par défaut vaut 2,5 kg.** Le plus petit pas
   qu'une barre encaisse vraiment, un disque de 1,25 kg de chaque côté. Choisi, pas
   mesuré — d'où un réglage, pour que ça se corrige sans migration.
@@ -4992,9 +5739,9 @@ exercice par bloc serait le coût par rangée que la tranche 4 a rencontré en
   trapèze moyen. Le mot est celui qu'on emploie en salle ; le dessin est un peu
   plus large que le mot.
 - **L'aller-retour export / import n'a toujours pas été refait sur l'appareil
-  depuis `0005`.** `0008` porte le total à **treize tables non vérifiées** dans
-  l'unique filet, contre sept avant. C'est la dette la plus vieille et la plus
-  chère de la liste, et elle vient de doubler.
+  depuis `0005`.** `0008` portait le total à treize tables non vérifiées ;
+  **`0010` le porte à dix-huit** (voir les points de la tranche 11). C'est la
+  dette la plus vieille et la plus chère de la liste.
 - **`sweepCache` n'a toujours pas de site d'appel** (hérité de la tranche 4).
 - **L'instrumentation des quatre transitions de D16 n'existe toujours pas.**
 - **Les tranches 6 et 8 n'ont toujours pas tourné sur l'appareil**, et le critère
@@ -5036,11 +5783,15 @@ exercice par bloc serait le coût par rangée que la tranche 4 a rencontré en
   remède n'est pas d'anticiper des chiffres qui n'existent pas : ce serait une
   occurrence au texte générique, donc un amendement au §9.3 qui demande « l'état
   des macros ».
-- **Le minuteur de repos de la tranche 11 est la prochaine sorte**, et la
-  question des déclencheurs répétitifs se reposera avec lui — cinq sortes, et
-  une notification unique qui n'a ni heure ni activation. `notification_setting`
-  l'accueillera sans migration si elle en veut une : c'est exactement ce que
-  l'absence de CHECK sur `kind` achète.
+- ~~**Le minuteur de repos de la tranche 11 est la prochaine sorte.**~~
+  **FAUX, et corrigé en tranche 11.** Il n'en est pas une : `diffSchedule`
+  décide ce qui appartient au planificateur en testant si un identifiant
+  commence par une sorte, et annule tout ce qu'il possède et qui n'est pas dans
+  le plan. L'ajouter aurait fait annuler le minuteur **en pleine séance**, par
+  un planificateur qui n'en a jamais entendu parler — exactement ce que le
+  paragraphe voisin de la même tranche 9 avait écrit pour l'éviter. Il vit dans
+  `rest:<séance>`, sans réglage, et l'absence de CHECK sur `kind` n'a pas été
+  dépensée.
 - **`sweepCache` n'a toujours pas de site d'appel** (hérité de la tranche 4).
   Inchangé.
 - **L'instrumentation des quatre transitions de D16 n'existe toujours pas.**
@@ -5504,19 +6255,16 @@ exercice par bloc serait le coût par rangée que la tranche 4 a rencontré en
   ses entrées reste matérialisée, l'utilisateur ayant bien agi dessus.
 
 ## Points hérités de la tranche 0, toujours ouverts
-- ~~Où vit le sélecteur segmenté de l'onglet Entraînement, une fois qu'il
-  composera Musculation et Activités (tranche 10).~~ **Résolu, et tranché
-  autrement que le §7 ne le dessinait.** Il vit dans
-  `features/strength/screens/training-screen.tsx`, et il n'y en a qu'UN :
-  Musculation / Activités. Le §7 décrit Musculation comme portant « Routines ·
-  Exercices · Historique », ce qui lu à la lettre donne un segmenté dans un
-  segmenté — forme que cette application n'emploie nulle part et qui coûte un
-  instant à chaque fois pour savoir quel niveau a bougé. Routines et Exercices
-  sont donc deux **sections d'une même page** : une routine se bâtit avec des
-  exercices, et les voir ensemble est la façon dont on remarque qu'il en manque
-  un. Specs amendées (`specs §14.20` n° 2). L'onglet gagne au passage son propre
-  `Stack` — quatrième application du motif de `(journal)`, `settings/` et
-  `stats/`.
+- ~~Où vit le sélecteur segmenté de l'onglet Entraînement.~~ **Résolu, puis
+  RENVERSÉ le 19/09/2026 — il y en a deux, et le §7 avait raison.** La
+  tranche 10 avait refusé « un segmenté dans un segmenté » et fait de Routines
+  et Exercices deux sections d'une même page (`specs §14.20` n° 2). L'objection
+  n'a pas survécu au catalogue : avec cinq cents exercices, deux sections d'une
+  page veut dire défiler par-dessus les routines pour atteindre un champ de
+  recherche, à chaque fois. **Dès qu'une section est assez longue pour qu'on ne
+  voie jamais l'autre, c'était déjà un onglet.** Musculation porte donc
+  Exercices / Routines / Séances (`specs §14.35`), et seul le panneau choisi est
+  monté — donc lit. L'onglet garde son propre `Stack`.
 - ~~Les en-têtes natifs.~~ **Résolu.** Un groupe `app/(tabs)/(journal)/`
   n'ajoute aucun segment de chemin : l'écran reste la route index du groupe
   d'onglets et gagne un `Stack` natif. ~~L'icône de bibliothèque du §7 s'y

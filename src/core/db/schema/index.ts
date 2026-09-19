@@ -10,3 +10,4 @@ export * from './off';
 export * from './weight';
 export * from './notifications';
 export * from './strength';
+export * from './session';

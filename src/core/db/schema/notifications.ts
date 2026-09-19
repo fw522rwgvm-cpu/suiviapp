@@ -71,9 +71,28 @@ export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
  * reads. That is inert STRUCTURALLY rather than by care, the same way the
  * Open Food Facts cache and the personal library structurally never meet.
  *
- * And widening is FORESEEN: slice 11 puts the rest timer on a local
- * notification. A CHECK would force a table rebuild there for the sake of one
- * enumeration value.
+ * ## AND THE WIDENING THIS COMMENT FORESAW DID NOT HAPPEN, WHICH IS BETTER
+ *
+ * It used to end: "widening is FORESEEN: slice 11 puts the rest timer on a
+ * local notification. A CHECK would force a table rebuild there for the sake of
+ * one enumeration value." The rest timer landed in slice 11 and added NO kind,
+ * so no widening was needed — and the reason is worth recording where somebody
+ * would otherwise add one.
+ *
+ * The rest timer has no switch and no hour: specs 9.3 describes it as a
+ * consequence of validating a set, and specs 12 lists no setting for it. A row
+ * here would state nothing.
+ *
+ * More importantly, ADDING IT WOULD BREAK IT. diffSchedule decides what the
+ * daily planner owns by testing whether an identifier starts with a kind, and
+ * cancels everything it owns that is not in the plan — on every foreground.
+ * A `rest_timer` kind would hand the timer to a scheduler that has never heard
+ * of it, which would cancel it in the middle of a workout, silently. The timer
+ * lives in its own `rest:` namespace, and a test in tests/strength/rest-timer
+ * asserts no kind is a prefix of it.
+ *
+ * The absence of a CHECK is still right, for the reasons above it. It simply
+ * has not been spent yet.
  *
  * The barrier is the export catalogue's one_of rule, which runs BEFORE the
  * first insert and names table, row and column instead of citing a constraint —

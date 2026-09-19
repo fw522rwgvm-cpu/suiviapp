@@ -32,6 +32,7 @@ import {
   dayTemplate,
   dayTemplateMeal,
   exercise,
+  exerciseNote,
   exerciseSecondaryMuscle,
   food,
   foodPortion,
@@ -46,6 +47,10 @@ import {
   routineBlock,
   routineLine,
   routineWarmupStep,
+  session,
+  sessionBlock,
+  sessionSegment,
+  sessionSet,
   notificationSetting,
   setting,
   weightGoal,
@@ -54,6 +59,8 @@ import {
   MUSCLES,
   NOTIFICATION_KINDS,
   PORTION_NAMES,
+  SESSION_STATUSES,
+  SET_STATUSES,
   SET_TYPES,
   WEIGHT_GOAL_MODES,
   YIELD_TYPES,
@@ -247,13 +254,14 @@ const EXPORT_ORDER: readonly { table: SQLiteTable; introducedIn: string }[] = [
    * configuration, then nutrition, then journal, then weight, then strength —
    * each domain whole, in the order the versions arrived.
    *
-   * ## WHAT IS NOT HERE YET, AND WILL BE IN SLICE 11
+   * ## THE MECHANISM WORKED, AND HERE IS WHAT IT CAUGHT
    *
-   * session, session_segment, session_block, session_set and exercise_note.
-   * They are not exclusions and must not become entries here before they exist:
-   * the coverage test classifies what the SCHEMA declares, so the day 0009
-   * lands, that test goes red and somebody decides — which is the mechanism
-   * working, exactly as it did when 0002 brought `food`.
+   * This comment used to say the five session tables "are not exclusions and
+   * must not become entries here before they exist: the day 0009 lands, that
+   * test goes red and somebody decides". It landed as `0010` and four tests
+   * went red at once — this catalogue's coverage, the export order, the tags
+   * left to apply, and the round trip's inventory against PRAGMA table_info.
+   * Same four as when 0002 brought `food`, and for the same reason.
    */
   { table: exercise, introducedIn: '0008_strength' },
   { table: exerciseSecondaryMuscle, introducedIn: '0008_strength' },
@@ -261,6 +269,31 @@ const EXPORT_ORDER: readonly { table: SQLiteTable; introducedIn: string }[] = [
   { table: routineWarmupStep, introducedIn: '0008_strength' },
   { table: routineBlock, introducedIn: '0008_strength' },
   { table: routineLine, introducedIn: '0008_strength' },
+  /**
+   * The session block, and its internal order is forced from end to end the
+   * way the routine block's is.
+   *
+   * `session` leads, because its three children reference it. session_block
+   * precedes session_set, which references the block it sits in. exercise_note
+   * hangs off `exercise`, already loaded far above.
+   *
+   * session_set also references `exercise`, which is why the whole strength
+   * block sits together rather than the sessions being filed under the journal:
+   * the file reads as configuration, then nutrition, then journal, then weight,
+   * then strength — each domain whole, in the order the versions arrived.
+   *
+   * ## A SESSION IS EXPORTED, AND THE ONE THING THAT MIGHT SUGGEST OTHERWISE
+   *
+   * Specs 5.4 excludes exercise MEDIA from the export, not sessions. A session
+   * is the history of what was lifted, which is exactly the class of data the
+   * export exists to protect — and unlike weight, it is also the only place it
+   * exists. Nothing here is rebuildable.
+   */
+  { table: session, introducedIn: '0010_session' },
+  { table: sessionSegment, introducedIn: '0010_session' },
+  { table: sessionBlock, introducedIn: '0010_session' },
+  { table: sessionSet, introducedIn: '0010_session' },
+  { table: exerciseNote, introducedIn: '0010_session' },
 ];
 
 /**
@@ -462,9 +495,12 @@ const VALUE_RULES: Record<string, Record<string, ValueRule>> = {
      * constraint. D7 wants a file repairable by hand.
      *
      * Named from the schema rather than respelled, the shape PORTION_NAMES set.
-     * Slice 11 adds a kind here for the rest timer; widening it is a one-line
-     * deliberate act with a diff attached, where a CHECK would be a table
-     * rebuild.
+     *
+     * THIS COMMENT USED TO SAY "slice 11 adds a kind here for the rest timer".
+     * It did not, and the correction matters more than the prediction did: the
+     * rest timer has no setting to store, and adding a kind would have made the
+     * daily planner claim its identifier and cancel it mid-workout. It lives in
+     * its own `rest:` namespace instead. See the note on notification_setting.
      */
     kind: { rule: 'one_of', allowed: NOTIFICATION_KINDS },
     /**
@@ -603,6 +639,122 @@ const VALUE_RULES: Record<string, Record<string, ValueRule>> = {
      * ck_weight_goal_terms carries that in SQL, because rules are per-column
      * and this one spans three. Same position as ck_ingredient_link.
      */
+  },
+  session: {
+    id: { rule: 'entity_id' },
+    date: { rule: 'civil_date' },
+    /**
+     * Informative, without a live link — a session is a snapshot of the routine
+     * it came from (specs 5.2), so deleting the routine must leave it intact.
+     * The rule is the fourth run of the pattern source_food_id started:
+     * declarable because nothing has ever written anything but a ULID here.
+     */
+    routine_id: { rule: 'entity_id' },
+    /**
+     * The closed set named from the schema, and it ALSO carries a CHECK — the
+     * third column in this catalogue to do both, after recipe.yield_type and
+     * weight_goal.mode, and the only one whose second barrier is an INDEX.
+     *
+     * ux_session_active is partial, `WHERE status = 'in_progress'`, so it
+     * constrains nothing about a row whose status says something else. Without
+     * ck_session_status an archive carrying two sessions at status 'running'
+     * would import cleanly and leave the application holding two live sessions
+     * — the exact thing D12 requires the database to make impossible.
+     *
+     * So this rule and that CHECK and that index are one barrier in three
+     * pieces, and this is the piece that runs FIRST, before any insert, naming
+     * the table and the row. The other two report a column.
+     */
+    status: { rule: 'one_of', allowed: SESSION_STATUSES },
+    started_at: { rule: 'epoch_ms' },
+    ended_at: { rule: 'epoch_ms' },
+    created_at: { rule: 'epoch_ms' },
+    updated_at: { rule: 'epoch_ms' },
+    /**
+     * routine_name_snapshot and notes carry no rule, and there is none to give:
+     * one is a name frozen from whatever the routine was called, the other is
+     * what the user typed. routine_warmup_step.text is in the same position.
+     */
+  },
+  session_segment: {
+    id: { rule: 'entity_id' },
+    session_id: { rule: 'entity_id' },
+    started_at: { rule: 'epoch_ms' },
+    ended_at: { rule: 'epoch_ms' },
+    /**
+     * What NO rule here can express, stated so the gap is deliberate: that a
+     * segment must not end before it starts. Rules are per-column and that one
+     * spans two, so ck_segment_order carries it in SQL. It matters more here
+     * than the shape of either instant does — the session duration is the SUM
+     * of these rows, so an inverted pair makes a workout quietly shorter rather
+     * than visibly wrong.
+     */
+  },
+  session_block: {
+    id: { rule: 'entity_id' },
+    session_id: { rule: 'entity_id' },
+    /**
+     * position and rest_seconds are integers, which the one_of rule cannot
+     * take — routine_block's position exactly. ck_session_block_rest holds the
+     * rest at or above zero in SQL.
+     */
+  },
+  session_set: {
+    id: { rule: 'entity_id' },
+    session_block_id: { rule: 'entity_id' },
+    /**
+     * A real foreign key backs this one, and it is the only LIVE link in this
+     * catalogue pointing at something the user can delete (D5/R4). The rule is
+     * still worth declaring for the reason routine_line.exercise_id's is:
+     * barrier 3 runs foreign_key_check and reports a constraint, where this
+     * names the row.
+     *
+     * NULL is legitimate and is not damage: it is what deleteExercise() leaves
+     * behind, with exercise_name_frozen carrying what was performed. An archive
+     * whose sets have no exercise_id is an archive from someone who deleted an
+     * exercise, which specs 5.3 explicitly permits.
+     */
+    exercise_id: { rule: 'entity_id' },
+    set_type: { rule: 'one_of', allowed: SET_TYPES },
+    /**
+     * A closed set with NO CHECK beside it, unlike `session.status` one table
+     * up, and the asymmetry is the point rather than an oversight.
+     *
+     * Nothing enforces anything about a set by partial index, and the volume of
+     * specs 10.1 is a POSITIVE clause — "sur les séries de travail validées
+     * uniquement" — so a fifth status is simply not counted. Widening it breaks
+     * no calculation and escapes no invariant, which is precisely the test
+     * slice 3 set and slice 10 applied to set_type.
+     *
+     * So this rule is the whole barrier, and it is the stronger form: it runs
+     * before the first insert and names table, row and column.
+     */
+    status: { rule: 'one_of', allowed: SET_STATUSES },
+    completed_at: { rule: 'epoch_ms' },
+    /**
+     * What NO rule here can express, stated so the gaps are deliberate: that
+     * target_reps_min must not exceed target_reps_max (ck_set_target_reps
+     * carries it, spanning two columns), and that a status of 'done' ought to
+     * come with a completed_at. The second is NOT constrained anywhere, on
+     * purpose — it is a rule of the write path, and an archive repaired by hand
+     * that lost one timestamp should import and read as done rather than fail.
+     * Slice 4's line: too permissive costs a refused row, too strict costs a
+     * feature that never works again.
+     *
+     * exercise_name_frozen carries no rule either. It is a name copied from
+     * whatever the exercise was called at the time, and the whole reason it
+     * exists is that no live value can be consulted for it any more.
+     */
+  },
+  exercise_note: {
+    id: { rule: 'entity_id' },
+    exercise_id: { rule: 'entity_id' },
+    created_at: { rule: 'epoch_ms' },
+    /**
+     * consumed_at is an instant like any other; NULL is the note still waiting
+     * for its session. `text` carries no rule — it is what the user wrote.
+     */
+    consumed_at: { rule: 'epoch_ms' },
   },
 };
 

@@ -34,7 +34,7 @@ describe('table catalog', () => {
     expect(unclassified).toEqual([]);
   });
 
-  it('carries the tables of slices 0 to 10, parents before children', () => {
+  it('carries the tables of slices 0 to 11, parents before children', () => {
     // The importer follows this order, never the file's key order.
     //
     // The planning block sits between the settings and the reference data, so
@@ -63,6 +63,14 @@ describe('table catalog', () => {
     // follows because its three children do, and routine_block precedes the
     // lines that sit in it. Where the planning and recipe blocks chose an order
     // a reader would expect, this one had no choice to make.
+    //
+    // The sessions extend that same block rather than starting a new one, and
+    // their order is forced too: `session` before its three children, and
+    // session_block before the sets that sit in it. exercise_note comes last
+    // because it hangs off `exercise`, loaded at the head of the block —
+    // nothing depends on it, so its position is the one free choice here, and
+    // it goes where a reader would look for it, with the exercises' other
+    // satellite data rather than among the sessions.
     expect(exportedTables().map((table) => table.name)).toEqual([
       'setting',
       'notification_setting',
@@ -87,6 +95,11 @@ describe('table catalog', () => {
       'routine_warmup_step',
       'routine_block',
       'routine_line',
+      'session',
+      'session_segment',
+      'session_block',
+      'session_set',
+      'exercise_note',
     ]);
   });
 

@@ -4,6 +4,7 @@ import { FormInput, FormRow, FormSection } from '@/core/ui/form-section';
 import { useTheme } from '@/core/theme';
 import { EQUIPMENT, MUSCLES } from '@/core/db/schema';
 import { BodyMapView } from './body-map-view';
+import { ExerciseDrawing } from './exercise-drawing';
 import {
   muscleRoles,
   toggleSecondary,
@@ -34,10 +35,22 @@ import { EQUIPMENT_LABELS, MUSCLE_LABELS, equipmentLabel, muscleLabel } from '..
 export function ExerciseBody({
   draft,
   editable,
+  mediaUri,
   onChange,
 }: {
   draft: ExerciseDraft;
   editable: boolean;
+  /**
+   * The drawing, which is NOT part of the draft.
+   *
+   * Deliberately a separate prop: a draft is what the form edits, and nothing
+   * on this screen edits the medium — choosing a file needs expo-image-picker,
+   * outside section 5 (specs 14.20 no 4), and a catalogue key is written once
+   * at install. Putting it on the draft would make it something
+   * sameExerciseDraft has to compare and the editor has to preserve, for a
+   * value neither of them can change.
+   */
+  mediaUri?: string | null;
   onChange?: (next: ExerciseDraft) => void;
 }) {
   const theme = useTheme();
@@ -48,6 +61,35 @@ export function ExerciseBody({
 
   return (
     <>
+      {/*
+        THE DRAWING, ABOVE THE BODY MAP, AND THE ORDER IS THE POINT.
+
+        They answer two different questions and the first one asked is "what is
+        this movement" — the drawing — before "where does it work", which is the
+        map. Somebody who has just installed the catalogue is looking at a name
+        they may not know; somebody choosing secondary muscles is looking at the
+        figure. Both are on the page, in the order they are needed.
+
+        The two photographs show the start and the end of the movement, side by
+        side — which is what the two-pose animation of the first version was
+        saying, in a glance rather than in two seconds.
+      */}
+      {mediaUri === undefined || mediaUri === null ? null : (
+        <View
+          style={[
+            styles.drawing,
+            {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+              borderRadius: theme.radius.lg,
+            },
+          ]}
+        >
+          {/* Both poses here: the start and the end are what say how the movement runs. */}
+          <ExerciseDrawing mediaUri={mediaUri} height={180} poses="both" />
+        </View>
+      )}
+
       <View
         style={[
           styles.map,
@@ -102,6 +144,17 @@ export function ExerciseBody({
           <FormRow label="Incrément">
             <Value text={`${draft.incrementKg} kg`} />
           </FormRow>
+          {/*
+            Shown only when it is true, unlike the increment, which is always
+            there. "Répétitions" on every ordinary exercise is a row that says
+            what every reader already assumes; "Temps" is the one that changes
+            what the page below it means.
+          */}
+          {draft.tracksDuration ? (
+            <FormRow label="Mesure">
+              <Value text="Temps" />
+            </FormRow>
+          ) : null}
         </FormSection>
       )}
 
@@ -140,6 +193,31 @@ export function ExerciseBody({
               // Tapping the selected one clears it, as a filter chip does.
               update({ equipment: item === undefined || draft.equipment === item ? null : item });
             }}
+          />
+
+          {/*
+            THE CONTROL THAT WAS MISSING SINCE `0009`.
+
+            exercise.tracks_duration was read in four places and written in
+            none — no exercise could ever be timed, so the "Temps" column of
+            SetTable could not appear and routine_line.duration_seconds was
+            unreachable. Found in slice 11, writing a session that has to
+            perform a plank.
+
+            A ChoiceGroup rather than a switch, because the two values are
+            NAMED here: "Temps" and "Répétitions" say what the set table will
+            ask for, where a toggle labelled "chronométré" would leave the
+            reader to work out what changes. It is also the idiom the three
+            groups above already use.
+          */}
+          <ChoiceGroup
+            caption="MESURE"
+            options={[
+              { value: 'reps', label: 'Répétitions' },
+              { value: 'time', label: 'Temps' },
+            ]}
+            selected={[draft.tracksDuration ? 'time' : 'reps']}
+            onPress={(value) => update({ tracksDuration: value === 'time' })}
           />
         </>
       ) : null}
@@ -319,6 +397,7 @@ function ChoiceGroup({
 }
 
 const styles = StyleSheet.create({
+  drawing: { borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden', padding: 10 },
   map: {
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',

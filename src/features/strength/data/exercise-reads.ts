@@ -65,10 +65,19 @@ export interface ExerciseListItem extends SearchableExercise {
   noteSetup: string | null;
   noteBreathing: string | null;
   noteMistakes: string | null;
+  /**
+   * The thumbnail, on the LIST item for the same reason as the notes above: it
+   * comes from the same row and the same query, so carrying it costs nothing.
+   *
+   * Specs 10.1 asks for it — "chaque résultat affiche vignette, nom, muscle,
+   * matériel" — and slice 10 could not honour it: nothing could write
+   * `media_uri` then, so every row would have shown the same grey square, which
+   * is not a vignette but an apology. The catalogue writes it now.
+   */
+  mediaUri: string | null;
 }
 
 export interface ExerciseView extends ExerciseListItem {
-  mediaUri: string | null;
   incrementKg: number;
 }
 
@@ -111,6 +120,7 @@ export function listExercises(db: AppDatabase): ExerciseListItem[] {
       noteSetup: exercise.noteSetup,
       noteBreathing: exercise.noteBreathing,
       noteMistakes: exercise.noteMistakes,
+      mediaUri: exercise.mediaUri,
     })
     .from(exercise)
     .orderBy(asc(sql`${exercise.name} COLLATE NOCASE`))
@@ -178,6 +188,7 @@ export function readExerciseDraft(
     noteBreathing: view.noteBreathing ?? '',
     noteMistakes: view.noteMistakes ?? '',
     incrementKg: formatIncrement(view.incrementKg),
+    tracksDuration: view.tracksDuration === 1,
     isFavorite: view.isFavorite === 1,
   };
 }

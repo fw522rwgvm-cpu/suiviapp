@@ -21,15 +21,43 @@ import { muscleLabel } from './vocabulary';
  * than CASCADE — a cascade does the same work silently, and this sentence would
  * have had to guess at what it had done.
  *
- * WHAT IT DOES NOT SAY YET: the sessions, the charts and the records specs 5.3
- * also lists. They need session_set, which is slice 11's. Claiming them now
- * would be a warning about data that does not exist — worse than silence,
- * because the reader has no way to check.
+ * ## THE SESSIONS ARRIVE HERE IN SLICE 11, AND THAT WAS PROMISED
+ *
+ * This comment used to end by saying the sessions, charts and records specs 5.3
+ * lists "need session_set, which is slice 11's", and that claiming them early
+ * would be a warning about data that does not exist. session_set exists now, so
+ * the sentence says them.
+ *
+ * ## THE TWO HALVES ARE WORDED DIFFERENTLY ON PURPOSE
+ *
+ * The routines are NAMED and the history is COUNTED. Naming routines lets you
+ * decide without opening anything; naming sessions would produce a list that
+ * grows without bound and identifies nothing, because nobody recognises a
+ * workout by its date.
+ *
+ * And they are two different KINDS of loss, which is why they are two
+ * sentences rather than one list. A routine line is REMOVED — it says nothing
+ * without its exercise, so it goes. A recorded set is KEPT and merely unlinked:
+ * exercise_name_frozen carries what was performed, so nothing about the past
+ * disappears. What breaks is the CONTINUITY — specs 5.3's "la continuité
+ * statistique est rompue définitivement" — and that distinction is the only
+ * reason this warning exists at all. Saying "seront perdues" of the sets would
+ * be the reassuring-direction lie this project never allows.
  */
 export function deletionWarning(usage: ExerciseUsage): string {
-  if (usage.routineNames.length === 0) {
-    return 'Cet exercice n’est utilisé par aucune routine.';
+  const routines = routineSentence(usage);
+  const history = historySentence(usage);
+
+  if (history === null) {
+    return routines ?? 'Cet exercice n’est utilisé par aucune routine.';
   }
+  // The history goes second: it is the part that cannot be undone, and it reads
+  // as the consequence of the deletion rather than as a second inventory.
+  return routines === null ? history : `${routines} ${history}`;
+}
+
+function routineSentence(usage: ExerciseUsage): string | null {
+  if (usage.routineNames.length === 0) return null;
 
   const names = usage.routineNames.join(', ');
   const lines =
@@ -38,6 +66,28 @@ export function deletionWarning(usage: ExerciseUsage): string {
   return usage.routineNames.length === 1
     ? `${lines} de la routine « ${names} ».`
     : `${lines} des routines suivantes : ${names}.`;
+}
+
+/**
+ * What the recorded history loses, in the words that say it is not erased.
+ *
+ * "Ne compteront plus" rather than "seront perdues": the rows stay, with the
+ * name of the exercise on them. It is the progression charts and the records of
+ * specs 10.1 that stop being computable, which is exactly what specs 5.3 calls
+ * the statistical continuity being broken.
+ */
+function historySentence(usage: ExerciseUsage): string | null {
+  if (usage.setCount === 0) return null;
+
+  const sets =
+    usage.setCount === 1 ? '1 série enregistrée' : `${usage.setCount} séries enregistrées`;
+  const sessions =
+    usage.sessionCount === 1 ? '1 séance' : `${usage.sessionCount} séances`;
+
+  return (
+    `${sets} sur ${sessions} garderont le nom de l’exercice mais ne compteront ` +
+    'plus dans ses graphiques ni dans ses records, définitivement.'
+  );
 }
 
 /**
@@ -79,7 +129,12 @@ export function emptyListMessage(state: {
   filtering: boolean;
 }): string {
   if (state.held === 0) {
-    return 'Aucun exercice pour l\u2019instant. Touchez + pour en cr\u00e9er un.';
+    // The "+" is a FORK since the catalogue link was removed — create one, or
+    // take them from the catalogue — so the sentence names both. An empty
+    // library is rare now that five hundred and fifty-two install
+    // themselves, which is exactly why this line has to say what to do: the
+    // person reading it has already lost the usual way in.
+    return 'Aucun exercice pour l\u2019instant. Touchez + pour en cr\u00e9er un ou les prendre dans le catalogue.';
   }
   // Ordinary spaces inside the guillemets, as library-text.ts has spelled them
   // since slice 3. Two conventions for one punctuation mark is one too many.

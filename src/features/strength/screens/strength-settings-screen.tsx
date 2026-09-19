@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet, Switch } from 'react-native';
 import { Text } from '@/core/ui/text';
 import { DecimalInput } from '@/core/ui/decimal-input';
 import { FormRow, FormSection } from '@/core/ui/form-section';
 import { useTheme } from '@/core/theme';
 import {
   useProgressionIncrement,
+  useRestAlert,
+  useSetRestAlert,
   useWriteProgressionIncrement,
 } from '../data/exercise-queries';
 import {
@@ -41,6 +43,8 @@ import {
 export function StrengthSettingsScreen() {
   const theme = useTheme();
   const stored = useProgressionIncrement();
+  const restAlert = useRestAlert();
+  const setRestAlert = useSetRestAlert();
   const write = useWriteProgressionIncrement();
 
   const [value, setValue] = useState<number | null>(null);
@@ -80,6 +84,30 @@ export function StrengthSettingsScreen() {
         {`Entre ${formatIncrement(MIN_PROGRESSION_INCREMENT_KG)} et ${formatIncrement(
           MAX_PROGRESSION_INCREMENT_KG,
         )} kg.`}
+      </Text>
+
+      <FormSection caption="REPOS">
+        <FormRow label="Vibrer à la fin du repos">
+          <Switch
+            value={restAlert.data ?? true}
+            onValueChange={(next) => setRestAlert.mutate(next)}
+            accessibilityLabel="Vibrer à la fin du repos"
+          />
+        </FormRow>
+      </FormSection>
+
+      {/*
+        THE LIMIT IS ON THE PAGE, not only in the code.
+
+        Slice 11 rang the end of a rest with a local notification, which is what
+        reached you with the phone in a pocket. A vibration is driven by the
+        application, so it needs the application to be running — and somebody
+        who turns this on and then locks their phone would otherwise read the
+        silence as a bug.
+      */}
+      <Text style={[styles.note, { color: theme.colors.textMuted }]}>
+        La vibration ne se déclenche que si l’application est ouverte. Écran verrouillé
+        ou application en arrière-plan, le repos se termine sans rien signaler.
       </Text>
     </ScrollView>
   );
