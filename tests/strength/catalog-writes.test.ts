@@ -33,6 +33,25 @@ afterEach(() => {
 
 const ALL = EXERCISE_CATALOG.map((entry) => entry.key);
 
+/**
+ * Three entries taken FROM the catalogue rather than spelled out.
+ *
+ * The first version of these tests named 'squat', 'crunch' and 'gainage' as
+ * literals, which was fine while thirty-three entries were written by hand in
+ * the file next door. The list is generated from wger now, so a literal is a
+ * bet on somebody else's naming — and when the source changed, six tests failed
+ * on keys that no longer existed rather than on behaviour that had.
+ *
+ * Indexing into the catalogue keeps them about the WRITE path, which is what
+ * they are for.
+ */
+const [FIRST, SECOND, THIRD] = ALL as [string, string, string];
+const named = (key: string): string =>
+  EXERCISE_CATALOG.find((entry) => entry.key === key)?.name ?? '';
+
+/** The one entry, if any, that the source describes without a drawing. */
+const UNDRAWN = EXERCISE_CATALOG.find((entry) => entry.hasImage !== true)?.key ?? FIRST;
+
 describe('installing', () => {
   it('writes the whole catalogue with its muscles and its media keys', () => {
     const result = installCatalogExercises(db.db, ALL, 2.5);
@@ -59,31 +78,34 @@ describe('installing', () => {
     expect(secondaries).toHaveLength(expected);
   });
 
-  it('writes a media key even for the one with no drawing', () => {
+  it('writes a media key even for an entry with no drawing', () => {
     /**
-     * `gainage` has no drawing — the source has a side plank and no front
-     * plank — and it still gets a key. The key is what the exercise IS, not a
-     * promise that a picture exists, and withholding it would make "no
-     * drawing" mean two different things depending on why.
+     * wger describes three hundred and twenty-six exercises it has no image
+     * for, and they still get a key. The key is what the exercise IS, not a
+     * promise that a picture exists — and withholding it would make "no
+     * drawing" mean two different things depending on why, where the substitute
+     * of specs 5.4 no 3 is one path.
      */
-    installCatalogExercises(db.db, ['gainage'], 2.5);
+    installCatalogExercises(db.db, [UNDRAWN], 2.5);
 
     const [row] = db.db.select().from(exercise).all();
-    expect(catalogKeyOf(row?.mediaUri ?? null)).toBe('gainage');
+    expect(catalogKeyOf(row?.mediaUri ?? null)).toBe(UNDRAWN);
   });
 
   it('installs only what it was asked for', () => {
-    const result = installCatalogExercises(db.db, ['squat', 'crunch'], 2.5);
+    const result = installCatalogExercises(db.db, [FIRST, SECOND], 2.5);
 
     expect(result.installed).toBe(2);
-    expect(listExercises(db.db).map((item) => item.name).sort()).toEqual(['Crunch', 'Squat']);
+    expect(listExercises(db.db).map((item) => item.name).sort()).toEqual(
+      [named(FIRST), named(SECOND)].sort(),
+    );
   });
 
   it('copies the increment it is given, rather than reading a setting', () => {
     // Specs 6.3 makes the global increment an INITIAL value, read once at
     // creation. The caller passes it; this function has no business reading a
     // settings row, which would be a second path to the same number.
-    installCatalogExercises(db.db, ['squat'], 1.25);
+    installCatalogExercises(db.db, [FIRST], 1.25);
 
     expect(db.db.select().from(exercise).all()[0]?.incrementKg).toBe(1.25);
   });
@@ -110,7 +132,7 @@ describe('running it twice', () => {
      */
     createExercise(db.db, {
       ...emptyExerciseDraft(DEFAULT_PROGRESSION_INCREMENT_KG),
-      name: 'Squat',
+      name: named(FIRST),
       primaryMuscle: 'glutes',
       equipment: 'kettlebell',
     });
@@ -118,16 +140,20 @@ describe('running it twice', () => {
     const result = installCatalogExercises(db.db, ALL, 2.5);
 
     expect(result.skipped).toBe(1);
-    const squats = db.db.select().from(exercise).all().filter((row) => row.name === 'Squat');
-    expect(squats).toHaveLength(1);
-    expect(squats[0]?.primaryMuscle).toBe('glutes');
-    expect(squats[0]?.equipment).toBe('kettlebell');
+    const theirs = db.db
+      .select()
+      .from(exercise)
+      .all()
+      .filter((row) => row.name === named(FIRST));
+    expect(theirs).toHaveLength(1);
+    expect(theirs[0]?.primaryMuscle).toBe('glutes');
+    expect(theirs[0]?.equipment).toBe('kettlebell');
     // And it is still THEIRS: no catalogue key was written over it.
-    expect(squats[0]?.mediaUri).toBeNull();
+    expect(theirs[0]?.mediaUri).toBeNull();
   });
 
   it('fills in only what is missing after a partial install', () => {
-    installCatalogExercises(db.db, ['squat'], 2.5);
+    installCatalogExercises(db.db, [FIRST], 2.5);
 
     const result = installCatalogExercises(db.db, ALL, 2.5);
 
@@ -141,9 +167,9 @@ describe('what the screen shows before the button', () => {
   it('names what is already there, so nothing is a surprise afterwards', () => {
     // Saying "31 installed, 2 skipped" afterwards is a report; saying it in
     // advance is a choice.
-    installCatalogExercises(db.db, ['squat', 'crunch'], 2.5);
+    installCatalogExercises(db.db, [FIRST, THIRD], 2.5);
 
-    expect([...installedCatalogNames(db.db)].sort()).toEqual(['crunch', 'squat']);
+    expect([...installedCatalogNames(db.db)].sort()).toEqual([FIRST, THIRD].sort());
   });
 
   it('is empty on an untouched library', () => {

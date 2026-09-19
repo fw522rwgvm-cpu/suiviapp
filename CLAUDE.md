@@ -72,10 +72,11 @@ le 15/09 — `react-native-svg` depuis `dev-b19`. Les dessins d'exercices sont
 des chaînes de chemins dans un module TypeScript, le mécanisme de
 `paths.generated.ts` : du JavaScript. Metro suffit.
 
-**Le bundle passe de 6,3 à 7,6 Mo, et la répartition compte** : tout le code de
-la séance vaut 0,1 Mo, les trente-deux dessins valent 1,2. Le compte
-d'exercices est donc une molette — environ 40 Ko par exercice — et la mesure
-est dans `specs §14.30` n° 14.
+**Le bundle JavaScript passe de 6,3 à 6,5 Mo, et 520 exercices tiennent dans
+ces 0,2 Mo.** Les dessins sont des **assets** — 11 Mo dans `dist/assets`, que
+Hermes n'analyse jamais. La première version inlinait 32 SVG et coûtait 1,2 Mo
+de bundle JS analysé à chaque démarrage à froid ; la mesure est dans
+`architecture §9.25` n° 2.
 
 **Rien de la tranche 11 n'a tourné sur l'appareil**, et elle s'empile sur les
 tranches 6, 8 et 10 qui n'y ont jamais tourné non plus.
@@ -5050,40 +5051,76 @@ deux phrases parce que ce sont deux pertes différentes : une ligne de routine
 est retirée, une série enregistrée est gardée et seulement déliée. Un test
 refuse le mot « perdues ».
 
-### Les dessins, et ce que chercher a coûté
+### Les dessins, et pourquoi la source a changé deux fois
 
-**Rien d'animé n'existe sous licence permissive**, et c'est vérifié avant
-qu'une ligne ne soit copiée :
+**La licence ne dépend pas du nombre d'utilisateurs, et c'est la première chose
+à savoir.** « Seul moi l'utilise » serait vrai d'un dépôt privé. D15 fait du
+dépôt un dépôt **public** et les IPA sont publiées en release : ce sont deux
+**diffusions**, et le droit d'auteur porte sur la copie et la diffusion, pas sur
+l'usage privé. Le seul contournement propre — dépôt privé, releases privées —
+coûterait les minutes de CI gratuites que D15 nomme comme la contrainte la plus
+pénible du projet. Mauvais échange.
+
+**Rien d'animé n'existe sous licence permissive**, vérifié avant qu'une ligne ne
+soit copiée :
 
 - les jeux de GIF animés (hasaneyldrm, FitnessDB, RepDB) sont MIT sur le
-  **dépôt** et disent eux-mêmes que les médias sont © Gym Visual, redistribués
-  avec une permission accordée à ce dépôt-là ;
+  **dépôt** et disent eux-mêmes que les médias sont © Gym Visual, dont les
+  conditions exigent d'**acheter** une licence pour s'en servir ;
 - `yuhonas/free-exercise-db` se déclare Unlicense. Une image regardée : ce sont
   les photographies de studio de Bodybuilding.com, d'une personne identifiable.
-  **La déclaration n'appartenait pas à celui qui l'a faite** ;
-- `everkinetic/data` est le seul dont l'éditeur avait le droit d'accorder la
-  licence. **CC-BY-SA 4.0**, donc du copyleft — le terrain sur lequel Wikimedia
-  a été refusée pour la carte corporelle — accepté sur décision explicite.
+  **La déclaration n'appartenait pas à celui qui l'a faite.**
 
-**Trois choses vérifiées plutôt que supposées, et les trois ont servi :**
+**La première version a pris `everkinetic/data`** : 293 exercices, anglais
+seulement, dont 32 nommés à la main en français. Ce n'était pas assez, et ce qui
+rendait la croissance chère était la **taille** — un SVG inliné coûte ~40 Ko de
+chemins dans le bundle JavaScript, analysés à chaque démarrage à froid, et les
+chemins ne peuvent pas être raccourcis : ils contiennent des **arcs**, le cas
+exact que la tranche 10 a documenté comme indécidable à re-sérialiser.
 
-1. **Les deux poses partagent leur `viewBox`.** Mesuré sur cinq exercices avant
-   d'écrire quoi que ce soit, parce que les **PNG** du même jeu ne le partagent
-   pas — 947×1064 contre 948×860 pour le développé couché — ce qui aurait fait
-   sauter la figure entre deux images. Le script **refuse** une paire qui ne le
-   ferait pas.
-2. **La structure, pas la couleur.** La première règle comparait deux hex et la
-   source a mis trois coups : `#fff` en minuscules, puis `#2e2e2c` et `#40413f`
-   sur le soulevé de terre. Recensé sur les 64 fichiers : deux groupes, papier
-   puis encre, dans 64 cas sur 64 ; l'encre varie dans 2. **C'est l'ordre qui
-   décide**, et la luminosité garde contre un dessin d'une autre famille.
-3. **Les chemins sont copiés verbatim**, vérifié par exécution : 52 chemins
-   retrouvés caractère pour caractère dans les fichiers source. La leçon de la
-   tranche 10 — `0.999.5` arrondi donne **un** nombre là où il y en avait deux.
+**wger tranche, et la raison est presque drôle : il CONTIENT déjà everkinetic.**
+Une grande part de ses images leur est créditée, **déjà traduites en français**
+par ses contributeurs. Changer de source n'était donc pas troquer un jeu contre
+un autre — c'était prendre les mêmes dessins plus cinq cents exercices, le
+nommage fait. 520 exercices, 194 dessins, CC-BY-SA crédité par auteur.
 
-**Un trou de la source trouvé par un 404** plutôt que par un dessin manquant :
-elle liste 293 exercices et n'en dessine que 269. Le tirage vertical prise large
-et le rowing barre classique en font partie.
+**Et un PNG est structurellement moins cher qu'un chemin inliné.** Hermes ne le
+lit jamais : le bundle JavaScript redescend de 7,6 à 6,5 Mo pendant que le
+catalogue passe de 32 à 520, et les 11 Mo d'images partent dans les assets,
+chargés à l'affichage.
+
+**Deux conséquences assumées, écrites plutôt que découvertes :**
+
+- **Le dessin ne s'anime plus, et il n'a plus à le faire.** Un dessin wger montre
+  le départ et l'arrivée **côte à côte avec une flèche** — ce que l'animation
+  deux poses disait, en un coup d'œil au lieu de deux secondes.
+- **Un PNG ne prend pas le thème.** L'encre est noire, donc sur une carte sombre
+  le dessin serait un trou dans la page. La carte est **blanche dans les deux
+  thèmes** : c'est le seul endroit de l'application où une surface ne suit pas
+  le thème, et c'est la forme honnête de « ceci est une image ».
+
+**Le vocabulaire : deux des trois constats de la première version étaient des
+trous de la SOURCE, pas du vocabulaire.** `forearms` n'avait aucun exercice
+primaire et `kettlebell` aucun exercice du tout ; wger en a onze au kettlebell,
+et les quinze muscles comme les huit matériels sont désormais tous atteints.
+Restent vraies les deux autres moitiés : `shoulders` est toujours un mot pour
+trois muscles, gardé en un groupe sur décision explicite ; et un exercice sans
+matériel ne répond à aucun filtre.
+
+**Et une règle de nom PRIME sur wger pour trois muscles, sur aucun autre.** Il ne
+modélise ni lombaires, ni avant-bras, ni adducteurs. La première version ne
+laissait une règle de nom que *compléter* un primaire absent — ce qui n'en a
+atteint aucun, wger disant toujours quelque chose : une hyperextension revenait
+en ischio-jambiers. Or cette réponse n'est pas *différente* de la nôtre, c'est
+**la moins fausse que wger puisse donner**. Déférer à un vocabulaire pour un
+muscle qu'il ne sait pas exprimer, c'est déférer à un choix forcé.
+
+**Défaut dans six tests, et la leçon vaut au-delà d'eux** : ils nommaient des
+clés du catalogue en **littéraux**. C'était juste tant que trente-trois entrées
+étaient écrites à la main dans le fichier d'à côté ; le catalogue étant généré,
+un littéral est un pari sur le nommage d'un tiers. Au changement de source, six
+tests ont rougi sur des clés disparues plutôt que sur un comportement qui aurait
+bougé. Ils indexent le catalogue désormais.
 
 **Le catalogue est offert, jamais installé — et surtout pas par une migration.**
 La tranche 5 avait déjà refusé une graine, mais le motif qui décide ici est plus
@@ -5093,6 +5130,15 @@ ULID neufs** — importer deux fois la même archive produirait deux exemplaires
 tout. Idempotent **par nom**, jamais par clé de média : celui qui a tapé
 « Squat » lui-même a un Squat, et en installer un second serait l'application
 qui le contredit sur sa propre bibliothèque.
+
+**Et l'écran est une RECHERCHE, ce qui renverse sa première version.** À
+trente-trois entrées, tout cocher évitait trente-trois questions ; à cinq cent
+vingt, tout installer ne serait pas une bibliothèque mais une copie de la base
+wger sur le téléphone. Rien n'est coché, on cherche ce qu'on fait. **Les
+résultats sont plafonnés à quarante et la page le dit** — D16 écarte une liste
+virtualisée, donc la réponse est d'en montrer moins, pas d'en montrer autrement.
+La sélection survit au terme et aux filtres : affiner après avoir coché ne doit
+pas laisser tomber ce qui l'était.
 
 **`media_uri` porte deux espaces de noms, et la valeur dit lequel.** Un dessin
 du catalogue est du **code** — dans le binaire, jamais manquant, survivant à une
@@ -5135,10 +5181,13 @@ constats, et deux confirment que la tranche 10 avait raison :
 
   À regarder dans cet ordre, parce que les premiers rendent les suivants
   observables :
-  1. **que les dessins ressemblent à l'exercice qu'ils nomment**, et qu'alterner
-     deux poses se lise comme un mouvement plutôt que comme un tic. C'est le
-     seul point qu'aucun test ne peut couvrir — même classe que « un test dit
-     que `chest` possède un tracé, pas que ce tracé traverse les pectoraux » ;
+  1. **que les dessins ressemblent à l'exercice qu'ils nomment**, et qu'ils
+     soient lisibles à 44 points dans une rangée de liste. C'est le seul point
+     qu'aucun test ne peut couvrir — même classe que « un test dit que `chest`
+     possède un tracé, pas que ce tracé traverse les pectoraux ». **Et la carte
+     blanche en thème sombre** : c'est le seul endroit où une surface ne suit
+     pas le thème, et il faut vérifier que ça se lit comme une image et non
+     comme un défaut ;
   2. **où se pose le bandeau de séance.** 49 points sont déclarés pour la barre
      d'onglets parce que sa hauteur n'est pas lisible depuis JavaScript
      (`useBottomTabBarHeight` appartient au navigateur JS et lève sous

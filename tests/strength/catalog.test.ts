@@ -6,26 +6,37 @@ import {
   catalogKeyOf,
   catalogMediaUri,
 } from '../../src/features/strength/catalog/exercises';
-import { EXERCISE_DRAWINGS } from '../../src/features/strength/catalog/drawings.generated';
 import { regionsForMuscle } from '../../src/features/strength/body-map/body-map';
 
 /**
  * The catalogue the application can offer a brand-new library (specs 10.1).
  *
- * ## THIS IS THE FIRST THING THAT CONFRONTS THE SLICE 10 VOCABULARY
+ * ## THIS IS WHAT CONFRONTS THE SLICE 10 VOCABULARY
  *
  * The fifteen muscles and eight equipment values were invented then, and specs
  * 14.20 no 1 says so in as many words: "il n'a jamais rencontré un exercice
- * réel". These tests are that meeting, and the two that record what it found —
- * a muscle with no primary, an equipment with no entry — are assertions about
- * the vocabulary rather than about the catalogue.
+ * réel". Five hundred of them meet it here, and the tests at the bottom record
+ * what that found — they are assertions about the VOCABULARY rather than about
+ * the catalogue.
+ *
+ * The list is generated from wger, so these do not check hand-written data:
+ * they check that the MAPPING from a third party's vocabulary onto ours cannot
+ * produce something the schema or the body map will not accept.
  */
 
 describe('every entry is well formed', () => {
+  it('is big enough to be worth having', () => {
+    // The whole reason the source changed: thirty-three hand-named exercises
+    // were not enough to build a real routine from.
+    expect(EXERCISE_CATALOG.length).toBeGreaterThan(400);
+  });
+
   it('uses only the vocabulary the schema knows', () => {
     for (const entry of EXERCISE_CATALOG) {
       expect(MUSCLES, `${entry.name}: primary`).toContain(entry.primaryMuscle);
-      expect(EQUIPMENT, `${entry.name}: equipment`).toContain(entry.equipment);
+      if (entry.equipment !== null) {
+        expect(EQUIPMENT, `${entry.name}: equipment`).toContain(entry.equipment);
+      }
       for (const muscle of entry.secondaryMuscles) {
         expect(MUSCLES, `${entry.name}: secondary`).toContain(muscle);
       }
@@ -33,20 +44,24 @@ describe('every entry is well formed', () => {
   });
 
   it('never repeats the primary among the secondaries', () => {
-    // validateExerciseDraft refuses this, so a catalogue entry that did it
-    // could not be written at all — and the failure would arrive as a thrown
-    // "invalid exercise draft" from a screen, not as a list anybody can read.
+    // validateExerciseDraft refuses this, so an entry that did it could not be
+    // written at all — and the failure would arrive as a thrown "invalid
+    // exercise draft" from a screen rather than as a list anybody can read.
     for (const entry of EXERCISE_CATALOG) {
-      expect(entry.secondaryMuscles, `${entry.name}`).not.toContain(entry.primaryMuscle);
+      expect(entry.secondaryMuscles, entry.name).not.toContain(entry.primaryMuscle);
     }
   });
 
   it('gives every entry a distinct key and a distinct name', () => {
     /**
-     * Both, and for different reasons. The KEY is what media_uri stores, so a
-     * collision would give two exercises one drawing. The NAME is what the
-     * import is idempotent on — an exercise already called that is skipped —
-     * so a collision would silently install one of the two.
+     * Both, for different reasons. The KEY is what media_uri stores and what
+     * names the image file, so a collision would give two exercises one
+     * drawing. The NAME is what the install is idempotent on — an exercise
+     * already called that is skipped — so a collision would silently install
+     * one of the two.
+     *
+     * The generator drops a slug it has already seen, which is what makes this
+     * hold across five hundred French names that were not written to be unique.
      */
     const keys = EXERCISE_CATALOG.map((entry) => entry.key);
     const names = EXERCISE_CATALOG.map((entry) => entry.name);
@@ -55,80 +70,22 @@ describe('every entry is well formed', () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
-  it('lights at least one region of the body map for every primary', () => {
-    // The map is drawn for a session and for an exercise page, so a catalogue
-    // entry whose muscle lights nothing would be a figure that stays grey for
-    // an exercise somebody is performing.
+  it('keeps every key usable as a file name', () => {
+    // The key names assets/exercises/<key>.png, so anything outside this set
+    // would be a require() Metro cannot resolve — and it would fail at bundle
+    // time on the device rather than here.
     for (const entry of EXERCISE_CATALOG) {
-      expect(regionsForMuscle(entry.primaryMuscle).length, `${entry.name}`).toBeGreaterThan(0);
-    }
-  });
-});
-
-describe('the drawings', () => {
-  it('belongs to a catalogue entry, every one of them', () => {
-    // The other direction from the test below: a drawing with no entry is a
-    // hundred kilobytes of bundle nothing can reach.
-    const keys = new Set(EXERCISE_CATALOG.map((entry) => entry.key));
-    for (const key of Object.keys(EXERCISE_DRAWINGS)) {
-      expect(keys, `${key} has no catalogue entry`).toContain(key);
+      expect(entry.key, entry.name).toMatch(/^[a-z0-9-]+$/);
     }
   });
 
-  it('draws all but the one that has none, which is named', () => {
-    /**
-     * `gainage` is the exception and it is deliberate: the source has a side
-     * plank and no front plank, and "Gainage" is what everyone means when they
-     * say the word — plus tracks_duration needs a canonical representative.
-     *
-     * Named here rather than counted, so adding a second undrawn exercise is a
-     * decision somebody takes in this file instead of a number going up.
-     */
-    const undrawn = EXERCISE_CATALOG.filter(
-      (entry) => EXERCISE_DRAWINGS[entry.key] === undefined,
-    ).map((entry) => entry.key);
-
-    expect(undrawn).toEqual(['gainage']);
-  });
-
-  it('holds both poses in ONE box, which is what makes the loop work', () => {
-    /**
-     * The extraction refuses a pair that does not share a viewBox, and this
-     * says why it matters on the rendering side: the two frames alternate with
-     * no translation and no scaling, so a pair that lost this would make the
-     * figure jump between frames.
-     *
-     * The PNG renderings of the same drawings do NOT share one — cropped to
-     * their own ink, 947x1064 against 948x860 for the bench press — which is
-     * how the property came to be checked at all.
-     */
-    for (const [key, drawing] of Object.entries(EXERCISE_DRAWINGS)) {
-      expect(drawing.viewBox, `${key}`).toMatch(/^0 0 \d+ \d+$/);
-      expect(drawing.relaxed.ink.length, `${key}: relaxed has no ink`).toBeGreaterThan(0);
-      expect(drawing.contracted.ink.length, `${key}: contracted has no ink`).toBeGreaterThan(0);
+  it('lights at least one region of the body map for every primary', () => {
+    // The map is drawn for a session and for an exercise page, so an entry
+    // whose muscle lights nothing would be a figure that stays grey for an
+    // exercise somebody is performing.
+    for (const entry of EXERCISE_CATALOG) {
+      expect(regionsForMuscle(entry.primaryMuscle).length, entry.name).toBeGreaterThan(0);
     }
-  });
-
-  it('keeps the paths verbatim, with no rounding', () => {
-    /**
-     * SLICE 10'S LESSON, GUARDED RATHER THAN RESTATED.
-     *
-     * SVG runs numbers together without separators: `0.999.5` is 0.999 then
-     * 0.5, and rounding the first to `1` yields `1.5` — ONE number where there
-     * were two. It shipped as plausible, wrong arms.
-     *
-     * What a test can hold is that the data still LOOKS like unrounded source:
-     * a rounded path set would have almost no multi-decimal runs left. Checking
-     * every path against the original would mean fetching it, which would make
-     * the suite depend on a third-party repository staying up.
-     */
-    const all = Object.values(EXERCISE_DRAWINGS).flatMap((drawing) => [
-      ...drawing.relaxed.ink,
-      ...drawing.contracted.ink,
-    ]);
-    const withRunTogetherDecimals = all.filter((d) => /\d\.\d+\.\d/.test(d));
-
-    expect(withRunTogetherDecimals.length).toBeGreaterThan(0);
   });
 });
 
@@ -136,9 +93,9 @@ describe('the media scheme', () => {
   it('tells a bundled drawing from a file the user chose', () => {
     /**
      * One column, two namespaces, and which one is readable FROM THE VALUE
-     * ALONE. Storing "bench-press" bare and having the application work out
-     * which kind it is would be one column with two meanings resolved by a
-     * lookup — the "two answers to one question" shape.
+     * ALONE. Storing "squat" bare and having the application work out which
+     * kind it is would be one column with two meanings resolved by a lookup —
+     * the "two answers to one question" shape.
      */
     expect(catalogMediaUri('squat')).toBe(`${MEDIA_SCHEME}squat`);
     expect(catalogKeyOf(catalogMediaUri('squat'))).toBe('squat');
@@ -154,49 +111,61 @@ describe('the media scheme', () => {
 });
 
 describe('what this catalogue reveals about the slice 10 vocabulary', () => {
-  it('covers every equipment the source has a drawing for', () => {
-    const used = new Set(EXERCISE_CATALOG.map((entry) => entry.equipment));
-    const missing = EQUIPMENT.filter((value) => !used.has(value));
-
+  it('reaches every muscle as a primary at least once', () => {
     /**
-     * `kettlebell` AND NOTHING ELSE.
+     * THE TEST THAT CHANGED ITS ANSWER WHEN THE SOURCE DID.
      *
-     * The source is an open dataset from the mid-2010s and contains not one
-     * kettlebell exercise — checked across all 293 of its entries. The value
-     * stays in the vocabulary because it costs nothing and because the gap is
-     * the SOURCE's rather than the vocabulary's, but an empty equipment filter
-     * is a real thing a user can find.
+     * The first version of this slice left `forearms` with no primary
+     * exercise, which confirmed specs 14.21 no 5 — "les avant-bras ne sont
+     * presque jamais le primaire de personne" — and justified the half-count
+     * for a secondary muscle.
+     *
+     * wger does not model forearms, lower_back or adductors AT ALL, so all
+     * three would have been empty. They are reached by NAME rules in the
+     * generator instead, which is a weaker instrument than a field and says so
+     * where it lives. This is what checks the instrument still works: if a
+     * rename upstream stops the patterns matching, a muscle goes permanently
+     * grey on the body map and nothing else would notice.
      */
-    expect(missing).toEqual(['kettlebell']);
-  });
-
-  it('leaves exactly ONE muscle without a primary exercise, and names it', () => {
     const primaries = new Set(EXERCISE_CATALOG.map((entry) => entry.primaryMuscle));
     const never = MUSCLES.filter((muscle) => !primaries.has(muscle));
 
-    /**
-     * `forearms` IS THE ONE THAT MATTERS, AND IT CONFIRMS SLICE 10 WAS RIGHT.
-     *
-     * Nothing here is primarily a forearm movement — and specs 14.21 no 5
-     * predicted exactly that: "les avant-bras ne sont presque jamais le
-     * primaire de personne et resteraient gris pour toujours — le faux négatif
-     * contre lequel cette carte est conçue". That is why a secondary counts a
-     * half rather than nothing, and it is why forearms are lit at all: they
-     * appear as a secondary eight times in this catalogue.
-     *
-     * `traps` has one (shrugs) and `glutes` has one — the deadlift, filed
-     * glutes-primary by judgement precisely so that group is not permanently
-     * grey. Change that judgement and this test names what it cost.
-     */
-    expect(never).toEqual(['forearms']);
+    expect(never).toEqual([]);
   });
 
-  it('has exactly one exercise measured in time', () => {
+  it('covers every equipment value', () => {
+    // `kettlebell` had no entry at all under the old source — a gap in that
+    // dataset rather than in the vocabulary. wger has eleven.
+    const used = new Set(
+      EXERCISE_CATALOG.map((entry) => entry.equipment).filter((value) => value !== null),
+    );
+
+    expect(EQUIPMENT.filter((value) => !used.has(value))).toEqual([]);
+  });
+
+  it('leaves some entries with NO equipment, which is an answer rather than a gap', () => {
+    /**
+     * wger has no generic "machine" and leaves many records with no equipment
+     * at all. A name rule fills in what it can name for certain; what is left
+     * keeps NULL — and slice 10 already decided what that means: an exercise
+     * with no equipment matches NO filter, because pretending it matches would
+     * assert something nobody said.
+     *
+     * Asserted as a RANGE rather than a number, so improving the name rules
+     * does not break the test, but losing them all does.
+     */
+    const unstated = EXERCISE_CATALOG.filter((entry) => entry.equipment === null);
+
+    expect(unstated.length).toBeGreaterThan(0);
+    expect(unstated.length).toBeLessThan(EXERCISE_CATALOG.length / 3);
+  });
+
+  it('has exercises measured in time', () => {
     // tracks_duration had never met a real exercise either — slice 11 found it
-    // was written by NOTHING, read in four places and set nowhere. Two here, so
-    // the column is exercised by the catalogue on day one.
+    // was written by NOTHING, read in four places and set nowhere. The
+    // catalogue exercises the column on day one.
     const timed = EXERCISE_CATALOG.filter((entry) => entry.tracksDuration === true);
 
-    expect(timed.map((entry) => entry.key).sort()).toEqual(['gainage', 'gainage-lateral']);
+    expect(timed.length).toBeGreaterThan(0);
   });
 });

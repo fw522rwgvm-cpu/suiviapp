@@ -70,9 +70,9 @@ export function ExerciseBody({
         they may not know; somebody choosing secondary muscles is looking at the
         figure. Both are on the page, in the order they are needed.
 
-        It ANIMATES here, unlike in the catalogue list: this is one exercise
-        being looked at, which is exactly where a movement belongs. A page of
-        thirty-three would not sit still to be read.
+        The wger drawing shows the start and the end side by side with an
+        arrow, so a still says the movement — which is what the two-pose
+        animation of the first version was saying, in a glance.
       */}
       {mediaUri === undefined || mediaUri === null ? null : (
         <View
