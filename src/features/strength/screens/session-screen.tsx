@@ -9,6 +9,7 @@ import { ListSeparator } from '@/core/ui/list-separator';
 import { useTheme } from '@/core/theme';
 import type { ExerciseId, SessionSetId, SetType } from '@/core/db/schema';
 import { previousFor } from '../data/session-reads';
+import type { ProgressionSuggestions } from '../data/history-reads';
 import type {
   PreviousSet,
   SessionBlockView,
@@ -23,6 +24,7 @@ import {
   usePendingNotes,
   useRemoveSet,
   usePreviousSets,
+  useProgressionSuggestions,
   useReopenSet,
   useSetSetRir,
   useSetSetType,
@@ -34,7 +36,7 @@ import { SESSION_ACTIVE_GAP_MS } from '../domain/session-activity';
 import { useRestTimer } from '../hooks/use-rest-timer';
 import { needsReps, recordSet, type TypedSet } from '../domain/session-set';
 import { workSetNumbers } from '../domain/set-number';
-import { elapsedText, progressText, restText } from '../domain/session-text';
+import { elapsedText, progressionText, progressText, restText } from '../domain/session-text';
 import { setColumns } from '../components/set-cell';
 import { LiveSetRow } from '../components/live-set-row';
 import { RirPicker } from '../components/rir-picker';
@@ -152,6 +154,16 @@ function LiveSession({ session, onLeave }: { session: SessionView; onLeave: () =
 
   /** What each set did the last time this routine was performed (specs 14.39). */
   const previous = usePreviousSets(session.routineId, session.id);
+
+  /**
+   * What each exercise earned last time it was trained (specs 10.4).
+   *
+   * BY EXERCISE, where the PRÉCÉDENT column above is by ROUTINE — the two
+   * questions are different and specs 10.4 says which one it asks: "la séance
+   * la plus récente comportant cet exercice". A free session has no PRÉCÉDENT
+   * and can still carry a suggestion.
+   */
+  const progression = useProgressionSuggestions(session.id);
 
   /**
    * exercise id -> its medium, for the thumbnail beside each block title.
@@ -405,6 +417,7 @@ function LiveSession({ session, onLeave }: { session: SessionView; onLeave: () =
               notes={notes.data ?? new Map()}
               media={media}
               previous={previous.data ?? new Map()}
+              progression={progression.data ?? new Map()}
               activeSetId={activeSetId}
               typedFor={typedFor}
               onType={onType}
@@ -488,6 +501,7 @@ function BlockCard({
   notes,
   media,
   previous,
+  progression,
   activeSetId,
   typedFor,
   onType,
@@ -504,6 +518,7 @@ function BlockCard({
   /** exercise id -> its medium, for the thumbnail beside each title. */
   media: ReadonlyMap<string, string | null>;
   previous: ReadonlyMap<string, PreviousSet>;
+  progression: ProgressionSuggestions;
   activeSetId: string | null;
   typedFor: (set: SessionSetView) => TypedSet;
   onType: (set: SessionSetView, typed: TypedSet) => void;
@@ -549,6 +564,29 @@ function BlockCard({
   const shownNotes = exercises.flatMap((item) =>
     item.id === null ? [] : (notes.get(item.id) ?? []),
   );
+
+  /**
+   * The double-progression suggestions this block has earned (specs 10.4).
+   *
+   * One line per exercise that earned one, which on a superset is why the
+   * letter is repeated: "A · Essayez 72,5 kg" is the only form that says WHICH
+   * exercise to add weight to when the card carries two.
+   *
+   * A deleted exercise gets none — there is no increment left to read, and
+   * specs 5.3 has already said its statistical continuity is broken.
+   */
+  const shownProgression = exercises.flatMap((item, index) => {
+    if (item.id === null) return [];
+    const suggestion = progression.get(String(item.id));
+    if (suggestion === undefined) return [];
+    const text = progressionText(suggestion);
+    return [
+      {
+        key: String(item.id),
+        text: superset ? `${LETTERS[index] ?? '?'} · ${text}` : text,
+      },
+    ];
+  });
 
   return (
     <View
@@ -615,6 +653,41 @@ function BlockCard({
             <Text style={[styles.restText, { color: theme.colors.textMuted }]}>
               {block.restSeconds} s de repos
             </Text>
+          </View>
+        )}
+
+        {/*
+          THE SUGGESTION OF SPECS 10.4, AND IT IS ONLY EVER A SENTENCE.
+
+          > L'application affiche une suggestion à la séance suivante. Elle ne
+          > modifie jamais la routine ni la charge cible automatiquement.
+
+          Which is why it is NOT in the load field's placeholder, where it would
+          have been one tap closer: that placeholder carries the routine's own
+          target and is what gets recorded if the field is left alone, so a
+          suggestion written there would BE the application changing the target
+          — and it would be indistinguishable from the target while doing it.
+
+          It sits above the table, where the exercise's name and rest already
+          are, because it is a fact about the exercise rather than about any one
+          row. In the accent colour: it is the only thing on this card that was
+          not simply read back from the routine.
+        */}
+        {shownProgression.length === 0 ? null : (
+          <View style={styles.progression}>
+            {shownProgression.map((item) => (
+              <View key={item.key} style={styles.progressionLine}>
+                <SymbolView
+                  name="arrow.up.circle"
+                  tintColor={theme.colors.accent}
+                  size={13}
+                  fallback={<Text style={{ color: theme.colors.accent }}>↑</Text>}
+                />
+                <Text style={[styles.progressionText, { color: theme.colors.accent }]}>
+                  {item.text}
+                </Text>
+              </View>
+            ))}
           </View>
         )}
 
@@ -726,6 +799,12 @@ const styles = StyleSheet.create({
   title: { fontSize: 17, fontWeight: '600' },
   rest: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   restText: { fontSize: 13 },
+  progression: { gap: 3 },
+  progressionLine: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  // 13 like the rest line and the notes: it is one of the three short lines
+  // between the exercise name and the table, and a fourth type size there
+  // would make the group read as four unrelated things.
+  progressionText: { fontSize: 13, fontWeight: '500' },
   notes: { gap: 3 },
   note: { fontSize: 13, lineHeight: 18 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 4, paddingTop: 4 },

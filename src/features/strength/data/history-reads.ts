@@ -1,8 +1,9 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { LocalDate } from '@/core/date';
 import { toLocalDate } from '@/core/date';
 import type { AppDatabase } from '@/core/db/database';
 import {
+  exercise,
   session,
   sessionBlock,
   sessionSet,
@@ -11,6 +12,11 @@ import {
   type SetType,
 } from '@/core/db/schema';
 import { isSetType } from '../domain/vocabulary';
+import {
+  suggestProgression,
+  type ProgressionSet,
+  type ProgressionSuggestion,
+} from '../domain/progression';
 
 /**
  * The past of ONE exercise (specs 10.1, 10.4, 10.5).
@@ -171,4 +177,149 @@ export function readExerciseHistory(
       reps: row.reps,
       completedAt: row.completedAt,
     }));
+}
+
+/**
+ * What each exercise of a session earned last time (specs 10.4).
+ *
+ * Keyed by exercise id, so the live screen looks up the block it is drawing.
+ * An exercise with no entry has earned nothing, which is the ordinary case.
+ */
+export type ProgressionSuggestions = Map<string, ProgressionSuggestion>;
+
+/**
+ * The double-progression suggestions for one live session (specs 10.4).
+ *
+ * ## ONE QUERY, WHATEVER THE SESSION HOLDS
+ *
+ * The shape readPreviousSets and readPendingNotes already have, for the reason
+ * slice 4 settled when the "+" button reached the whole library: a read per
+ * exercise is what makes a screen that opens in a tenth of a second open in
+ * two. This one is read on the live session screen — the screen somebody is
+ * standing in front of between two sets.
+ *
+ * ## THE CURRENT SESSION IS EXCLUDED, AND THAT IS NOT A DETAIL
+ *
+ * Specs 10.4 reads "la séance la plus récente comportant cet exercice". Left
+ * in, the running session would become its own evidence: validate three sets at
+ * the top of the range and the suggestion would flip mid-workout, telling you
+ * to go up on the strength of the very sets you are using it to decide. The
+ * same exclusion, for the same reason, as readPreviousSets' `ne(session.id,
+ * currentSessionId)`.
+ *
+ * `status = 'done'` beside it is close to redundant, ux_session_active allowing
+ * only one session in progress at a time — it is there because the rule is
+ * "the last session you FINISHED", and saying so in the query is better than
+ * relying on an index to mean it.
+ *
+ * ## THE ORDER IS SESSION_ORDER, SPELLED IN SQL
+ *
+ * `civil_date DESC, started_at DESC` — the civil day first, the instant only to
+ * separate two sessions of one day. It is a second spelling of a tuple stated
+ * once in session-reads, which is exactly what slice 4's ROW_NUMBER had to
+ * avoid against readLastEntryForFood. The window function cannot take the
+ * Drizzle array, so a test holds the two together instead of the spelling.
+ *
+ * ## IT JOINS `exercise` FOR THE INCREMENT RATHER THAN WIDENING THE LIST ITEM
+ *
+ * Specs 6.3 makes the increment "propre à l'exercice", so the suggestion needs
+ * it. Putting it on ExerciseListItem would also have worked — it is the same
+ * row — but it is wanted at exactly one place and this query already touches
+ * `exercise`.
+ */
+export function readProgressionSuggestions(
+  db: AppDatabase,
+  currentSessionId: SessionId,
+): ProgressionSuggestions {
+  const rows = db.all<{
+    exercise_id: string;
+    increment_kg: number;
+    set_type: string;
+    status: string;
+    progression_enabled: number;
+    target_load_kg: number | null;
+    target_reps_max: number | null;
+    actual_load_kg: number | null;
+    actual_reps: number | null;
+  }>(sql`
+    WITH mine AS (
+      SELECT DISTINCT ${sessionSet.exerciseId} AS exercise_id
+      FROM ${sessionSet}
+      JOIN ${sessionBlock} ON ${sessionSet.sessionBlockId} = ${sessionBlock.id}
+      WHERE ${sessionBlock.sessionId} = ${currentSessionId}
+        AND ${sessionSet.exerciseId} IS NOT NULL
+    ),
+    candidate AS (
+      SELECT DISTINCT
+        ${sessionSet.exerciseId} AS exercise_id,
+        ${session.id} AS session_id,
+        ${session.date} AS civil_date,
+        ${session.startedAt} AS started_at
+      FROM ${sessionSet}
+      JOIN ${sessionBlock} ON ${sessionSet.sessionBlockId} = ${sessionBlock.id}
+      JOIN ${session} ON ${sessionBlock.sessionId} = ${session.id}
+      WHERE ${sessionSet.setType} = 'work'
+        AND ${session.status} = 'done'
+        AND ${session.id} <> ${currentSessionId}
+        AND ${sessionSet.exerciseId} IN (SELECT exercise_id FROM mine)
+    ),
+    latest AS (
+      SELECT exercise_id, session_id FROM (
+        SELECT exercise_id, session_id,
+               ROW_NUMBER() OVER (
+                 PARTITION BY exercise_id
+                 ORDER BY civil_date DESC, started_at DESC
+               ) AS rn
+        FROM candidate
+      )
+      WHERE rn = 1
+    )
+    SELECT
+      latest.exercise_id AS exercise_id,
+      ${exercise.incrementKg} AS increment_kg,
+      ${sessionSet.setType} AS set_type,
+      ${sessionSet.status} AS status,
+      ${sessionSet.progressionEnabled} AS progression_enabled,
+      ${sessionSet.targetLoadKg} AS target_load_kg,
+      ${sessionSet.targetRepsMax} AS target_reps_max,
+      ${sessionSet.actualLoadKg} AS actual_load_kg,
+      ${sessionSet.actualReps} AS actual_reps
+    FROM latest
+    JOIN ${exercise} ON ${exercise.id} = latest.exercise_id
+    JOIN ${sessionBlock} ON ${sessionBlock.sessionId} = latest.session_id
+    JOIN ${sessionSet} ON ${sessionSet.sessionBlockId} = ${sessionBlock.id}
+      AND ${sessionSet.exerciseId} = latest.exercise_id
+    WHERE ${sessionSet.setType} = 'work'
+  `);
+
+  /*
+    Grouped here and folded by the domain rather than decided in SQL. The rule
+    of specs 10.4 has five conditions with a reading behind each; as a WHERE
+    clause they would be untestable in isolation, and D9 puts this calculation
+    in the pure-function tier by name.
+  */
+  const byExercise = new Map<string, { increment: number; sets: ProgressionSet[] }>();
+  for (const row of rows) {
+    const current = byExercise.get(row.exercise_id) ?? {
+      increment: row.increment_kg,
+      sets: [],
+    };
+    current.sets.push({
+      setType: isSetType(row.set_type) ? row.set_type : 'work',
+      status: row.status,
+      progressionEnabled: row.progression_enabled === 1 ? 1 : 0,
+      targetLoadKg: row.target_load_kg,
+      targetRepsMax: row.target_reps_max,
+      loadKg: row.actual_load_kg,
+      reps: row.actual_reps,
+    });
+    byExercise.set(row.exercise_id, current);
+  }
+
+  const suggestions: ProgressionSuggestions = new Map();
+  for (const [exerciseId, held] of byExercise) {
+    const suggestion = suggestProgression(held.sets, held.increment);
+    if (suggestion !== null) suggestions.set(exerciseId, suggestion);
+  }
+  return suggestions;
 }

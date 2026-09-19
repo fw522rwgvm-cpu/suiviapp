@@ -22,6 +22,10 @@ import {
   type SessionView,
 } from './session-reads';
 import {
+  readProgressionSuggestions,
+  type ProgressionSuggestions,
+} from './history-reads';
+import {
   addExerciseNote,
   addExerciseToSession,
   addRound,
@@ -62,6 +66,8 @@ export const sessionKeys = {
   list: () => ['session', 'list'] as const,
   previous: (routineId: string | null, sessionId: SessionId) =>
     ['session', 'previous', routineId, sessionId] as const,
+  progression: (sessionId: SessionId | null) =>
+    ['session', 'progression', sessionId] as const,
 };
 
 /**
@@ -202,6 +208,31 @@ export function usePreviousSets(routineId: string | null, sessionId: SessionId |
       ),
     enabled: sessionId !== null,
     meta: readsFrom(session, sessionBlock, sessionSet),
+  });
+}
+
+/**
+ * The double-progression suggestions of a live session (specs 10.4).
+ *
+ * ## IT DECLARES `exercise`, AND THAT ONE IS NOT DECORATION
+ *
+ * The increment is read off the exercise row, so raising it in the editor must
+ * change the suggestion the very next time the session screen renders. This is
+ * the case the bus exists for, and a query that left `exercise` out would go
+ * on proposing the old increment with nothing saying so.
+ *
+ * Keyed by the session because that is what is excluded from its own history —
+ * the same reason usePreviousSets keys on it.
+ */
+export function useProgressionSuggestions(sessionId: SessionId | null) {
+  return useQuery<ProgressionSuggestions>({
+    queryKey: sessionKeys.progression(sessionId),
+    queryFn: () =>
+      sessionId === null
+        ? new Map()
+        : readProgressionSuggestions(getAppDatabase(), sessionId),
+    enabled: sessionId !== null,
+    meta: readsFrom(session, sessionBlock, sessionSet, exercise),
   });
 }
 
