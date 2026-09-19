@@ -67,12 +67,45 @@ export interface WriteClock {
  * it — the arrangement restForBlock has for the rest, and prefillQuantity for
  * the last quantity.
  *
- * Reads the maximum `ended_at` rather than "the row with no end": since this
- * slice, an open segment carries its end at all times and NULL means an archive
+ * Reads the maximum `ended_at` rather than "the row with no end": since slice
+ * 11, an open segment carries its end at all times and NULL means an archive
  * (see session-activity.ts). MAX is therefore the honest question, and it
  * answers correctly for both shapes.
+ *
+ * ## A FINISHED SESSION RECORDS NO MORE TIME — slice 12, and it is the reason
+ * ## editing history is safe at all
+ *
+ * Specs 10.5 makes a finished session editable, and specs 5.3 puts no time
+ * limit on that. The corrections go through these same functions, so without
+ * this guard a load corrected three weeks later would call touchSession with
+ * today's clock — and since three weeks is well past D12's thirty minutes,
+ * that opens a BRAND NEW segment. The session's "temps actif" would then
+ * include the minute somebody spent fixing a typo, and specs 10.6 draws that
+ * figure on the dashboard.
+ *
+ * It is the worst shape of defect this project knows: silent, plausible, and
+ * only visible to somebody who already suspected it.
+ *
+ * The guard lives HERE rather than at each write site, for the reason the
+ * paragraph above gives about the thirty minutes: one rule, one place, and no
+ * caller able to forget it. `updated_at` is still stamped — the row really was
+ * modified, and that is what the column says.
+ *
+ * What this deliberately does NOT do is refuse the write. A finished session
+ * stays editable; it simply stops accruing time it did not spend.
  */
 function touchSession(tx: AppDatabase, sessionId: SessionId, clock: WriteClock): void {
+  const [head] = tx
+    .select({ status: session.status })
+    .from(session)
+    .where(eq(session.id, sessionId))
+    .all();
+
+  if (head?.status === 'done') {
+    tx.update(session).set({ updatedAt: clock.now }).where(eq(session.id, sessionId)).run();
+    return;
+  }
+
   const [latest] = tx
     .select({
       id: sessionSegment.id,
@@ -243,13 +276,61 @@ export function completeSet(
         actualDurationSeconds: recorded.durationSeconds,
         actualRir: recorded.rir,
         status: 'done',
-        completedAt: clock.now,
+        completedAt: completionInstant(tx, sessionId, clock),
       })
       .where(eq(sessionSet.id, setId))
       .run();
 
     touchSession(tx, sessionId, clock);
   });
+}
+
+/**
+ * The instant a set is stamped as completed (slice 12).
+ *
+ * ## THE WALL CLOCK FOR A LIVE SESSION, THE SESSION'S OWN END FOR A FINISHED ONE
+ *
+ * On a live session this is Date.now(), which is what slice 11 always wrote and
+ * what the rest timer counts from (D12).
+ *
+ * Specs 10.5 then made a finished session editable, with no time limit (specs
+ * 5.3) — so "I forgot to tick the third set" is an ordinary correction a week
+ * later. Stamping that with today's clock would place a set a week AFTER the
+ * session it belongs to: `ix_set_exercise` is built on this column, the rest
+ * timer reads it, and the row would sort among sets it has nothing to do with.
+ *
+ * The session's own `ended_at` is the only honest instant available. It is not
+ * the truth — nobody knows when that set was really performed — but it is
+ * inside the session, which is the property everything downstream relies on.
+ *
+ * It does NOT decide which day the set belongs to: that is `session.date`, and
+ * D3 forbids an instant from deciding it. Which is precisely why an approximate
+ * instant here is harmless where a wrong one would not be.
+ *
+ * ## THE FALLBACKS ARE FOR AN ARCHIVE, NOT FOR THIS APPLICATION
+ *
+ * finishSession always writes `ended_at`, so a done session has one. A
+ * hand-repaired archive (D7 asks for one to be repairable) may not, and
+ * `started_at` is NOT NULL — so there is always something inside the session to
+ * fall back to before reaching for the clock.
+ */
+function completionInstant(
+  tx: AppDatabase,
+  sessionId: SessionId,
+  clock: WriteClock,
+): number {
+  const [head] = tx
+    .select({
+      status: session.status,
+      endedAt: session.endedAt,
+      startedAt: session.startedAt,
+    })
+    .from(session)
+    .where(eq(session.id, sessionId))
+    .all();
+
+  if (head === undefined || head.status !== 'done') return clock.now;
+  return head.endedAt ?? head.startedAt;
 }
 
 /**
@@ -679,14 +760,26 @@ export function finishSession(db: AppDatabase, sessionId: SessionId, clock: Writ
 }
 
 /**
- * Deletes a session (specs 10.3, "supprimable").
- *
- * No warning and none is owed: specs 5.3 reserves the one warning in this
- * application for deleting an EXERCISE, which breaks statistical continuity
- * across every session. Deleting one session removes one session, which is what
- * the button says.
+ * Deletes a session (specs 10.3, 10.5, "supprimable").
  *
  * Its blocks, sets and segments cascade.
+ *
+ * ## THE CALLER ASKS FIRST — CHANGED IN SLICE 12, AND SAID RATHER THAN SLIPPED
+ *
+ * This comment used to read "no warning and none is owed", reasoning from
+ * specs 5.3 reserving the application's one warning for deleting an EXERCISE,
+ * which breaks statistical continuity across every session. That part still
+ * holds: deleting one session removes one session.
+ *
+ * What it got wrong was the precedent. It leant on the journal, which dropped
+ * its confirmations — but the journal could do that because deleting there
+ * takes TWO gestures, with a named, fully visible button between them. The
+ * page of specs 10.5 deletes from a button at the foot of a screen, which is
+ * one gesture, so the thing that answered the question in the journal is not
+ * present and the confirmation is what puts it back.
+ *
+ * The alert lives at the call site rather than here, as every other one in
+ * this project does: this function is a write and knows nothing about screens.
  */
 export function deleteSession(db: AppDatabase, sessionId: SessionId): void {
   db.delete(session).where(eq(session.id, sessionId)).run();

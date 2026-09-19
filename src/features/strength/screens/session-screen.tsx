@@ -5,17 +5,10 @@ import { useHeaderHeight } from 'expo-router/build/react-navigation/elements';
 import { SymbolView } from 'expo-symbols';
 import { Text } from '@/core/ui/text';
 import { LoadingDots } from '@/core/ui/loading-dots';
-import { ListSeparator } from '@/core/ui/list-separator';
 import { useTheme } from '@/core/theme';
-import type { ExerciseId, SessionSetId, SetType } from '@/core/db/schema';
-import { previousFor } from '../data/session-reads';
+import type { ExerciseId, SessionSetId } from '@/core/db/schema';
 import type { ProgressionSuggestions } from '../data/history-reads';
-import type {
-  PreviousSet,
-  SessionBlockView,
-  SessionSetView,
-  SessionView,
-} from '../data/session-reads';
+import type { SessionSetView, SessionView } from '../data/session-reads';
 import {
   useActiveSession,
   useAddRound,
@@ -28,19 +21,15 @@ import {
   useReopenSet,
   useSetSetRir,
   useSetSetType,
-  useSkipSet,
 } from '../data/session-queries';
 import { useDeferredSetWrites } from '../hooks/use-deferred-set-writes';
 import { SESSION_TICK_MS, useLiveDuration } from '../hooks/use-live-duration';
 import { SESSION_ACTIVE_GAP_MS } from '../domain/session-activity';
 import { useRestTimer } from '../hooks/use-rest-timer';
 import { needsReps, recordSet, type TypedSet } from '../domain/session-set';
-import { workSetNumbers } from '../domain/set-number';
-import { elapsedText, progressionText, progressText, restText } from '../domain/session-text';
-import { setColumns } from '../components/set-cell';
-import { LiveSetRow } from '../components/live-set-row';
+import { elapsedText, progressText, restText } from '../domain/session-text';
+import { SessionBlockCard } from '../components/session-block-card';
 import { RirPicker } from '../components/rir-picker';
-import { ExerciseDrawing } from '../components/exercise-drawing';
 import { useExercises, useRestAlert } from '../data/exercise-queries';
 
 /**
@@ -100,7 +89,6 @@ function LiveSession({ session, onLeave }: { session: SessionView; onLeave: () =
   const reopen = useReopenSet();
   const setRir = useSetSetRir();
   const setType = useSetSetType();
-  const skip = useSkipSet();
   const remove = useRemoveSet();
   const addRound = useAddRound();
   const finish = useFinishSession();
@@ -411,7 +399,7 @@ function LiveSession({ session, onLeave }: { session: SessionView; onLeave: () =
           keyboardDismissMode="on-drag"
         >
           {session.blocks.map((block) => (
-            <BlockCard
+            <SessionBlockCard
               key={block.id}
               block={block}
               notes={notes.data ?? new Map()}
@@ -432,13 +420,6 @@ function LiveSession({ session, onLeave }: { session: SessionView; onLeave: () =
               onValidate={onValidate}
               onReopen={(set) =>
                 reopen.mutate({ setId: set.id as SessionSetId, sessionId: session.id })
-              }
-              onSkip={(set) =>
-                skip.mutate({
-                  setId: set.id as SessionSetId,
-                  sessionId: session.id,
-                  skipped: set.status !== 'skipped',
-                })
               }
               onRemove={(set) =>
                 remove.mutate({ setId: set.id as SessionSetId, sessionId: session.id })
@@ -488,290 +469,6 @@ function Figure({ label, value }: { label: string; value: string }) {
   );
 }
 
-/**
- * One block of the session: its exercises, its rest, its sets.
- *
- * The layout is the routine page's, deliberately — specs 14.23 no 4 settled it
- * there and a session that looked different would be a second answer to "what
- * does a block look like". Exercise names in the accent colour, rest on one
- * line under them, a table with no inner grid.
- */
-function BlockCard({
-  block,
-  notes,
-  media,
-  previous,
-  progression,
-  activeSetId,
-  typedFor,
-  onType,
-  onCycleType,
-  onOpenRir,
-  onValidate,
-  onReopen,
-  onSkip,
-  onRemove,
-  onAddRound,
-}: {
-  block: SessionBlockView;
-  notes: Map<string, string[]>;
-  /** exercise id -> its medium, for the thumbnail beside each title. */
-  media: ReadonlyMap<string, string | null>;
-  previous: ReadonlyMap<string, PreviousSet>;
-  progression: ProgressionSuggestions;
-  activeSetId: string | null;
-  typedFor: (set: SessionSetView) => TypedSet;
-  onType: (set: SessionSetView, typed: TypedSet) => void;
-  onCycleType: (set: SessionSetView, next: SetType) => void;
-  onOpenRir: (set: SessionSetView) => void;
-  onValidate: (set: SessionSetView, rir: number) => void;
-  onReopen: (set: SessionSetView) => void;
-  onSkip: (set: SessionSetView) => void;
-  onRemove: (set: SessionSetView) => void;
-  onAddRound: () => void;
-}) {
-  const theme = useTheme();
-  const router = useRouter();
-
-  /** The distinct exercises, in the order they first appear — the round order. */
-  const exercises: { id: ExerciseId | null; name: string }[] = [];
-  for (const set of block.sets) {
-    const key = set.exerciseId ?? set.exerciseName;
-    if (!exercises.some((item) => (item.id ?? item.name) === key)) {
-      exercises.push({ id: set.exerciseId, name: set.exerciseName });
-    }
-  }
-  const superset = exercises.length > 1;
-  const letters = new Map(
-    exercises.map((item, index) => [item.id ?? item.name, LETTERS[index] ?? '?']),
-  );
-
-  /**
-   * The number each row shows — working sets only, per exercise (specs 14.41).
-   *
-   * Computed once for the block rather than per row: the rank of a set depends
-   * on everything above it, so a per-row loop was the same walk repeated for
-   * every row. And the rule itself lives in the domain, because the routine
-   * table numbers its sets the same way and two spellings would drift.
-   */
-  const numbers = workSetNumbers(
-    block.sets.map((set) => ({
-      key: set.exerciseId ?? set.exerciseName,
-      setType: set.setType,
-    })),
-  );
-
-  const shownNotes = exercises.flatMap((item) =>
-    item.id === null ? [] : (notes.get(item.id) ?? []),
-  );
-
-  /**
-   * The double-progression suggestions this block has earned (specs 10.4).
-   *
-   * One line per exercise that earned one, which on a superset is why the
-   * letter is repeated: "A · Essayez 72,5 kg" is the only form that says WHICH
-   * exercise to add weight to when the card carries two.
-   *
-   * A deleted exercise gets none — there is no increment left to read, and
-   * specs 5.3 has already said its statistical continuity is broken.
-   */
-  const shownProgression = exercises.flatMap((item, index) => {
-    if (item.id === null) return [];
-    const suggestion = progression.get(String(item.id));
-    if (suggestion === undefined) return [];
-    const text = progressionText(suggestion);
-    return [
-      {
-        key: String(item.id),
-        text: superset ? `${LETTERS[index] ?? '?'} · ${text}` : text,
-      },
-    ];
-  });
-
-  return (
-    <View
-      style={[
-        styles.card,
-        {
-          backgroundColor: theme.colors.surface,
-          borderColor: theme.colors.border,
-          borderRadius: theme.radius.lg,
-        },
-        theme.shadow,
-      ]}
-    >
-      {/* A superset carries a rail, as the routine page draws it. */}
-      {superset ? (
-        <View style={[styles.rail, { backgroundColor: theme.colors.accent }]} />
-      ) : null}
-
-      <View style={styles.cardBody}>
-        <View style={styles.titles}>
-          {exercises.map((item, index) => (
-            <Pressable
-              key={item.id ?? item.name}
-              disabled={item.id === null}
-              onPress={() => router.push(`/training/exercise/${item.id ?? ''}`)}
-              accessibilityRole={item.id === null ? 'text' : 'link'}
-              style={styles.titleRow}
-            >
-              {/*
-                The same thumbnail the library and the routine page draw, one
-                pose. It costs no query: the exercise list is already cached,
-                and a read per block is the per-row cost slice 4 refused.
-              */}
-              <View style={styles.titleThumb}>
-                <ExerciseDrawing
-                  mediaUri={item.id === null ? null : (media.get(String(item.id)) ?? null)}
-                  height={32}
-                />
-              </View>
-              <Text
-                style={[
-                  styles.title,
-                  {
-                    // A deleted exercise has no page to open, so it is not a
-                    // link and must not look like one.
-                    color: item.id === null ? theme.colors.textMuted : theme.colors.accent,
-                  },
-                ]}
-              >
-                {superset ? `${LETTERS[index] ?? '?'} · ${item.name}` : item.name}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-
-        {block.restSeconds === null ? null : (
-          <View style={styles.rest}>
-            <SymbolView
-              name="timer"
-              tintColor={theme.colors.textMuted}
-              size={13}
-              fallback={<Text style={{ color: theme.colors.textMuted }}>⏱</Text>}
-            />
-            <Text style={[styles.restText, { color: theme.colors.textMuted }]}>
-              {block.restSeconds} s de repos
-            </Text>
-          </View>
-        )}
-
-        {/*
-          THE SUGGESTION OF SPECS 10.4, AND IT IS ONLY EVER A SENTENCE.
-
-          > L'application affiche une suggestion à la séance suivante. Elle ne
-          > modifie jamais la routine ni la charge cible automatiquement.
-
-          Which is why it is NOT in the load field's placeholder, where it would
-          have been one tap closer: that placeholder carries the routine's own
-          target and is what gets recorded if the field is left alone, so a
-          suggestion written there would BE the application changing the target
-          — and it would be indistinguishable from the target while doing it.
-
-          It sits above the table, where the exercise's name and rest already
-          are, because it is a fact about the exercise rather than about any one
-          row. In the accent colour: it is the only thing on this card that was
-          not simply read back from the routine.
-        */}
-        {shownProgression.length === 0 ? null : (
-          <View style={styles.progression}>
-            {shownProgression.map((item) => (
-              <View key={item.key} style={styles.progressionLine}>
-                <SymbolView
-                  name="arrow.up.circle"
-                  tintColor={theme.colors.accent}
-                  size={13}
-                  fallback={<Text style={{ color: theme.colors.accent }}>↑</Text>}
-                />
-                <Text style={[styles.progressionText, { color: theme.colors.accent }]}>
-                  {item.text}
-                </Text>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/*
-          The notes of specs 14.28 no 2, read DURING the workout rather than a
-          page away. Read-only: a note belongs to the exercise, and editing it
-          from here would change it for every routine that uses it, from a
-          screen that says nothing about them.
-        */}
-        {shownNotes.length === 0 ? null : (
-          <View style={styles.notes}>
-            {shownNotes.map((note, index) => (
-              <Text key={index} style={[styles.note, { color: theme.colors.textMuted }]}>
-                {note}
-              </Text>
-            ))}
-          </View>
-        )}
-
-        <View style={styles.head}>
-          <Text style={[styles.headCell, setColumns.colSet, { color: theme.colors.textMuted }]}>
-            {superset ? 'Tour' : 'Série'}
-          </Text>
-          <Text style={[styles.headCell, setColumns.colPrev, { color: theme.colors.textMuted }]}>
-            Précéd.
-          </Text>
-          <Text style={[styles.headCell, setColumns.colValue, { color: theme.colors.textMuted }]}>
-            kg
-          </Text>
-          <Text style={[styles.headCell, setColumns.colReps, { color: theme.colors.textMuted }]}>
-            {block.sets.some((set) => set.tracksDuration === 1) ? 'Temps' : 'Reps'}
-          </Text>
-          <Text style={[styles.headCell, setColumns.colRir, { color: theme.colors.textMuted }]}>
-            RIR
-          </Text>
-          {/*
-            The check column has no word above it. "Fait" over a column of
-            checkmarks is the label saying what the glyph already says, and the
-            four characters cost the reps column width it needs more.
-          */}
-          <View style={setColumns.colCheck} />
-        </View>
-
-        {block.sets.map((set, index) => (
-          <View key={set.id}>
-            {index === 0 ? null : <ListSeparator />}
-            <LiveSetRow
-              set={set}
-              number={numbers[index] ?? null}
-              letter={superset ? (letters.get(set.exerciseId ?? set.exerciseName) ?? '?') : null}
-              typed={typedFor(set)}
-              active={activeSetId === set.id}
-              previous={previousFor(previous, set)}
-              onType={(typed) => onType(set, typed)}
-              onCycleType={(next) => onCycleType(set, next)}
-              onOpenRir={() => onOpenRir(set)}
-              onValidate={(rir) => onValidate(set, rir)}
-              onReopen={() => onReopen(set)}
-              onDelete={() => onRemove(set)}
-            />
-          </View>
-        ))}
-
-        <Pressable
-          onPress={onAddRound}
-          accessibilityRole="button"
-          style={styles.addRound}
-          hitSlop={6}
-        >
-          {/*
-            "Ajouter un tour" in a superset, because half a round of a superset
-            is not something anybody trains (specs 14.23 no 1). The wording
-            follows the shape of the block, exactly as the routine page's does.
-          */}
-          <Text style={{ color: theme.colors.accent, fontSize: 15 }}>
-            {superset ? 'Ajouter un tour' : 'Ajouter une série'}
-          </Text>
-        </Pressable>
-      </View>
-    </View>
-  );
-}
-
-const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'] as const;
 
 const styles = StyleSheet.create({
   page: { flex: 1 },

@@ -64,6 +64,7 @@ export function LiveSetRow({
   letter,
   typed,
   previous,
+  showPrevious = true,
   active,
   onType,
   onCycleType,
@@ -82,6 +83,16 @@ export function LiveSetRow({
   typed: TypedSet;
   /** What this same set did last time the routine was done. `null` when never. */
   previous: PreviousSet | null;
+  /**
+   * Whether the PRÉCÉDENT column is drawn at all (slice 12).
+   *
+   * A finished session cannot answer the question honestly — readPreviousSets
+   * looks for the last done session OTHER than this one, which for an old
+   * session is a LATER one. The reasoning is in session-block-card; here it is
+   * enough that the column is removed rather than filled with em dashes, so
+   * its sixty-six points go to the reps column instead.
+   */
+  showPrevious?: boolean;
   active: boolean;
   onType: (typed: TypedSet) => void;
   onCycleType: (next: (typeof SET_TYPES)[number]) => void;
@@ -168,19 +179,21 @@ export function LiveSetRow({
           performed. Between the number and the load, because it is what you
           read to decide the load you are about to type.
         */}
-        <View style={setColumns.colPrev}>
-          <Text
-            style={[styles.prevLine, { color: theme.colors.textMuted }]}
-            numberOfLines={1}
-          >
-            {history.line}
-          </Text>
-          {history.rir === null ? null : (
-            <Text style={[styles.prevRir, { color: theme.colors.textFaint }]} numberOfLines={1}>
-              {history.rir}
+        {!showPrevious ? null : (
+          <View style={setColumns.colPrev}>
+            <Text
+              style={[styles.prevLine, { color: theme.colors.textMuted }]}
+              numberOfLines={1}
+            >
+              {history.line}
             </Text>
-          )}
-        </View>
+            {history.rir === null ? null : (
+              <Text style={[styles.prevRir, { color: theme.colors.textFaint }]} numberOfLines={1}>
+                {history.rir}
+              </Text>
+            )}
+          </View>
+        )}
 
         <SetCell
           style={setColumns.colValue}

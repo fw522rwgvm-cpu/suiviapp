@@ -30,20 +30,26 @@ import { durationText, progressText } from '../domain/session-text';
  * thing that happened, and an empty space where a figure belongs reads as a
  * rendering fault rather than as a session with nothing in it.
  *
- * ## ONLY THE RUNNING ONE OPENS, AND THAT IS HONEST RATHER THAN LAZY
+ * ## EVERY ROW OPENS NOW, AND THE TWO GO TO DIFFERENT PLACES
  *
- * There is exactly one session screen and it shows the session IN PROGRESS;
- * specs 7 puts the history screen in slice 12, and CLAUDE.md names the gap.
- * So a finished row takes no press and draws no chevron — a row that looks
- * tappable and does nothing is worse than a row that says it is a record.
- * Everything the list can honestly show is already ON the row.
+ * Slice 11 gave a press only to the running one: there was one session screen,
+ * it showed the session in progress, and a finished row that looked tappable
+ * and did nothing would have been worse than one that says it is a record.
+ * Specs 10.5's page is the destination that was missing, so the row is a link
+ * again — to the live screen when it is running and to its own page when it is
+ * not.
+ *
+ * `onPress` stays OPTIONAL rather than becoming required. It is what makes the
+ * row draw its chevron, and a row that cannot be opened must not promise it —
+ * the caller says which, and the component has one rule instead of a status
+ * check of its own.
  */
 export function SessionRow({
   session,
   onPress,
 }: {
   session: SessionListItem;
-  /** Omitted for a finished session, which has nowhere to go yet. */
+  /** Omitted only where a row genuinely leads nowhere; see the note above. */
   onPress?: () => void;
 }) {
   const theme = useTheme();
