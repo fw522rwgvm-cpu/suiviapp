@@ -63,7 +63,7 @@ L'application doit tolérer un arrêt forcé à tout moment sans perte.
 ## État du projet
 Tranches 0 à 11 livrées. La tranche 9 (notifications) **clôt la V2** ; les
 tranches 10 (exercices et routines) et 11 (séance en direct) **ouvrent la V3**.
-**1636 tests verts** sous les trois fuseaux, `tsc` vert, bundle produit.
+**1639 tests verts** sous les trois fuseaux, `tsc` vert, bundle produit.
 
 **La tranche 11 ne demande AUCUN cycle CI, et c'est vérifiable avant de
 commencer** : aucune dépendance n'entre. `expo-notifications` est dans le
@@ -5259,6 +5259,30 @@ cardio par catégorie, gainages, portages et isométriques par nom.
 **Et le dépôt grossit de 30,8 Mo, ce qui est le prix assumé de « toute ligne a
 une image ».** Chaque `checkout` de la CI les tire. Écrit ici plutôt que
 découvert au premier build lent.
+
+**La vignette est enfin sur la rangée d'exercice, et le motif de son absence
+avait expiré.** Le §10.1 la demandait mot pour mot ; la tranche 10 ne pouvait
+pas l'honorer parce que rien ne savait écrire `media_uri` — chaque rangée aurait
+montré le **même** carré gris, « ce qui n'est pas une vignette mais une
+excuse ». Le catalogue l'écrit désormais, donc la colonne est faite de
+photographies et le gris redevient l'exception qu'il devait être. Une seule pose
+en liste, les deux sur la fiche.
+
+**Et le jeu d'essai créait des exercices SANS photographie — troisième
+occurrence de la même classe de défaut.** Rapporté depuis l'appareil : « les
+vignettes s'affichent dans le catalogue mais pas dans la page de l'exercice ».
+Les douze exercices de démonstration étaient des brouillons écrits à la main, or
+`media_uri` n'est délibérément **pas** un champ de `ExerciseDraft` — ils n'en
+avaient donc aucune, et une fiche sans média masque la carte entière au lieu
+d'en dessiner une vide.
+
+Rien d'autre ne pouvait l'attraper : les lignes étaient valides, la liste les
+montrait, les routines pointaient dessus ; la seule chose fausse était **une
+colonne qu'aucun test ne lisait**. C'est `tracks_duration` en `0009`, puis
+`duration_seconds` en tranche 10, une troisième fois. Le jeu d'essai installe
+désormais depuis le catalogue, ce qui règle au passage un second défaut qu'on
+n'avait pas vu : un « Squat » tapé à la main à côté d'un « Squat à la barre »
+installé faisait **deux exercices pour un mouvement, dont l'un vide.**
 
 **Vider la base est un bouton des Réglages dev, et il supprime des LIGNES, pas
 le fichier.** Il n'existait aucun moyen de retrouver un état neuf sans

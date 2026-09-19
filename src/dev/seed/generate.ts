@@ -26,7 +26,9 @@ import { MEAL_KINDS } from '@/features/nutrition/domain/meal-kinds';
 import { baseQuantity, portionQuantity } from '@/features/nutrition/domain/portions';
 import { readActiveGoal, readWeight } from '@/features/weight/data/weight-reads';
 import { listExercises } from '@/features/strength/data/exercise-reads';
-import { createExercise } from '@/features/strength/data/exercise-writes';
+import { setExerciseFavorite } from '@/features/strength/data/exercise-writes';
+import { installCatalogExercises } from '@/features/strength/data/catalog-writes';
+import { EXERCISE_CATALOG } from '@/features/strength/catalog/exercises';
 import { listRoutines } from '@/features/strength/data/routine-reads';
 import { createRoutine } from '@/features/strength/data/routine-writes';
 import {
@@ -587,51 +589,76 @@ function seedWeightGoal(tx: AppDatabase): boolean {
  * to give the filter strips something on both axes, and to light most of the
  * body map. A bigger catalogue would make the seed slower without making any
  * of those truer.
+ *
+ * ## THEY ARE INSTALLED FROM THE CATALOGUE, NOT TYPED HERE
+ *
+ * They used to be hand-written drafts, which was right while the catalogue did
+ * not exist — and became a DEFECT the day it did. A hand-written draft carries
+ * no `media_uri`, so every seeded exercise had no photograph: its page showed
+ * no image at all, because a null medium hides the card rather than drawing an
+ * empty one. Worse, the names shadowed the catalogue's — a typed "Squat" beside
+ * an installed "Squat à la barre" — so a development library held two of
+ * everything, one of them blank.
+ *
+ * Installing them instead gives the seed the same rows the application gives a
+ * real user: same muscles, same equipment, same photographs. The ALIAS is kept
+ * because the routines below read like a training plan rather than like slugs.
+ *
+ * Cost, stated: the per-exercise increments this list used to carry (1 kg for
+ * lateral raises, 5 kg for the squat) are gone — the catalogue install copies
+ * one increment to all of them. They were illustrative, and the routine below
+ * is what actually exercises the progression rule.
  */
-const DEMO_EXERCISES: readonly {
-  name: string;
-  primaryMuscle: Muscle;
-  equipment: Equipment;
-  secondary: Muscle[];
-  incrementKg: string;
-}[] = [
-  { name: 'Développé couché', primaryMuscle: 'chest', equipment: 'barbell', secondary: ['triceps', 'shoulders'], incrementKg: '2,5' },
-  { name: 'Développé incliné haltères', primaryMuscle: 'chest', equipment: 'dumbbell', secondary: ['shoulders'], incrementKg: '2' },
-  { name: 'Tractions', primaryMuscle: 'lats', equipment: 'bodyweight', secondary: ['biceps'], incrementKg: '2,5' },
-  { name: 'Rowing barre', primaryMuscle: 'lats', equipment: 'barbell', secondary: ['biceps', 'traps'], incrementKg: '2,5' },
-  { name: 'Développé militaire', primaryMuscle: 'shoulders', equipment: 'barbell', secondary: ['triceps'], incrementKg: '2,5' },
-  { name: 'Élévations latérales', primaryMuscle: 'shoulders', equipment: 'dumbbell', secondary: [], incrementKg: '1' },
-  { name: 'Curl haltères', primaryMuscle: 'biceps', equipment: 'dumbbell', secondary: ['forearms'], incrementKg: '1' },
-  { name: 'Extensions poulie', primaryMuscle: 'triceps', equipment: 'cable', secondary: [], incrementKg: '2,5' },
-  { name: 'Squat', primaryMuscle: 'quads', equipment: 'barbell', secondary: ['glutes', 'adductors'], incrementKg: '5' },
-  { name: 'Soulevé de terre roumain', primaryMuscle: 'hamstrings', equipment: 'barbell', secondary: ['glutes', 'lower_back'], incrementKg: '5' },
-  { name: 'Mollets debout', primaryMuscle: 'calves', equipment: 'machine', secondary: [], incrementKg: '2,5' },
-  { name: 'Gainage', primaryMuscle: 'abs', equipment: 'bodyweight', secondary: ['obliques'], incrementKg: '2,5' },
+const DEMO_EXERCISES: readonly { alias: string; key: string; favourite?: true }[] = [
+  { alias: 'Développé couché', key: 'developpe-couche-prise-moyenne', favourite: true },
+  { alias: 'Développé incliné haltères', key: 'developpe-incline-aux-halteres' },
+  { alias: 'Tractions', key: 'tractions' },
+  { alias: 'Rowing barre', key: 'rowing-barre-buste-penche' },
+  { alias: 'Développé militaire', key: 'developpe-militaire-debout' },
+  { alias: 'Élévations latérales', key: 'elevation-laterale' },
+  { alias: 'Curl haltères', key: 'curl-biceps-aux-halteres' },
+  { alias: 'Extensions poulie', key: 'extension-triceps-a-la-poulie' },
+  { alias: 'Squat', key: 'squat-a-la-barre', favourite: true },
+  { alias: 'Soulevé de terre roumain', key: 'souleve-de-terre-roumain' },
+  { alias: 'Mollets debout', key: 'mollets-debout' },
+  { alias: 'Gainage', key: 'gainage' },
 ];
 
-function seedExercises(tx: AppDatabase): Map<string, ExerciseId> {
-  const byName = new Map<string, ExerciseId>();
-  // Idempotent, like seedFoods: running the generator twice must not double the
-  // catalogue, since the development installation seeds on demand.
-  for (const existing of listExercises(tx)) byName.set(existing.name, existing.id);
+/** What the routines below need to name a block: the row, and what it is called. */
+interface DemoExercise {
+  id: ExerciseId;
+  name: string;
+}
 
-  for (const demo of DEMO_EXERCISES) {
-    if (byName.has(demo.name)) continue;
-    const id = createExercise(tx, {
-      ...emptyExerciseDraft(DEFAULT_PROGRESSION_INCREMENT_KG),
-      name: demo.name,
-      primaryMuscle: demo.primaryMuscle,
-      equipment: demo.equipment,
-      secondaryMuscles: new Set(demo.secondary),
-      incrementKg: demo.incrementKg,
-      // A couple of favourites, so the "favoris en tête" ordering has something
-      // to order rather than being a rule with no data behind it.
-      isFavorite: demo.name === 'Squat' || demo.name === 'Développé couché',
-    });
-    byName.set(demo.name, id);
+function seedExercises(tx: AppDatabase): Map<string, DemoExercise> {
+  // Idempotent by NAME, which is what installCatalogExercises already
+  // guarantees — the development installation seeds on demand, and running the
+  // generator twice must not double anything.
+  installCatalogExercises(
+    tx,
+    DEMO_EXERCISES.map((demo) => demo.key),
+    DEFAULT_PROGRESSION_INCREMENT_KG,
+  );
+
+  const byName = new Map<string, DemoExercise>();
+  for (const existing of listExercises(tx)) {
+    byName.set(existing.name, { id: existing.id, name: existing.name });
   }
 
-  return byName;
+  const byAlias = new Map<string, DemoExercise>();
+  for (const demo of DEMO_EXERCISES) {
+    const entry = EXERCISE_CATALOG.find((item) => item.key === demo.key);
+    if (entry === undefined) continue;
+    const installed = byName.get(entry.name);
+    if (installed === undefined) continue;
+
+    byAlias.set(demo.alias, installed);
+    // A couple of favourites, so the "favoris en tête" ordering has something
+    // to order rather than being a rule with no data behind it.
+    if (demo.favourite === true) setExerciseFavorite(tx, installed.id, true);
+  }
+
+  return byAlias;
 }
 
 /**
@@ -642,10 +669,14 @@ function seedExercises(tx: AppDatabase): Map<string, ExerciseId> {
  * data means the page and the editor are exercised on it every time rather than
  * only when somebody remembers to build one.
  */
-function seedRoutines(tx: AppDatabase, exercises: Map<string, ExerciseId>): number {
+function seedRoutines(tx: AppDatabase, exercises: Map<string, DemoExercise>): number {
   if (listRoutines(tx).length > 0) return 0;
 
-  const idOf = (name: string): ExerciseId | null => exercises.get(name) ?? null;
+  const idOf = (alias: string): ExerciseId | null => exercises.get(alias)?.id ?? null;
+  // The block carries the exercise's REAL name, not the alias: a routine line
+  // reads its exercise live, so a stale label here would be the one thing on
+  // the page disagreeing with the row it points at.
+  const nameOf = (alias: string): string => exercises.get(alias)?.name ?? alias;
 
   const pushDay = (): RoutineDraft | null => {
     const bench = idOf('Développé couché');
@@ -660,7 +691,7 @@ function seedRoutines(tx: AppDatabase, exercises: Map<string, ExerciseId>): numb
       warmupSteps: ['5 min de rameur', 'Rotations d’épaules', 'Barre à vide × 10'],
     };
 
-    draft = addExerciseBlock(draft, bench, 'Développé couché');
+    draft = addExerciseBlock(draft, bench, nameOf('Développé couché'));
     draft = updateLine(draft, 0, 0, {
       repsMin: 5,
       repsMax: 8,
@@ -672,7 +703,7 @@ function seedRoutines(tx: AppDatabase, exercises: Map<string, ExerciseId>): numb
     draft = duplicateLine(draft, 0, 0);
     draft = duplicateLine(draft, 0, 0);
 
-    draft = addExerciseBlock(draft, press, 'Développé militaire');
+    draft = addExerciseBlock(draft, press, nameOf('Développé militaire'));
     draft = updateLine(draft, 1, 0, {
       repsMin: 8,
       repsMax: 10,
@@ -684,9 +715,9 @@ function seedRoutines(tx: AppDatabase, exercises: Map<string, ExerciseId>): numb
     draft = duplicateLine(draft, 1, 0);
 
     // THE SUPERSET: two exercises in one block, the rest owned by the block.
-    draft = addExerciseBlock(draft, lateral, 'Élévations latérales');
+    draft = addExerciseBlock(draft, lateral, nameOf('Élévations latérales'));
     draft = updateLine(draft, 2, 0, { repsMin: 12, repsMax: 15, targetLoadKg: 8, targetRir: 1 });
-    draft = addExerciseToBlock(draft, 2, triceps, 'Extensions poulie');
+    draft = addExerciseToBlock(draft, 2, triceps, nameOf('Extensions poulie'));
     draft = updateLine(draft, 2, 1, { repsMin: 12, repsMax: 15, targetLoadKg: 25, targetRir: 1 });
     draft = duplicateLine(draft, 2, 0);
     draft = duplicateLine(draft, 2, 2);
@@ -707,7 +738,7 @@ function seedRoutines(tx: AppDatabase, exercises: Map<string, ExerciseId>): numb
       warmupSteps: ['10 min de vélo', 'Fentes au poids du corps × 10'],
     };
 
-    draft = addExerciseBlock(draft, squat, 'Squat');
+    draft = addExerciseBlock(draft, squat, nameOf('Squat'));
     draft = updateLine(draft, 0, 0, {
       repsMin: 5,
       repsMax: 5,
@@ -720,7 +751,7 @@ function seedRoutines(tx: AppDatabase, exercises: Map<string, ExerciseId>): numb
     draft = duplicateLine(draft, 0, 0);
     draft = duplicateLine(draft, 0, 0);
 
-    draft = addExerciseBlock(draft, romanian, 'Soulevé de terre roumain');
+    draft = addExerciseBlock(draft, romanian, nameOf('Soulevé de terre roumain'));
     draft = updateLine(draft, 1, 0, {
       repsMin: 8,
       repsMax: 10,
@@ -731,7 +762,7 @@ function seedRoutines(tx: AppDatabase, exercises: Map<string, ExerciseId>): numb
     draft = duplicateLine(draft, 1, 0);
     draft = duplicateLine(draft, 1, 0);
 
-    draft = addExerciseBlock(draft, calves, 'Mollets debout');
+    draft = addExerciseBlock(draft, calves, nameOf('Mollets debout'));
     draft = updateLine(draft, 2, 0, {
       repsMin: 12,
       repsMax: 20,

@@ -70,9 +70,9 @@ export function ExerciseBody({
         they may not know; somebody choosing secondary muscles is looking at the
         figure. Both are on the page, in the order they are needed.
 
-        The two photographs show the start and the end of the movement, which an
-        arrow, so a still says the movement — which is what the two-pose
-        animation of the first version was saying, in a glance.
+        The two photographs show the start and the end of the movement, side by
+        side — which is what the two-pose animation of the first version was
+        saying, in a glance rather than in two seconds.
       */}
       {mediaUri === undefined || mediaUri === null ? null : (
         <View

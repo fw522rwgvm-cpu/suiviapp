@@ -3,6 +3,8 @@ import { addDays, toLocalDate } from '../../src/core/date';
 import { seedJournal } from '../../src/dev/seed';
 import { createRandom } from '../../src/dev/seed/random';
 import { readDay, readDayTotals } from '../../src/features/nutrition/data/day-reads';
+import { listExercises } from '../../src/features/strength/data/exercise-reads';
+import { EXERCISE_CATALOG } from '../../src/features/strength/catalog/exercises';
 import { countRows, openTestDatabase, type TestDatabase } from '../helpers/database';
 
 /**
@@ -326,4 +328,51 @@ describe('seedJournal', () => {
     // inherited from a test runner.
     30_000,
   );
+});
+
+describe('the seeded exercises', () => {
+  /**
+   * THE DEFECT THIS GUARDS, WHICH WAS REAL AND INVISIBLE.
+   *
+   * The demo exercises used to be hand-written drafts. A draft carries no
+   * `media_uri` — it is deliberately not a field of ExerciseDraft — so every
+   * seeded exercise had none, and its page drew NOTHING: a null medium hides
+   * the whole card rather than showing an empty one. Reported from the device
+   * as "the thumbnails work in the catalogue but not on the exercise page".
+   *
+   * Nothing else would have caught it. The rows were valid, the list showed
+   * them, the routines pointed at them; the only thing wrong was a column
+   * nobody read in a test.
+   */
+  it('GIVES EVERY SEEDED EXERCISE ITS PHOTOGRAPH', () => {
+    seedJournal(fixture.db, { endDate: END, days: 7, seed: 3 });
+
+    const seeded = listExercises(fixture.db);
+    expect(seeded.length).toBeGreaterThan(0);
+
+    const blank = seeded.filter((item) => item.mediaUri === null);
+    expect(blank.map((item) => item.name)).toEqual([]);
+  });
+
+  it('does not shadow the catalogue with a second copy under another name', () => {
+    // The other half of the same defect: a typed "Squat" sitting beside an
+    // installed "Squat à la barre" gave a development library two of
+    // everything, one of them blank. Installing from the catalogue means every
+    // seeded name IS a catalogue name.
+    seedJournal(fixture.db, { endDate: END, days: 7, seed: 3 });
+
+    const known = new Set(EXERCISE_CATALOG.map((entry) => entry.name));
+    const strangers = listExercises(fixture.db).filter((item) => !known.has(item.name));
+
+    expect(strangers.map((item) => item.name)).toEqual([]);
+  });
+
+  it('is idempotent, so seeding twice does not double the library', () => {
+    seedJournal(fixture.db, { endDate: END, days: 7, seed: 3 });
+    const first = listExercises(fixture.db).length;
+
+    seedJournal(fixture.db, { endDate: END, days: 7, seed: 3 });
+
+    expect(listExercises(fixture.db).length).toBe(first);
+  });
 });

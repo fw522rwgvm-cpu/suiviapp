@@ -3,6 +3,7 @@ import { Text } from '@/core/ui/text';
 import { GlassButton } from '@/core/ui/glass-button';
 import { useTheme } from '@/core/theme';
 import type { ExerciseListItem } from '../data/exercise-reads';
+import { ExerciseDrawing } from './exercise-drawing';
 import { equipmentLabel, muscleLabel } from '../domain/vocabulary';
 
 /**
@@ -10,12 +11,22 @@ import { equipmentLabel, muscleLabel } from '../domain/vocabulary';
  *
  * > Chaque résultat affiche vignette, nom, muscle, matériel.
  *
- * THE THUMBNAIL IS NOT HERE, and the absence is deliberate rather than
- * forgotten: media needs expo-image-picker, which is outside section 5, so
- * nothing in slice 10 can write exercise.media_uri and every row would show the
- * same placeholder. A column of identical grey squares is not a vignette, it is
- * an apology. The row keeps the space it would need — one line of identity, one
- * of qualification — so adding it later moves nothing else.
+ * ## THE THUMBNAIL IS HERE NOW, AND THE REASON IT WAS NOT HAS EXPIRED
+ *
+ * Slice 10 left it out deliberately: media needed expo-image-picker, outside
+ * section 5, so nothing could write `exercise.media_uri` and every row would
+ * have shown the SAME placeholder. "A column of identical grey squares is not a
+ * vignette, it is an apology" — and that was right while it was true.
+ *
+ * The catalogue writes `media_uri` for every exercise it installs, so the
+ * column is now mostly pictures and the grey square is the exception it was
+ * always meant to be: the substitute of specs 5.4 no 3, for an exercise
+ * somebody typed themselves. The row was built keeping the space this needs, so
+ * adding it moved nothing else.
+ *
+ * ONE POSE, not two. The pair says how a movement runs; at 44 pt it would say
+ * it twice in half the width, which is two thumbnails of nothing. The page
+ * shows both — see ExerciseDrawing.
  *
  * ## THE SECOND LINE IS "MUSCLE · MATÉRIEL", AND THE SEPARATOR IS NOT A COMMA
  *
@@ -56,6 +67,10 @@ export function ExerciseRow({
         { backgroundColor: pressed ? theme.colors.background : theme.colors.surface },
       ]}
     >
+      <View style={styles.thumb}>
+        <ExerciseDrawing mediaUri={exercise.mediaUri} height={40} />
+      </View>
+
       <View style={styles.identity}>
         <Text style={[styles.name, { color: theme.colors.text }]} numberOfLines={1}>
           {exercise.name}
@@ -94,6 +109,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     minHeight: 58,
   },
+  // A fixed width, so a photograph and a substitute leave the names on one
+  // column — the rule the catalogue screen already follows.
+  thumb: { width: 56 },
   identity: { flex: 1, gap: 2 },
   name: { fontSize: 16, fontWeight: '500' },
   subtitle: { fontSize: 13 },
