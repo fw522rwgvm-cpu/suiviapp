@@ -5,6 +5,7 @@ import { Text } from '@/core/ui/text';
 import { getAppDatabase } from '@/core/db/app-database';
 import { useTheme } from '@/core/theme';
 import { seedJournal } from '@/dev/seed';
+import { resetDatabase } from '@/dev/reset';
 import { useToday } from '../data/settings-queries';
 
 /**
@@ -76,6 +77,48 @@ export function SeedSection() {
     );
   }
 
+  /**
+   * Empties the database (slice 11).
+   *
+   * ## THE CONFIRMATION NAMES WHAT GOES, AND IT IS EVERYTHING
+   *
+   * Specs 5.3 reserves the application's one warning for deleting an EXERCISE,
+   * because that is the only deletion that destroys something irreplaceable.
+   * This is a development-only button and a harder act than any of them — so it
+   * asks, and it says "toutes les données" rather than a softer word. A
+   * confirmation that understates what it prevents is the kind people learn to
+   * tap through (specs 14.26 no 2).
+   *
+   * There is no undo and there is deliberately none: on the development
+   * installation the data is invented, and the seed button above puts more back
+   * in one tap.
+   */
+  function reset(): void {
+    Alert.alert(
+      'Vider la base ?',
+      'Toutes les données de cette installation partent : journal, aliments, ' +
+        'recettes, poids, exercices, routines, séances et réglages. Sans retour.',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Vider',
+          style: 'destructive',
+          onPress: () => {
+            setBusy(true);
+            try {
+              const report = resetDatabase(getAppDatabase());
+              setOutcome(`Base vidée — ${report.tables} tables.`);
+            } catch (error) {
+              setOutcome(error instanceof Error ? error.message : String(error));
+            } finally {
+              setBusy(false);
+            }
+          },
+        },
+      ],
+    );
+  }
+
   return (
     <>
       <Text style={[styles.section, { color: theme.colors.textFaint }]}>
@@ -105,6 +148,26 @@ export function SeedSection() {
             </Pressable>
           ))}
         </View>
+        {/*
+          Separated from the three seed buttons by the note that explains it,
+          rather than sitting as a fourth one in the same row: adding data and
+          destroying all of it are not two sizes of the same action, and a
+          destructive control beside three harmless ones is the misfire waiting
+          to happen.
+        */}
+        <Text style={[styles.lead, { color: theme.colors.textMuted }]}>
+          Repartir d’une base vide, sans réinstaller l’application.
+        </Text>
+        <Pressable
+          onPress={reset}
+          disabled={busy}
+          accessibilityRole="button"
+          style={[styles.button, { borderColor: theme.colors.danger }]}
+        >
+          <Text style={[styles.buttonLabel, { color: theme.colors.danger }]}>
+            Vider la base
+          </Text>
+        </Pressable>
         {outcome === null ? null : (
           <Text style={[styles.outcome, { color: theme.colors.textMuted }]}>{outcome}</Text>
         )}

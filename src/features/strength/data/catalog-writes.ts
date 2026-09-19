@@ -1,6 +1,8 @@
 import type { AppDatabase } from '@/core/db/database';
 import { newId } from '@/core/id';
 import { exercise, exerciseSecondaryMuscle, type ExerciseId } from '@/core/db/schema';
+import { readSetting } from '@/features/settings/data/settings-reads';
+import { writeSetting } from '@/features/settings/data/settings-writes';
 import { EXERCISE_CATALOG, catalogMediaUri, type CatalogExercise } from '../catalog/exercises';
 
 /**
@@ -148,3 +150,76 @@ export function installedCatalogNames(db: AppDatabase): Set<string> {
 }
 
 export type { CatalogExercise };
+
+
+/**
+ * The key that records the default set has been installed once.
+ *
+ * A row of `setting`, which is the table that exists for exactly this — a fact
+ * about the installation with no home of its own, the way `last_export_at` and
+ * `off_suspended_until` are. No migration, no column.
+ */
+export const CATALOG_SEEDED_KEY = 'catalog_seeded_at';
+
+/**
+ * The exercises a fresh installation gets WITHOUT being asked (slice 11).
+ *
+ * ## THE ONES WITH A DRAWING, AND THAT IS THE CRITERION
+ *
+ * Requested: the common exercises should already be there. Five hundred and
+ * twenty would not be a library, it would be a copy of the wger database — so
+ * something has to choose, and "has a drawing" is the honest line rather than
+ * an opinion about what is common. wger's contributors drew the exercises
+ * people actually look up, so the set is curated by somebody who trained rather
+ * than by a rule invented here.
+ *
+ * It has a second property that matters more than it sounds: the library that
+ * results has a picture on EVERY row. A default set mixing drawn and undrawn
+ * entries would make the substitute of specs 5.4 no 3 look like a defect on day
+ * one, on a screen nobody has touched yet.
+ *
+ * The other three hundred and twenty-six stay one tap away, in the catalogue
+ * screen, which is also where they can be searched and filtered.
+ */
+export function defaultCatalogKeys(): string[] {
+  return EXERCISE_CATALOG.filter((entry) => entry.hasImage === true).map((entry) => entry.key);
+}
+
+/**
+ * Installs the default set, once per installation.
+ *
+ * ## WHY A FLAG AND NOT "IS THE LIBRARY EMPTY"
+ *
+ * Emptiness is the obvious test and it is wrong in the one case that matters:
+ * somebody who deliberately deleted every exercise would get all of them back
+ * on the next launch, and specs 5.3 makes deleting an exercise the one act in
+ * this application that destroys something. Undoing it on their behalf, at
+ * launch, without asking, is the worst possible time to be helpful.
+ *
+ * So the flag says "this has been done", not "this is needed". Set even when
+ * nothing was installed, because a library that already had every name is a
+ * library where the question has been answered too.
+ *
+ * ## AND WHY THIS IS STILL NOT A MIGRATION
+ *
+ * G4 replays every migration on every import, so a seed in `0010` would
+ * reinject these rows into an archive that deliberately held none — with fresh
+ * ULIDs, so importing the same archive twice would double everything. That
+ * argument is unchanged by installing automatically: what changed is WHO asks,
+ * not WHERE it is written.
+ *
+ * An imported archive carries `setting`, so the flag travels with it: restoring
+ * a backup does not re-seed. An archive older than this key seeds once, which
+ * is right — it predates the catalogue.
+ */
+export function installDefaultCatalogOnce(
+  db: AppDatabase,
+  defaultIncrementKg: number,
+  now: number,
+): InstallResult | null {
+  if (readSetting(db, CATALOG_SEEDED_KEY) !== null) return null;
+
+  const result = installCatalogExercises(db, defaultCatalogKeys(), defaultIncrementKg);
+  writeSetting(db, CATALOG_SEEDED_KEY, String(now));
+  return result;
+}

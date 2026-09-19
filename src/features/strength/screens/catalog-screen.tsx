@@ -122,8 +122,8 @@ export function CatalogScreen() {
         keyboardDismissMode="on-drag"
       >
         <Text style={[styles.intro, { color: theme.colors.textMuted }]}>
-          {EXERCISE_CATALOG.length} exercices prêts à l’emploi. Cherchez ceux que
-          vous faites et cochez-les ; ceux que vous avez déjà ne sont pas dupliqués.
+          {EXERCISE_CATALOG.length} exercices au catalogue. Les plus courants sont
+          déjà dans votre bibliothèque ; cherchez ici ceux qui manquent.
         </Text>
 
         <SearchField value={term} onChange={setTerm} />

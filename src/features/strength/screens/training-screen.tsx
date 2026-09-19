@@ -167,22 +167,24 @@ export function TrainingScreen() {
           ) : null}
 
           {/*
-            THE CATALOGUE, AND WHY IT IS A LINK RATHER THAN A DIALOG.
+            THE REST OF THE CATALOGUE.
 
             Specs 10.1 describes a library with a creation button and nothing
-            else, so a fresh installation starts empty — the one place in the
-            application that asks for a quarter of an hour before it serves.
-            Thirty-three exercises are offered instead of typed.
+            else, so a fresh installation used to start empty — the one place in
+            the application that asked for a quarter of an hour before it
+            served. The common exercises now arrive on their own, at first
+            launch (useDefaultCatalogOnce).
 
-            NOT installed on first launch, and not a seed in `0010`: a migration
-            is replayed by every import (G4), so a seed would reinject these
-            rows into an archive that deliberately held none, with fresh ULIDs.
-            The rule since slice 4 covers the rest — what the user SAVES is
-            written, what they merely look at is not.
+            So this link is no longer the way in, it is the way to the REST:
+            three hundred and twenty-six more, searchable and filterable. It
+            stays prominent while the library is empty anyway — somebody who
+            deleted everything, or whose first-launch install failed, must not
+            be left with no way to ask for them.
 
-            PROMINENT WHEN THE LIBRARY IS EMPTY, quiet afterwards, never gone:
-            somebody who took ten and wants the other twenty-three later should
-            not have to empty their library to be offered them again.
+            Still not a seed in `0010`: a migration is replayed by every import
+            (G4), so it would reinject these rows into an archive that
+            deliberately held none, with fresh ULIDs. What changed is WHO asks,
+            not where it is written.
           */}
           {held.length === 0 ? (
             <Pressable
@@ -198,7 +200,7 @@ export function TrainingScreen() {
               ]}
             >
               <Text style={{ color: theme.colors.onAccent, fontSize: 16, fontWeight: '600' }}>
-                Ajouter des exercices courants
+                Ajouter des exercices
               </Text>
             </Pressable>
           ) : (
@@ -209,7 +211,7 @@ export function TrainingScreen() {
               hitSlop={6}
             >
               <Text style={{ color: theme.colors.accent, fontSize: 15 }}>
-                Ajouter des exercices courants
+                Parcourir le catalogue
               </Text>
             </Pressable>
           )}

@@ -12,6 +12,7 @@ import { expoNotificationHost } from '@/features/notifications/native/expo-host'
 import { RequestedDateProvider } from '@/features/nutrition/hooks/requested-date';
 import { SessionBanner } from '@/features/strength/components/session-banner';
 import { useSweepOffCacheOnce } from '@/features/nutrition/off/off-queries';
+import { useDefaultCatalogOnce } from '@/features/strength/hooks/use-default-catalog';
 import { usePreferences } from '@/features/settings/data/settings-queries';
 
 // THE ONE LINE THAT MAKES NOTIFICATIONS REAL, and it is wiring.
@@ -122,6 +123,12 @@ function RootStack() {
   // Once per launch, after the first paint. Mounting it is wiring; what it
   // does and why it is not in the startup sequence is written where it lives.
   useSweepOffCacheOnce();
+
+  // Same shape, same reason: the default exercises land once per installation,
+  // decided by a `setting` row rather than by this line. Requested — an empty
+  // library was the one place the application asked for a quarter of an hour
+  // before it served.
+  useDefaultCatalogOnce();
 
   // For the lifetime of the application, on the same precedent: the scheduler
   // has to re-read on every foreground (D14), so it cannot live on a screen —

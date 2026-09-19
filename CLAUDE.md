@@ -5122,19 +5122,47 @@ un littéral est un pari sur le nommage d'un tiers. Au changement de source, six
 tests ont rougi sur des clés disparues plutôt que sur un comportement qui aurait
 bougé. Ils indexent le catalogue désormais.
 
-**Le catalogue est offert, jamais installé — et surtout pas par une migration.**
-La tranche 5 avait déjà refusé une graine, mais le motif qui décide ici est plus
-fort : **une migration est rejouée par chaque import (G4)**, donc la graine
-réinjecterait ces lignes dans une archive qui n'en portait aucune, **avec des
-ULID neufs** — importer deux fois la même archive produirait deux exemplaires de
-tout. Idempotent **par nom**, jamais par clé de média : celui qui a tapé
-« Squat » lui-même a un Squat, et en installer un second serait l'application
-qui le contredit sur sa propre bibliothèque.
+**Le catalogue n'est JAMAIS installé par une migration.** La tranche 5 avait
+déjà refusé une graine, mais le motif qui décide ici est plus fort : **une
+migration est rejouée par chaque import (G4)**, donc la graine réinjecterait ces
+lignes dans une archive qui n'en portait aucune, **avec des ULID neufs** —
+importer deux fois la même archive produirait deux exemplaires de tout.
+Idempotent **par nom**, jamais par clé de média : celui qui a tapé « Squat »
+lui-même a un Squat, et en installer un second serait l'application qui le
+contredit sur sa propre bibliothèque.
 
-**Et l'écran est une RECHERCHE, ce qui renverse sa première version.** À
-trente-trois entrées, tout cocher évitait trente-trois questions ; à cinq cent
-vingt, tout installer ne serait pas une bibliothèque mais une copie de la base
-wger sur le téléphone. Rien n'est coché, on cherche ce qu'on fait. **Les
+**Ce qui a changé, c'est QUI demande.** Les 194 exercices qui portent un dessin
+sont installés seuls au premier lancement (`useDefaultCatalogOnce`). « Courant »
+veut dire « a un dessin », et ce n'est pas une opinion sur ce que les gens font :
+les contributeurs de wger ont dessiné les exercices qu'on cherche vraiment, et ce
+vote-là est plus large que le nôtre. L'effet de bord vaut à lui seul le critère —
+**toute ligne de la bibliothèque a une image dès le premier jour**, donc le
+substitut du §5.4 n° 3 n'y ressemble pas à un défaut le jour de l'installation.
+
+Le hook tourne **après la première peinture**, jamais dans la séquence de
+démarrage : ses cinq étapes doivent toutes finir avant qu'on dessine, et y
+glisser deux cents insertions mettrait une écriture que personne n'attend devant
+les 1,5 s que D16 budgète pour un chiffre lisible à froid. La Journée est déjà à
+l'écran, et le bus de D8 fait apparaître la bibliothèque quand elle atterrit.
+
+**Et la décision se prend sur un DRAPEAU, jamais sur une bibliothèque vide.** Le
+test évident — « si elle est vide, remplis-la » — est faux exactement là où il
+compte : le §5.3 fait de la suppression d'un exercice le seul acte de
+l'application qui détruise quelque chose, donc la défaire au nom de
+l'utilisateur, au lancement, sans rien demander, est le pire moment possible pour
+rendre service. Une ligne `setting` (`catalog_seeded_at`) dit que la question a
+été posée. Elle n'a besoin d'aucune colonne ni d'aucune migration, et le
+catalogue d'export ne pose **aucune** règle `one_of` sur `setting.key` — vérifié,
+pas supposé — donc elle traverse l'aller-retour sans code en plus : vider sa
+bibliothèque exprès survit à un export / import, et une archive antérieure à
+cette tranche reçoit les défauts au lancement suivant, comme une installation
+neuve. Un test tient les deux directions.
+
+**Et l'écran est une RECHERCHE — celle du RESTE.** À trente-trois entrées, tout
+cocher évitait trente-trois questions ; à cinq cent vingt, tout installer ne
+serait pas une bibliothèque mais une copie de la base wger sur le téléphone. Les
+194 dessinés arrivent seuls, les 326 autres se cherchent ici. Rien n'est coché,
+on cherche ce qu'on fait. **Les
 résultats sont plafonnés à quarante et la page le dit** — D16 écarte une liste
 virtualisée, donc la réponse est d'en montrer moins, pas d'en montrer autrement.
 La sélection survit au terme et aux filtres : affiner après avoir coché ne doit
@@ -5159,6 +5187,24 @@ constats, et deux confirment que la tranche 10 avait raison :
 - **`kettlebell` n'a aucun exercice** dans la source — un trou de la source, pas
   du vocabulaire.
 
+**Vider la base est un bouton des Réglages dev, et il supprime des LIGNES, pas
+le fichier.** Il n'existait aucun moyen de retrouver un état neuf sans
+reconstruire un binaire — quinze minutes de CI pour repartir de zéro. Supprimer
+`Documents/SQLite/suivi.db` serait le reset évident et il est impossible de
+l'intérieur : la connexion est un singleton ouvert une fois, et rien du §5 ne
+sait redémarrer une application — c'est exactement ce que la tranche 2 avait
+établi en devant **basculer** une base en place plutôt qu'en rouvrir une. Les
+lignes partent, le schéma reste, et le résultat **est** l'état qu'une
+installation neuve atteint après ses migrations.
+
+La liste des tables est **dérivée** (`allSchemaTableNames()`), jamais écrite : une
+liste tenue à la main serait le défaut même que le catalogue d'export existe pour
+empêcher, dans le seul endroit où se tromper est invisible — un reset qui oublie
+une table a l'air d'avoir marché, et les lignes restantes ressortent en données
+impossibles trois jours plus tard. `PRAGMA foreign_keys` **hors** de la
+transaction, la tranche 2 ayant déjà payé pour apprendre qu'il y est
+silencieusement ignoré, et restauré dans un `finally`.
+
 ### Deux pièces sorties, et où elles vont
 
 - `set-cell.tsx` — la cellule numérique d'une table de séries, à son deuxième
@@ -5174,6 +5220,15 @@ constats, et deux confirment que la tranche 10 avait raison :
 
 ## Points ouverts après la tranche 11
 
+- **free-exercise-db a été demandé et refusé.** Le dépôt **n'a aucun fichier
+  LICENSE** — vérifié, 404 ; seul le README affiche un badge « Unlicense », qui
+  n'est pas une licence accordée. Et ses images sont les photographies de studio
+  de Bodybuilding.com : une personne identifiable, dont le droit à l'image ne se
+  règle pas par une licence logicielle même si elle existait. Le dépôt est public
+  et les IPA sont en release : deux diffusions (`specs §14.31 n° 8`). La demande
+  sous-jacente — des exercices sans avoir à les ajouter — est satisfaite par
+  l'installation par défaut. **À rouvrir uniquement si une source photographique
+  sous licence écrite apparaît**, pas par insistance.
 - **Rien de la tranche 11 n'a tourné sur l'appareil, et aucun cycle CI n'est
   nécessaire** : aucune dépendance n'entre. `expo-notifications` est dans le
   binaire depuis la tranche 9, `react-native-svg` depuis `dev-b19`, et les
