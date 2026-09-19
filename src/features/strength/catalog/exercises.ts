@@ -95,3 +95,25 @@ export function catalogKeyOf(mediaUri: string | null): string | null {
   if (mediaUri === null || !mediaUri.startsWith(MEDIA_SCHEME)) return null;
   return mediaUri.slice(MEDIA_SCHEME.length);
 }
+
+/**
+ * The catalogue minus what the library already holds (specs 10.1).
+ *
+ * ## A RULE, NOT A RENDER, WHICH IS WHY IT IS HERE
+ *
+ * Conventions section 4 keeps business decisions out of components, and "which
+ * exercises may still be offered" is one: it decides what the screen can add,
+ * what its filter strips advertise, and what its counter says. Inline in the
+ * JSX it would be three readings of the same subtraction, free to drift.
+ *
+ * ## WHAT THE KEYS ARE
+ *
+ * `installed` holds CATALOGUE KEYS, as installedCatalogNames() returns them —
+ * which resolves a library row to a catalogue entry BY NAME, because that is
+ * what the install is idempotent on. So an exercise somebody typed by hand
+ * under a catalogue name hides that entry too, and it should: installing it
+ * would be the application contradicting them about their own library.
+ */
+export function offerableCatalog(installed: ReadonlySet<string>): CatalogExercise[] {
+  return EXERCISE_CATALOG.filter((entry) => !installed.has(entry.key));
+}

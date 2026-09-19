@@ -63,7 +63,7 @@ L'application doit tolérer un arrêt forcé à tout moment sans perte.
 ## État du projet
 Tranches 0 à 11 livrées. La tranche 9 (notifications) **clôt la V2** ; les
 tranches 10 (exercices et routines) et 11 (séance en direct) **ouvrent la V3**.
-**1645 tests verts** sous les trois fuseaux, `tsc` vert, bundle produit.
+**1649 tests verts** sous les trois fuseaux, `tsc` vert, bundle produit.
 
 **La tranche 11 ne demande AUCUN cycle CI, et c'est vérifiable avant de
 commencer** : aucune dépendance n'entre. `expo-notifications` est dans le
@@ -5266,12 +5266,56 @@ depuis l'appareil : « l'app est beaucoup plus lente ». La liste rendait ses
 onglet. C'était invisible tant que la bibliothèque contenait ce que quelqu'un
 avait tapé ; le catalogue par défaut l'a rendue visible en une journée.
 
-Plafond à quarante rangées, et la page le dit — D16 écarte une liste
-virtualisée, donc la réponse est d'en montrer moins, pas d'en montrer
-autrement. C'est le même nombre et le même énoncé que l'écran du catalogue.
+Premier remède : un plafond à quarante, annoncé sur la page, parce que D16
+écartait une liste virtualisée. **Renversé le jour même, sur demande** — un
+plafond oblige à filtrer avant de pouvoir parcourir. Les deux longues listes
+sont désormais **fenêtrées** (`core/ui/virtual-list.ts`), et l'amendement à D16
+est étroit : `FlatList` est du cœur de React Native, donc aucune dépendance
+n'entre et le risque que D16 visait — un moteur de liste tiers sur le chemin
+critique — n'est pas pris. C'est la moitié « vues standard » de la phrase qui
+tombe, pas l'autre.
+
+**`windowSize` est la moitié « décharge » de la demande** : c'est lui qui
+démonte les rangées éloignées et libère leurs photographies. Son défaut vaut 21
+écrans, soit presque toute une liste de huit cents lignes.
+
 **Réserve honnête** : rien ici ne chronomètre un rendu React Native, donc ce
-qui est corrigé est la **cause** — un nombre d'images décodées — et non un
+qui est corrigé est la **cause** — un nombre d'images montées — et non un
 chiffre observé.
+
+**Trois pièges de liste virtualisée, et les trois se paient en silence.**
+
+- **Une liste virtualisée dans une `ScrollView` du même axe ne virtualise pas du
+  tout.** L'écran Entraînement est donc une `FlatList` dans *tous* ses états,
+  Activités compris — une liste vide avec un message, pas une autre sorte de
+  page. Ça règle du même coup l'échange de type d'élément entre deux états, que
+  la tranche 3 avait trouvé derrière la page de journée qui sautait.
+- **`ListHeaderComponent` reçoit un ÉLÉMENT, jamais une fonction écrite en
+  ligne.** Une flèche dans le JSX est un **nouveau type de composant à chaque
+  rendu**, donc React démonte et remonte le sous-arbre — lequel contient le
+  champ de recherche, qui perdrait le focus à chaque frappe. Même famille que le
+  `key` du carrousel : c'est l'identité qui décide du remontage.
+- **Le séparateur va DANS la rangée, jamais en `ItemSeparatorComponent`.** Un
+  `FlatList` le dessine entre les items, donc en frère des rangées — et un frère
+  ne porte pas les bords latéraux qu'elles peignent. La carte aurait un trou
+  dans ses deux bordures verticales à chaque séparateur.
+
+**Et la carte est reconstruite PAR ses rangées** (`core/ui/list-card.tsx`).
+Toutes les listes du projet dessinent une carte autour d'un `map` ; cette forme
+cesse de marcher dès qu'une liste est virtualisée, les rangées n'étant plus
+toutes là. Chaque rangée peint donc la surface et les deux bords, la première
+arrondit le haut, la dernière le bas. **Sans ombre** : une ombre est dessinée
+hors des limites d'une vue, donc une par rangée s'empilerait le long de chaque
+séparateur en une couture grise.
+
+**Le catalogue ne propose plus que ce qu'on n'a pas.** Les exercices déjà dans
+la bibliothèque étaient listés et désactivés, avec « Déjà là » à la place de la
+coche, pour qu'une seconde visite n'ait pas l'air d'aller tout dupliquer. Ce
+motif est parti avec le catalogue par défaut : à 552 installés d'office, les
+lister ferait de cet écran surtout une liste de choses sur lesquelles on ne peut
+rien faire. **La réponse à « est-ce que ça va dupliquer ? » est mieux donnée en
+ne proposant pas le doublon.** La soustraction se fait **avant** les filtres,
+pour qu'une puce ne propose jamais un muscle qui ne rend rien.
 
 **Le « + » est devenu une bifurcation, et le lien « Parcourir le catalogue » est
 supprimé.** C'étaient deux contrôles disant la même chose à deux endroits, et un

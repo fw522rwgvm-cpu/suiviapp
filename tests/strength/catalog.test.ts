@@ -5,6 +5,7 @@ import {
   MEDIA_SCHEME,
   catalogKeyOf,
   catalogMediaUri,
+  offerableCatalog,
 } from '../../src/features/strength/catalog/exercises';
 import { regionsForMuscle } from '../../src/features/strength/body-map/body-map';
 
@@ -173,5 +174,45 @@ describe('what this catalogue reveals about the slice 10 vocabulary', () => {
     const timed = EXERCISE_CATALOG.filter((entry) => entry.tracksDuration === true);
 
     expect(timed.length).toBeGreaterThan(0);
+  });
+});
+
+describe('what the catalogue may still offer', () => {
+  it('leaves out every entry the library already holds', () => {
+    const held = new Set(EXERCISE_CATALOG.slice(0, 5).map((entry) => entry.key));
+
+    const offered = offerableCatalog(held);
+
+    expect(offered).toHaveLength(EXERCISE_CATALOG.length - 5);
+    expect(offered.filter((entry) => held.has(entry.key))).toEqual([]);
+  });
+
+  it('offers everything to an empty library', () => {
+    expect(offerableCatalog(new Set())).toHaveLength(EXERCISE_CATALOG.length);
+  });
+
+  it('offers NOTHING once the library holds the whole catalogue', () => {
+    /**
+     * The state a default installation plus one trip through this screen can
+     * actually reach, so the screen has to have words for it — "Aucun exercice
+     * ne correspond" on an untouched search would read as a broken catalogue
+     * rather than as a library that already holds everything.
+     */
+    const all = new Set(EXERCISE_CATALOG.map((entry) => entry.key));
+
+    expect(offerableCatalog(all)).toEqual([]);
+  });
+
+  it('keeps the catalogue order, which is what an untouched list shows', () => {
+    // searchExercises re-ranks on a term, but a screen nobody has typed into
+    // shows this order. Filtering must not reshuffle it.
+    const held = new Set([EXERCISE_CATALOG[3]?.key ?? '']);
+
+    const offered = offerableCatalog(held).map((entry) => entry.key);
+    const expected = EXERCISE_CATALOG.filter((entry) => !held.has(entry.key)).map(
+      (entry) => entry.key,
+    );
+
+    expect(offered).toEqual(expected);
   });
 });
