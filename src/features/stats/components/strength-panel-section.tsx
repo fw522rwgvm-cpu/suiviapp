@@ -7,6 +7,9 @@ import { useMinimumVisible } from '@/core/ui/use-minimum-visible';
 import { Segmented } from '@/core/ui/segmented';
 import { Text } from '@/core/ui/text';
 import { useStrengthPanel } from '@/features/strength/data/session-queries';
+import { useWeightSeries } from '@/features/weight/data/weight-queries';
+import { smoothSeries } from '@/features/weight/domain/smoothing';
+import { bucketOf } from '@/core/db/date-bucket';
 import {
   calendarWeeks,
   panelPoints,
@@ -24,6 +27,7 @@ import { tallyMuscles, rankedMuscles } from '@/features/strength/domain/muscle-v
 import { durationText } from '@/features/strength/domain/session-text';
 import { SessionCalendar } from '@/features/strength/components/session-calendar';
 import { SessionSeriesChart } from '@/features/strength/components/session-series-chart';
+import { StrengthCrossChart } from './strength-cross-chart';
 import { BodyMapView } from '@/features/strength/components/body-map-view';
 import { StatCard } from './stat-card';
 import { PANEL_LOADING_MS } from '../domain/panel-loading';
@@ -127,6 +131,80 @@ export function StrengthPanelSection({
   );
   const muscles = useMemo(() => rankedMuscles(tally), [tally]);
 
+  /**
+   * The crossing grain — never per session, whatever the range says.
+   *
+   * A per-session volume against a weight that moves over weeks is two
+   * clouds; the question the crossed chart asks only has a shape once both
+   * are means. WeightCrossChart makes the same argument about crossing two
+   * raw series.
+   */
+  const crossGrain = drawn.grain === 'day' ? ('week' as const) : drawn.grain;
+
+  /**
+   * The weight series, read at the crossing grain, through the weight
+   * panel's OWN functions.
+   *
+   * Not a second spelling of "poids lissé": readWeightSeries densifies and
+   * buckets exactly as the weight tab does, and smoothSeries is the same
+   * mask. The two charts therefore draw the same curve for a given range
+   * rather than two plausible ones.
+   *
+   * No smoothing lead is asked for, and none is needed: weightRange's
+   * smoothingLead is zero above the daily grain, and this never asks for
+   * daily.
+   */
+  const weightRange = useMemo(
+    () => ({
+      from: drawn.from ?? drawn.to,
+      to: drawn.to,
+      days: drawn.days,
+      grain: crossGrain,
+      showRaw: false,
+    }),
+    [drawn.from, drawn.to, drawn.days, crossGrain],
+  );
+  const weights = useWeightSeries(weightRange);
+
+  /**
+   * The two series on ONE axis, built from the weight read's dense buckets.
+   *
+   * The volume is keyed by `bucketOf` — the very function readWeightSeries
+   * groups by — which is what makes the alignment structural rather than
+   * careful. Two series of one chart landing on buckets six days apart is the
+   * defect core/db/date-bucket exists to prevent, and here it would put a
+   * training week beside the wrong weight.
+   */
+  const cross = useMemo(() => {
+    const rows = weights.data ?? [];
+    const smoothed = smoothSeries(
+      rows.map((row) => row.date),
+      rows.map((row) => row.raw),
+    );
+
+    const volumeByBucket = new Map<string, number[]>();
+    for (const row of sessions) {
+      if (row.volumeKg === null) continue;
+      const key = bucketOf(row.date, crossGrain);
+      const held = volumeByBucket.get(key);
+      if (held === undefined) volumeByBucket.set(key, [row.volumeKg]);
+      else held.push(row.volumeKg);
+    }
+
+    return {
+      dates: smoothed.map((point) => point.date),
+      smoothedWeightKg: smoothed.map((point) => point.smoothed),
+      volumeKg: smoothed.map((point) => {
+        const held = volumeByBucket.get(point.date);
+        // A bucket with no session has no volume — null, never zero, so the
+        // line breaks rather than dipping to the floor through a week nobody
+        // trained.
+        if (held === undefined || held.length === 0) return null;
+        return held.reduce((total, value) => total + value, 0) / held.length;
+      }),
+    };
+  }, [weights.data, sessions, crossGrain]);
+
   const waiting = useMinimumVisible(panel.isPending, PANEL_LOADING_MS);
   useEffect(() => {
     if (!waiting) onReady?.();
@@ -204,6 +282,28 @@ export function StrengthPanelSection({
           */}
           <StatCard title="Muscles travaillés">
             <BodyMapView muscles={muscles} volume={tally} />
+          </StatCard>
+
+          {/*
+            The crossed chart of specs 10.6, last because it is the one that
+            needs the two above it to have been read first.
+
+            RESERVE, WRITTEN RATHER THAN DISCOVERED: the volume plotted here is
+            the MEAN per session, consistent with the volume chart above and
+            with D9's refusal to sum anything that is not a counter. It is
+            therefore blind to training MORE OFTEN at the same per-session
+            volume — two sessions a week and five draw the same line. Weekly
+            tonnage is the first remedy if it reads wrong in use, and it is a
+            one-line change; it is not taken now because a sum whose buckets
+            differ in size at the ends of a range is its own misreading.
+          */}
+          <StatCard title="Volume et poids">
+            <StrengthCrossChart
+              dates={cross.dates}
+              volumeKg={cross.volumeKg}
+              smoothedWeightKg={cross.smoothedWeightKg}
+              caption={`Moyenne par ${crossGrain === 'week' ? 'semaine' : 'mois'}`}
+            />
           </StatCard>
         </>
       )}
