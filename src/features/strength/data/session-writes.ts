@@ -333,6 +333,36 @@ export function setSetRir(
 }
 
 /**
+ * Changes what KIND of set this is, mid-session (specs 14.39).
+ *
+ * ## WHY IT HAD TO BE POSSIBLE HERE AND NOT ONLY IN THE ROUTINE
+ *
+ * The routine table has cycled the type since slice 10 — tap the first cell and
+ * it goes warm-up, work, drop set, long. The session did not, so a set you
+ * decided on the spot to turn into a drop set had to stay labelled "work".
+ *
+ * That is not cosmetic: specs 10.1 counts volume on WORKING sets only, and
+ * specs 10.4 reads "toutes les séries de travail" to decide a progression. A
+ * warm-up recorded as work inflates both, quietly and for ever.
+ *
+ * Immediate, like validating and like the RIR: it is one decision, not a stream
+ * of keystrokes (D12).
+ */
+export function setSetType(
+  db: AppDatabase,
+  setId: SessionSetId,
+  sessionId: SessionId,
+  setType: SetType,
+  clock: WriteClock,
+): void {
+  db.transaction((tx) => {
+    tx.update(sessionSet).set({ setType }).where(eq(sessionSet.id, setId)).run();
+
+    touchSession(tx, sessionId, clock);
+  });
+}
+
+/**
  * Saves what is being typed — the deferred rhythm of D12.
  *
  * > Écriture différée d'une fraction de seconde pour les champs en cours de

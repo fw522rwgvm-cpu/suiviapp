@@ -54,6 +54,30 @@ export function fixedReps(target: SetTarget): number | null {
 }
 
 /**
+ * The repetitions a set records when nothing was typed (specs 14.39).
+ *
+ * ## THE TOP OF THE RANGE, WHICH REVERSES SLICE 11
+ *
+ * The note below recordSet used to argue the opposite, and it argued it well:
+ * "6 à 8" prescribes no number, and picking the TOP fires the progression
+ * suggestion of specs 10.4 — which proposes a heavier load next week because
+ * somebody validated a set without saying they hit eight.
+ *
+ * REQUESTED REVERSED, and the consequence is accepted rather than argued away:
+ * **a range left untouched will now propose a progression.** That is the price,
+ * and it is the right way round for the person paying it — the common case is
+ * doing the set as written, where the top is what happened and typing it is a
+ * tap on every set of every session. The rare case is falling short, and it is
+ * already the case where you reach for the field.
+ *
+ * ONE END ALONE IS NOT A RANGE, and it still answers: "8 minimum" and "8
+ * maximum" both record eight, which is what isFixedReps already said.
+ */
+export function defaultReps(target: SetTarget): number | null {
+  return target.repsMax ?? target.repsMin;
+}
+
+/**
  * What entering a RIR records, given what was typed and what was prescribed.
  *
  * > Les champs portent en texte indicatif les valeurs attendues de la routine ;
@@ -67,22 +91,15 @@ export function fixedReps(target: SetTarget): number | null {
  * instead would store "something happened, we do not know what", on the most
  * common path there is, and the volume of specs 10.1 would silently miss it.
  *
- * ## EXCEPT A RANGE, WHICH HAS NO SINGLE ANSWER — AND THAT IS NOT PEDANTRY
+ * ## A RANGE FILLS ITSELF TOO SINCE specs 14.39
  *
- * "6 à 8" prescribes no number, so there is nothing to fall back to. Picking
- * the TOP would be the tempting default and it is the one that must not be
- * taken: specs 10.4 fires the progression suggestion when every working set
- * reaches "le haut de la plage", so auto-filling the top proposes a heavier
- * load next week because the user tapped a RIR — a plausible, wrong figure
- * arrived at without anybody saying they hit eight. Picking the bottom is the
- * mirror image, under-reporting the volume instead.
+ * Slice 11 refused to: "6 à 8" prescribes no number, and picking the top fires
+ * the progression rule of specs 10.4 on a set nobody described. Requested
+ * reversed — see defaultReps for the trade and the consequence that comes with
+ * it.
  *
- * So a range with nothing typed cannot be validated, and needsReps() says so
- * before the RIR row is ever offered. It costs one tap on a set whose
- * repetitions genuinely varied, which is the set where the number matters most.
- *
- * The LOAD has no such ambiguity — a target load is one number — so it fills
- * itself, and so does a duration target.
+ * What is left of that reasoning is the case it was really about: a set with NO
+ * target at all, added live. There the field is the only source there is.
  */
 export function needsReps(target: SetTarget, typed: TypedSet): boolean {
   // A timed exercise is answered by its duration, never by repetitions.
@@ -90,13 +107,12 @@ export function needsReps(target: SetTarget, typed: TypedSet): boolean {
   if (typed.reps !== null) return false;
   // No target at all is the free case: a set added live has nothing prescribed,
   // so the number has to come from the user.
-  if (target.repsMin === null && target.repsMax === null) return true;
-  return !isFixedReps(target);
+  return target.repsMin === null && target.repsMax === null;
 }
 
 export function recordSet(target: SetTarget, typed: TypedSet, rir: number): RecordedSet {
   return {
-    reps: typed.reps ?? fixedReps(target),
+    reps: typed.reps ?? defaultReps(target),
     loadKg: typed.loadKg ?? target.loadKg,
     durationSeconds: typed.durationSeconds ?? target.durationSeconds,
     rir,

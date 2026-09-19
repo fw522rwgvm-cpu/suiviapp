@@ -148,3 +148,52 @@ export function rirLabel(rir: number): string {
 export function resumeText(startedLabel: string, done: number, total: number): string {
   return `Séance du ${startedLabel}, ${progressText(done, total)} séries.`;
 }
+
+/**
+ * What the PRÉCÉDENT column says for one set (specs 14.39).
+ *
+ * > Format est "50kg x 5" et sur une ligne en dessous "RIR 2".
+ *
+ * ## TWO LINES, AND THE SECOND ONE CAN BE ABSENT
+ *
+ * The RIR is returned separately rather than joined in, because the column
+ * draws it in its own colour and because a previous set may have none — a
+ * session imported from an archive, or one recorded before the RIR became a
+ * column of its own. `null` there means "no line", never an empty one: a blank
+ * second row would make the column look ragged for a reason nobody can see.
+ *
+ * ## NOTHING AT ALL IS AN EM DASH, NOT AN EMPTY CELL
+ *
+ * A blank where a figure belongs reads as a rendering fault. A dash says the
+ * question was asked and the answer is nothing — which is the ordinary state of
+ * the first session of every routine.
+ *
+ * ## A TIMED SET STATES ITS TIME AND NOTHING ELSE
+ *
+ * "45 s" rather than "0kg × 45": a plank has no load and no repetitions, and
+ * inventing a multiplication would be a shape that means nothing.
+ */
+export function previousText(
+  previous: {
+    loadKg: number | null;
+    reps: number | null;
+    durationSeconds: number | null;
+    rir: number | null;
+  } | null,
+): { line: string; rir: string | null } {
+  if (previous === null) return { line: '—', rir: null };
+
+  const rir = previous.rir === null ? null : `RIR ${rirLabel(previous.rir)}`;
+
+  if (previous.durationSeconds !== null) {
+    return { line: `${previous.durationSeconds} s`, rir };
+  }
+
+  const load = previous.loadKg === null ? null : `${formatKg(previous.loadKg)}kg`;
+  const reps = previous.reps === null ? null : `${previous.reps}`;
+
+  if (load === null && reps === null) return { line: '—', rir };
+  if (load === null) return { line: `× ${reps}`, rir };
+  if (reps === null) return { line: load, rir };
+  return { line: `${load} × ${reps}`, rir };
+}

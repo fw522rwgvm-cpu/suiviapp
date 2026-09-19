@@ -66,40 +66,50 @@ describe('a fixed target fills itself', () => {
   });
 });
 
-describe('a range does NOT fill itself, and that is the decision', () => {
-  it('asks for the repetitions before a RIR can validate the set', () => {
-    expect(needsReps(target({ repsMin: 6, repsMax: 8 }), nothingTyped)).toBe(true);
+describe('a range FILLS ITSELF with its top, which reverses slice 11', () => {
+  it('does not ask for the repetitions any more', () => {
+    expect(needsReps(target({ repsMin: 6, repsMax: 8 }), nothingTyped)).toBe(false);
   });
 
-  it('stops asking once they are typed', () => {
-    expect(
-      needsReps(target({ repsMin: 6, repsMax: 8 }), { reps: 7, loadKg: null, durationSeconds: null }),
-    ).toBe(false);
-  });
-
-  it('NEVER GUESSES THE TOP OF THE RANGE', () => {
+  it('RECORDS THE TOP OF THE RANGE, and this test used to assert the opposite', () => {
     /**
-     * THE ASSERTION THAT GUARDS THE PLAUSIBLE, WRONG NUMBER.
+     * THE REVERSAL, WITH ITS PRICE WRITTEN NEXT TO IT.
      *
-     * Filling a range with its top is the tempting default — it is what "did
-     * the set as written" feels like — and specs 10.4 makes it the one value
-     * that must not be guessed:
+     * This assertion read "NEVER GUESSES THE TOP OF THE RANGE", and the
+     * reasoning was sound: specs 10.4 fires the progression suggestion when
      *
-     * > Condition : sur la séance la plus récente comportant cet exercice,
-     * > toutes les séries de travail ont atteint le haut de la plage.
+     * > toutes les séries de travail ont atteint le haut de la plage
      *
-     * So auto-filling the top proposes a heavier load next week because
-     * somebody tapped a RIR. Nobody said they hit eight. Slice 12 reads this
-     * column, which is why the test is here and not there.
+     * so filling the top proposes a heavier load next week because somebody
+     * validated a set without saying they hit eight.
      *
-     * The bottom is the mirror image and equally refused: it under-reports the
-     * volume of specs 10.1 for the same non-reason.
+     * Requested reversed (specs 14.39). **The consequence is accepted, not
+     * argued away: a range left untouched will now propose a progression.**
+     * The trade is which case pays — doing the set as written is the common
+     * one, and it used to cost a tap on every set of every session; falling
+     * short is the rare one, and it is already where you reach for the field.
+     *
+     * Slice 12 reads this column, which is why the test lives here rather than
+     * there: it is the one place that can say what the column will contain.
      */
     const ranged = target({ repsMin: 6, repsMax: 8 });
 
-    expect(recordSet(ranged, nothingTyped, 2).reps).toBeNull();
-    expect(recordSet(ranged, nothingTyped, 2).reps).not.toBe(8);
-    expect(recordSet(ranged, nothingTyped, 2).reps).not.toBe(6);
+    expect(recordSet(ranged, nothingTyped, 2).reps).toBe(8);
+  });
+
+  it('records what was typed when it was typed, top or not', () => {
+    // The field still wins. The default is what happens when nobody said
+    // anything, never a value that overrides somebody who did.
+    const ranged = target({ repsMin: 6, repsMax: 8 });
+
+    expect(recordSet(ranged, { reps: 6, loadKg: null, durationSeconds: null }, 2).reps).toBe(6);
+  });
+
+  it('answers one open end with the number it states', () => {
+    // "8 minimum" and "8 maximum" are the same instruction to somebody standing
+    // under a bar, and both record eight.
+    expect(recordSet(target({ repsMax: null }), nothingTyped, 2).reps).toBe(8);
+    expect(recordSet(target({ repsMin: null }), nothingTyped, 2).reps).toBe(8);
   });
 
   it('still fills the load, which has only one answer', () => {

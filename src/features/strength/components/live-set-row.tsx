@@ -3,13 +3,15 @@ import { SymbolView } from 'expo-symbols';
 import { Text } from '@/core/ui/text';
 import { SwipeToDeleteRow } from '@/core/ui/swipe-to-delete-row';
 import { useTheme } from '@/core/theme';
-import type { SessionSetView } from '../data/session-reads';
+import { SET_TYPES } from '@/core/db/schema';
+import type { PreviousSet, SessionSetView } from '../data/session-reads';
 import { setTypeShort } from '../domain/routine-text';
 import { needsReps, type SetTarget, type TypedSet } from '../domain/session-set';
 import {
   loadPlaceholder,
   repsPlaceholder,
   durationPlaceholder,
+  previousText,
   rirLabel,
 } from '../domain/session-text';
 import { SetCell, SetChip, setColumns } from './set-cell';
@@ -61,9 +63,11 @@ export function LiveSetRow({
   round,
   letter,
   typed,
+  previous,
   active,
   onActivate,
   onType,
+  onCycleType,
   onOpenRir,
   onValidate,
   onReopen,
@@ -73,9 +77,12 @@ export function LiveSetRow({
   round: number;
   letter: string | null;
   typed: TypedSet;
+  /** What this same set did last time the routine was done. `null` when never. */
+  previous: PreviousSet | null;
   active: boolean;
   onActivate: () => void;
   onType: (typed: TypedSet) => void;
+  onCycleType: (next: (typeof SET_TYPES)[number]) => void;
   onOpenRir: () => void;
   onValidate: (rir: number) => void;
   onReopen: () => void;
@@ -119,6 +126,8 @@ export function LiveSetRow({
   const effectiveRir = set.actualRir ?? target.rir;
   const chosen = set.actualRir !== null;
 
+  const history = previousText(previous);
+
   const askReps = !skipped && needsReps(target, typed);
   const askRir = !skipped && effectiveRir === null;
   const canValidate = !askReps && !askRir;
@@ -126,8 +135,43 @@ export function LiveSetRow({
   const content = (
     <View>
       <View style={styles.row}>
-        <View style={setColumns.colSet}>
+        {/*
+          THE FIRST CELL STATES THE TYPE AND CHANGES IT, exactly as the routine
+          table has since slice 10.
+
+          It is not decoration: specs 10.1 counts volume on WORKING sets only,
+          and specs 10.4 reads "toutes les séries de travail" to decide a
+          progression. A warm-up you decided on mid-session and could not
+          relabel would inflate both, quietly and for ever.
+        */}
+        <Pressable
+          onPress={() => onCycleType(nextSetType(set.setType))}
+          disabled={skipped}
+          accessibilityRole="button"
+          accessibilityLabel={`Série ${label}, changer le type`}
+          hitSlop={4}
+          style={({ pressed }) => [setColumns.colSet, { opacity: pressed ? 0.5 : 1 }]}
+        >
           <SetChip label={label} accented={set.setType !== 'work'} />
+        </Pressable>
+
+        {/*
+          PRÉCÉDENT — what this same set did the last time this routine was
+          performed. Between the number and the load, because it is what you
+          read to decide the load you are about to type.
+        */}
+        <View style={setColumns.colPrev}>
+          <Text
+            style={[styles.prevLine, { color: theme.colors.textMuted }]}
+            numberOfLines={1}
+          >
+            {history.line}
+          </Text>
+          {history.rir === null ? null : (
+            <Text style={[styles.prevRir, { color: theme.colors.textFaint }]} numberOfLines={1}>
+              {history.rir}
+            </Text>
+          )}
         </View>
 
         <SetCell
@@ -188,20 +232,33 @@ export function LiveSetRow({
             { opacity: pressed ? 0.5 : 1 },
           ]}
         >
-          <Text
+          {/*
+            A BUTTON THAT LOOKS LIKE ONE, not a number you have to discover is
+            tappable. Filled once a value has been chosen, outlined while it is
+            only the target the placeholder promises — the same distinction the
+            fields make between typed and indicative, in the only shape a cell
+            this narrow can carry.
+          */}
+          <View
             style={[
-              setColumns.cellText,
+              styles.rirChip,
               {
-                color: skipped
-                  ? theme.colors.textFaint
-                  : chosen
-                    ? theme.colors.text
-                    : theme.colors.textFaint,
+                backgroundColor: chosen ? theme.colors.accent : 'transparent',
+                borderColor: chosen ? theme.colors.accent : theme.colors.border,
+                borderRadius: theme.radius.sm,
+                opacity: skipped ? 0.4 : 1,
               },
             ]}
           >
-            {effectiveRir === null ? '—' : rirLabel(effectiveRir)}
-          </Text>
+            <Text
+              style={[
+                styles.rirLabel,
+                { color: chosen ? theme.colors.onAccent : theme.colors.textMuted },
+              ]}
+            >
+              {effectiveRir === null ? '—' : rirLabel(effectiveRir)}
+            </Text>
+          </View>
         </Pressable>
 
         {/*
@@ -288,7 +345,29 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     minHeight: 44,
   },
-  rirCell: { alignItems: 'center', justifyContent: 'center', paddingVertical: 8 },
+  rirCell: { alignItems: 'center', justifyContent: 'center', paddingVertical: 6 },
+  rirChip: {
+    minWidth: 40,
+    paddingHorizontal: 6,
+    paddingVertical: 5,
+    alignItems: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  rirLabel: { fontSize: 14, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  prevLine: { fontSize: 12, fontVariant: ['tabular-nums'] },
+  prevRir: { fontSize: 11, fontVariant: ['tabular-nums'] },
   checkCell: { alignItems: 'center', justifyContent: 'center' },
   hint: { fontSize: 13, paddingHorizontal: 4, paddingBottom: 8 },
 });
+
+/**
+ * The next kind in the cycle, wrapping round.
+ *
+ * Derived from SET_TYPES rather than written out, so a fifth kind joins the
+ * cycle by existing — the shape PORTION_NAMES settled in slice 3: data first,
+ * everything else derived from it.
+ */
+function nextSetType(current: (typeof SET_TYPES)[number]): (typeof SET_TYPES)[number] {
+  const index = SET_TYPES.indexOf(current);
+  return SET_TYPES[(index + 1) % SET_TYPES.length] ?? SET_TYPES[0];
+}

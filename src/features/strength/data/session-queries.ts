@@ -14,8 +14,10 @@ import { readsFrom } from '@/core/query';
 import {
   listSessions,
   readActiveSession,
+  readPreviousSets,
   readPendingNotes,
   readSession,
+  type PreviousSet,
   type SessionListItem,
   type SessionView,
 } from './session-reads';
@@ -31,6 +33,7 @@ import {
   saveTypedSet,
   setSessionNotes,
   setSetRir,
+  setSetType,
   setSkipped,
   startSession,
 } from './session-writes';
@@ -57,6 +60,8 @@ export const sessionKeys = {
   one: (id: SessionId | null) => ['session', 'one', id] as const,
   notes: (ids: readonly ExerciseId[]) => ['session', 'notes', [...ids].sort()] as const,
   list: () => ['session', 'list'] as const,
+  previous: (routineId: string | null, sessionId: SessionId) =>
+    ['session', 'previous', routineId, sessionId] as const,
 };
 
 /**
@@ -171,6 +176,47 @@ export function useReopenSet() {
     mutationFn: (input: { setId: Parameters<typeof reopenSet>[1]; sessionId: SessionId }) =>
       Promise.resolve(
         reopenSet(getAppDatabase(), input.setId, input.sessionId, { now: Date.now() }),
+      ),
+  });
+}
+
+/**
+ * What each set did the last time this routine was performed (specs 14.39).
+ *
+ * Keyed by BOTH the routine and the current session: the routine decides which
+ * history is read, and the session is what has to be excluded from it. A key
+ * missing the session id would serve the running session its own sets the
+ * moment it is finished.
+ *
+ * Declares `session` among its tables as well as the sets, because finishing a
+ * session is what makes it become somebody's "previous".
+ */
+export function usePreviousSets(routineId: string | null, sessionId: SessionId | null) {
+  return useQuery<Map<string, PreviousSet>>({
+    queryKey: sessionKeys.previous(routineId, sessionId as SessionId),
+    queryFn: () =>
+      readPreviousSets(
+        getAppDatabase(),
+        routineId === null ? null : (routineId as never),
+        sessionId as SessionId,
+      ),
+    enabled: sessionId !== null,
+    meta: readsFrom(session, sessionBlock, sessionSet),
+  });
+}
+
+/** Changing the kind of a set mid-session (specs 14.39). */
+export function useSetSetType() {
+  return useMutation({
+    mutationFn: (input: {
+      setId: Parameters<typeof setSetType>[1];
+      sessionId: SessionId;
+      setType: Parameters<typeof setSetType>[3];
+    }) =>
+      Promise.resolve(
+        setSetType(getAppDatabase(), input.setId, input.sessionId, input.setType, {
+          now: Date.now(),
+        }),
       ),
   });
 }

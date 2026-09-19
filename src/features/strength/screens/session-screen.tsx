@@ -1,13 +1,20 @@
 import { useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
+import { useHeaderHeight } from 'expo-router/build/react-navigation/elements';
 import { SymbolView } from 'expo-symbols';
 import { Text } from '@/core/ui/text';
 import { LoadingDots } from '@/core/ui/loading-dots';
 import { ListSeparator } from '@/core/ui/list-separator';
 import { useTheme } from '@/core/theme';
-import type { ExerciseId, SessionSetId } from '@/core/db/schema';
-import type { SessionBlockView, SessionSetView, SessionView } from '../data/session-reads';
+import type { ExerciseId, SessionSetId, SetType } from '@/core/db/schema';
+import { previousFor } from '../data/session-reads';
+import type {
+  PreviousSet,
+  SessionBlockView,
+  SessionSetView,
+  SessionView,
+} from '../data/session-reads';
 import {
   useActiveSession,
   useAddRound,
@@ -15,8 +22,10 @@ import {
   useFinishSession,
   usePendingNotes,
   useRemoveSet,
+  usePreviousSets,
   useReopenSet,
   useSetSetRir,
+  useSetSetType,
   useSkipSet,
 } from '../data/session-queries';
 import { useDeferredSetWrites } from '../hooks/use-deferred-set-writes';
@@ -27,6 +36,8 @@ import { elapsedText, progressText, restText } from '../domain/session-text';
 import { setColumns } from '../components/set-cell';
 import { LiveSetRow } from '../components/live-set-row';
 import { RirPicker } from '../components/rir-picker';
+import { ExerciseDrawing } from '../components/exercise-drawing';
+import { useExercises } from '../data/exercise-queries';
 
 /**
  * The live session (specs 10.3).
@@ -84,6 +95,7 @@ function LiveSession({ session, onLeave }: { session: SessionView; onLeave: () =
   const complete = useCompleteSet();
   const reopen = useReopenSet();
   const setRir = useSetSetRir();
+  const setType = useSetSetType();
   const skip = useSkipSet();
   const remove = useRemoveSet();
   const addRound = useAddRound();
@@ -123,7 +135,25 @@ function LiveSession({ session, onLeave }: { session: SessionView; onLeave: () =
   const [rirFor, setRirFor] = useState<SessionSetId | null>(null);
   const rirTarget = rirFor === null ? null : (sets.find((set) => set.id === rirFor) ?? null);
 
+  const headerHeight = useHeaderHeight();
   const liveMs = useLiveDuration(session.segments);
+
+  /** What each set did the last time this routine was performed (specs 14.39). */
+  const previous = usePreviousSets(session.routineId, session.id);
+
+  /**
+   * exercise id -> its medium, for the thumbnail beside each block title.
+   *
+   * From the library query the application already holds, not a read per block:
+   * that is the per-row cost slice 4 refused when quick-add reached the whole
+   * library. A session set carries a frozen NAME and no medium, deliberately —
+   * history does not change when a picture does.
+   */
+  const library = useExercises();
+  const media = useMemo(
+    () => new Map((library.data ?? []).map((item) => [String(item.id), item.mediaUri])),
+    [library.data],
+  );
   const rest = useRestTimer(session.id, session.blocks);
 
   function typedFor(set: SessionSetView): TypedSet {
@@ -222,7 +252,23 @@ function LiveSession({ session, onLeave }: { session: SessionView; onLeave: () =
         }}
       />
 
-      <View style={[styles.page, { backgroundColor: theme.colors.background }]}>
+      {/*
+        THE INSET IS DECLARED, NOT INHERITED — slice 3's rule, and pinning the
+        band is exactly what made it necessary.
+
+        `contentInsetAdjustmentBehavior="automatic"` pushed the content under the
+        transparent header while the band was the first thing IN the scroller.
+        Outside it, nothing does: the band was drawn behind the title and the
+        Terminer button. The scroller keeps "never" and the page states the
+        padding, which is the arrangement slice 3 settled after the carousel
+        overshot three times.
+      */}
+      <View
+        style={[
+          styles.page,
+          { backgroundColor: theme.colors.background, paddingTop: headerHeight },
+        ]}
+      >
         {/*
           The upper band of specs 10.3: elapsed time and sets done over total.
           Two figures and nothing else — it is read between two sets, by someone
@@ -283,6 +329,7 @@ function LiveSession({ session, onLeave }: { session: SessionView; onLeave: () =
 
         <ScrollView
           contentContainerStyle={styles.content}
+          contentInsetAdjustmentBehavior="never"
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
         >
@@ -291,10 +338,19 @@ function LiveSession({ session, onLeave }: { session: SessionView; onLeave: () =
               key={block.id}
               block={block}
               notes={notes.data ?? new Map()}
+              media={media}
+              previous={previous.data ?? new Map()}
               activeSetId={activeSetId}
               typedFor={typedFor}
               onActivate={(id) => setPinned(id)}
               onType={onType}
+              onCycleType={(set, next) =>
+                setType.mutate({
+                  setId: set.id as SessionSetId,
+                  sessionId: session.id,
+                  setType: next,
+                })
+              }
               onOpenRir={(set) => setRirFor(set.id as SessionSetId)}
               onValidate={onValidate}
               onReopen={(set) =>
@@ -368,10 +424,13 @@ function Figure({ label, value }: { label: string; value: string }) {
 function BlockCard({
   block,
   notes,
+  media,
+  previous,
   activeSetId,
   typedFor,
   onActivate,
   onType,
+  onCycleType,
   onOpenRir,
   onValidate,
   onReopen,
@@ -381,10 +440,14 @@ function BlockCard({
 }: {
   block: SessionBlockView;
   notes: Map<string, string[]>;
+  /** exercise id -> its medium, for the thumbnail beside each title. */
+  media: ReadonlyMap<string, string | null>;
+  previous: ReadonlyMap<string, PreviousSet>;
   activeSetId: string | null;
   typedFor: (set: SessionSetView) => TypedSet;
   onActivate: (id: SessionSetId) => void;
   onType: (set: SessionSetView, typed: TypedSet) => void;
+  onCycleType: (set: SessionSetView, next: SetType) => void;
   onOpenRir: (set: SessionSetView) => void;
   onValidate: (set: SessionSetView, rir: number) => void;
   onReopen: (set: SessionSetView) => void;
@@ -452,7 +515,19 @@ function BlockCard({
               disabled={item.id === null}
               onPress={() => router.push(`/training/exercise/${item.id ?? ''}`)}
               accessibilityRole={item.id === null ? 'text' : 'link'}
+              style={styles.titleRow}
             >
+              {/*
+                The same thumbnail the library and the routine page draw, one
+                pose. It costs no query: the exercise list is already cached,
+                and a read per block is the per-row cost slice 4 refused.
+              */}
+              <View style={styles.titleThumb}>
+                <ExerciseDrawing
+                  mediaUri={item.id === null ? null : (media.get(String(item.id)) ?? null)}
+                  height={32}
+                />
+              </View>
               <Text
                 style={[
                   styles.title,
@@ -503,6 +578,9 @@ function BlockCard({
           <Text style={[styles.headCell, setColumns.colSet, { color: theme.colors.textMuted }]}>
             {superset ? 'Tour' : 'Série'}
           </Text>
+          <Text style={[styles.headCell, setColumns.colPrev, { color: theme.colors.textMuted }]}>
+            Précéd.
+          </Text>
           <Text style={[styles.headCell, setColumns.colValue, { color: theme.colors.textMuted }]}>
             kg
           </Text>
@@ -530,7 +608,9 @@ function BlockCard({
               typed={typedFor(set)}
               active={activeSetId === set.id}
               onActivate={() => onActivate(set.id as SessionSetId)}
+              previous={previousFor(previous, set)}
               onType={(typed) => onType(set, typed)}
+              onCycleType={(next) => onCycleType(set, next)}
               onOpenRir={() => onOpenRir(set)}
               onValidate={(rir) => onValidate(set, rir)}
               onReopen={() => onReopen(set)}
@@ -567,6 +647,10 @@ const styles = StyleSheet.create({
   // Outside the scroller now, so it carries the margin the content container
   // used to give it.
   pinnedBand: { marginHorizontal: 16, marginTop: 16, marginBottom: 4 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  // A fixed width, so a photograph and the substitute leave the names on one
+  // column — the rule every other list in this feature follows.
+  titleThumb: { width: 44 },
   centre: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   band: {
     flexDirection: 'row',

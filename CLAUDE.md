@@ -63,7 +63,7 @@ L'application doit tolérer un arrêt forcé à tout moment sans perte.
 ## État du projet
 Tranches 0 à 11 livrées. La tranche 9 (notifications) **clôt la V2** ; les
 tranches 10 (exercices et routines) et 11 (séance en direct) **ouvrent la V3**.
-**1658 tests verts** sous les trois fuseaux, `tsc` vert, bundle produit.
+**1675 tests verts** sous les trois fuseaux, `tsc` vert, bundle produit.
 
 **La tranche 11 ne demande AUCUN cycle CI, et c'est vérifiable avant de
 commencer** : aucune dépendance n'entre. `expo-notifications` est dans le
@@ -5007,6 +5007,50 @@ premier voudrait dire que le même silence compte au début et pas au milieu.
 d'au plus trente minutes. C'est juste, et il faut quelqu'un qui regarde cet
 écran trente minutes sans rien écrire pour le voir. Plafonner la queue au seuil
 montrerait une demi-heure d'entraînement qui n'a pas eu lieu.
+
+**La colonne PRÉCÉDENT, et la règle d'appariement qui décide tout.** Elle
+montre ce que la **même série** a fait la dernière fois que cette routine a été
+faite — « 50kg × 5 », et en dessous « RIR 2 ».
+
+L'appariement est `(exercice, set_index)`, **jamais la position** : la position
+est l'ordre d'exécution et elle bouge — ajouter un exercice en cours de séance,
+retirer une série, réordonner un superset la décalent tous. Une colonne qui
+apparierait discrètement un développé couché avec le curl de la semaine dernière
+parce qu'une ligne a été insérée au-dessus est le genre de faux plausible et
+invisible que ce projet traite comme grave.
+
+**Et `previousFor` essaie l'id puis le nom figé**, ce que la première version ne
+faisait pas. Supprimer un exercice annule son id sur toutes les séries qui l'ont
+utilisé ; qui le recrée obtient un id neuf, donc un appariement par id seul
+afficherait une colonne vide pour du travail réellement fait. Une seule fonction
+porte la règle, parce qu'une seconde écriture se tromperait précisément sur le
+cas que personne n'essaie à la main.
+
+**Un défaut trouvé dans le test avant de l'être dans le code** : `anExercise()`
+crée un exercice **neuf** à chaque appel, donc trois séances construites par
+trois appels portaient trois exercices différents et la colonne ne trouvait rien
+**en ayant l'air parfaitement correcte**. C'est exactement le défaut que ce test
+existe pour attraper, rencontré d'abord dans le test lui-même.
+
+**Une plage de répétitions se remplit désormais avec son HAUT, et la conséquence
+est acceptée plutôt qu'écartée.** La tranche 11 le refusait explicitement, et
+l'argument était juste : le §10.4 déclenche la progression quand toutes les
+séries de travail atteignent le haut de la plage, donc **une plage laissée
+intacte proposera une charge plus lourde la semaine suivante**. L'échange est
+dans le bon sens pour qui le paie : faire la série comme écrit est le cas
+courant et coûtait un toucher à chaque série de chaque séance ; être en dessous
+est le cas rare, et c'est déjà là qu'on tend la main vers le champ.
+
+**Le type de série se change en direct**, et ce n'est pas cosmétique : le §10.1
+ne compte le volume que sur les séries de travail et le §10.4 lit « toutes les
+séries de travail ». Un échauffement enregistré en travail gonfle les deux, en
+silence et pour toujours.
+
+**Régression introduite la veille et corrigée** : épingler le bloc de durée lui
+a fait perdre `contentInsetAdjustmentBehavior="automatic"`, donc il se dessinait
+**derrière le titre et le bouton Terminer**. La page déclare son encart et le
+défilement passe en `never` — la sortie que la tranche 3 avait déjà trouvée,
+appliquée à un cas qu'elle n'avait pas prévu.
 
 **La table de séance s'est scindée, et ça renverse une décision de tête de la
 tranche.** « RIR valide la série » était dans l'énoncé même de la tranche 11, et

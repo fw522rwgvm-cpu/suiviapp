@@ -25,17 +25,20 @@ import {
   reopenSet,
   saveTypedSet,
   setSetRir,
+  setSetType,
   setSkipped,
   startSession,
   addExerciseNote,
 } from '../../src/features/strength/data/session-writes';
 import {
   listSessions,
+  previousFor,
   readActiveSession,
   readPendingNotes,
+  readPreviousSets,
   readSession,
 } from '../../src/features/strength/data/session-reads';
-import { createExercise } from '../../src/features/strength/data/exercise-writes';
+import { createExercise, deleteExercise } from '../../src/features/strength/data/exercise-writes';
 import { emptyExerciseDraft } from '../../src/features/strength/domain/exercise-draft';
 import { openTestDatabase, type TestDatabase } from '../helpers/database';
 
@@ -812,5 +815,222 @@ describe('recording a RIR on its own', () => {
     // Still done, so still counted and still anchoring its rest.
     expect(set?.completedAt).toBe(START + 5 * MINUTE);
     expect(readSession(db.db, id)?.doneSets).toBe(1);
+  });
+});
+
+describe('what each set did last time', () => {
+  const ROUTINE = 'routine-abc' as RoutineId;
+  const OTHER = 'routine-xyz' as RoutineId;
+
+  /**
+   * ONE exercise for every session here, which is the whole point.
+   *
+   * `anExercise()` creates a new one each call, so three sessions built from
+   * three calls would carry three different ids — and the column would find
+   * nothing while looking perfectly correct. The first version of this test did
+   * exactly that and failed, which is the defect it is meant to catch.
+   */
+  let sharedExercise: ExerciseId;
+
+  function startFor(routineId: RoutineId | null, now: number): SessionId {
+    const result = startSession(
+      db.db,
+      { date: toLocalDate('2026-09-18'), routineId, plan: planWith(sharedExercise) },
+      { now },
+    );
+    if (!result.ok) throw new Error('expected a fresh session');
+    return result.id;
+  }
+
+  beforeEach(() => {
+    sharedExercise = anExercise();
+  });
+
+  function finishWith(id: SessionId, loadKg: number, reps: number, rir: number, now: number): void {
+    completeSet(
+      db.db,
+      firstSetOf(id) as never,
+      id,
+      { reps, loadKg, durationSeconds: null, rir },
+      { now },
+    );
+    finishSession(db.db, id, { now: now + MINUTE });
+  }
+
+  it('reads the last DONE session of the SAME routine', () => {
+    const older = startFor(ROUTINE, START);
+    finishWith(older, 60, 8, 3, START + MINUTE);
+
+    const newer = startFor(ROUTINE, START + DAY);
+    finishWith(newer, 65, 8, 2, START + DAY + MINUTE);
+
+    const current = startFor(ROUTINE, START + 2 * DAY);
+    const set = readSession(db.db, current)?.blocks[0]?.sets[0];
+    const found = previousFor(readPreviousSets(db.db, ROUTINE, current), {
+      exerciseId: set?.exerciseId ?? null,
+      exerciseName: set?.exerciseName ?? '',
+      setIndex: 1,
+    });
+
+    // The MOST RECENT one, not the first one found.
+    expect(found?.loadKg).toBe(65);
+    expect(found?.reps).toBe(8);
+    expect(found?.rir).toBe(2);
+  });
+
+  it('IGNORES a session of another routine', () => {
+    /**
+     * What makes the comparison mean anything: the same exercise done in a
+     * different session, after different work, is not the number you are trying
+     * to beat. A column that quietly showed it would be plausible and wrong.
+     */
+    const elsewhere = startFor(OTHER, START);
+    finishWith(elsewhere, 100, 3, 0, START + MINUTE);
+
+    const current = startFor(ROUTINE, START + DAY);
+
+    expect(readPreviousSets(db.db, ROUTINE, current).size).toBe(0);
+  });
+
+  it('IGNORES a session still in progress, including this one', () => {
+    // A session abandoned halfway is not a performance — and an in-progress one
+    // may be the very session asking the question.
+    const current = startFor(ROUTINE, START);
+    completeSet(
+      db.db,
+      firstSetOf(current) as never,
+      current,
+      { reps: 8, loadKg: 80, durationSeconds: null, rir: 1 },
+      { now: START + MINUTE },
+    );
+
+    expect(readPreviousSets(db.db, ROUTINE, current).size).toBe(0);
+  });
+
+  it('ignores the sets of the previous session that were not themselves done', () => {
+    // A pending row carries whatever was typed before it was abandoned. Showing
+    // that as "what you did last time" would put a number nobody performed in
+    // the column somebody is about to try to beat.
+    const older = startFor(ROUTINE, START);
+    saveTypedSet(
+      db.db,
+      firstSetOf(older) as never,
+      older,
+      { reps: 99, loadKg: 999, durationSeconds: null },
+      { now: START + MINUTE },
+    );
+    finishSession(db.db, older, { now: START + 2 * MINUTE });
+
+    const current = startFor(ROUTINE, START + DAY);
+
+    expect(readPreviousSets(db.db, ROUTINE, current).size).toBe(0);
+  });
+
+  it('has nothing to say about a free session', () => {
+    const older = startFor(ROUTINE, START);
+    finishWith(older, 60, 8, 3, START + MINUTE);
+
+    const free = startFor(null, START + DAY);
+
+    expect(readPreviousSets(db.db, null, free).size).toBe(0);
+  });
+
+  it('SURVIVES an exercise deleted and recreated, on the frozen name', () => {
+    /**
+     * THE CASE THAT DECIDED THE LOOKUP RULE, and the first version got it wrong.
+     *
+     * Deleting an exercise nulls its id on every set that ever used it (D5/R4)
+     * and removes it from the routines. Somebody who deletes a squat and adds
+     * it back gets a NEW id — so an id-only match would show a blank column for
+     * work they actually did, which reads as a defect rather than as a
+     * consequence.
+     *
+     * The frozen name is what bridges the two, and previousFor is the single
+     * place that rule lives.
+     */
+    const older = startFor(ROUTINE, START);
+    finishWith(older, 60, 8, 3, START + MINUTE);
+
+    const before = readSession(db.db, older)?.blocks[0]?.sets[0];
+    const name = before?.exerciseName ?? '';
+    deleteExercise(db.db, before?.exerciseId as never);
+
+    // Re-created under the same name, which is what somebody correcting a
+    // mistaken deletion does.
+    sharedExercise = createExercise(db.db, {
+      ...emptyExerciseDraft(2.5),
+      name,
+      primaryMuscle: 'chest',
+    });
+    const current = startFor(ROUTINE, START + DAY);
+    const set = readSession(db.db, current)?.blocks[0]?.sets[0];
+
+    const found = previousFor(readPreviousSets(db.db, ROUTINE, current), {
+      exerciseId: set?.exerciseId ?? null,
+      exerciseName: set?.exerciseName ?? '',
+      setIndex: set?.setIndex ?? 1,
+    });
+
+    expect(found?.loadKg).toBe(60);
+    expect(found?.rir).toBe(3);
+  });
+
+  it('matches on the id when there is one, which is the ordinary case', () => {
+    const older = startFor(ROUTINE, START);
+    finishWith(older, 60, 8, 3, START + MINUTE);
+
+    const current = startFor(ROUTINE, START + DAY);
+    const set = readSession(db.db, current)?.blocks[0]?.sets[0];
+
+    const found = previousFor(readPreviousSets(db.db, ROUTINE, current), {
+      exerciseId: set?.exerciseId ?? null,
+      exerciseName: set?.exerciseName ?? '',
+      setIndex: set?.setIndex ?? 1,
+    });
+
+    expect(found?.loadKg).toBe(60);
+  });
+
+  it('gives nothing for a set with no history, rather than somebody else s', () => {
+    const older = startFor(ROUTINE, START);
+    finishWith(older, 60, 8, 3, START + MINUTE);
+
+    const current = startFor(ROUTINE, START + DAY);
+    const set = readSession(db.db, current)?.blocks[0]?.sets[0];
+
+    // Round two of the same exercise: the previous session only did round one.
+    const found = previousFor(readPreviousSets(db.db, ROUTINE, current), {
+      exerciseId: set?.exerciseId ?? null,
+      exerciseName: set?.exerciseName ?? '',
+      setIndex: 2,
+    });
+
+    expect(found).toBeNull();
+  });
+});
+
+describe('changing the kind of a set mid-session', () => {
+  it('writes the type and leaves everything else alone', () => {
+    /**
+     * Not cosmetic: specs 10.1 counts volume on WORKING sets only and specs
+     * 10.4 reads "toutes les séries de travail" to decide a progression. A
+     * warm-up recorded as work inflates both, quietly and for ever.
+     */
+    const id = start(planWith(anExercise()));
+    const setId = firstSetOf(id);
+    completeSet(
+      db.db,
+      setId as never,
+      id,
+      { reps: 8, loadKg: 60, durationSeconds: null, rir: 2 },
+      { now: START + MINUTE },
+    );
+
+    setSetType(db.db, setId as never, id, 'warmup', { now: START + 2 * MINUTE });
+
+    const set = readSession(db.db, id)?.blocks[0]?.sets[0];
+    expect(set?.setType).toBe('warmup');
+    expect(set?.status).toBe('done');
+    expect(set?.actualLoadKg).toBe(60);
   });
 });

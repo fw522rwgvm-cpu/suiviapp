@@ -9,6 +9,7 @@ import {
   restText,
   rirLabel,
   elapsedText,
+  previousText,
 } from '../../src/features/strength/domain/session-text';
 
 /**
@@ -169,5 +170,51 @@ describe('elapsedText', () => {
     // Same guard as durationText: a device clock moved backwards must not
     // produce "-1:-30" on the figure somebody reads between two sets.
     expect(elapsedText(-5_000)).toBe('0:00');
+  });
+});
+
+describe('previousText', () => {
+  const some = { loadKg: 50, reps: 5, durationSeconds: null, rir: 2 };
+
+  it('writes the asked-for shape', () => {
+    // Requested literally: "50kg x 5" and, on the line below, "RIR 2".
+    expect(previousText(some)).toEqual({ line: '50kg × 5', rir: 'RIR 2' });
+  });
+
+  it('writes a decimal load the way the rest of the application does', () => {
+    expect(previousText({ ...some, loadKg: 72.5 }).line).toBe('72,5kg × 5');
+  });
+
+  it('says 4+ rather than 4, because that is what the value means', () => {
+    expect(previousText({ ...some, rir: 4 }).rir).toBe('RIR 4+');
+  });
+
+  it('gives a DASH and no second line when there is no history', () => {
+    // A blank where a figure belongs reads as a rendering fault. A dash says
+    // the question was asked and the answer is nothing — the ordinary state of
+    // the first session of every routine.
+    expect(previousText(null)).toEqual({ line: '—', rir: null });
+  });
+
+  it('omits the RIR line rather than drawing an empty one', () => {
+    // A set recorded before the RIR had a column of its own, or one arriving
+    // from an archive. A blank second row would make the column look ragged for
+    // a reason nobody can see.
+    expect(previousText({ ...some, rir: null }).rir).toBeNull();
+  });
+
+  it('states a timed set as a time, with no multiplication', () => {
+    // "45 s" rather than "0kg × 45": a plank has no load and no repetitions,
+    // and inventing a product would be a shape that means nothing.
+    expect(previousText({ loadKg: null, reps: null, durationSeconds: 45, rir: 1 })).toEqual({
+      line: '45 s',
+      rir: 'RIR 1',
+    });
+  });
+
+  it('copes with half a record, which a killed session can leave', () => {
+    expect(previousText({ ...some, loadKg: null }).line).toBe('× 5');
+    expect(previousText({ ...some, reps: null }).line).toBe('50kg');
+    expect(previousText({ loadKg: null, reps: null, durationSeconds: null, rir: 2 }).line).toBe('—');
   });
 });

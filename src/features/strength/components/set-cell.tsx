@@ -156,9 +156,9 @@ export function parseCell(text: string): number | null {
 
 /** The column widths both tables share, so the two never drift apart. */
 export const setColumns = StyleSheet.create({
-  colSet: { width: 46 },
-  colValue: { width: 58, textAlign: 'center' },
-  colReps: { flex: 1, minWidth: 64, textAlign: 'center' },
+  colSet: { width: 38 },
+  colValue: { width: 52, textAlign: 'center' },
+  colReps: { flex: 1, minWidth: 46, textAlign: 'center' },
   /**
    * The two columns only a LIVE set has (specs 14.38).
    *
@@ -168,8 +168,13 @@ export const setColumns = StyleSheet.create({
    * header the session draws by hand cannot drift from the cells underneath —
    * the same reason colSet and colValue are shared.
    */
-  colRir: { width: 44, textAlign: 'center' },
-  colCheck: { width: 34, textAlign: 'center' },
+  colRir: { width: 46, textAlign: 'center' },
+  colCheck: { width: 32, textAlign: 'center' },
+  /**
+   * PRÉCÉDENT, which only a live set has and which is the widest of the narrow
+   * columns: it carries two short lines rather than one figure.
+   */
+  colPrev: { width: 66 },
   /** The type a cell's text is set in, for callers drawing one by hand. */
   cellText: { fontSize: 16, fontVariant: ['tabular-nums'] },
 });
