@@ -129,7 +129,12 @@ export function emptyListMessage(state: {
   filtering: boolean;
 }): string {
   if (state.held === 0) {
-    return 'Aucun exercice pour l\u2019instant. Touchez + pour en cr\u00e9er un.';
+    // The "+" is a FORK since the catalogue link was removed — create one, or
+    // take them from the catalogue — so the sentence names both. An empty
+    // library is rare now that five hundred and fifty-two install
+    // themselves, which is exactly why this line has to say what to do: the
+    // person reading it has already lost the usual way in.
+    return 'Aucun exercice pour l\u2019instant. Touchez + pour en cr\u00e9er un ou les prendre dans le catalogue.';
   }
   // Ordinary spaces inside the guillemets, as library-text.ts has spelled them
   // since slice 3. Two conventions for one punctuation mark is one too many.

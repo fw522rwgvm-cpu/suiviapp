@@ -1,18 +1,20 @@
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActionSheetIOS, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { Text } from '@/core/ui/text';
 import { EmptyState } from '@/core/ui/empty-state';
 import { ListSeparator } from '@/core/ui/list-separator';
 import { Segmented } from '@/core/ui/segmented';
-import { useTheme } from '@/core/theme';
+import { useTheme, type Theme } from '@/core/theme';
 import { SearchField } from '@/features/nutrition/components/search-field';
 import { ExerciseFilterStrips } from '../components/exercise-filter';
 import { ExerciseRow } from '../components/exercise-row';
 import { RoutineRow } from '../components/routine-row';
+import { SessionRow } from '../components/session-row';
 import { useExercises, useSetExerciseFavorite } from '../data/exercise-queries';
 import { useRoutines } from '../data/routine-queries';
+import { useSessions } from '../data/session-queries';
 import {
   availableEquipment,
   availableMuscles,
@@ -23,24 +25,32 @@ import {
 } from '../domain/exercise-search';
 import { emptyListMessage } from '../domain/exercise-text';
 
+/** expo-router does not export its router type; this is the one useRouter gives. */
+type Router = ReturnType<typeof useRouter>;
+
 /**
- * The Entrainement tab (specs 7, 10.1).
+ * The Entrainement tab (specs 7, 10.1, 10.3).
  *
- * ## ONE SEGMENTED CONTROL, NOT TWO NESTED ONES
+ * ## TWO LEVELS OF SEGMENTED CONTROL, WHICH REVERSES SLICE 10
  *
- * Specs 7 asks for "Musculation et Activités" by segmented control within a
- * single screen, and describes Musculation as holding "Routines · Exercices ·
- * Historique". Read literally that is a segmented control inside a segmented
- * control, which is a shape this application uses nowhere and which costs the
- * reader a moment every time to work out which level moved.
+ * Specs 7 asks for "Musculation et Activités" by segmented control, and
+ * describes Musculation as holding "Routines · Exercices · Historique". Slice
+ * 10 read that literally, called it a segmented control inside a segmented
+ * control, and refused it: Routines and Exercices became two SECTIONS of one
+ * scrolling page (specs 14.20 no 2).
  *
- * So: ONE control, Musculation / Activités. Inside Musculation, Routines and
- * Exercices are two SECTIONS of one scrolling page rather than two tabs —
- * a routine is built out of exercises, and seeing both at once is how you
- * notice you need to create one. Historique arrives in slice 12 and takes its
- * place then, when there is something to put in it.
+ * REQUESTED AND REVERSED (specs 14.35). The page is what specs 7 described in
+ * the first place, and the objection did not survive the catalogue: with five
+ * hundred exercises in the library, "two sections of one page" means scrolling
+ * past a routine list to reach a search field, every time. The moment a section
+ * is long enough that you never see the other one, it was already a tab.
  *
- * The specs are amended in that direction rather than diverged from.
+ * ## AND ONLY THE CHOSEN PANEL IS MOUNTED, WHICH IS THE POINT
+ *
+ * Each panel holds its OWN query. Not tidiness: a panel that is not mounted
+ * does not read, so opening Entraînement no longer costs the exercise list, the
+ * routine list and the session list at once. It is the arrangement Stats
+ * settled in slice 8, for the same reason.
  *
  * ## NO HEADER FROM THE NAVIGATOR, AS ON STATS AND RÉGLAGES
  *
@@ -56,24 +66,37 @@ const SECTIONS = [
 
 type Section = (typeof SECTIONS)[number]['value'];
 
+const PANELS = [
+  { value: 'exercises', label: 'Exercices' },
+  { value: 'routines', label: 'Routines' },
+  { value: 'sessions', label: 'Séances' },
+] as const;
+
+type Panel = (typeof PANELS)[number]['value'];
+
+/**
+ * How many exercise rows are drawn at once.
+ *
+ * ## THIS IS A PERFORMANCE FIX, NOT A PREFERENCE
+ *
+ * The library used to hold what somebody had typed; it now holds five hundred
+ * and fifty-two by default, and every row carries a photograph. Rendering them
+ * all meant decoding five hundred and fifty-two JPEGs to open a tab — reported
+ * from the device as "l'app est beaucoup plus lente".
+ *
+ * D16 refuses a specialised list library — a few hundred rows at most, standard
+ * views — so the answer is not virtualisation, it is showing fewer and SAYING
+ * SO. Exactly what the catalogue screen settled at the same number, and
+ * narrowing is one tap away in the search field and the filters directly above.
+ */
+const MAX_SHOWN = 40;
+
 export function TrainingScreen() {
   const theme = useTheme();
   const router = useRouter();
 
   const [section, setSection] = useState<Section>('strength');
-  const [term, setTerm] = useState('');
-  const [filter, setFilter] = useState<ExerciseFilter>(NO_FILTER);
-
-  const exercises = useExercises();
-  const routines = useRoutines();
-  const setFavorite = useSetExerciseFavorite();
-
-  const held = useMemo(() => exercises.data ?? [], [exercises.data]);
-  const shown = useMemo(() => searchExercises(held, term, filter), [held, term, filter]);
-  const available = useMemo(
-    () => ({ muscles: availableMuscles(held), equipment: availableEquipment(held) }),
-    [held],
-  );
+  const [panel, setPanel] = useState<Panel>('exercises');
 
   return (
     <ScrollView
@@ -96,158 +119,231 @@ export function TrainingScreen() {
         />
       ) : (
         <>
-          <View style={styles.sectionHead}>
-            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Routines</Text>
-            <Pressable
-              onPress={() => router.push('/(modals)/routine-edit')}
-              hitSlop={12}
-              accessibilityRole="button"
-              accessibilityLabel="Nouvelle routine"
-            >
-              <SymbolView name="plus" size={19} tintColor={theme.colors.accent} />
-            </Pressable>
-          </View>
+          <Segmented options={PANELS} value={panel} onChange={setPanel} grow />
 
-          {(routines.data ?? []).length === 0 ? (
-            <Text style={[styles.empty, { color: theme.colors.textMuted }]}>
-              Aucune routine. Touchez + pour en bâtir une.
-            </Text>
-          ) : (
-            <View
-              style={[
-                styles.list,
-                {
-                  backgroundColor: theme.colors.surface,
-                  borderColor: theme.colors.border,
-                  borderRadius: theme.radius.lg,
-                },
-                theme.shadow,
-              ]}
-            >
-              {(routines.data ?? []).map((routine, index) => (
-                <View key={routine.id}>
-                  {index === 0 ? null : <ListSeparator />}
-                  <RoutineRow
-                    routine={routine}
-                    onPress={() => router.push(`/(tabs)/training/routine/${routine.id}`)}
-                  />
-                </View>
-              ))}
-            </View>
-          )}
-
-          <View style={styles.sectionHead}>
-            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Exercices</Text>
-            <Pressable
-              onPress={() => router.push('/(modals)/exercise-edit')}
-              hitSlop={12}
-              accessibilityRole="button"
-              accessibilityLabel="Nouvel exercice"
-            >
-              <SymbolView name="plus" size={19} tintColor={theme.colors.accent} />
-            </Pressable>
-          </View>
-
-          <SearchField value={term} onChange={setTerm} />
-
-          {/*
-            Directly under the field it narrows, as in the library and the add
-            window: read top down it says "look for this — among these".
-          */}
-          <ExerciseFilterStrips available={available} filter={filter} onChange={setFilter} />
-
-          {shown.length === 0 ? (
-            <Text style={[styles.empty, { color: theme.colors.textMuted }]}>
-              {emptyListMessage({
-                held: held.length,
-                term: term.trim(),
-                filtering: isFiltering(filter),
-              })}
-            </Text>
-          ) : null}
-
-          {/*
-            THE REST OF THE CATALOGUE.
-
-            Specs 10.1 describes a library with a creation button and nothing
-            else, so a fresh installation used to start empty — the one place in
-            the application that asked for a quarter of an hour before it
-            served. The common exercises now arrive on their own, at first
-            launch (useDefaultCatalogOnce).
-
-            So this link is no longer the way in, it is the way to the REST:
-            three hundred and twenty-six more, searchable and filterable. It
-            stays prominent while the library is empty anyway — somebody who
-            deleted everything, or whose first-launch install failed, must not
-            be left with no way to ask for them.
-
-            Still not a seed in `0010`: a migration is replayed by every import
-            (G4), so it would reinject these rows into an archive that
-            deliberately held none, with fresh ULIDs. What changed is WHO asks,
-            not where it is written.
-          */}
-          {held.length === 0 ? (
-            <Pressable
-              onPress={() => router.push('/(tabs)/training/catalog')}
-              accessibilityRole="button"
-              style={({ pressed }) => [
-                styles.catalogPrimary,
-                {
-                  backgroundColor: theme.colors.accent,
-                  borderRadius: theme.radius.lg,
-                  opacity: pressed ? 0.8 : 1,
-                },
-              ]}
-            >
-              <Text style={{ color: theme.colors.onAccent, fontSize: 16, fontWeight: '600' }}>
-                Ajouter des exercices
-              </Text>
-            </Pressable>
-          ) : (
-            <Pressable
-              onPress={() => router.push('/(tabs)/training/catalog')}
-              accessibilityRole="button"
-              style={styles.catalogQuiet}
-              hitSlop={6}
-            >
-              <Text style={{ color: theme.colors.accent, fontSize: 15 }}>
-                Parcourir le catalogue
-              </Text>
-            </Pressable>
-          )}
-
-          {shown.length === 0 ? null : (
-            <View
-              style={[
-                styles.list,
-                {
-                  backgroundColor: theme.colors.surface,
-                  borderColor: theme.colors.border,
-                  borderRadius: theme.radius.lg,
-                },
-                theme.shadow,
-              ]}
-            >
-              {shown.map((exercise, index) => (
-                <View key={exercise.id}>
-                  {index === 0 ? null : <ListSeparator />}
-                  <ExerciseRow
-                    exercise={exercise}
-                    onPress={() => router.push(`/(tabs)/training/exercise/${exercise.id}`)}
-                    onToggleFavorite={() =>
-                      setFavorite.mutate({
-                        id: exercise.id,
-                        isFavorite: exercise.isFavorite !== 1,
-                      })
-                    }
-                  />
-                </View>
-              ))}
-            </View>
-          )}
+          {panel === 'exercises' ? <ExercisesPanel theme={theme} router={router} /> : null}
+          {panel === 'routines' ? <RoutinesPanel theme={theme} router={router} /> : null}
+          {panel === 'sessions' ? <SessionsPanel theme={theme} router={router} /> : null}
         </>
       )}
     </ScrollView>
+  );
+}
+
+/**
+ * The two ways to gain an exercise, behind one "+".
+ *
+ * REPLACES THE "Parcourir le catalogue" LINK, which was a second control saying
+ * the same thing in a different place — and a link at the bottom of a list is
+ * not where somebody looks when they want to add something. The "+" is where
+ * every other list in this application puts that action.
+ *
+ * A sheet rather than a screen because it is a fork, not a step: ActionSheetIOS
+ * is a real UIAlertController, which is the iOS 26 direction applied as
+ * written — the chrome belongs to the system. Same control slice 5 used to
+ * choose a day template.
+ */
+function offerExerciseSources(router: Router): void {
+  ActionSheetIOS.showActionSheetWithOptions(
+    {
+      options: ['Annuler', 'Créer un exercice', 'Ajouter depuis le catalogue'],
+      cancelButtonIndex: 0,
+      title: 'Ajouter un exercice',
+    },
+    (index) => {
+      if (index === 1) router.push('/(modals)/exercise-edit');
+      if (index === 2) router.push('/(tabs)/training/catalog');
+    },
+  );
+}
+
+function PanelHead({
+  theme,
+  title,
+  actionLabel,
+  onAction,
+}: {
+  theme: Theme;
+  title: string;
+  actionLabel: string;
+  onAction: () => void;
+}) {
+  return (
+    <View style={styles.sectionHead}>
+      <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>{title}</Text>
+      <Pressable
+        onPress={onAction}
+        hitSlop={12}
+        accessibilityRole="button"
+        accessibilityLabel={actionLabel}
+      >
+        <SymbolView name="plus" size={19} tintColor={theme.colors.accent} />
+      </Pressable>
+    </View>
+  );
+}
+
+function Card({ theme, children }: { theme: Theme; children: React.ReactNode }) {
+  return (
+    <View
+      style={[
+        styles.list,
+        {
+          backgroundColor: theme.colors.surface,
+          borderColor: theme.colors.border,
+          borderRadius: theme.radius.lg,
+        },
+        theme.shadow,
+      ]}
+    >
+      {children}
+    </View>
+  );
+}
+
+function ExercisesPanel({ theme, router }: { theme: Theme; router: Router }) {
+  const [term, setTerm] = useState('');
+  const [filter, setFilter] = useState<ExerciseFilter>(NO_FILTER);
+
+  const exercises = useExercises();
+  const setFavorite = useSetExerciseFavorite();
+
+  const held = useMemo(() => exercises.data ?? [], [exercises.data]);
+  const matched = useMemo(() => searchExercises(held, term, filter), [held, term, filter]);
+  const available = useMemo(
+    () => ({ muscles: availableMuscles(held), equipment: availableEquipment(held) }),
+    [held],
+  );
+  const shown = matched.slice(0, MAX_SHOWN);
+
+  return (
+    <>
+      <PanelHead
+        theme={theme}
+        title="Exercices"
+        actionLabel="Ajouter un exercice"
+        onAction={() => offerExerciseSources(router)}
+      />
+
+      <SearchField value={term} onChange={setTerm} />
+
+      {/*
+        Directly under the field it narrows, as in the library and the add
+        window: read top down it says "look for this — among these".
+      */}
+      <ExerciseFilterStrips available={available} filter={filter} onChange={setFilter} />
+
+      {shown.length === 0 ? (
+        <Text style={[styles.empty, { color: theme.colors.textMuted }]}>
+          {emptyListMessage({
+            held: held.length,
+            term: term.trim(),
+            filtering: isFiltering(filter),
+          })}
+        </Text>
+      ) : (
+        <Card theme={theme}>
+          {shown.map((exercise, index) => (
+            <View key={exercise.id}>
+              {index === 0 ? null : <ListSeparator />}
+              <ExerciseRow
+                exercise={exercise}
+                onPress={() => router.push(`/(tabs)/training/exercise/${exercise.id}`)}
+                onToggleFavorite={() =>
+                  setFavorite.mutate({
+                    id: exercise.id,
+                    isFavorite: exercise.isFavorite !== 1,
+                  })
+                }
+              />
+            </View>
+          ))}
+        </Card>
+      )}
+
+      {matched.length > shown.length ? (
+        <Text style={[styles.more, { color: theme.colors.textMuted }]}>
+          {matched.length - shown.length} autres correspondent. Affinez la recherche ou les
+          filtres.
+        </Text>
+      ) : null}
+    </>
+  );
+}
+
+function RoutinesPanel({ theme, router }: { theme: Theme; router: Router }) {
+  const routines = useRoutines();
+  const held = routines.data ?? [];
+
+  return (
+    <>
+      <PanelHead
+        theme={theme}
+        title="Routines"
+        actionLabel="Nouvelle routine"
+        onAction={() => router.push('/(modals)/routine-edit')}
+      />
+
+      {held.length === 0 ? (
+        <Text style={[styles.empty, { color: theme.colors.textMuted }]}>
+          Aucune routine. Touchez + pour en bâtir une.
+        </Text>
+      ) : (
+        <Card theme={theme}>
+          {held.map((routine, index) => (
+            <View key={routine.id}>
+              {index === 0 ? null : <ListSeparator />}
+              <RoutineRow
+                routine={routine}
+                onPress={() => router.push(`/(tabs)/training/routine/${routine.id}`)}
+              />
+            </View>
+          ))}
+        </Card>
+      )}
+    </>
+  );
+}
+
+/**
+ * Every session, finished and running (specs 10.3).
+ *
+ * NO "+" HERE, and the absence is the point: a session is started FROM a
+ * routine, which is where the button lives. One that could be started from this
+ * list would have to ask which routine — a question the routine page has
+ * already answered by being open.
+ */
+function SessionsPanel({ theme, router }: { theme: Theme; router: Router }) {
+  const sessions = useSessions();
+  const held = sessions.data ?? [];
+
+  if (held.length === 0) {
+    return (
+      <EmptyState
+        symbol="figure.strengthtraining.traditional"
+        title="Aucune séance"
+        message="Ouvrez une routine et touchez « Commencer » pour en enregistrer une."
+        note="Les séances terminées resteront ici."
+      />
+    );
+  }
+
+  return (
+    <Card theme={theme}>
+      {held.map((session, index) => (
+        <View key={session.id}>
+          {index === 0 ? null : <ListSeparator />}
+          <SessionRow
+            session={session}
+            onPress={
+              session.status === 'in_progress'
+                ? () => router.push('/(tabs)/training/session')
+                : undefined
+            }
+          />
+        </View>
+      ))}
+    </Card>
   );
 }
 
@@ -256,8 +352,7 @@ const styles = StyleSheet.create({
   screenTitle: { fontSize: 32, fontWeight: '700' },
   sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   sectionTitle: { fontSize: 20, fontWeight: '600' },
-  catalogPrimary: { paddingVertical: 14, alignItems: 'center' },
-  catalogQuiet: { paddingVertical: 6, alignItems: 'center' },
   empty: { fontSize: 15, lineHeight: 21 },
+  more: { fontSize: 13, textAlign: 'center' },
   list: { borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
 });

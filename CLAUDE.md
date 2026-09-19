@@ -63,7 +63,7 @@ L'application doit tolérer un arrêt forcé à tout moment sans perte.
 ## État du projet
 Tranches 0 à 11 livrées. La tranche 9 (notifications) **clôt la V2** ; les
 tranches 10 (exercices et routines) et 11 (séance en direct) **ouvrent la V3**.
-**1639 tests verts** sous les trois fuseaux, `tsc` vert, bundle produit.
+**1645 tests verts** sous les trois fuseaux, `tsc` vert, bundle produit.
 
 **La tranche 11 ne demande AUCUN cycle CI, et c'est vérifiable avant de
 commencer** : aucune dépendance n'entre. `expo-notifications` est dans le
@@ -5260,6 +5260,38 @@ cardio par catégorie, gainages, portages et isométriques par nom.
 une image ».** Chaque `checkout` de la CI les tire. Écrit ici plutôt que
 découvert au premier build lent.
 
+**Et la vignette a coûté une régression de rendu, le jour même.** Rapporté
+depuis l'appareil : « l'app est beaucoup plus lente ». La liste rendait ses
+**552 rangées d'un coup**, donc 552 photographies décodées pour ouvrir un
+onglet. C'était invisible tant que la bibliothèque contenait ce que quelqu'un
+avait tapé ; le catalogue par défaut l'a rendue visible en une journée.
+
+Plafond à quarante rangées, et la page le dit — D16 écarte une liste
+virtualisée, donc la réponse est d'en montrer moins, pas d'en montrer
+autrement. C'est le même nombre et le même énoncé que l'écran du catalogue.
+**Réserve honnête** : rien ici ne chronomètre un rendu React Native, donc ce
+qui est corrigé est la **cause** — un nombre d'images décodées — et non un
+chiffre observé.
+
+**Le « + » est devenu une bifurcation, et le lien « Parcourir le catalogue » est
+supprimé.** C'étaient deux contrôles disant la même chose à deux endroits, et un
+lien en bas d'une liste n'est pas où l'on regarde quand on veut ajouter quelque
+chose. Créer un exercice, ou le prendre au catalogue : une feuille d'action,
+parce que c'est une bifurcation et non une étape.
+
+**L'onglet Séances existe, et ses rangées terminées ne sont pas cliquables.** Il
+n'y a qu'un écran de séance et il montre celle **en cours** ; l'historique est
+la tranche 12. Une rangée qui a l'air cliquable et ne fait rien est pire qu'une
+rangée qui se présente comme un relevé — et tout ce que la liste peut
+honnêtement montrer est déjà dessus. `listSessions` en trois requêtes groupées,
+tenue d'accord avec `readSession` par un test vérifié par mutation.
+
+**Et le drapeau ne rattrape pas un changement de source.** `catalog_seeded_at`
+dit « la question a été posée », pas « ce catalogue-ci est installé ». C'est
+voulu — le §5.3 interdit de défaire une suppression délibérée — et la
+conséquence est qu'une bibliothèque installée **avant** une bascule de catalogue
+garde l'ancienne. Le bouton de réinitialisation est la réponse.
+
 **La vignette est enfin sur la rangée d'exercice, et le motif de son absence
 avait expiré.** Le §10.1 la demandait mot pour mot ; la tranche 10 ne pouvait
 pas l'honorer parce que rien ne savait écrire `media_uri` — chaque rangée aurait
@@ -6015,19 +6047,16 @@ silencieusement ignoré, et restauré dans un `finally`.
   ses entrées reste matérialisée, l'utilisateur ayant bien agi dessus.
 
 ## Points hérités de la tranche 0, toujours ouverts
-- ~~Où vit le sélecteur segmenté de l'onglet Entraînement, une fois qu'il
-  composera Musculation et Activités (tranche 10).~~ **Résolu, et tranché
-  autrement que le §7 ne le dessinait.** Il vit dans
-  `features/strength/screens/training-screen.tsx`, et il n'y en a qu'UN :
-  Musculation / Activités. Le §7 décrit Musculation comme portant « Routines ·
-  Exercices · Historique », ce qui lu à la lettre donne un segmenté dans un
-  segmenté — forme que cette application n'emploie nulle part et qui coûte un
-  instant à chaque fois pour savoir quel niveau a bougé. Routines et Exercices
-  sont donc deux **sections d'une même page** : une routine se bâtit avec des
-  exercices, et les voir ensemble est la façon dont on remarque qu'il en manque
-  un. Specs amendées (`specs §14.20` n° 2). L'onglet gagne au passage son propre
-  `Stack` — quatrième application du motif de `(journal)`, `settings/` et
-  `stats/`.
+- ~~Où vit le sélecteur segmenté de l'onglet Entraînement.~~ **Résolu, puis
+  RENVERSÉ le 19/09/2026 — il y en a deux, et le §7 avait raison.** La
+  tranche 10 avait refusé « un segmenté dans un segmenté » et fait de Routines
+  et Exercices deux sections d'une même page (`specs §14.20` n° 2). L'objection
+  n'a pas survécu au catalogue : avec cinq cents exercices, deux sections d'une
+  page veut dire défiler par-dessus les routines pour atteindre un champ de
+  recherche, à chaque fois. **Dès qu'une section est assez longue pour qu'on ne
+  voie jamais l'autre, c'était déjà un onglet.** Musculation porte donc
+  Exercices / Routines / Séances (`specs §14.35`), et seul le panneau choisi est
+  monté — donc lit. L'onglet garde son propre `Stack`.
 - ~~Les en-têtes natifs.~~ **Résolu.** Un groupe `app/(tabs)/(journal)/`
   n'ajoute aucun segment de chemin : l'écran reste la route index du groupe
   d'onglets et gagne un `Stack` natif. ~~L'icône de bibliothèque du §7 s'y

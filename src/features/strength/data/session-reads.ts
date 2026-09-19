@@ -1,4 +1,4 @@
-import { asc, eq, isNull } from 'drizzle-orm';
+import { asc, desc, eq, isNull } from 'drizzle-orm';
 import type { LocalDate } from '@/core/date';
 import { toLocalDate } from '@/core/date';
 import type { AppDatabase } from '@/core/db/database';
@@ -249,4 +249,104 @@ export function readPendingNotes(
     else current.push(row.text);
   }
   return notes;
+}
+
+/** One row of the Séances list: what a session WAS, without its sets. */
+export interface SessionListItem {
+  id: SessionId;
+  date: LocalDate;
+  routineName: string | null;
+  status: 'in_progress' | 'done';
+  startedAt: number;
+  /** The sum of the stored segments (D9, D12) — never endedAt minus startedAt. */
+  recordedDurationMs: number;
+  doneSets: number;
+  totalSets: number;
+}
+
+/**
+ * Every session, most recent first (specs 10.3).
+ *
+ * ## THREE QUERIES FOR ANY NUMBER OF SESSIONS
+ *
+ * The discipline slice 4 settled when quick-add reached the whole library and
+ * slice 6 repeated for recipe tags: heads, then segments grouped by session,
+ * then set counts grouped by session. A `readSession` per row would be a query
+ * per row plus all of its sets — for a list that shows neither.
+ *
+ * ## THE DURATION IS SUMMED FROM SEGMENTS, NEVER `endedAt - startedAt`
+ *
+ * D12's whole point: a session left open overnight has one long gap in it, and
+ * the difference between its two ends would count the night. `recordedDurationMs`
+ * is the same function the session screen uses, so the list and the page cannot
+ * disagree about how long a workout was.
+ *
+ * ## ORDERED BY DATE THEN BY START, AND BOTH ARE NEEDED
+ *
+ * `date` is the civil day it belongs to and is what somebody reads; `startedAt`
+ * separates two sessions on the same day. Ordering on the instant alone would
+ * be right today and wrong the first time a session is logged for yesterday.
+ */
+export function listSessions(db: AppDatabase): SessionListItem[] {
+  const heads = db
+    .select({
+      id: session.id,
+      date: session.date,
+      routineName: session.routineNameSnapshot,
+      status: session.status,
+      startedAt: session.startedAt,
+    })
+    .from(session)
+    .orderBy(desc(session.date), desc(session.startedAt))
+    .all();
+
+  if (heads.length === 0) return [];
+
+  const segmentsBySession = new Map<string, ActivitySegment[]>();
+  for (const row of db
+    .select({
+      sessionId: sessionSegment.sessionId,
+      startedAt: sessionSegment.startedAt,
+      endedAt: sessionSegment.endedAt,
+    })
+    .from(sessionSegment)
+    .orderBy(asc(sessionSegment.startedAt))
+    .all()) {
+    const current = segmentsBySession.get(row.sessionId);
+    const segment = { startedAt: row.startedAt, endedAt: row.endedAt };
+    if (current === undefined) segmentsBySession.set(row.sessionId, [segment]);
+    else current.push(segment);
+  }
+
+  const counts = new Map<string, { done: number; total: number }>();
+  for (const row of db
+    .select({ sessionId: sessionBlock.sessionId, status: sessionSet.status })
+    .from(sessionSet)
+    .innerJoin(sessionBlock, eq(sessionSet.sessionBlockId, sessionBlock.id))
+    .all()) {
+    const current = counts.get(row.sessionId) ?? { done: 0, total: 0 };
+    current.total += 1;
+    // `status === 'done'` CHARACTER FOR CHARACTER as readSession counts it.
+    // Two implementations of "how far through is this session" would agree on
+    // every example anybody writes by hand and diverge the day a fourth status
+    // appears — and a list disagreeing with the page it opens is the plausible,
+    // invisible kind of wrong. A test holds the two together.
+    if (row.status === 'done') current.done += 1;
+    counts.set(row.sessionId, current);
+  }
+
+  return heads.map((head) => {
+    const segments = segmentsBySession.get(head.id) ?? [];
+    const count = counts.get(head.id) ?? { done: 0, total: 0 };
+    return {
+      id: head.id,
+      date: toLocalDate(head.date),
+      routineName: head.routineName,
+      status: head.status === 'done' ? ('done' as const) : ('in_progress' as const),
+      startedAt: head.startedAt,
+      recordedDurationMs: recordedDurationMs(segments),
+      doneSets: count.done,
+      totalSets: count.total,
+    };
+  });
 }

@@ -12,9 +12,11 @@ import {
 } from '@/core/db/schema';
 import { readsFrom } from '@/core/query';
 import {
+  listSessions,
   readActiveSession,
   readPendingNotes,
   readSession,
+  type SessionListItem,
   type SessionView,
 } from './session-reads';
 import {
@@ -52,6 +54,7 @@ export const sessionKeys = {
   active: () => ['session', 'active'] as const,
   one: (id: SessionId | null) => ['session', 'one', id] as const,
   notes: (ids: readonly ExerciseId[]) => ['session', 'notes', [...ids].sort()] as const,
+  list: () => ['session', 'list'] as const,
 };
 
 /**
@@ -71,6 +74,23 @@ export function useActiveSession() {
   return useQuery<SessionView | null>({
     queryKey: sessionKeys.active(),
     queryFn: () => readActiveSession(getAppDatabase()),
+    meta: readsFrom(session, sessionBlock, sessionSet, sessionSegment, exercise),
+  });
+}
+
+/**
+ * Every session, for the Séances tab (specs 10.3).
+ *
+ * Declares `exercise` in its meta like useActiveSession does, even though the
+ * list shows no exercise name: deleting one nulls `session_set.exercise_id`
+ * (D5/R4), which changes nothing here today — but the bus invalidating a query
+ * that did not need it costs one re-read, where a query that misses a table it
+ * does read shows yesterday's figures without saying so.
+ */
+export function useSessions() {
+  return useQuery<SessionListItem[]>({
+    queryKey: sessionKeys.list(),
+    queryFn: () => listSessions(getAppDatabase()),
     meta: readsFrom(session, sessionBlock, sessionSet, sessionSegment, exercise),
   });
 }

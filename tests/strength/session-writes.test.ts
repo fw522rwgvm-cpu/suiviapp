@@ -28,6 +28,7 @@ import {
   addExerciseNote,
 } from '../../src/features/strength/data/session-writes';
 import {
+  listSessions,
   readActiveSession,
   readPendingNotes,
   readSession,
@@ -46,6 +47,7 @@ import { openTestDatabase, type TestDatabase } from '../helpers/database';
  */
 
 const MINUTE = 60_000;
+const DAY = 24 * 60 * MINUTE;
 const START = 1_789_600_000_000;
 
 let db: TestDatabase;
@@ -99,6 +101,11 @@ function start(plan: SessionPlan, now = START): SessionId {
   );
   if (!result.ok) throw new Error('expected a fresh session');
   return result.id;
+}
+
+/** The id of a session's first set, which several tests need. */
+function firstSetOf(id: SessionId): string {
+  return readSession(db.db, id)?.blocks[0]?.sets[0]?.id ?? '';
 }
 
 describe('starting a session', () => {
@@ -611,5 +618,81 @@ describe('a session whose exercise was deleted', () => {
     expect(view?.blocks[0]?.sets[0]?.exerciseName).toBe('Développé couché');
     expect(view?.blocks[0]?.sets[0]?.actualLoadKg).toBe(72.5);
     expect(view?.blocks[0]?.sets[0]?.exerciseId).toBeNull();
+  });
+});
+
+describe('listing the sessions', () => {
+  it('AGREES WITH readSession, session by session', () => {
+    /**
+     * TWO IMPLEMENTATIONS OF ONE QUESTION, held together by a test rather than
+     * by care — the shape slice 4 settled when the quick-add window needed a
+     * window function saying the same thing as readLastEntryForFood.
+     *
+     * `readSession` walks one session's sets and counts `status === 'done'`;
+     * `listSessions` counts the same thing for every session in one grouped
+     * query, because a read per row is what slice 4 refused. They agree on
+     * every example anybody writes by hand, and the day they diverge the list
+     * says "3/8" over a page that says "4/8" — plausible on both screens.
+     */
+    const first = start(planWith(anExercise()), START);
+    completeSet(
+      db.db,
+      firstSetOf(first) as never,
+      first,
+      { reps: 8, loadKg: 60, durationSeconds: null, rir: 2 },
+      { now: START + MINUTE },
+    );
+    finishSession(db.db, first, { now: START + 30 * MINUTE });
+
+    // A running session with a SKIPPED set, so the comparison covers the state
+    // where the two counters could most easily disagree.
+    const second = start(planWith(anExercise()), START + 2 * DAY);
+    setSkipped(db.db, firstSetOf(second) as never, second, true, {
+      now: START + 2 * DAY + MINUTE,
+    });
+
+    const listed = listSessions(db.db);
+    expect(listed).toHaveLength(2);
+
+    for (const row of listed) {
+      const full = readSession(db.db, row.id);
+      expect(full, row.id).not.toBeNull();
+      expect(row.doneSets, `${row.id}: doneSets`).toBe(full?.doneSets);
+      expect(row.totalSets, `${row.id}: totalSets`).toBe(full?.totalSets);
+      expect(row.recordedDurationMs, `${row.id}: duration`).toBe(full?.recordedDurationMs);
+      expect(row.status, `${row.id}: status`).toBe(full?.status);
+      expect(row.date, `${row.id}: date`).toBe(full?.date);
+    }
+
+    // Non-vacuous: the two sessions must actually differ, or the loop above
+    // would pass against any pair of identical rows.
+    expect(listed[0]?.id).not.toBe(listed[1]?.id);
+    expect(listed.map((row) => row.status).sort()).toEqual(['done', 'in_progress']);
+  });
+
+  it('puts the most recent first, and separates two sessions on one day', () => {
+    // `date` is what somebody reads and `startedAt` is what separates two
+    // sessions on the same day. Ordering on the instant alone would be right
+    // today and wrong the first time a session is logged for yesterday.
+    const older = start(planWith(anExercise()), START);
+    finishSession(db.db, older, { now: START + 10 * MINUTE });
+    const newer = start(planWith(anExercise()), START + 2 * MINUTE);
+
+    expect(listSessions(db.db).map((row) => row.id)).toEqual([newer, older]);
+  });
+
+  it('does not count a skipped set as done', () => {
+    // Specs 10.3 makes skipping an outcome of its own. Counting it as done
+    // would say somebody trained when they deliberately did not.
+    const id = start(planWith(anExercise()), START);
+    setSkipped(db.db, firstSetOf(id) as never, id, true, { now: START + MINUTE });
+
+    const [row] = listSessions(db.db);
+    expect(row?.doneSets).toBe(0);
+    expect(row?.totalSets).toBeGreaterThan(0);
+  });
+
+  it('is empty on a database with no sessions, without reading anything else', () => {
+    expect(listSessions(db.db)).toEqual([]);
   });
 });
