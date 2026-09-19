@@ -4,6 +4,7 @@ import { Text } from '@/core/ui/text';
 import { FormInput, FormRow, FormSection } from '@/core/ui/form-section';
 import { ListSeparator } from '@/core/ui/list-separator';
 import { useTheme } from '@/core/theme';
+import { ExerciseDrawing } from './exercise-drawing';
 import { SetTable } from './set-table';
 import type { ExerciseListItem } from '../data/exercise-reads';
 import {
@@ -118,7 +119,12 @@ export function RoutineBody({
             ) : null}
 
             <View style={styles.body}>
-              <BlockHeading block={block} superset={superset} onOpenExercise={onOpenExercise} />
+              <BlockHeading
+                block={block}
+                catalogue={catalogue}
+                superset={superset}
+                onOpenExercise={onOpenExercise}
+              />
 
               <BlockRest
                 block={block}
@@ -283,13 +289,30 @@ function notesOf(
  * lose the draft. It would not: a push leaves this screen MOUNTED underneath,
  * which is why a navigator has focus events at all — so the state survives the
  * visit, and the names stay live in both modes.
+ *
+ * ## THE THUMBNAIL, LEFT OF THE NAME
+ *
+ * Requested (specs 14.37), and it costs nothing here for the reason the notes
+ * already gave: `media_uri` rides on the catalogue item this page ALREADY
+ * HOLDS, so a picture per block is the same query it was before. Reading one
+ * exercise per block would be the per-row cost slice 4 refused.
+ *
+ * ONE POSE, like every list row. The pair says how a movement runs and belongs
+ * on the exercise page; at this size it would say it twice in half the width.
+ *
+ * A BLOCK DRAFT CARRIES A NAME BUT NOT A MEDIUM, and that is why the catalogue
+ * is consulted rather than the draft extended: a routine line freezes nothing
+ * and reads its exercise live (slice 10), so a copied `media_uri` would be a
+ * second answer to a question the exercise already answers.
  */
 function BlockHeading({
   block,
+  catalogue,
   superset,
   onOpenExercise,
 }: {
   block: BlockDraft;
+  catalogue: ReadonlyMap<string, ExerciseListItem>;
   superset: boolean;
   onOpenExercise?: (exerciseId: string) => void;
 }) {
@@ -303,16 +326,24 @@ function BlockHeading({
       ) : null}
 
       {exercises.map((item, index) => {
-        const name = (
-          <Text style={[styles.name, { color: theme.colors.accent }]} numberOfLines={2}>
-            {superset ? `${LETTERS[index] ?? '?'}  ${item.exerciseName}` : item.exerciseName}
-          </Text>
+        const inner = (
+          <>
+            <View style={styles.thumb}>
+              <ExerciseDrawing
+                mediaUri={catalogue.get(item.exerciseId)?.mediaUri ?? null}
+                height={34}
+              />
+            </View>
+            <Text style={[styles.name, { color: theme.colors.accent }]} numberOfLines={2}>
+              {superset ? `${LETTERS[index] ?? '?'}  ${item.exerciseName}` : item.exerciseName}
+            </Text>
+          </>
         );
 
         if (onOpenExercise === undefined) {
           return (
             <View key={item.exerciseId} style={styles.nameRow}>
-              {name}
+              {inner}
             </View>
           );
         }
@@ -326,7 +357,7 @@ function BlockHeading({
             hitSlop={6}
             style={({ pressed }) => [styles.nameRow, { opacity: pressed ? 0.6 : 1 }]}
           >
-            {name}
+            {inner}
             <SymbolView name="chevron.right" size={12} tintColor={theme.colors.textFaint} />
           </Pressable>
         );
@@ -546,7 +577,10 @@ const styles = StyleSheet.create({
   body: { padding: 14, gap: 10 },
   heading: { gap: 2 },
   supersetLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8 },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 2 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 2 },
+  // A fixed width, so a photograph and the substitute leave the names on one
+  // column — the rule every other list in this feature follows.
+  thumb: { width: 48 },
   name: { flex: 1, fontSize: 17, fontWeight: '600' },
   line: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 28 },
   lineText: { flex: 1, fontSize: 13 },

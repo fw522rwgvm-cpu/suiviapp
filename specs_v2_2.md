@@ -1206,3 +1206,11 @@ produit un chiffre plausible dans les deux sens.
 | 3 | **§10.1** | **La soustraction se fait AVANT les filtres, pas à l'affichage** | Les bandes de filtres proposent donc les muscles et le matériel de ce qui peut **encore** être ajouté. Une puce de filtre qui ne rend rien est un contrôle qui a l'air cassé |
 | 4 | **§10.1** | **Le bouton d'ajout du catalogue est épinglé en bas** | Dans une liste fenêtrée de huit cents lignes, un pied de liste voudrait dire défiler jusqu'au bout du catalogue pour confirmer trois coches |
 | 5 | **§7** | **L'écran Entraînement est une liste dans TOUS ses états**, y compris Activités | Deux raisons, et la seconde aurait coûté une journée : une liste virtualisée dans une `ScrollView` du même axe **ne virtualise pas du tout** ; et échanger le type d'élément entre deux états est ce que la tranche 3 avait trouvé derrière la page de journée qui sautait. Activités est donc une liste vide avec un message, pas une autre sorte de page |
+
+### 14.37 La vignette sur la page d'une routine (19/09/2026)
+
+| № | Section | Modification | Motif |
+| --- | --- | --- | --- |
+| 1 | **§10.2** | **Le titre d'un bloc porte la vignette de son exercice, à gauche du nom** | Demande explicite. Le §10.2 ne décrit le bloc que par ses séries ; une routine se lit pourtant comme une suite de mouvements, et un nom seul demande de savoir déjà ce qu'il désigne — ce que les quinze muscles inventés en tranche 10 ne garantissent pas. **Dans un superset chaque nom garde la sienne**, puisque chaque nom est déjà sa propre destination |
+| 2 | **§10.2** | **Une seule pose, comme partout sauf sur la fiche** | La paire dit comment un mouvement se déroule et appartient à la page de l'exercice ; à 34 points elle le dirait deux fois dans la moitié de la largeur |
+| 3 | **§10.2** | **Ça ne coûte aucune requête**, et c'est ce qui rend la chose possible | `media_uri` voyage déjà sur l'élément de liste que la page tient — le même motif qui a permis aux quatre notes du §6.3 d'y arriver. Lire un exercice par bloc serait le coût par rangée que la tranche 4 a refusé. **Et le brouillon n'est PAS étendu** : une ligne de routine ne fige rien et lit son exercice en direct, donc une `media_uri` recopiée serait une seconde réponse à une question que l'exercice répond déjà |

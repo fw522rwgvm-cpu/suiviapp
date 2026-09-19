@@ -78,8 +78,21 @@ ces 0,7 Mo.** Les photographies sont des **assets** — 30,8 Mo dans
 et coûtait 1,2 Mo de bundle JS analysé à chaque démarrage à froid ; les mesures
 sont dans `architecture §9.25` n° 2 et `§9.27` n° 1.
 
-**Rien de la tranche 11 n'a tourné sur l'appareil**, et elle s'empile sur les
-tranches 6, 8 et 10 qui n'y ont jamais tourné non plus.
+**Une partie de la tranche 11 a tourné sur l'appareil (19/09/2026), et il faut
+lire précisément ce que ça couvre.** Rapporté : « ça marche bien sur le
+téléphone », après le passage aux listes fenêtrées.
+
+*Constaté* : l'onglet Entraînement et ses trois sous-onglets, les deux listes
+fenêtrées — donc le défilement reste fluide et le champ de recherche garde son
+focus — le catalogue et ses photographies, et le « + » qui bifurque.
+
+*NON exercé, et à lire comme tel* : tout ce qui demande de provoquer un
+événement — que le minuteur de repos sonne, qu'un arrêt forcé en pleine séance
+la retrouve intacte, qu'une séance laissée une nuit ne compte pas la nuit, et
+où se pose le bandeau de séance. Voir les points ouverts.
+
+La tranche s'empile toujours sur les tranches 6, 8 et 10, qui n'ont jamais
+tourné sur l'appareil.
 
 Ce qui reste à voir est ce qu'aucun test ne couvre : **que la carte corporelle
 ressemble à un corps et s'allume aux bons endroits.** Un test dit que `chest`
@@ -5282,6 +5295,14 @@ démonte les rangées éloignées et libère leurs photographies. Son défaut va
 **Réserve honnête** : rien ici ne chronomètre un rendu React Native, donc ce
 qui est corrigé est la **cause** — un nombre d'images montées — et non un
 chiffre observé.
+
+**La vignette est aussi sur la page d'une routine**, à gauche de chaque nom de
+bloc — et dans un superset chaque nom garde la sienne, puisque chaque nom est
+déjà sa propre destination. Gratuit pour la même raison que les quatre notes du
+§6.3 : `media_uri` voyage sur l'élément de liste que la page tient déjà. **Et le
+brouillon n'est pas étendu** — une ligne de routine ne fige rien et lit son
+exercice en direct, donc une `media_uri` recopiée serait une seconde réponse à
+une question que l'exercice répond déjà.
 
 **Trois pièges de liste virtualisée, et les trois se paient en silence.**
 
