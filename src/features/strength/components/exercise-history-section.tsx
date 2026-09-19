@@ -25,10 +25,12 @@ import {
 import {
   DEFAULT_EXERCISE_METRIC,
   EXERCISE_METRICS,
+  metricCaption,
   metricFor,
+  metricValueText,
   type ExerciseMetricKey,
 } from '../domain/exercise-metric';
-import { ExerciseChart } from './exercise-chart';
+import { SessionSeriesChart } from './session-series-chart';
 import { ExerciseRecords } from './exercise-records';
 
 /**
@@ -150,7 +152,22 @@ export function ExerciseHistorySection({ history }: { history: readonly HistoryS
           })}
         </ScrollView>
 
-        <ExerciseChart points={chartPoints} metric={metric} grain={span.grain} />
+        {/*
+          The metric is mapped onto the shared shape here rather than passed
+          down: the chart's job is to draw a series, and which field of a point
+          it stands for is this page's question.
+        */}
+        <SessionSeriesChart
+          points={chartPoints.map((point) => ({
+            date: point.date,
+            sessions: point.sessions,
+            value: metric.value(point),
+          }))}
+          title={metric.label}
+          caption={metricCaption(metric, span.grain)}
+          format={(value) => metricValueText(metric, value)}
+          accessibilityLabel={`${metric.label} sur la plage choisie`}
+        />
       </View>
 
       <SessionList points={points} />

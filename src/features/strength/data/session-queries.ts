@@ -3,6 +3,7 @@ import { getAppDatabase } from '@/core/db/app-database';
 import {
   exercise,
   exerciseNote,
+  exerciseSecondaryMuscle,
   session,
   sessionBlock,
   sessionSegment,
@@ -25,6 +26,10 @@ import {
   readProgressionSuggestions,
   type ProgressionSuggestions,
 } from './history-reads';
+import {
+  readStrengthPanel,
+  type StrengthPanelData,
+} from './strength-panel-reads';
 import {
   addExerciseNote,
   addExerciseToSession,
@@ -68,6 +73,7 @@ export const sessionKeys = {
     ['session', 'previous', routineId, sessionId] as const,
   progression: (sessionId: SessionId | null) =>
     ['session', 'progression', sessionId] as const,
+  panel: (from: string | null, to: string) => ['session', 'panel', from, to] as const,
 };
 
 /**
@@ -233,6 +239,44 @@ export function useProgressionSuggestions(sessionId: SessionId | null) {
         : readProgressionSuggestions(getAppDatabase(), sessionId),
     enabled: sessionId !== null,
     meta: readsFrom(session, sessionBlock, sessionSet, exercise),
+  });
+}
+
+/**
+ * Everything the dashboard's strength panel draws (specs 10.6).
+ *
+ * ## KEYED BY THE RANGE, SO CHANGING IT IS A READ AND CHANGING THE METRIC IS NOT
+ *
+ * The three series, the calendar and the body map all come from this one
+ * entry, so the metric chooser re-folds what is in hand. The RANGE does reach
+ * SQL, because a wider one is genuinely more rows — the arrangement D13 asks
+ * for, where the point count is settled in the query rather than in the
+ * renderer.
+ *
+ * ## IT DECLARES `exercise` AND ITS SECONDARY MUSCLES, WHICH THE CHARTS DO NOT
+ *
+ * The body map reads the primary and secondary muscles live, so re-labelling
+ * an exercise's muscles must redraw it. That is the one thing on this panel
+ * that is not frozen into the session, and it is deliberate: the map answers
+ * "what do I train", which is a question about the exercises as they are now.
+ */
+export function useStrengthPanel(from: string | null, to: string) {
+  return useQuery<StrengthPanelData>({
+    queryKey: sessionKeys.panel(from, to),
+    queryFn: () =>
+      readStrengthPanel(
+        getAppDatabase(),
+        from === null ? null : (from as never),
+        to as never,
+      ),
+    meta: readsFrom(
+      session,
+      sessionBlock,
+      sessionSet,
+      sessionSegment,
+      exercise,
+      exerciseSecondaryMuscle,
+    ),
   });
 }
 

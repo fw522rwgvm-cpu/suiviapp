@@ -15,31 +15,29 @@ import {
 import { ChartTooltip } from '@/core/charts/chart-tooltip';
 import { useScrub } from '@/core/charts/use-scrub';
 import { bandGeometry, labelledIndices, linearScale } from '@/core/charts/scale';
-import type { Grain } from '@/core/db/date-bucket';
-import type { ChartPoint } from '../domain/exercise-range';
-import {
-  metricCaption,
-  metricValueText,
-  type ExerciseMetric,
-} from '../domain/exercise-metric';
+import type { LocalDate } from '@/core/date';
 
 /**
- * One of the five series of specs 10.1, over the chosen range.
+ * One series over sessions, drawn over a chosen range (specs 10.1, 10.6).
  *
- * > Graphiques sur 3 mois / 1 an / tout : charge maximale, 1RM estimé,
- * > meilleur volume de série, volume de séance, total de répétitions.
+ * ## IT GENERALISED AT ITS SECOND REAL USER, WHICH IS THE RULE (D10)
  *
- * ## FIVE SERIES, ONE CHART AT A TIME
+ * Written for the exercise page's five series, and the dashboard's strength
+ * panel wants the same picture of three others — session duration, volume and
+ * repetitions. What differed between the two was entirely the METRIC, so the
+ * metric came out: this takes values and a label, and each caller decides what
+ * they mean.
  *
- * Five stacked charts would be seven or eight hundred points of scrolling on a
- * page that also carries the exercise's identity, its body map, its notes and
- * its history — and four of them would be scrolled past every time. A chooser
- * above one chart costs a tap and gives each series the full width.
+ * Both callers use it the same way, and that is the point: a chart of session
+ * volume on the exercise page and one on the dashboard must not be two
+ * pictures of one number.
  *
- * The chooser is CHIPS rather than a segmented control, for the reason
- * exercise-filter already uses them: five labels do not fit 390 points as
- * equal segments, and "Vol. séance" truncated to "Vol. sé…" is the one thing
- * that makes a chooser useless.
+ * ## ONE CHART AT A TIME, WITH THE CHOOSER OUTSIDE IT
+ *
+ * Five stacked charts on the exercise page would be seven or eight hundred
+ * points of scrolling with four of them always scrolled past. The chooser
+ * belongs to the caller, because what it offers differs; what is shared is
+ * the picture.
  *
  * ## A LINE, ON A SCALE THAT DOES NOT START AT ZERO
  *
@@ -71,14 +69,35 @@ import {
  * construction — only the arithmetic behind it is, in exercise-stats and
  * exercise-range. That line is kept here.
  */
-export function ExerciseChart({
+/** One point: a session, or a bucket of them. */
+export interface SeriesPoint {
+  date: LocalDate;
+  /** How many sessions it stands for. 1 at the per-session grain. */
+  sessions: number;
+  value: number | null;
+}
+
+export function SessionSeriesChart({
   points,
-  metric,
-  grain,
+  title,
+  caption,
+  format,
+  accessibilityLabel,
 }: {
-  points: readonly ChartPoint[];
-  metric: ExerciseMetric;
-  grain: Grain;
+  points: readonly SeriesPoint[];
+  title: string;
+  /**
+   * What the points mean when one is not one session — "Maximum par semaine".
+   *
+   * Null at the per-session grain, where the title is already the whole truth.
+   * The caller owns the wording because the reduction is its decision, and a
+   * bucket standing for four workouts that looks like one is the misreading
+   * this line exists to prevent.
+   */
+  caption: string | null;
+  /** A value with its unit, in French. Also used for the axis ticks. */
+  format: (value: number) => string;
+  accessibilityLabel: string;
 }) {
   const theme = useTheme();
   const { width: screenWidth } = useWindowDimensions();
@@ -89,7 +108,7 @@ export function ExerciseChart({
   const plotWidth = Math.max(1, width - GUTTER_LEFT);
   const plotHeight = HEIGHT - GUTTER_BOTTOM;
 
-  const values = points.map((point) => metric.value(point));
+  const values = points.map((point) => point.value);
   const count = points.length;
   const band = bandGeometry(count, plotWidth);
   const scale = linearScale(values, plotHeight, TICK_COUNT, GUTTER_TOP);
@@ -102,12 +121,11 @@ export function ExerciseChart({
 
   const { touched, gesture: scrub } = useScrub(band);
   const shown = touched === null ? null : points[touched];
-  const caption = metricCaption(metric, grain);
 
   return (
     <View style={styles.container}>
       <View style={styles.heading}>
-        <Text style={[styles.title, { color: theme.colors.text }]}>{metric.label}</Text>
+        <Text style={[styles.title, { color: theme.colors.text }]}>{title}</Text>
         {/*
           Said out loud whenever a point is not one session. Without it a
           monthly mean of four workouts looks exactly like one workout, which
@@ -130,7 +148,7 @@ export function ExerciseChart({
             scale={scale}
             // No zero on this axis, so no heavier line along the foot of it.
             baseline={false}
-            formatTick={(value) => tickText(value, metric)}
+            formatTick={format}
             xLabels={labelsFor(points, plotWidth / Math.max(1, count))}
           >
             {() => (
@@ -153,10 +171,10 @@ export function ExerciseChart({
                   ),
                 )}
 
-                {shown === undefined || shown === null || !isDrawable(metric.value(shown)) ? null : (
+                {shown === undefined || shown === null || !isDrawable(shown.value) ? null : (
                   <Circle
                     cx={band.centre(touched ?? 0)}
-                    cy={scale.y(metric.value(shown) ?? 0)}
+                    cy={scale.y(shown.value ?? 0)}
                     r={5}
                     fill={theme.colors.accent}
                     stroke={theme.colors.surface}
@@ -170,12 +188,12 @@ export function ExerciseChart({
           {shown === undefined || shown === null ? null : (
             <ChartTooltip
               x={GUTTER_LEFT + band.centre(touched ?? 0)}
-              anchorY={scale.y(metric.value(shown) ?? scale.max)}
+              anchorY={scale.y(shown.value ?? scale.max)}
               plotHeight={plotHeight}
               plotLeft={GUTTER_LEFT}
               plotRight={GUTTER_LEFT + plotWidth}
             >
-              <Readout point={shown} metric={metric} grain={grain} />
+              <Readout point={shown} format={format} />
             </ChartTooltip>
           )}
 
@@ -183,7 +201,7 @@ export function ExerciseChart({
             <View
               style={[styles.touch, { left: GUTTER_LEFT, width: plotWidth }]}
               accessibilityRole="image"
-              accessibilityLabel={`${metric.label} sur la plage choisie`}
+              accessibilityLabel={accessibilityLabel}
             />
           </GestureDetector>
         </View>
@@ -204,15 +222,13 @@ export function ExerciseChart({
  */
 function Readout({
   point,
-  metric,
-  grain,
+  format,
 }: {
-  point: ChartPoint;
-  metric: ExerciseMetric;
-  grain: Grain;
+  point: SeriesPoint;
+  format: (value: number) => string;
 }) {
   const theme = useTheme();
-  const value = metric.value(point);
+  const { value } = point;
 
   return (
     <>
@@ -220,21 +236,15 @@ function Readout({
         {formatDayCompact(point.date)}
       </Text>
       <Text style={[styles.tooltipValue, { color: theme.colors.text }]}>
-        {value === null ? 'Non mesuré' : metricValueText(metric, value)}
+        {value === null ? 'Non mesuré' : format(value)}
       </Text>
-      {grain === 'day' ? null : (
+      {point.sessions <= 1 ? null : (
         <Text style={[styles.tooltipNote, { color: theme.colors.textMuted }]}>
-          {point.sessions === 1 ? '1 séance' : `${point.sessions} séances`}
+          {`${point.sessions} séances`}
         </Text>
       )}
     </>
   );
-}
-
-/** A tick, in the metric's own precision. A comma, as everywhere. */
-function tickText(value: number, metric: ExerciseMetric): string {
-  const rounded = value.toFixed(metric.decimals);
-  return (metric.decimals > 0 ? String(Number(rounded)) : rounded).replace('.', ',');
 }
 
 /**
@@ -243,7 +253,7 @@ function tickText(value: number, metric: ExerciseMetric): string {
  * labelledIndices owns the thinning; this only turns the survivors into text,
  * exactly as the other charts do.
  */
-function labelsFor(points: readonly ChartPoint[], slot: number): string[] {
+function labelsFor(points: readonly SeriesPoint[], slot: number): string[] {
   const shown = new Set(labelledIndices(points.length, slot));
   return points.map((point, index) =>
     shown.has(index) ? formatDayCompact(point.date) : '',
