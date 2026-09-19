@@ -65,6 +65,10 @@ export function SeedSection() {
               const parts = [`${report.entries} entrées sur ${report.days} journées`];
               if (report.recipes > 0) parts.push(`${report.recipes} recettes`);
               if (report.weights > 0) parts.push(`${report.weights} pesées`);
+              // Sessions join the summary in slice 12, under the same rule:
+              // a second run reuses the history rather than doubling it, so
+              // reporting none is the honest answer rather than a failure.
+              if (report.sessions > 0) parts.push(`${report.sessions} séances`);
               setOutcome(`${parts.join(', ')}.`);
             } catch (error) {
               setOutcome(error instanceof Error ? error.message : String(error));

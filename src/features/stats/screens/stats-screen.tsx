@@ -5,20 +5,26 @@ import { useTheme } from '@/core/theme';
 import { Segmented } from '@/core/ui/segmented';
 import { usePreferences, useToday } from '@/features/settings/data/settings-queries';
 import { NutritionPanelSection } from '../components/nutrition-panel-section';
+import { StrengthPanelSection } from '../components/strength-panel-section';
 import { WeightPanelSection } from '../components/weight-panel-section';
 import { DEFAULT_STAT_RANGE, type StatRangeDays } from '../domain/stat-range';
 import {
   DEFAULT_WEIGHT_RANGE,
   type WeightRangeKey,
 } from '@/features/weight/domain/weight-range';
+import {
+  DEFAULT_EXERCISE_RANGE,
+  type ExerciseRangeKey,
+} from '@/features/strength/domain/exercise-range';
 
 /**
  * The Stats tab (specs 7, 8.7, 9.2, 9.4).
  *
  * Specs 7 makes this one dashboard across every module rather than a statistics
- * screen per feature. Strength joins it at slice 12.
+ * screen per feature. Strength joined it at slice 12, which is what specs 7's
+ * "Nutrition, Poids, puis Musculation en V3" foresaw.
  *
- * ## TWO TABS, WHERE THE TWO PANELS USED TO BE STACKED
+ * ## THREE TABS, WHERE THE TWO PANELS USED TO BE STACKED
  *
  * They were one above the other, each with its own range control — so the page
  * carried two segmented controls a scroll apart, and the second one arrived
@@ -34,10 +40,14 @@ import {
  *
  * ## THE RANGES LIVE HERE, NOT IN THE PANELS
  *
- * Each panel is unmounted while the other is shown, and state in an unmounted
+ * Each panel is unmounted while another is shown, and state in an unmounted
  * component is gone. Held here, a range chosen on one tab survives a visit to
- * the other — which is what anyone would expect of a control they set on
+ * the others — which is what anyone would expect of a control they set on
  * purpose.
+ *
+ * THREE ranges rather than one, because specs 7 says so in as many words:
+ * "chaque volet garde ses propres plages, qui diffèrent d'un volet à l'autre".
+ * Strength offers 3 months, a year and everything; the other two do not.
  *
  * ## THE SCROLL OFFSET SURVIVES A CHANGE OF TAB, AND OF RANGE
  *
@@ -82,11 +92,12 @@ import {
  * page jump into place, and it is written up in journal-screen.tsx. Switching
  * tabs changes what is INSIDE this scroll view; the scroll view itself stays.
  */
-type Panel = 'nutrition' | 'weight';
+type Panel = 'nutrition' | 'weight' | 'strength';
 
 const PANEL_OPTIONS: { value: Panel; label: string }[] = [
   { value: 'nutrition', label: 'Nutrition' },
   { value: 'weight', label: 'Poids' },
+  { value: 'strength', label: 'Muscu' },
 ];
 
 export function StatsScreen() {
@@ -97,6 +108,7 @@ export function StatsScreen() {
   const [panel, setPanel] = useState<Panel>('nutrition');
   const [range, setRange] = useState<StatRangeDays>(DEFAULT_STAT_RANGE);
   const [weightRange, setWeightRange] = useState<WeightRangeKey>(DEFAULT_WEIGHT_RANGE);
+  const [strengthRange, setStrengthRange] = useState<ExerciseRangeKey>(DEFAULT_EXERCISE_RANGE);
 
   /**
    * Whether the page is holding its height while a panel reloads.
@@ -150,13 +162,23 @@ export function StatsScreen() {
           }}
           onReady={release}
         />
-      ) : (
+      ) : panel === 'weight' ? (
         <WeightPanelSection
           today={today}
           range={weightRange}
           onRangeChange={(chosen) => {
             setHolding(true);
             setWeightRange(chosen);
+          }}
+          onReady={release}
+        />
+      ) : (
+        <StrengthPanelSection
+          today={today}
+          range={strengthRange}
+          onRangeChange={(chosen) => {
+            setHolding(true);
+            setStrengthRange(chosen);
           }}
           onReady={release}
         />

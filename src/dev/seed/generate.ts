@@ -1,4 +1,4 @@
-import { addDays, type LocalDate } from '@/core/date';
+import { addDays, toDayNumber, type LocalDate } from '@/core/date';
 import type { AppDatabase } from '@/core/db/database';
 import type {
   BaseUnit,
@@ -29,8 +29,15 @@ import { listExercises } from '@/features/strength/data/exercise-reads';
 import { setExerciseFavorite } from '@/features/strength/data/exercise-writes';
 import { installCatalogExercises } from '@/features/strength/data/catalog-writes';
 import { EXERCISE_CATALOG } from '@/features/strength/catalog/exercises';
-import { listRoutines } from '@/features/strength/data/routine-reads';
+import { listRoutines, readRoutine } from '@/features/strength/data/routine-reads';
+import { listSessions, readSession } from '@/features/strength/data/session-reads';
 import { createRoutine } from '@/features/strength/data/routine-writes';
+import {
+  completeSet,
+  finishSession,
+  startSession,
+} from '@/features/strength/data/session-writes';
+import { planFromRoutine } from '@/features/strength/domain/session-plan';
 import {
   DEFAULT_PROGRESSION_INCREMENT_KG,
   emptyExerciseDraft,
@@ -43,6 +50,7 @@ import {
   setBlockRest,
   updateLine,
   type RoutineDraft,
+  restForBlock,
 } from '@/features/strength/domain/routine-draft';
 import { setActiveGoal, setWeight } from '@/features/weight/data/weight-writes';
 import { createRandom, type Random } from './random';
@@ -225,6 +233,8 @@ export interface SeedReport {
   exercises: number;
   /** Routines built from them (slice 10). */
   routines: number;
+  /** Finished sessions written from those routines (slice 12). */
+  sessions: number;
   firstDate: LocalDate;
   lastDate: LocalDate;
 }
@@ -785,6 +795,158 @@ function seedRoutines(tx: AppDatabase, exercises: Map<string, DemoExercise>): nu
   return count;
 }
 
+/**
+ * How often a routine comes round, and how the loads move (slice 12).
+ *
+ * Two sessions a week — one of each routine — which is what makes the
+ * dashboard's weekly grain show two figures rather than one, and what gives
+ * the exercise pages a point every three or four days.
+ */
+const SESSION_DAY_NUMBERS = [0, 3] as const;
+/** Skipped weeks happen. A history with no gaps has no gap to draw. */
+const SESSION_COVERAGE = 0.85;
+/** Fraction added to every target load per week trained. */
+const LOAD_DRIFT_PER_WEEK = 0.006;
+/** A session runs in the evening: 18:30, which is a plausible hour. */
+const SESSION_HOUR_MS = 18.5 * 60 * 60 * 1000;
+/** How long a set and its rest take, so the segments add up to a real workout. */
+const SET_INTERVAL_MS = 2.5 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * A history of finished sessions (specs 10.5, 10.6), through the ordinary
+ * write functions.
+ *
+ * ## THE FOURTH JOB D15 GIVES THIS GENERATOR, AND IT WAS WAITING FOR SLICE 12
+ *
+ * > vérifier les performances sur de longs historiques
+ *
+ * seedRoutines' own comment deferred it in as many words: checking performance
+ * on long histories "is slice 12's, when sessions exist to make a history".
+ * They do now, and without them every screen this slice adds opens empty on
+ * the development installation — the charts, the records, the progression
+ * suggestion and the whole strength panel.
+ *
+ * ## THROUGH startSession / completeSet / finishSession, LIKE EVERYTHING HERE
+ *
+ * It costs speed and buys the only thing that matters: the rows are shaped
+ * exactly like real ones. In particular the SEGMENTS are written by
+ * touchSession rather than invented, so the durations on the dashboard are
+ * derived the way D12 says rather than seeded into a shape the application
+ * would never produce.
+ *
+ * It also means ux_session_active is respected for free: each session is
+ * finished before the next is started, which is what a real month looks like.
+ *
+ * ## THE INSTANT IS DERIVED BY DAY-NUMBER ARITHMETIC, NEVER FROM A Date
+ *
+ * `new Date('2026-09-01')` is the one thing this project forbids outright
+ * (D3). toDayNumber is integer arithmetic on the civil date, so the generated
+ * history is identical at +14 and in Paris — which matters more here than
+ * anywhere, since the suite runs under three zones and a session landing on
+ * the wrong civil day would make the charts disagree with the calendar beside
+ * them.
+ *
+ * ## THE LOADS DRIFT UP, AND SOME SETS ARE NOT DONE
+ *
+ * A flat history draws a flat chart, which exercises nothing and reads as a
+ * defect. So every target creeps up about half a per cent a week, and the
+ * repetitions vary around the top of the range — which is also what makes the
+ * rule of specs 10.4 sometimes fire and sometimes not. A history where it
+ * always fired would never show the screen without a suggestion, and that is
+ * the state somebody opening the application will usually be in.
+ */
+function seedSessions(
+  tx: AppDatabase,
+  firstDate: LocalDate,
+  days: number,
+  random: Random,
+): number {
+  const routines = listRoutines(tx);
+  if (routines.length === 0) return 0;
+
+  // Only on a database with no sessions at all: the Settings button promises
+  // to erase nothing and can be pressed twice, so a second press must not
+  // double a history. seedRoutines and seedTemplate follow the same rule.
+  if (listSessions(tx).length > 0) return 0;
+
+  let written = 0;
+
+  for (let offset = 0; offset < days; offset += 1) {
+    const date = addDays(firstDate, offset);
+    /*
+      Two fixed days of the week, picked in DAY-NUMBER terms rather than by
+      weekday name. Which two they are does not matter; that they are three
+      and four days apart does, because that is what a two-a-week plan looks
+      like and what makes the weekly buckets hold two sessions each.
+    */
+    const slot = SESSION_DAY_NUMBERS.indexOf(
+      (toDayNumber(date) % 7) as (typeof SESSION_DAY_NUMBERS)[number],
+    );
+    if (slot === -1) continue;
+    if (!random.chance(SESSION_COVERAGE)) continue;
+
+    const routine = routines[slot % routines.length];
+    if (routine === undefined) continue;
+    const view = readRoutine(tx, routine.id);
+    if (view === null) continue;
+
+    const plan = planFromRoutine(view.name, view.blocks, restForBlock);
+    if (plan.blocks.length === 0) continue;
+
+    const startedAt = toDayNumber(date) * DAY_MS + SESSION_HOUR_MS;
+    const result = startSession(tx, { date, routineId: routine.id, plan }, { now: startedAt });
+    if (!result.ok) continue;
+
+    const weeksIn = Math.floor(offset / 7);
+    const sets = readSession(tx, result.id)?.blocks.flatMap((block) => block.sets) ?? [];
+
+    sets.forEach((set, index) => {
+      /*
+        A set now and then is simply not done — an interruption, a machine
+        taken. It is what stops every session being a clean sweep, and it is
+        precisely the case specs 10.4's condition turns on: one unfinished
+        working set makes "toutes les séries ont atteint le haut" false.
+      */
+      if (random.chance(0.06)) return;
+
+      const target = set.targetLoadKg;
+      const loadKg =
+        target === null
+          ? null
+          : // Rounded to the half-kilo, which is what a rack can express — and
+            // what stops the charts carrying more precision than reality.
+            Math.round(target * (1 + LOAD_DRIFT_PER_WEEK * weeksIn) * 2) / 2;
+
+      const top = set.targetRepsMax ?? set.targetRepsMin ?? 8;
+      const bottom = set.targetRepsMin ?? top;
+      // Weighted towards the top of the range, so the progression rule fires
+      // often enough to be seen and not so often that it is always on.
+      const reps = random.chance(0.6) ? top : random.between(bottom, top);
+
+      completeSet(
+        tx,
+        set.id as Parameters<typeof completeSet>[1],
+        result.id,
+        {
+          reps,
+          loadKg,
+          durationSeconds: set.targetDurationSeconds,
+          rir: random.pick([1, 2, 2, 3]),
+        },
+        { now: startedAt + (index + 1) * SET_INTERVAL_MS },
+      );
+    });
+
+    finishSession(tx, result.id, {
+      now: startedAt + (sets.length + 1) * SET_INTERVAL_MS,
+    });
+    written += 1;
+  }
+
+  return written;
+}
+
 export function seedJournal(db: AppDatabase, options: SeedOptions): SeedReport {
   const { endDate, days, seed = 1, coverage = 0.85 } = options;
   if (days < 1) throw new Error('Nothing to generate');
@@ -802,6 +964,7 @@ export function seedJournal(db: AppDatabase, options: SeedOptions): SeedReport {
   let weights = 0;
   let exerciseCount = 0;
   let routineCount = 0;
+  let sessionCount = 0;
 
   db.transaction((tx) => {
     seedTemplate(tx);
@@ -813,6 +976,9 @@ export function seedJournal(db: AppDatabase, options: SeedOptions): SeedReport {
     const exercises = seedExercises(tx);
     exerciseCount = exercises.size;
     routineCount = seedRoutines(tx, exercises);
+    // AFTER the routines, which it runs: a session is a snapshot of a routine
+    // at its start (specs 5.2), so there is nothing to snapshot before them.
+    sessionCount = seedSessions(tx, firstDate, days, random);
 
     for (let offset = 0; offset < days; offset += 1) {
       const date = addDays(firstDate, offset);
@@ -854,6 +1020,7 @@ export function seedJournal(db: AppDatabase, options: SeedOptions): SeedReport {
     weights,
     exercises: exerciseCount,
     routines: routineCount,
+    sessions: sessionCount,
     firstDate,
     lastDate: endDate,
   };

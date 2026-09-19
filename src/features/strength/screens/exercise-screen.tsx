@@ -8,10 +8,12 @@ import { useTheme } from '@/core/theme';
 import { toEntityId } from '@/core/id';
 import type { ExerciseId } from '@/core/db/schema';
 import { ExerciseBody } from '../components/exercise-body';
+import { ExerciseHistorySection } from '../components/exercise-history-section';
 import {
   useDeleteExercise,
   useExercise,
   useExerciseDraft,
+  useExerciseHistory,
   useExerciseUsage,
   useUpdateExercise,
 } from '../data/exercise-queries';
@@ -25,11 +27,18 @@ import { deletionWarning, problemText } from '../domain/exercise-text';
 /**
  * The page of one exercise (specs 10.1), which is also where it is edited.
  *
- * WHAT IS NOT HERE YET, and it is most of what specs 10.1 lists: the charts,
- * the personal records, the complete history. All four need session_set, which
- * is slice 11's table — a page showing an empty chart would be a layer built
- * "for later", which section 7 rules out. What ships is what has data behind
- * it: the body map, identity, notes, and the increment.
+ * ## THE CHARTS, THE RECORDS AND THE HISTORY ARRIVED IN SLICE 12
+ *
+ * Slice 10 shipped this page without them and said why: all three need
+ * session_set, which was slice 11's table, and a page showing an empty chart
+ * would have been a layer built "for later" that section 7 rules out. The
+ * table exists, so they are here — in ExerciseHistorySection, which is one
+ * read folded three ways.
+ *
+ * THEY ARE BELOW THE FORM, AND THEY DISAPPEAR WHILE IT IS BEING EDITED. An
+ * exercise being renamed has no business drawing a chart underneath: editing
+ * is a task with two endings, and everything on screen that is not part of it
+ * is something to scroll past on the way to the button.
  *
  * ## EDITING HAPPENS HERE, NOT IN A WINDOW
  *
@@ -65,6 +74,12 @@ export function ExerciseScreen() {
   */
   const view = useExercise(id);
   const usage = useExerciseUsage(id);
+  /*
+    Read here rather than inside the section, so the section stays a pure
+    rendering of rows it is handed — and so the page holds every query it
+    depends on in one place, as every other screen in this feature does.
+  */
+  const history = useExerciseHistory(id);
   const update = useUpdateExercise();
   const remove = useDeleteExercise();
 
@@ -250,6 +265,12 @@ export function ExerciseScreen() {
             ))}
           </View>
         ) : null}
+
+        {/*
+          The past of this exercise (specs 10.1), and only when not editing —
+          see the note at the top.
+        */}
+        {editing ? null : <ExerciseHistorySection history={history.data ?? []} />}
 
         {editing ? (
           <Pressable

@@ -119,6 +119,33 @@ function formatKg(kg: number): string {
 }
 
 /**
+ * The double-progression suggestion, as the block card says it (specs 10.4).
+ *
+ * > L'application affiche une suggestion à la séance suivante. Elle ne modifie
+ * > jamais la routine ni la charge cible automatiquement.
+ *
+ * ## IT IS PHRASED AS A PROPOSAL, AND THE WORD MATTERS
+ *
+ * "Essayez 72,5 kg" rather than "Charge : 72,5 kg". The second reads like a
+ * target the application has set, which is precisely what specs 10.4 forbids
+ * it from doing — and the line sits a few millimetres from a field whose
+ * placeholder carries the real target, so the two must not look alike.
+ *
+ * ## THE INCREMENT IS NAMED, NOT ONLY THE RESULT
+ *
+ * "(+2,5 kg)" is what makes the number checkable at a glance: somebody who
+ * knows they were on 70 can see where 72,5 came from without doing arithmetic
+ * between two sets. It is also the only place the per-exercise increment of
+ * specs 6.3 is ever visible outside the exercise editor.
+ */
+export function progressionText(suggestion: {
+  loadKg: number;
+  incrementKg: number;
+}): string {
+  return `Essayez ${formatKg(suggestion.loadKg)} kg (+${formatKg(suggestion.incrementKg)} kg)`;
+}
+
+/**
  * A RIR, as the row writes it.
  *
  * The top of the scale means "four or more" (specs 10.3 spells it "4+"), so it

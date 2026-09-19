@@ -357,12 +357,17 @@ function SessionsPanel({
       }
       renderItem={({ item, index }) => (
         <CardRow first={index === 0} last={index === held.length - 1}>
+          {/*
+            EVERY row opens now, where only the running one did. Slice 11 left
+            finished rows inert because specs 7 put the history screen here and
+            there was nowhere to go; specs 10.5's page is that destination.
+          */}
           <SessionRow
             session={item}
             onPress={
               item.status === 'in_progress'
                 ? () => router.push('/(tabs)/training/session')
-                : undefined
+                : () => router.push(`/(tabs)/training/session/${item.id}`)
             }
           />
         </CardRow>

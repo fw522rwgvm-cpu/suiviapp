@@ -539,6 +539,12 @@ Plages : **7 / 30 / 90 jours**.
 - **Graphiques** sur 3 mois / 1 an / tout : charge maximale, 1RM estimé, meilleur volume de série, volume de séance, total de répétitions
 - **Records personnels** : charge maximale, meilleur 1RM estimé, meilleur volume de série, meilleur volume de séance
 - Historique complet
+
+**[tranche 12] Trois précisions.**
+
+1. **Les cinq graphiques portent sur les séries de travail validées**, comme le volume. Le document ne le disait que du volume ; deux graphiques de la même page comptant des séries différentes se contrediraient sous les yeux du lecteur, et un 1RM estimé depuis un échauffement n'estime rien. Voir §14.42 n° 10.
+2. **Les records portent sur tout l'historique, jamais sur la plage choisie**, et chacun affiche sa date. Un record qui changerait en bougeant le sélecteur serait un maximum sur une fenêtre, ce que le graphique dessine déjà. Voir §14.42 n° 8 et 9.
+3. **L'historique complet ne se rétrécit pas avec la plage** : « complet » est le mot du document, et on ouvre cette liste pour retrouver ce qui n'est pas récent.
 - Incrément de progression propre à l'exercice
 - Exercice éditable
 
@@ -593,9 +599,29 @@ Plages : **7 / 30 / 90 jours**.
 - **Incrément :** défini **par exercice**, initialisé depuis une valeur globale des Réglages.
 - Ne s'applique qu'aux lignes où la règle est activée, et aux séries de type `travail`.
 
+**[tranche 12] Où et quand la suggestion s'affiche.** Sur la **carte de bloc de la séance en direct**, sous le nom de l'exercice, en lecture seule et sans bouton d'application. Jamais dans le texte indicatif du champ charge : ce texte porte la cible de la routine et c'est lui qui est enregistré si on ne touche à rien, donc l'y écrire serait l'application modifiant la charge cible — ce que la règle ci-dessus interdit.
+
+**[tranche 12] Quatre précisions sur la condition.**
+
+1. **La séance en cours est exclue** de « la séance la plus récente comportant cet exercice ». Sinon valider trois séries au haut de la plage ferait apparaître la suggestion en pleine séance, sur la foi des séries mêmes qui servent à décider.
+2. **« Toutes les séries de travail » désigne les séries gouvernées**, c'est-à-dire celles dont la règle est activée. Une ligne décochée n'est ni une preuve ni un obstacle.
+3. **Les séries gouvernées doivent partager une seule charge cible.** « À la charge cible » est au singulier : la double progression porte sur un poids de travail fixe, et une pyramide est un autre schéma que ce document ne décrit pas. Sinon, aucune suggestion.
+4. **Aucune suggestion sans charge cible ni sans plage** : un exercice au poids du corps ou mesuré en durée ne peut pas être mesuré contre cette condition.
+
+Voir §14.42 n° 1 à 7.
+
 ### 10.5 Historique des séances
 
 Liste chronologique des séances terminées, avec détail, édition et suppression.
+
+**[tranche 12] Ce que « édition » veut dire.** La page d'une séance terminée est **éditable à vue, sans mode édition** : chaque frappe est enregistrée immédiatement, donc il n'y a rien à enregistrer ni à abandonner. « Détail » et « édition » sont un seul écran. Sont modifiables les valeurs réalisées d'une série — charge, répétitions, RIR, état, type — le retrait d'une série, et la note de séance. Ne le sont pas la date, la routine source ni le retour à l'état « en cours », que le §5.2 fige.
+
+**[tranche 12] Deux conséquences, normatives.**
+
+1. **Éditer une séance terminée n'ajoute aucun temps actif.** Les corrections passent par les mêmes écritures que la séance en direct, et une correction faite trois semaines plus tard aurait ouvert un segment d'activité neuf — la durée du §10.6 aurait grossi du temps passé à corriger.
+2. **Une série validée après la fin de la séance est horodatée à la fin de celle-ci**, jamais à l'heure du jour. Elle doit rester à l'intérieur de la séance à laquelle elle appartient ; sa journée reste décidée par la date civile de la séance (D3).
+
+**[tranche 12] La suppression d'une séance demande confirmation**, bien que le §5.3 réserve l'unique avertissement à la suppression d'un exercice. Le précédent du Journal ne s'applique pas : y supprimer demande deux gestes, un bouton en pied de page en demande un. Voir §14.42 n° 14 à 17.
 
 ### 10.6 Tableau de bord — volet musculation
 
@@ -609,6 +635,13 @@ Plages : **3 mois / 1 an / tout**.
 - **Graphique croisé** : volume de musculation et poids lissé
 
 **[v2.2] Interaction des graphiques.** Aucun zoom ni déplacement au doigt : les sélecteurs de plage y pourvoient déjà. Une seule interaction, commune à tous les graphiques de l'application : **toucher un point affiche sa valeur et sa date**.
+
+**[tranche 12] Quatre précisions.**
+
+1. **Le calendrier est une semaine par colonne**, sept jours en hauteur, et non une grille mensuelle : une grille mensuelle ne peut pas montrer un an, et ce calendrier suit la même plage que les graphiques. Il n'est pas cliquable.
+2. **Les trois séries sont des figures par séance**, donc un seau de plusieurs séances en prend la **moyenne** — jamais la somme (D9). Le graphique le dit lorsque le grain n'est plus la séance.
+3. **Seules les séances terminées comptent.** Une séance en cours n'a pas de durée chartable et ses séries sont à moitié enregistrées.
+4. **Le graphique croisé trace le volume moyen par séance** contre le poids lissé, sur des seaux communs. Réserve inscrite : il est de ce fait aveugle à l'entraînement plus fréquent à volume par séance égal ; le tonnage hebdomadaire est le premier remède. Voir §14.42 n° 19 à 22.
 
 ---
 
@@ -1256,3 +1289,32 @@ produit un chiffre plausible dans les deux sens.
 | 2 | **§10.2, §10.3** | **La règle est la même sur les deux tables**, celle de la routine et celle de la séance | Le §10.2 demande « présentation identique à la création », et deux écritures s'accorderaient sur les blocs faciles pour diverger sur un superset avec échauffement. Une seule fonction, dans le domaine |
 | 3 | **§10.3** | **Chaque exercice d'un superset se compte à part** | Il alterne A, B, A, B : chacun a sa propre première série de travail, et la lettre à côté du numéro est ce qui dit laquelle. Compter à travers le bloc appellerait 3 la deuxième série de A |
 | 4 | **§2.6** | **Rien de stocké ne bouge, et c'est le point à ne pas défaire** | `session_set.set_index` reste le **tour** et continue de compter toutes les séries : c'est la clé sur laquelle la colonne PRÉCÉDENT s'apparie (§14.39). La renuméroter réapparierait en silence les séries de cette semaine avec d'autres de la semaine dernière. Identité d'un côté, étiquette de l'autre |
+
+### 14.42 Modifications issues de la tranche 12 (19/09/2026)
+
+| № | Section | Modification | Motif |
+| --- | --- | --- | --- |
+| 1 | **§10.4** | **La suggestion de progression s'affiche sur la carte de bloc de la SÉANCE EN DIRECT**, sous le nom de l'exercice, là où vivent déjà le repos et les notes | Le §10.4 dit « à la séance suivante » sans dire sur quel écran. C'est un fait sur l'exercice, pas sur une rangée. **Pas dans le texte indicatif du champ charge** : ce texte porte la cible de la routine et c'est lui qui est enregistré si on ne touche à rien, donc y écrire la suggestion SERAIT l'application modifiant la charge cible — ce que le §10.4 interdit — et ce serait indiscernable de la cible en le faisant |
+| 2 | **§10.4** | **La suggestion est en lecture seule : aucun bouton « appliquer »** | Le §10.4 demande une suggestion, point. Un tap n'est pas « automatiquement », donc le bouton se défendrait ; il coûterait une décision de plus sur un écran qu'on lit entre deux séries. **Réserve** : si taper la charge suggérée devient pénible à l'usage, c'est le premier remède |
+| 3 | **§10.4** | **La séance en cours est exclue de sa propre preuve** | Sans ça, valider trois séries au haut de la plage ferait apparaître la suggestion **en pleine séance**, sur la foi des séries mêmes qui servent à décider. Même exclusion, même motif, que la colonne PRÉCÉDENT (§14.39) |
+| 4 | **§10.4 — LECTURE SIGNALÉE** | **« Toutes les séries de travail » veut dire les séries GOUVERNÉES** | Le §10.4 dit ensuite « ne s'applique qu'aux lignes où la règle est activée ». Lus ensemble : parmi les lignes portant la règle, toutes doivent avoir atteint le haut. Décocher une ligne est la façon de dire « ne raisonne pas sur cette série » ; l'autre lecture ferait qu'une seule case décochée désactive la progression de tout l'exercice, en silence |
+| 5 | **§10.4 — LECTURE SIGNALÉE** | **Des cibles de charge DIFFÉRENTES entre les séries gouvernées ne produisent aucune suggestion** | Le §10.4 dit « à la charge cible », au singulier : la double progression porte sur un poids de travail fixe. Une pyramide est un autre schéma que le document ne décrit pas, donc il n'existe aucun nombre honnête à proposer. Direction prudente assumée : le coût est une suggestion qui n'apparaît pas sur une routine inhabituelle |
+| 6 | **§10.4 — TROU COMBLÉ** | **Aucune suggestion pour un exercice au poids du corps ni pour un exercice en durée** | Sans charge cible, « à la charge cible » ne se mesure pas ; sans plage de répétitions, il n'y a pas de haut à atteindre. « +2,5 kg » sur une traction est une phrase qui ne porte sur rien |
+| 7 | **§10.4** | **Les comparaisons sont « au moins », jamais « exactement »** | Neuf répétitions quand huit étaient demandées, ou 75 kg pour une cible de 70, sont **plus** que la condition. L'égalité priverait de la suggestion celui qui l'a le mieux méritée, et le ferait en silence |
+| 8 | **§10.1 — LECTURE SIGNALÉE** | **Les records personnels portent sur TOUT l'historique, jamais sur la plage choisie** | Le §10.1 liste les plages sous « Graphiques » et les records en puce séparée. Un record qui changerait en bougeant le sélecteur ne serait pas un record, ce serait un maximum sur une fenêtre — et c'est déjà ce que le graphique dessine. La carte est donc **au-dessus** du sélecteur |
+| 9 | **§10.1 — AJOUT SIGNALÉ** | **Chaque record affiche sa date** | « 120 kg » seul est une demi-information : ce qui rend un record lisible est de savoir s'il date du mois dernier ou d'il y a deux ans, c'est-à-dire la différence entre une progression et un exercice abandonné. Gratuit — les lignes portent déjà leur séance |
+| 10 | **§10.1 — LECTURE SIGNALÉE** | **Les cinq graphiques partagent la portée que le §10.1 n'écrit que pour le volume** : séries de travail validées | Un échauffement n'est pas votre charge maximale, et un 1RM estimé depuis 20 kg × 12 n'estime rien. Surtout, « total de répétitions » et « volume de séance » sont sur la même page : deux graphiques comptant des séries différentes se contrediraient sous les yeux du lecteur. La seule portée que le document donne est la plus étroite, et l'appliquer partout est la lecture prudente |
+| 11 | **§10.1, §10.6 — DÉCISION** | **Trois séries se regroupent par MAXIMUM, quatre par MOYENNE** | D9 tranche les totaux (« la somme n'est licite que pour les compteurs ») et pas les maxima. Un graphique intitulé « charge maximale » dont les points seraient des moyennes contredit son propre titre ; le plus lourd soulevé en mars est ce que « maximum de mars » veut dire. Les figures **par séance** — volume de séance, répétitions, durée — prennent la moyenne, qui survit en outre à un seau partiel en bout de plage là où une somme se lirait comme un effondrement |
+| 12 | **§10.1, §10.6** | **Un graphique à la fois, avec un sélecteur** | Cinq graphiques empilés seraient sept ou huit cents points de défilement dont quatre toujours dépassés. Des chips plutôt qu'un sélecteur segmenté sur la page d'exercice : cinq libellés ne tiennent pas en segments égaux sur 390 points, et « Vol. sé… » tronqué est ce qui rend un sélecteur inutile |
+| 13 | **§10.1** | **L'historique complet ne se rétrécit pas avec la plage** | Le §10.1 écrit « historique **complet** », et les plages appartiennent aux graphiques une puce plus haut. On ouvre cette liste précisément pour retrouver ce qui n'est pas récent |
+| 14 | **§10.5** | **La page d'une séance terminée est éditable à vue, sans mode édition** | La page d'exercice du §14.27 en a un et celle-ci délibérément pas : l'éditeur d'exercice tient un **brouillon** en React, donc en sortir a deux fins honnêtes, alors qu'ici chaque frappe part en base par le rythme différé. Rien à enregistrer, rien à jeter, rien à garder. « Détail » et « édition », les deux mots du §10.5, sont donc un seul écran |
+| 15 | **§10.5, §10.3 — DÉFAUT STRUCTUREL ÉVITÉ** | **Éditer une séance terminée n'ajoute AUCUN temps actif** | Toutes les écritures de séance ouvrent ou prolongent un segment d'activité, et trois semaines dépassent largement les trente minutes de D12 : corriger une charge après coup aurait créé un segment neuf, et la durée de la séance aurait grossi du temps passé à corriger une faute de frappe — sur le chiffre même que le §10.6 dessine. Un seul garde, à l'endroit où la règle des segments vit déjà |
+| 16 | **§10.5, §5.3 — DÉCISION** | **Une série validée APRÈS la fin de la séance est horodatée à la fin de celle-ci**, jamais à l'heure du jour | « J'ai oublié de cocher la 3e série » est une correction ordinaire une semaine plus tard (§5.3, aucune limite temporelle). L'horloge du jour placerait la série une semaine après la séance à laquelle elle appartient. Ce n'est pas la vérité — personne ne sait quand elle a été faite — mais c'est **à l'intérieur** de la séance, qui est la propriété dont tout dépend en aval. Le jour, lui, reste décidé par `session.date` (D3) |
+| 17 | **§10.5, §5.3** | **La suppression d'une séance demande confirmation** | Le §5.3 réserve l'unique avertissement à la suppression d'un **exercice**, et ça reste vrai de ce qui est détruit. Mais le précédent invoqué était le Journal, qui a pu retirer les siens parce que supprimer y demande **deux gestes** avec un bouton nommé et visible entre les deux. Un bouton en pied de page est un geste ; la confirmation remet ce qui manquait |
+| 18 | **§10.5, §5.3** | **La page d'un exercice lit son historique par IDENTIFIANT seul, jamais par le nom figé** | La colonne PRÉCÉDENT fait l'inverse, et c'est délibérément deux règles. Le §5.3 promet que supprimer un exercice rompt « définitivement » la continuité statistique, et l'utilisateur lit cette phrase avant de confirmer : faire remonter les anciennes séries par leur nom lui rendrait en silence les records qu'on lui a dit avoir détruits |
+| 19 | **§10.6** | **Le volet musculation rejoint l'onglet Stats en troisième sélecteur**, avec ses propres plages 3 mois / 1 an / tout | Ce que le §7 annonçait — « Nutrition, Poids, puis Musculation en V3 » — et ce que son amendement de la tranche 8 autorise : « chaque volet garde ses propres plages ». Une semaine de musculation, c'est deux ou trois séances, donc un graphique de trois points |
+| 20 | **§10.6** | **Le calendrier des séances est une semaine par colonne, pas une grille mensuelle** | Une grille mensuelle ne peut pas montrer un an, et le §10.6 gouverne ce calendrier avec la même plage que les graphiques. Treize colonnes pour un trimestre, cinquante-deux pour un an, et l'œil lit une suite de colonnes vides comme une coupure sans qu'on le lui dise. Il n'est pas cliquable : la seule interaction que le §10.6 accorde est « toucher un point affiche sa valeur et sa date », ce qu'une case portant déjà sa date n'apprendrait à personne |
+| 21 | **§10.6 — RÉSERVE CONSIGNÉE** | **Le volume du graphique croisé est la MOYENNE par séance**, donc aveugle à l'entraînement plus fréquent | Cohérent avec le graphique de volume au-dessus et avec le refus de D9 de sommer ce qui n'est pas un compteur. Deux séances par semaine et cinq tracent donc la même ligne à volume par séance égal. Le tonnage hebdomadaire est le premier remède et tient en une ligne ; il n'est pas pris parce qu'une somme dont les seaux diffèrent de taille en bout de plage est sa propre erreur de lecture |
+| 22 | **§10.6 — RÉSERVE CONSIGNÉE** | **Les seuils de la carte corporelle ont été choisis contre UNE séance et ne sont pas recalibrés** | « Trois, six et dix séries pondérées » est ce à quoi une séance ressemble ; trois mois d'entraînement les dépassent sur tout muscle travaillé. La carte du tableau de bord dit donc très bien **quels** muscles sont travaillés et mal **combien**. Signalé plutôt que re-réglé en silence : un second jeu de seuils serait une seconde réponse à la même question |
+| 23 | **§6.3** | **La note d'une séance devient saisissable**, sur la page d'une séance terminée | La colonne `session.notes` existait depuis la tranche 11 avec son écriture et son crochet, et aucun écran ne la lisait ni ne l'écrivait. Elle va là plutôt que sur la séance en direct : ce qu'on a à dire d'un entraînement, on le dit une fois qu'il est fini |
+| 24 | **§10.3** | **Une rangée de séance terminée s'ouvre**, là où seule celle en cours le faisait | La tranche 11 les laissait inertes en nommant le trou : il n'y avait nulle part où aller. La page du §10.5 est cette destination |

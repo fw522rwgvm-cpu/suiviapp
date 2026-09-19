@@ -148,6 +148,20 @@ export const RIR_OPEN_ENDED = 4;
  * a value this build does not know is simply not counted, rather than silently
  * joining a total whose definition excludes it. Slice 12 reads the volume; this
  * is the predicate it will read it through, written here so there is one.
+ *
+ * ## SLICE 12 READS ALL FIVE SERIES THROUGH IT, NOT ONLY THE VOLUME
+ *
+ * The name stayed, because renaming a shipped and tested function for tidiness
+ * is what this project refuses; what widened is its job. Specs 10.1 scopes only
+ * the volume, and exercise-stats.ts sets out why the maximum load, the 1RM, the
+ * best set volume and the repetition total take the same scope — chiefly that
+ * two charts on one page counting different sets would contradict each other in
+ * front of the reader.
+ *
+ * One exception, deliberate and documented where it lives: the PRÉCÉDENT column
+ * reads `status === 'done'` WITHOUT the set_type clause, because it sits on
+ * every row including the warm-ups. That difference is real and is not to be
+ * unified away.
  */
 export function countsTowardsVolume(setType: string, status: string): boolean {
   return setType === 'work' && status === 'done';

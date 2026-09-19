@@ -215,6 +215,93 @@ describe('seedJournal', () => {
     expect(blockRests).toEqual({ n: 0 });
   });
 
+  it('writes a history of finished sessions, with segments it did not invent', () => {
+    /**
+     * The fourth job D15 gives this generator — "vérifier les performances sur
+     * de longs historiques" — and the one slice 10 deferred until sessions
+     * existed. Without it every screen slice 12 adds opens empty on the
+     * development installation.
+     *
+     * THE SEGMENTS ARE THE ASSERTION THAT MATTERS. They are written by
+     * touchSession because the generator goes through the ordinary write
+     * functions, so a duration on the dashboard is derived the way D12 says
+     * rather than seeded into a shape the application would never produce.
+     */
+    const report = seedJournal(fixture.db, { endDate: END, days: 120, seed: 17 });
+
+    // Two a week over four months, minus the skipped ones.
+    expect(report.sessions).toBeGreaterThan(20);
+    expect(countRows(fixture.raw, 'session')).toBe(report.sessions);
+
+    const open = fixture.raw
+      .prepare("SELECT COUNT(*) AS n FROM session WHERE status <> 'done'")
+      .get();
+    expect(open).toEqual({ n: 0 });
+
+    // Every session carries at least one segment, and none is NULL-ended:
+    // an open segment carries its end at all times since slice 11.
+    const segmentless = fixture.raw
+      .prepare(
+        'SELECT COUNT(*) AS n FROM session s ' +
+          'WHERE NOT EXISTS (SELECT 1 FROM session_segment WHERE session_id = s.id)',
+      )
+      .get();
+    expect(segmentless).toEqual({ n: 0 });
+    expect(
+      fixture.raw.prepare('SELECT COUNT(*) AS n FROM session_segment WHERE ended_at IS NULL').get(),
+    ).toEqual({ n: 0 });
+  });
+
+  it('records loads that MOVE, so a chart has a shape to draw', () => {
+    /**
+     * A flat history draws a flat line, which exercises nothing and reads as a
+     * defect rather than as a plateau. The drift is half a per cent a week, so
+     * over four months the last month must be measurably heavier than the
+     * first — asserted as a comparison rather than against a literal, since the
+     * figure is a consequence of the routines and not a constant.
+     */
+    seedJournal(fixture.db, { endDate: END, days: 120, seed: 19 });
+
+    const [early, late] = ['ASC', 'DESC'].map(
+      (direction) =>
+        fixture.raw
+          .prepare(
+            'SELECT avg(actual_load_kg) AS load FROM (' +
+              '  SELECT ss.actual_load_kg FROM session_set ss ' +
+              '  JOIN session_block sb ON ss.session_block_id = sb.id ' +
+              '  JOIN session s ON sb.session_id = s.id ' +
+              "  WHERE ss.status = 'done' AND ss.actual_load_kg IS NOT NULL " +
+              `  ORDER BY s.date ${direction} LIMIT 40)`,
+          )
+          .get() as { load: number | null },
+    );
+
+    expect(early?.load).not.toBeNull();
+    expect(late?.load ?? 0).toBeGreaterThan(early?.load ?? 0);
+  });
+
+  it('leaves some working sets undone, which is what specs 10.4 turns on', () => {
+    // A history where every set was completed would never show the screen
+    // WITHOUT a progression suggestion — and that is the state somebody
+    // opening the application is usually in.
+    seedJournal(fixture.db, { endDate: END, days: 120, seed: 23 });
+
+    const pending = fixture.raw
+      .prepare("SELECT COUNT(*) AS n FROM session_set WHERE status <> 'done'")
+      .get() as { n: number };
+    expect(pending.n).toBeGreaterThan(0);
+  });
+
+  it('writes no session twice on a second run', () => {
+    // The Settings button promises to erase nothing and can be pressed twice.
+    const first = seedJournal(fixture.db, { endDate: END, days: 60, seed: 29 });
+    const second = seedJournal(fixture.db, { endDate: END, days: 60, seed: 31 });
+
+    expect(first.sessions).toBeGreaterThan(0);
+    expect(second.sessions).toBe(0);
+    expect(countRows(fixture.raw, 'session')).toBe(first.sessions);
+  });
+
   it('gives the filter strips something on both axes, and the body map most of a body', () => {
     // A catalogue that worked three muscles with one piece of equipment would
     // exercise neither the filter nor the map, and both would look fine.
