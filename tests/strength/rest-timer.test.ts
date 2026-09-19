@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { SessionId } from '../../src/core/db/schema';
-import { NOTIFICATION_KINDS } from '../../src/core/db/schema';
 import {
-  restNotificationId,
   restWindow,
   type RestingSet,
 } from '../../src/features/strength/domain/rest-timer';
@@ -83,42 +80,15 @@ describe('the rest in progress', () => {
   });
 });
 
-describe('the identifier, and the collision that must not exist', () => {
-  it('is one per session, so the next set REPLACES it', () => {
-    /**
-     * Specs 9.3: "programmée à la validation d'une série et annulée à la
-     * validation de la suivante". Keyed on the session rather than on the set,
-     * the replacement happens by identity and nobody has to cancel anything —
-     * the device applyPlan uses for the daily kinds.
-     */
-    const id = restNotificationId('session-1' as SessionId);
-
-    expect(id).toBe('rest:session-1');
-    expect(restNotificationId('session-1' as SessionId)).toBe(id);
-    expect(restNotificationId('session-2' as SessionId)).not.toBe(id);
-  });
-
-  it('IS NOT A NOTIFICATION KIND, AND NO KIND CLAIMS IT', () => {
-    /**
-     * THE PROPERTY THAT IS INVISIBLE IN THE CODE THAT DEPENDS ON IT.
-     *
-     * diffSchedule decides what the daily planner owns with
-     * `NOTIFICATION_KINDS.some(kind => id.startsWith(kind + ':'))`, and
-     * cancels everything it owns that is not in the plan — on every foreground
-     * and every invalidation the bus raises.
-     *
-     * Slice 9 wrote a whole paragraph anticipating this: adding `rest_timer` to
-     * NOTIFICATION_KINDS would hand the rest timer to a scheduler that has
-     * never heard of it, which would cancel it mid-workout. Nothing would
-     * report it — the timer simply would not ring.
-     *
-     * And BOTH the schema comment on notification_setting and the export
-     * catalogue explicitly invite that addition ("slice 11 adds a kind here for
-     * the rest timer"). They are wrong, and this is what says so.
-     */
-    const id = restNotificationId('session-1' as SessionId);
-    for (const kind of NOTIFICATION_KINDS) {
-      expect(id.startsWith(`${kind}:`), `${kind} would claim the rest timer`).toBe(false);
-    }
-  });
-});
+/*
+ * THE IDENTIFIER TESTS ARE GONE WITH THE IDENTIFIER.
+ *
+ * Slice 11 minted `rest:<sessionId>` for a local notification and these
+ * assertions guarded an invisible property: no NOTIFICATION_KIND is a prefix of
+ * it, so the daily planner could never cancel a rest mid-workout.
+ *
+ * Specs 14.40 removed the notification — the end of a rest vibrates instead and
+ * nothing is scheduled. The property has no subject left, so the assertions are
+ * deleted rather than pointed at a value nobody mints; the planner's own rule
+ * is still held, with a foreign identifier, in tests/notifications/apply.test.
+ */

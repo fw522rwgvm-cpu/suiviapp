@@ -115,6 +115,15 @@ export const SETTING_KEYS = {
    * quantity prefill.
    */
   progressionIncrementKg: 'progression_increment_default_kg',
+  /**
+   * Whether the end of a rest makes the phone vibrate (specs 14.40), slice 11.
+   *
+   * A `setting` row rather than a fifth NOTIFICATION_KIND, because it is not a
+   * notification any more: nothing is scheduled, nothing is cancelled, and the
+   * daily planner of D14 must never hear about it — the trap slice 11 already
+   * documented twice.
+   */
+  restAlertEnabled: 'rest_alert_enabled',
 } as const;
 
 /**

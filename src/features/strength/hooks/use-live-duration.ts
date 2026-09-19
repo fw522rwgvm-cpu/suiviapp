@@ -30,15 +30,33 @@ import {
 export function useLiveDuration(
   segments: readonly ActivitySegment[],
   gapMs: number = SESSION_ACTIVE_GAP_MS,
+  tickMs: number = BANNER_TICK_MS,
 ): number {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), TICK_MS);
+    const timer = setInterval(() => setNow(Date.now()), tickMs);
     return () => clearInterval(timer);
-  }, []);
+  }, [tickMs]);
 
   return liveDurationMs(segments, now, gapMs);
 }
 
-const TICK_MS = 15_000;
+/**
+ * How often each reader needs a new instant, and they do NOT need the same.
+ *
+ * The persistent banner shows minutes (durationText refuses seconds, because it
+ * sits on every screen of the application and a twitching figure is a cost paid
+ * on pages that have nothing to do with training). Fifteen seconds is four
+ * times more often than it can possibly change, which is cheap and generous.
+ *
+ * The session's own page shows SECONDS since specs 14.38, so fifteen made it
+ * look stopped for fourteen of them — reported as "le champ de durée ne se met
+ * pas à jour toutes les secondes". It ticks every second, and that is the whole
+ * of what it costs: one setState on the screen you are looking at.
+ *
+ * Two constants rather than one interval fast enough for both, because the
+ * banner's interval runs on EVERY screen and the session's runs on one.
+ */
+export const BANNER_TICK_MS = 15_000;
+export const SESSION_TICK_MS = 1_000;

@@ -65,7 +65,6 @@ export function LiveSetRow({
   typed,
   previous,
   active,
-  onActivate,
   onType,
   onCycleType,
   onOpenRir,
@@ -80,7 +79,6 @@ export function LiveSetRow({
   /** What this same set did last time the routine was done. `null` when never. */
   previous: PreviousSet | null;
   active: boolean;
-  onActivate: () => void;
   onType: (typed: TypedSet) => void;
   onCycleType: (next: (typeof SET_TYPES)[number]) => void;
   onOpenRir: () => void;
@@ -314,20 +312,25 @@ export function LiveSetRow({
   );
 
   /*
-    The swipe owns the press, never a Pressable wrapped around the content:
-    React Native's responder system and gesture-handler do not arbitrate, so a
-    Pressable under an active pan fires on release — the defect slice 4 found on
-    the cart and on the Journal, on the same day.
+    NO `onPress` ON THE ROW, AND THAT IS THE FIX RATHER THAN AN OMISSION.
 
-    The press here ACTIVATES the row rather than opening anything, which is why
-    it is safe beside the fields and the two buttons: tapping a cell focuses it,
-    tapping a button does its own thing, tapping anywhere else moves the hint to
-    this set.
+    SwipeToDeleteRow swallows touches with `pointerEvents="box-only"` whenever
+    it is given one — a deliberate rule, because React Native's responder system
+    and gesture-handler do not arbitrate and a Pressable under an active pan
+    fires on release (the defect slice 4 found on the cart and on the Journal).
+
+    But this row CONTAINS controls: two fields and two buttons. With a row press
+    they received nothing, so the first tap activated the row, which removed the
+    onPress, and only the second reached the button — reported as "je dois
+    appuyer 2 fois sur le bouton valider". Slice 10 hit the same wall with the
+    routine table's fields.
+
+    There is nothing left for a row press to do anyway: the RIR strip it used to
+    move became a column on every row.
   */
   return (
     <SwipeToDeleteRow
       onDelete={onDelete}
-      onPress={active ? undefined : onActivate}
       accessibilityLabel={`Série ${label}`}
       actionLabel="Retirer"
     >

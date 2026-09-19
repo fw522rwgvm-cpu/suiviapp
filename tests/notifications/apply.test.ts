@@ -10,7 +10,6 @@ import type {
 import { summaryContent } from '../../src/features/notifications/domain/messages';
 import type { PlannedNotification } from '../../src/features/notifications/domain/plan';
 import { NOTIFICATION_KINDS, type SessionId } from '../../src/core/db/schema';
-import { restNotificationId } from '../../src/features/strength/domain/rest-timer';
 
 /**
  * Applying a plan, against a fake notification centre.
@@ -225,41 +224,45 @@ describe('turning everything off', () => {
      *
      * ## THE IDENTIFIER IS THE REAL ONE NOW, AND THAT IS THE POINT
      *
-     * Slice 9 wrote this test before the rest timer existed and used the string
-     * 'rest_timer:abc' — a plausible guess at an identifier nobody would ever
-     * mint. Slice 11 mints `rest:<sessionId>`, so the counter-example was
-     * protecting a value that did not exist, which is the trap slice 10 named:
-     * a test naming something FUTURE goes green by asserting nothing, on the
-     * day it is worth most.
+     * Slice 9 wrote it with 'rest_timer:abc', a plausible guess at an
+     * identifier nobody would ever mint; slice 11 pointed it at the real
+     * `rest:<sessionId>` the rest timer used; specs 14.40 then removed that
+     * notification altogether — the end of a rest vibrates and nothing is
+     * scheduled.
      *
-     * It calls restNotificationId now, so the two constants can only agree.
-     * And what it guards is genuinely invisible: the rest timer survives the
-     * planner because no NOTIFICATION_KIND happens to be a prefix of "rest:",
-     * and nothing about either constant says so. Add `rest_timer` to
-     * NOTIFICATION_KINDS — which the schema comment and the export catalogue
-     * both invite — and the planner silently cancels the timer mid-workout.
+     * So the counter-example is a plainly FOREIGN identifier again, and this
+     * time deliberately: what is being tested is the planner's own rule — it
+     * cancels what it owns and leaves everything else alone — and that rule
+     * does not need a second feature to exist in order to be true. The trap
+     * slice 10 named still applies to the reasoning: a test naming something
+     * FUTURE goes green by asserting nothing.
      */
     const host = new FakeHost();
-    const restId = restNotificationId('session-1' as SessionId);
+    const foreign = 'not_a_kind:whatever';
     host.pending = [
       { id: 'weigh_in:2026-09-16', title: 'Pesée du matin', body: '' },
       { id: 'daily_summary:2026-09-15', title: 'Bilan', body: '' },
-      { id: restId, title: 'Repos terminé', body: '' },
+      { id: foreign, title: 'Autre chose', body: '' },
     ];
 
     await applyPlan(host, []);
 
-    expect(host.pending.map((item) => item.id)).toEqual([restId]);
-    expect(host.cancelled).not.toContain(restId);
+    expect(host.pending.map((item) => item.id)).toEqual([foreign]);
+    expect(host.cancelled).not.toContain(foreign);
   });
 
-  it('claims no identifier the rest timer could mint', () => {
-    // The property stated directly rather than only exercised: no kind of the
-    // daily planner is a prefix of the rest namespace. This is what makes the
-    // test above hold, and it is one constant away from being false.
-    const restId = restNotificationId('session-1' as SessionId);
+  it('owns an identifier only when a kind is its prefix', () => {
+    /**
+     * The property stated directly rather than only exercised.
+     *
+     * `diffSchedule` decides ownership with
+     * `NOTIFICATION_KINDS.some(kind => id.startsWith(kind + ':'))` and cancels
+     * everything it owns that is not in the plan — on every foreground. Any
+     * feature that schedules its own notification must therefore keep out of
+     * that namespace, which is invisible from either side.
+     */
     for (const kind of NOTIFICATION_KINDS) {
-      expect(restId.startsWith(`${kind}:`), `${kind} would claim the rest timer`).toBe(false);
+      expect('not_a_kind:whatever'.startsWith(`${kind}:`)).toBe(false);
     }
   });
 });

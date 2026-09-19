@@ -29,7 +29,12 @@ import {
   updateExercise,
   type ExerciseUsage,
 } from './exercise-writes';
-import { readProgressionIncrement, writeProgressionIncrement } from './strength-settings';
+import {
+  readProgressionIncrement,
+  readRestAlert,
+  writeProgressionIncrement,
+  writeRestAlert,
+} from './strength-settings';
 
 /**
  * Reads are hooks; writes are the functions of exercise-writes.ts (D8).
@@ -57,6 +62,7 @@ export const exerciseKeys = {
   draft: (id: ExerciseId | null) => ['exercise', 'draft', id] as const,
   usage: (id: ExerciseId | null) => ['exercise', 'usage', id] as const,
   increment: () => ['exercise', 'increment-default'] as const,
+  restAlert: () => ['exercise', 'rest-alert'] as const,
 };
 
 /**
@@ -137,6 +143,27 @@ export function useProgressionIncrement() {
     queryKey: exerciseKeys.increment(),
     queryFn: () => readProgressionIncrement(getAppDatabase()),
     meta: readsFrom(setting),
+  });
+}
+
+/**
+ * Whether the end of a rest makes the phone vibrate (specs 14.40).
+ *
+ * Reads `setting` like the increment beside it, so the change bus invalidates
+ * both from one table and the toggle takes effect on the session screen without
+ * anything enumerating a key.
+ */
+export function useRestAlert() {
+  return useQuery<boolean>({
+    queryKey: exerciseKeys.restAlert(),
+    queryFn: () => readRestAlert(getAppDatabase()),
+    meta: readsFrom(setting),
+  });
+}
+
+export function useSetRestAlert() {
+  return useMutation({
+    mutationFn: async (enabled: boolean) => writeRestAlert(getAppDatabase(), enabled),
   });
 }
 

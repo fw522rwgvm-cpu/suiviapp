@@ -71,47 +71,25 @@ export function restWindow(
   return { startedAt, endsAt };
 }
 
-/**
- * The identifier of the rest notification.
+/*
+ * WHAT USED TO BE HERE, AND WHY IT IS NOT.
  *
- * ## IT IS NOT A NOTIFICATION_KIND, AND THAT IS THE WHOLE POINT
+ * `restNotificationId` and `REST_NOTIFICATION` minted a local notification so a
+ * rest could ring with the phone in a pocket. Requested removed (specs 14.40):
+ * the end of a rest vibrates instead, and nothing is scheduled at all.
  *
- * The obvious move was to add `rest_timer` to NOTIFICATION_KINDS — the schema
- * comment on notification_setting even invites it, and the export catalogue
- * says "slice 11 adds a kind here".
+ * They are DELETED rather than left in place, on the rule this project has
+ * followed since readFirstWeightDate — code with no caller is a trap for
+ * whoever rewires it believing it is used.
  *
- * It would have introduced exactly the defect slice 9 wrote a paragraph to
- * prevent. diffSchedule decides what the daily planner OWNS with
- * `NOTIFICATION_KINDS.some(kind => id.startsWith(kind + ':'))`, and everything
- * it owns that is not in the plan gets cancelled — on every foreground and
- * every invalidation the bus raises. Adding the kind would have handed the rest
- * timer to a scheduler that has never heard of it, which would have cancelled
- * it in the middle of a workout. Nothing would have reported it: the timer
- * simply would not have rung.
+ * Slice 9 and slice 11 both wrote at length about the invariant they carried:
+ * adding `rest_timer` to NOTIFICATION_KINDS would hand the timer to a planner
+ * that has never heard of it, which would cancel it mid-workout. That invariant
+ * has no subject any more — there is no rest notification to cancel — but the
+ * planner's own rule is still worth a test, and tests/notifications/apply.test
+ * keeps it with an identifier that is plainly not its own.
  *
- * So `rest:` is its own namespace, no kind is a prefix of it, and slice 9's
- * code does not change by one line. A test asserts the planner leaves it alone,
- * because the property is INVISIBLE — it holds by two constants not colliding,
- * and nothing about either one says so.
- *
- * ## AND THERE IS NO SETTING ROW EITHER
- *
- * The four kinds are switches with an hour. This has neither: specs 9.3
- * describes it as a consequence of validating a set, not as something turned
- * on, and specs 12 lists no setting for it. A row that stated nothing would be
- * a fifth line on a screen of four decisions.
- *
- * One per session rather than one per set: only one rest can be running, and
- * keying on the session means validating the next set REPLACES it by identity
- * — which is what specs 9.3 means by "annulée à la validation de la suivante",
- * obtained without anyone having to cancel anything.
+ * If a rest notification ever comes back — the honest reason would be covering
+ * the locked screen, which a vibration cannot — it must NOT become a
+ * NOTIFICATION_KIND.
  */
-export function restNotificationId(sessionId: SessionId): string {
-  return `rest:${sessionId}`;
-}
-
-/** What the notification says when the rest is up. */
-export const REST_NOTIFICATION = {
-  title: 'Repos terminé',
-  body: 'Série suivante.',
-} as const;

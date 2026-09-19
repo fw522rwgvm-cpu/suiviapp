@@ -63,7 +63,7 @@ L'application doit tolérer un arrêt forcé à tout moment sans perte.
 ## État du projet
 Tranches 0 à 11 livrées. La tranche 9 (notifications) **clôt la V2** ; les
 tranches 10 (exercices et routines) et 11 (séance en direct) **ouvrent la V3**.
-**1675 tests verts** sous les trois fuseaux, `tsc` vert, bundle produit.
+**1676 tests verts** sous les trois fuseaux, `tsc` vert, bundle produit.
 
 **La tranche 11 ne demande AUCUN cycle CI, et c'est vérifiable avant de
 commencer** : aucune dépendance n'entre. `expo-notifications` est dans le
@@ -5096,6 +5096,45 @@ il ne s'applique simplement pas là.
 n'est jamais rendu. Le statut `skipped` existe en base, `setSkipped` est écrit
 et testé, et **aucun contrôle ne l'atteint**. Préexistant ; nommé pour que ça ne
 passe pas pour du support.
+
+**Le repos VIBRE et ne notifie plus, et la limite est réelle.** Demandé. Une
+vibration pilotée par l'application ne part que si l'application est au
+**premier plan** : écran verrouillé ou app en arrière-plan, le repos se termine
+sans rien signaler — c'est exactement ce que la notification couvrait. Écrit
+ici, écrit sur la page de réglage, et réversible : la programmation tenait en
+six lignes.
+
+**Pas de son**, et ce n'est pas un oubli : jouer un son demande un module audio
+hors du §5, donc une dépendance native à valider et un cycle CI. `Vibration`
+appartient à React Native.
+
+Le réglage est une ligne `setting` et **pas une cinquième `NOTIFICATION_KIND`** —
+rien n'est programmé ni annulé, donc le planificateur de D14 ne doit rien
+posséder ici. `restNotificationId` et `REST_NOTIFICATION` sont **supprimés**, et
+les deux tests qui gardaient leur invariant changent de sujet plutôt que de
+valeur : le contre-exemple redevient un identifiant étranger, ce qui teste la
+règle du planificateur elle-même.
+
+**Trois défauts de la table de séance, corrigés le même jour :**
+
+- **le champ de durée ne bougeait que toutes les quinze secondes.**
+  `useLiveDuration` avait **un** intervalle pour deux lecteurs, juste tant que
+  seuls des minutes s'affichaient ; les secondes sont arrivées sur la page de
+  séance et elle paraissait arrêtée quatorze secondes sur quinze. Deux
+  constantes, parce que l'intervalle du bandeau tourne sur **tous** les écrans ;
+- **choisir un RIR valide la série.** Ça ne défait pas la scission : le RIR
+  reste une valeur à part et le bouton bascule toujours seul. Ce qui revient est
+  le raccourci. **Une série déjà validée n'est que corrigée**, jamais
+  revalidée — refaire `completeSet` réécrirait `completed_at` et relancerait le
+  repos d'une série finie il y a dix minutes ;
+- **il fallait parfois appuyer deux fois pour valider.**
+  `pointerEvents="box-only"` avale les touchers dès qu'une rangée balayable a un
+  `onPress`, donc le premier appui activait la rangée — ce qui retirait
+  l'`onPress` — et seul le second atteignait le bouton. **Troisième occurrence
+  du même piège**, après les champs du tableau de routine en tranche 10. La
+  règle générale : **une rangée qui possède la pression ne peut pas aussi
+  contenir des contrôles.** L'activation est supprimée, la bande de RIR qu'elle
+  déplaçait étant devenue une colonne.
 
 **Le minuteur de repos n'est PAS une cinquième sorte de notification — et la
 tranche 9 s'était trompée par écrit, deux fois.** Le commentaire de

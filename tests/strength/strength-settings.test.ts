@@ -3,7 +3,9 @@ import { SETTING_KEYS, readSetting } from '../../src/features/settings/data/sett
 import { writeSetting } from '../../src/features/settings/data/settings-writes';
 import {
   readProgressionIncrement,
+  readRestAlert,
   writeProgressionIncrement,
+  writeRestAlert,
 } from '../../src/features/strength/data/strength-settings';
 import {
   DEFAULT_PROGRESSION_INCREMENT_KG,
@@ -81,5 +83,52 @@ describe('the global progression increment', () => {
     // notification_setting's rule. Four rows stating nothing would still travel
     // in every archive.
     expect(readSetting(db.db, SETTING_KEYS.progressionIncrementKg)).toBeNull();
+  });
+});
+
+describe('the rest alert setting', () => {
+  let db: TestDatabase;
+
+  beforeEach(() => {
+    db = openTestDatabase();
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it('is ON when nobody has been asked', () => {
+    // An absent row means the question has never been put. The useful answer is
+    // the behaviour the feature was asked for, not silence.
+    expect(readRestAlert(db.db)).toBe(true);
+  });
+
+  it('round-trips both ways', () => {
+    writeRestAlert(db.db, false);
+    expect(readRestAlert(db.db)).toBe(false);
+
+    writeRestAlert(db.db, true);
+    expect(readRestAlert(db.db)).toBe(true);
+  });
+
+  it('CLAMPS A CORRUPT ROW TOWARDS ON', () => {
+    /**
+     * The direction every settings read in this project clamps: being a little
+     * too generous costs a vibration nobody wanted, being too strict costs a
+     * rest timer that ends in silence with nothing on screen to explain it —
+     * and that reads as a broken feature rather than as a broken row.
+     *
+     * A hand-repaired archive can put anything here: `setting` is a key/value
+     * table in TEXT and carries no CHECK.
+     */
+    writeSetting(db.db, SETTING_KEYS.restAlertEnabled, 'yes');
+    expect(readRestAlert(db.db)).toBe(true);
+
+    writeSetting(db.db, SETTING_KEYS.restAlertEnabled, '');
+    expect(readRestAlert(db.db)).toBe(true);
+
+    // Only the literal "0" turns it off, which is what writeRestAlert stores.
+    writeSetting(db.db, SETTING_KEYS.restAlertEnabled, '0');
+    expect(readRestAlert(db.db)).toBe(false);
   });
 });

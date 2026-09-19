@@ -1,95 +1,52 @@
 import { useEffect, useRef, useState } from 'react';
+import { Vibration } from 'react-native';
 import type { SessionId } from '@/core/db/schema';
-import { getNotificationHost } from '@/features/notifications/host-registry';
-import {
-  REST_NOTIFICATION,
-  restNotificationId,
-  restWindow,
-  type RestingSet,
-} from '../domain/rest-timer';
+import { restWindow, type RestingSet } from '../domain/rest-timer';
 
 /**
- * The rest timer (specs 10.3, 9.3, D12).
+ * The rest timer (specs 10.3, 14.40, D12).
  *
  * > Le minuteur de repos démarre automatiquement à la validation d'une série.
  *
- * ## TWO HALVES, AND ONLY ONE OF THEM CAN FAIL
+ * ## THE COUNTDOWN CANNOT FAIL, AND IT NEEDS NOTHING
  *
- * The COUNTDOWN is derived from the session — session_set.completed_at plus the
- * block's rest — so it needs no permission, no native module and no state. It
- * is right after a force quit for free, because the instant it reads was
- * written in the same transaction as the set.
+ * It is derived from the session — session_set.completed_at plus the block's
+ * rest — so it needs no permission, no native module and no state. It is right
+ * after a force quit for free, because the instant it reads was written in the
+ * same transaction as the set.
  *
- * The NOTIFICATION is what makes it ring with the phone in a pocket, and it is
- * best effort: iOS may refuse permission, and specs 9.3 already records the
- * limit that a silent phone makes no sound. So the screen never depends on it.
+ * ## IT VIBRATES; IT NO LONGER NOTIFIES — AND THE LIMIT IS REAL
  *
- * ## ONE NOTIFICATION PER SESSION, WHICH IS HOW THE CANCELLATION HAPPENS
+ * Requested (specs 14.40). Slice 11 scheduled a local notification, which is
+ * what made a rest ring with the phone in a pocket. **A vibration driven from
+ * JavaScript only fires while the application is in the FOREGROUND**: lock the
+ * screen or switch app and this timer does not run at all, so nothing happens.
+ * That is the price of dropping the notification, it is stated rather than
+ * discovered, and it is reversible — the scheduling was six lines.
  *
- * Specs 9.3: "programmée à la validation d'une série et annulée à la validation
- * de la suivante". Keying the identifier on the SESSION rather than on the set
- * makes that automatic — scheduling the next one replaces the previous by
- * identity, and nobody has to remember to cancel. The same device applyPlan
- * uses for the daily kinds, for the same reason.
+ * NO SOUND, and that is not an omission: playing one needs an audio module,
+ * which is outside section 5 and would cost a CI cycle and an explicit
+ * approval. `Vibration` is React Native's own, so nothing enters. On iOS it
+ * ignores a pattern and plays the system vibration once, which is the whole of
+ * what is wanted.
  *
- * ## AND PERMISSION IS ASKED AT THE FIRST ARM, NOT AT LAUNCH
+ * ## IT FIRES ONCE PER REST, KEYED ON THE DEADLINE
  *
- * Specs 9.3 forbids asking at first launch — "un refus au démarrage est
- * définitif" — and requires the four daily kinds to ask on activation in the
- * Settings. The rest timer has no switch to activate, so the nearest honest
- * moment is the first time a rest actually starts: an explicit act, performed
- * by somebody who has just validated a set and is now waiting.
- *
- * Asked ONCE per launch at most, and never again if refused: the request is
- * behind a ref, so a workout of twenty sets asks zero further times.
+ * `alerted` holds the `endsAt` it has already announced. Validating the next
+ * set early moves the deadline, which is a new rest and a new announcement;
+ * re-rendering for any other reason is not.
  */
 export function useRestTimer(
   sessionId: SessionId | null,
   blocks: readonly { restSeconds: number | null; sets: readonly RestingSet[] }[],
+  alertEnabled: boolean,
 ): { endsAt: number | null; remainingMs: number } {
   const [now, setNow] = useState(() => Date.now());
   const window = sessionId === null ? null : restWindow(blocks, now);
   const endsAt = window?.endsAt ?? null;
 
-  /** What was last handed to iOS, so an unchanged window asks for nothing. */
-  const armed = useRef<number | null>(null);
-  const asked = useRef(false);
-
-  useEffect(() => {
-    if (sessionId === null) return;
-    const id = restNotificationId(sessionId);
-    const host = getNotificationHost();
-
-    if (endsAt === null) {
-      // Nothing resting: take back whatever was pending. A rest cut short by
-      // validating the next set early must not ring after it.
-      if (armed.current !== null) {
-        armed.current = null;
-        void host.cancel(id);
-      }
-      return;
-    }
-
-    if (armed.current === endsAt) return;
-    armed.current = endsAt;
-
-    void (async () => {
-      if (!asked.current) {
-        asked.current = true;
-        const permission = await host.getPermission();
-        if (permission === 'undetermined') await host.requestPermission();
-      }
-      const seconds = (endsAt - Date.now()) / 1000;
-      // The window may have closed while the prompt was up. Nothing to ring.
-      if (seconds <= 0) return;
-      await host.scheduleAfter({
-        id,
-        title: REST_NOTIFICATION.title,
-        body: REST_NOTIFICATION.body,
-        seconds,
-      });
-    })();
-  }, [sessionId, endsAt]);
+  /** The deadline already announced, so one rest vibrates once. */
+  const alerted = useRef<number | null>(null);
 
   /**
    * The countdown ticks every second, and ONLY while one is running.
@@ -101,9 +58,20 @@ export function useRestTimer(
    */
   useEffect(() => {
     if (endsAt === null) return;
-    const timer = setInterval(() => setNow(Date.now()), 1000);
+
+    const tick = (): void => {
+      const instant = Date.now();
+      setNow(instant);
+      if (instant < endsAt || alerted.current === endsAt) return;
+      alerted.current = endsAt;
+      // Read from the closure rather than a ref: the effect re-runs when the
+      // setting changes, so this is always the current answer.
+      if (alertEnabled) Vibration.vibrate();
+    };
+
+    const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
-  }, [endsAt]);
+  }, [endsAt, alertEnabled]);
 
   return { endsAt, remainingMs: endsAt === null ? 0 : Math.max(0, endsAt - now) };
 }

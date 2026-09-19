@@ -29,15 +29,16 @@ import {
   useSkipSet,
 } from '../data/session-queries';
 import { useDeferredSetWrites } from '../hooks/use-deferred-set-writes';
-import { useLiveDuration } from '../hooks/use-live-duration';
+import { SESSION_TICK_MS, useLiveDuration } from '../hooks/use-live-duration';
+import { SESSION_ACTIVE_GAP_MS } from '../domain/session-activity';
 import { useRestTimer } from '../hooks/use-rest-timer';
-import { recordSet, type TypedSet } from '../domain/session-set';
+import { needsReps, recordSet, type TypedSet } from '../domain/session-set';
 import { elapsedText, progressText, restText } from '../domain/session-text';
 import { setColumns } from '../components/set-cell';
 import { LiveSetRow } from '../components/live-set-row';
 import { RirPicker } from '../components/rir-picker';
 import { ExerciseDrawing } from '../components/exercise-drawing';
-import { useExercises } from '../data/exercise-queries';
+import { useExercises, useRestAlert } from '../data/exercise-queries';
 
 /**
  * The live session (specs 10.3).
@@ -111,16 +112,24 @@ function LiveSession({ session, onLeave }: { session: SessionView; onLeave: () =
   const notes = usePendingNotes(exerciseIds);
 
   /**
-   * The set the RIR row is attached to.
+   * The set the hint is attached to: the first one not finished.
    *
-   * `null` means "the first one not finished", computed at render rather than
-   * stored — so validating a set moves the row forward without anything having
-   * to set it, and a workout done out of order still works because tapping any
-   * row pins it.
+   * ## PINNING IS GONE, AND THAT IS WHAT FIXED THE DOUBLE TAP
+   *
+   * Tapping a row used to move this, because the RIR strip lived under the
+   * active row and a workout is not always performed in order. The strip became
+   * a column on every row (specs 14.38), so there is nothing left to move.
+   *
+   * Keeping the row press cost a real defect: SwipeToDeleteRow swallows touches
+   * with `pointerEvents="box-only"` whenever it has an `onPress`, so the
+   * buttons INSIDE the row never received the first tap — it activated the row,
+   * which removed the onPress, and only the second one reached the button.
+   * Reported as "je dois appuyer 2 fois sur le bouton valider".
+   *
+   * It is the same trap slice 10 paid for with the routine table's fields, one
+   * layer up: a row that owns the press cannot also contain controls.
    */
-  const [pinned, setPinned] = useState<SessionSetId | null>(null);
-  const firstOpen = sets.find((set) => set.status === 'pending')?.id ?? null;
-  const activeSetId = pinned ?? firstOpen;
+  const activeSetId = sets.find((set) => set.status === 'pending')?.id ?? null;
 
   /** What is being typed, keyed by set. Empty means "show the placeholders". */
   const [typing, setTyping] = useState<Record<string, TypedSet>>({});
@@ -136,7 +145,9 @@ function LiveSession({ session, onLeave }: { session: SessionView; onLeave: () =
   const rirTarget = rirFor === null ? null : (sets.find((set) => set.id === rirFor) ?? null);
 
   const headerHeight = useHeaderHeight();
-  const liveMs = useLiveDuration(session.segments);
+  // Every second: this page shows them (specs 14.38). The banner keeps its
+  // fifteen, because it shows minutes and runs on every screen.
+  const liveMs = useLiveDuration(session.segments, SESSION_ACTIVE_GAP_MS, SESSION_TICK_MS);
 
   /** What each set did the last time this routine was performed (specs 14.39). */
   const previous = usePreviousSets(session.routineId, session.id);
@@ -154,7 +165,11 @@ function LiveSession({ session, onLeave }: { session: SessionView; onLeave: () =
     () => new Map((library.data ?? []).map((item) => [String(item.id), item.mediaUri])),
     [library.data],
   );
-  const rest = useRestTimer(session.id, session.blocks);
+  // Defaults to ON while the setting is still being read: a rest that ends in
+  // silence because a query had not resolved would look like the toggle is
+  // broken, and the read is local SQLite.
+  const restAlert = useRestAlert();
+  const rest = useRestTimer(session.id, session.blocks, restAlert.data ?? true);
 
   function typedFor(set: SessionSetView): TypedSet {
     return (
@@ -212,8 +227,57 @@ function LiveSession({ session, onLeave }: { session: SessionView; onLeave: () =
       return next;
     });
 
-    // Let the next unfinished set take the row.
-    setPinned(null);
+    // The hint follows the first unfinished set on its own, so nothing here
+    // has to move it: validating this one is what makes the next one first.
+  }
+
+  /**
+   * Choosing a RIR, which VALIDATES the set as well (specs 14.40).
+   *
+   * ## WHY BOTH, AFTER SPLITTING THEM APART
+   *
+   * Specs 14.38 split the RIR out of the validation because one control doing
+   * two things made the second unreachable — there was no way to correct a
+   * mis-tapped RIR. That stands: the RIR is still a value of its own, still
+   * editable, and the check button still toggles on its own.
+   *
+   * What comes back is the SHORTCUT, requested: saying the RIR is the last
+   * thing you do for a set, so it should not then need a second tap. The
+   * difference from slice 11 is that this is now the fast path rather than the
+   * only path.
+   *
+   * ## A DONE SET IS ONLY CORRECTED, NEVER RE-VALIDATED
+   *
+   * Re-running completeSet would rewrite `completed_at`, which is the instant
+   * the rest counts from — so correcting the RIR of a set finished ten minutes
+   * ago would restart its rest. Already done means write the RIR and stop.
+   *
+   * ## AND A SET THAT CANNOT BE VALIDATED IS NOT
+   *
+   * needsReps() is now only true for a set with NO target at all, which is one
+   * added live. Its RIR is recorded and the row keeps saying what is missing,
+   * rather than validating a set nobody described.
+   */
+  function onPickRir(set: SessionSetView, rir: number): void {
+    if (set.status === 'done') {
+      setRir.mutate({ setId: set.id as SessionSetId, sessionId: session.id, rir });
+      return;
+    }
+
+    const target = {
+      setType: set.setType,
+      repsMin: set.targetRepsMin,
+      repsMax: set.targetRepsMax,
+      loadKg: set.targetLoadKg,
+      rir: set.targetRir,
+      durationSeconds: set.targetDurationSeconds,
+    };
+    if (needsReps(target, typedFor(set))) {
+      setRir.mutate({ setId: set.id as SessionSetId, sessionId: session.id, rir });
+      return;
+    }
+
+    onValidate(set, rir);
   }
 
   function confirmFinish(): void {
@@ -342,7 +406,6 @@ function LiveSession({ session, onLeave }: { session: SessionView; onLeave: () =
               previous={previous.data ?? new Map()}
               activeSetId={activeSetId}
               typedFor={typedFor}
-              onActivate={(id) => setPinned(id)}
               onType={onType}
               onCycleType={(set, next) =>
                 setType.mutate({
@@ -393,9 +456,7 @@ function LiveSession({ session, onLeave }: { session: SessionView; onLeave: () =
         current={rirTarget === null ? null : (rirTarget.actualRir ?? rirTarget.targetRir)}
         onDismiss={() => setRirFor(null)}
         onPick={(rir) => {
-          if (rirFor !== null) {
-            setRir.mutate({ setId: rirFor, sessionId: session.id, rir });
-          }
+          if (rirTarget !== null) onPickRir(rirTarget, rir);
           setRirFor(null);
         }}
       />
@@ -428,7 +489,6 @@ function BlockCard({
   previous,
   activeSetId,
   typedFor,
-  onActivate,
   onType,
   onCycleType,
   onOpenRir,
@@ -445,7 +505,6 @@ function BlockCard({
   previous: ReadonlyMap<string, PreviousSet>;
   activeSetId: string | null;
   typedFor: (set: SessionSetView) => TypedSet;
-  onActivate: (id: SessionSetId) => void;
   onType: (set: SessionSetView, typed: TypedSet) => void;
   onCycleType: (set: SessionSetView, next: SetType) => void;
   onOpenRir: (set: SessionSetView) => void;
@@ -607,7 +666,6 @@ function BlockCard({
               letter={superset ? (letters.get(set.exerciseId ?? set.exerciseName) ?? '?') : null}
               typed={typedFor(set)}
               active={activeSetId === set.id}
-              onActivate={() => onActivate(set.id as SessionSetId)}
               previous={previousFor(previous, set)}
               onType={(typed) => onType(set, typed)}
               onCycleType={(next) => onCycleType(set, next)}
